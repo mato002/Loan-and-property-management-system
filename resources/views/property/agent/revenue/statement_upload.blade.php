@@ -24,9 +24,11 @@
     <div class="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="text-sm font-semibold text-slate-900">Upload statement</h2>
         <p class="mt-1 text-sm text-slate-600">
-            Same flow as MFI reconciliation: upload → parse → match receipts already in the system → recover missing M-Pesa credits into
+            Upload a Co-operative Bank <span class="font-medium">Statement of Account</span> PDF (filename like <span class="font-mono text-xs">AccountStatement…pdf</span>)
+            or a Safaricom C2B CSV — not a report printed from this system.
+            Credits match existing receipts; missing M-Pesa amounts go to
             <a href="{{ route('property.equity.unmatched') }}" class="font-semibold text-blue-700 hover:underline">Unmatched</a>
-            → assign tenant → settle rent.
+            so you can assign the tenant.
         </p>
 
         <form method="POST" action="{{ route('property.revenue.statements.store') }}" enctype="multipart/form-data" class="mt-4 grid gap-4 md:grid-cols-2">

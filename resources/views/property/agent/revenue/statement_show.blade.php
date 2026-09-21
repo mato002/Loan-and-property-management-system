@@ -64,7 +64,17 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-3 py-8 text-center text-slate-500">No lines for this filter.</td>
+                        <td colspan="6" class="px-3 py-8 text-center text-slate-500">
+                            <p class="font-medium text-slate-700">No transactions were read from this upload.</p>
+                            <p class="mt-1 text-sm">
+                                Header totals can still show on the list even when the PDF text was not extracted.
+                                Re-upload the same statement as a <span class="font-semibold">.txt</span> export
+                                (or use Upload &amp; import again after the latest update).
+                            </p>
+                            @if ($statement->source_filename)
+                                <p class="mt-2 text-xs font-mono text-slate-400">{{ $statement->source_filename }}</p>
+                            @endif
+                        </td>
                     </tr>
                 @endforelse
             </tbody>

@@ -35,7 +35,33 @@ final class CoopBankAccountStatementParser
      */
     public function parsePath(string $path): array
     {
-        return $this->parseText($this->readText($path), $path);
+        $texts = $this->readTexts($path);
+        if ($texts === []) {
+            throw new RuntimeException('File not found, empty, or unreadable: '.$path);
+        }
+
+        $best = null;
+        $bestCount = -1;
+        $sample = $texts[0];
+
+        foreach ($texts as $text) {
+            $sample = $text;
+            if (! $this->looksLikeBankStatement($text)) {
+                continue;
+            }
+            $parsed = $this->parseText($text, $path);
+            $count = count($parsed['lines'] ?? []);
+            if ($count > $bestCount) {
+                $bestCount = $count;
+                $best = $parsed;
+            }
+        }
+
+        if ($best !== null) {
+            return $best;
+        }
+
+        throw new RuntimeException($this->unrecognizedStatementMessage($sample));
     }
 
     /**
@@ -122,7 +148,7 @@ final class CoopBankAccountStatementParser
         $ref = self::REF;
 
         $full = '#('.$ref.')\s+\d{5,6}\s+(254\d{9})\s+MPESAC2B[_ ]?(\d+)\s+([A-Za-z][A-Za-z .\'-]{1,80}?)\s+('
-            .$date.')\s+('.$money.')('.$money.')('.$date.')\s+\1#i';
+            .$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
         if (preg_match_all($full, $normalized, $matches, PREG_SET_ORDER) !== false) {
             foreach ($matches as $match) {
                 $rows[] = $this->line(
@@ -141,7 +167,7 @@ final class CoopBankAccountStatementParser
 
         $seen = array_map(fn (array $row): string => (string) $row['reference'], $rows);
 
-        $short = '#('.$ref.')\s+\d{5,6}\s+(254\d{9})('.$date.')\s+('.$money.')('.$money.')('.$date.')\s+\1#i';
+        $short = '#('.$ref.')\s+\d{5,6}\s+(254\d{9})\s*('.$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
         if (preg_match_all($short, $normalized, $matches, PREG_SET_ORDER) !== false) {
             foreach ($matches as $match) {
                 $reference = strtoupper($match[1]);
@@ -167,7 +193,7 @@ final class CoopBankAccountStatementParser
             }
         }
 
-        $orphan = '#('.$date.')\s+('.$money.')('.$money.')('.$date.')\s+('.$ref.')#';
+        $orphan = '#('.$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+('.$ref.')#';
         if (preg_match_all($orphan, $normalized, $matches, PREG_SET_ORDER) !== false) {
             foreach ($matches as $match) {
                 $reference = strtoupper($match[5]);
@@ -202,7 +228,7 @@ final class CoopBankAccountStatementParser
     private function parseChequeDebits(string $normalized): array
     {
         $rows = [];
-        $pattern = '#CHQ\s*No\.?\s*0*(\d+)('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')('.self::DATE.')\s+([A-Z0-9]+)#i';
+        $pattern = '#CHQ\s*No\.?\s*0*(\d+)\s*('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')\s*('.self::DATE.')\s+([A-Z0-9]+)#i';
         if (preg_match_all($pattern, $normalized, $matches, PREG_SET_ORDER) === false) {
             return $rows;
         }
@@ -231,7 +257,7 @@ final class CoopBankAccountStatementParser
     private function parseBankCharges(string $normalized): array
     {
         $rows = [];
-        $pattern = '#Account Ledger Fee:\s*Charges('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')#i';
+        $pattern = '#Account Ledger Fee:\s*Charges\s*('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')#i';
         if (preg_match($pattern, $normalized, $match) === 1) {
             $rows[] = $this->line(
                 self::TYPE_CHARGE,
@@ -246,7 +272,7 @@ final class CoopBankAccountStatementParser
             );
         }
 
-        $excise = '#EXCISE Charges('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')#i';
+        $excise = '#EXCISE Charges\s*('.self::DATE.')\s+('.self::MONEY.')\s+('.self::MONEY.')#i';
         if (preg_match($excise, $normalized, $match) === 1) {
             $rows[] = $this->line(
                 self::TYPE_CHARGE,
@@ -317,8 +343,14 @@ final class CoopBankAccountStatementParser
     private function collapse(string $text): string
     {
         $text = str_replace(["\r\n", "\r", "\t"], ["\n", "\n", ' '], $text);
+        $text = trim((string) preg_replace('/[ \n]+/', ' ', $text));
+        $text = (string) preg_replace('/(\d\.\d{2})(\d{1,3}(?:,\d{3})*\.\d{2})/', '$1 $2', $text);
+        $text = (string) preg_replace('/(\d\.\d{2})(\d{2}\/\d{2}\/\d{4})/', '$1 $2', $text);
+        $text = (string) preg_replace('/(254\d{9})(\d{2}\/\d{2}\/\d{4})/', '$1 $2', $text);
+        $text = (string) preg_replace('/(CHQ\s*No\.?\s*\d+)(\d{2}\/\d{2}\/\d{4})/i', '$1 $2', $text);
+        $text = (string) preg_replace('/(Charges)(\d{2}\/\d{2}\/\d{4})/i', '$1 $2', $text);
 
-        return trim((string) preg_replace('/[ \n]+/', ' ', $text));
+        return $text;
     }
 
     private function toIsoDate(string $value): string
@@ -337,19 +369,58 @@ final class CoopBankAccountStatementParser
         return is_numeric($raw) ? round((float) $raw, 2) : 0.0;
     }
 
-    private function readText(string $path): string
+    /**
+     * @return list<string>
+     */
+    private function readTexts(string $path): array
     {
         if (! is_file($path) || ! is_readable($path)) {
-            throw new RuntimeException('File not found or not readable: '.$path);
+            return [];
         }
 
         $extension = Str::lower(pathinfo($path, PATHINFO_EXTENSION) ?: '');
         if (in_array($extension, ['txt', 'text', 'log', 'csv', 'tsv'], true)) {
             $contents = file_get_contents($path);
 
-            return is_string($contents) ? $contents : '';
+            return is_string($contents) && trim($contents) !== '' ? [$contents] : [];
         }
 
-        return app(PassionLegacyRegisterPdfTextExtractor::class)->extract($path);
+        return app(PassionLegacyRegisterPdfTextExtractor::class)->extractCandidates($path);
+    }
+
+    private function readText(string $path): string
+    {
+        $texts = $this->readTexts($path);
+        if ($texts === []) {
+            throw new RuntimeException('File not found or not readable: '.$path);
+        }
+
+        return $texts[0];
+    }
+
+    private function looksLikeBankStatement(string $text): bool
+    {
+        return preg_match('/STATEMENT OF ACCOUNT/i', $text) === 1
+            || preg_match('/MPESAC2B_/i', $text) === 1
+            || preg_match('/Account No\s+\d{10,16}/i', $text) === 1
+            || preg_match('/Receipt No/i', $text) === 1;
+    }
+
+    private function unrecognizedStatementMessage(string $text): string
+    {
+        $blob = strtolower((string) preg_replace('/\s+/', ' ', $text));
+
+        if (str_contains($blob, 'landlord name')
+            || str_contains($blob, 'owner share')
+            || str_contains($blob, 'agent earning')
+            || str_contains($blob, 'report generated')) {
+            return 'This PDF is a report from this system, not a bank statement. Upload the Co-operative Bank Statement of Account (AccountStatement….pdf) or a Safaricom C2B CSV.';
+        }
+
+        if (str_contains($blob, 'payment voucher')) {
+            return 'This PDF is a payment voucher listing, not a bank statement. Upload the Co-operative Bank Statement of Account PDF instead.';
+        }
+
+        return 'This file is not a Co-operative Bank Statement of Account or M-Pesa C2B export. Upload the bank PDF, or save it as .txt first.';
     }
 }

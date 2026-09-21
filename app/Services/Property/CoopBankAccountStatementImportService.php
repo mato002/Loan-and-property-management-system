@@ -55,6 +55,13 @@ final class CoopBankAccountStatementImportService
     public function importParsed(array $parsed, int $agentUserId, bool $dryRun = false): array
     {
         $lines = $parsed['lines'] ?? [];
+        if ($lines === []) {
+            throw new RuntimeException(
+                'The file uploaded as a statement, but no transactions could be read from it. '
+                .'For Co-operative Bank PDFs, export or Save as TXT and upload that file if this happens again.'
+            );
+        }
+
         $summary = [
             'parsed' => count($lines),
             'statements' => 0,
