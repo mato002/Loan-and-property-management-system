@@ -9,6 +9,7 @@ use App\Models\LeaseDepositLine;
 use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmUnitMovement;
@@ -17,6 +18,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use Illuminate\Database\Eloquent\Builder;
 use App\Services\Property\CarryForwardConsolidationService;
+use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\PropertyActivityLogger;
 use App\Services\Property\PropertyDashboardCache;
@@ -1948,10 +1950,17 @@ SQL;
 
     public function show(PmLease $lease): View
     {
-        $lease->load([
-            'pmTenant',
-            'units.property',
-        ]);
+        $relations = ['pmTenant', 'units.property'];
+        if (Schema::hasTable('lease_deposit_lines')) {
+            $relations[] = 'depositLines';
+        }
+        $lease->load($relations);
+
+        if ($lease->status === PmLease::STATUS_ACTIVE) {
+            foreach ($lease->units as $unit) {
+                $unit->setRelation('leases', collect([$lease]));
+            }
+        }
 
         $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
         $daysLeft = $lease->end_date
@@ -1962,6 +1971,60 @@ SQL;
             && $lease->end_date->lte(now()->addDays(60));
 
         $carryForwardTotal = $this->leaseCarryForwardTotal($lease);
+        $tenantId = (int) ($lease->pm_tenant_id ?? 0);
+        $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->filter()->values();
+
+        $outstanding = 0.0;
+        if ($tenantId > 0) {
+            $outstanding = app(FinanceBalanceSnapshotService::class)->tenantOutstanding($tenantId);
+        }
+
+        $recentInvoices = collect();
+        if (Schema::hasTable('pm_invoices')) {
+            $recentInvoices = PmInvoice::query()
+                ->where(function ($query) use ($lease, $tenantId, $unitIds) {
+                    $query->where('pm_lease_id', $lease->id);
+                    if ($tenantId > 0) {
+                        $query->orWhere(function ($inner) use ($tenantId, $unitIds) {
+                            $inner->where('pm_tenant_id', $tenantId);
+                            if ($unitIds->isNotEmpty()) {
+                                $inner->whereIn('property_unit_id', $unitIds->all());
+                            }
+                        });
+                    }
+                })
+                ->orderByDesc('issue_date')
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $recentPayments = collect();
+        if ($tenantId > 0 && Schema::hasTable('pm_payments')) {
+            $recentPayments = PmPayment::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $primaryUnit = $lease->units->first();
+        $quickActions = [
+            ['label' => 'Edit lease', 'route' => 'property.leases.edit', 'params' => ['lease' => $lease->id], 'icon' => 'fa-pen-to-square', 'tone' => 'primary'],
+        ];
+        if ($tenantId > 0) {
+            $quickActions[] = ['label' => 'Tenant', 'route' => 'property.tenants.show', 'params' => ['tenant' => $tenantId], 'icon' => 'fa-user'];
+            $quickActions[] = ['label' => 'Statement', 'route' => 'property.tenants.statement', 'params' => ['tenant' => $tenantId], 'icon' => 'fa-file-invoice'];
+            $quickActions[] = ['label' => 'Notices', 'route' => 'property.tenants.notices', 'params' => ['tenant_id' => $tenantId], 'icon' => 'fa-bell'];
+        }
+        $quickActions[] = ['label' => 'Invoices', 'route' => 'property.revenue.invoices', 'params' => array_filter(['unit_id' => $primaryUnit?->id, 'tenant_id' => $tenantId ?: null]), 'icon' => 'fa-file-lines'];
+        $quickActions[] = ['label' => 'Payments', 'route' => 'property.revenue.payments', 'params' => array_filter(['unit_id' => $primaryUnit?->id, 'tenant_id' => $tenantId ?: null]), 'icon' => 'fa-money-bill'];
+        if ($primaryUnit) {
+            $quickActions[] = ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'params' => ['unit_id' => $primaryUnit->id], 'icon' => 'fa-screwdriver-wrench'];
+            $quickActions[] = ['label' => 'Utilities', 'route' => 'property.revenue.utilities', 'params' => ['unit_id' => $primaryUnit->id], 'icon' => 'fa-droplet'];
+            $quickActions[] = ['label' => 'Property', 'route' => 'property.properties.show', 'params' => ['property' => $primaryUnit->property_id, 'tab' => 'units'], 'icon' => 'fa-building'];
+        }
 
         return property_view('property.agent.tenants.lease_show', [
             'lease' => $lease,
@@ -1969,6 +2032,10 @@ SQL;
             'daysLeft' => $daysLeft,
             'isEndingSoon' => $isEndingSoon,
             'carryForwardTotal' => $carryForwardTotal,
+            'outstanding' => $outstanding,
+            'recentInvoices' => $recentInvoices,
+            'recentPayments' => $recentPayments,
+            'quickActions' => $quickActions,
         ]);
     }
 
