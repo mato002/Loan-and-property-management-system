@@ -316,3 +316,112 @@ function initPropertyBareTableScroll(root = document) {
 document.addEventListener('DOMContentLoaded', () => initPropertyBareTableScroll(document));
 document.addEventListener('turbo:load', () => initPropertyBareTableScroll(document));
 document.addEventListener('turbo:frame-load', (e) => initPropertyBareTableScroll(e.target));
+
+document.addEventListener('alpine:init', () => {
+    const Alpine = window.Alpine;
+    if (!Alpine) {
+        return;
+    }
+
+    Alpine.data('listingVacantRoster', (listings = []) => {
+        const rentBands = [5000, 10000, 15000, 20000, 30000, 50000, 80000];
+        const uniqueBy = (rows, keyFn) => {
+            const seen = new Map();
+            rows.forEach((row) => {
+                const key = keyFn(row);
+                if (key === '' || key == null) return;
+                if (!seen.has(String(key))) seen.set(String(key), row);
+            });
+            return [...seen.values()];
+        };
+
+        return {
+            listings: Array.isArray(listings) ? listings : [],
+            q: '',
+            city: '',
+            area: '',
+            property_id: '',
+            unit_type: '',
+            max_rent: '',
+            photos: '',
+            listing: '',
+            filtered(level) {
+                const q = this.q.trim().toLowerCase();
+                return this.listings.filter((row) => {
+                    if (q !== '' && !(row.search || '').includes(q)) return false;
+                    if (level >= 1 && this.city && row.city !== this.city) return false;
+                    if (level >= 2 && this.area && row.area !== this.area) return false;
+                    if (level >= 3 && this.property_id && String(row.property_id) !== this.property_id) return false;
+                    if (this.unit_type && row.unit_type !== this.unit_type) return false;
+                    if (this.max_rent && Number(row.rent) > Number(this.max_rent)) return false;
+                    if (this.photos === 'with' && !row.has_photos) return false;
+                    if (this.photos === 'none' && row.has_photos) return false;
+                    if (this.listing === 'featured' && !row.featured) return false;
+                    if (this.listing === 'standard' && row.featured) return false;
+                    return true;
+                });
+            },
+            get cities() {
+                return uniqueBy(this.filtered(0), (row) => row.city)
+                    .map((row) => ({ value: row.city, label: row.city_label || row.city }))
+                    .sort((a, b) => a.label.localeCompare(b.label));
+            },
+            get areas() {
+                return uniqueBy(this.filtered(1), (row) => row.area)
+                    .map((row) => ({ value: row.area, label: row.area }))
+                    .sort((a, b) => a.label.localeCompare(b.label));
+            },
+            get buildings() {
+                return uniqueBy(this.filtered(2), (row) => String(row.property_id))
+                    .map((row) => ({ value: String(row.property_id), label: row.property_label || row.property }))
+                    .sort((a, b) => a.label.localeCompare(b.label));
+            },
+            get unitTypes() {
+                return uniqueBy(this.filtered(3), (row) => row.unit_type)
+                    .filter((row) => row.unit_type)
+                    .map((row) => ({ value: row.unit_type, label: row.unit_type_label || row.unit_type }))
+                    .sort((a, b) => a.label.localeCompare(b.label));
+            },
+            get rentBands() {
+                const rents = this.filtered(4).map((row) => Number(row.rent) || 0);
+                if (!rents.length) return [];
+                const lowest = Math.min(...rents.filter((n) => n > 0), Infinity);
+                if (!Number.isFinite(lowest)) return rentBands.map((band) => ({ value: String(band), label: `Up to ${band.toLocaleString()}` }));
+                return rentBands
+                    .filter((band) => lowest <= band)
+                    .map((band) => ({ value: String(band), label: `Up to KES ${band.toLocaleString()}` }));
+            },
+            get visibleIds() {
+                return new Set(this.filtered(4).map((row) => Number(row.id)));
+            },
+            get visibleCount() {
+                return this.visibleIds.size;
+            },
+            isVisible(id) {
+                return this.visibleIds.has(Number(id));
+            },
+            onCity() {
+                this.area = '';
+                this.property_id = '';
+                if (this.areas.length === 1) this.area = this.areas[0].value;
+                this.onArea();
+            },
+            onArea() {
+                this.property_id = '';
+                if (this.buildings.length === 1) this.property_id = this.buildings[0].value;
+            },
+            onBuilding() {},
+            clear() {
+                this.q = '';
+                this.city = '';
+                this.area = '';
+                this.property_id = '';
+                this.unit_type = '';
+                this.max_rent = '';
+                this.photos = '';
+                this.listing = '';
+            },
+        };
+    });
+});
+

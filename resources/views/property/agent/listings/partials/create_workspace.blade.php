@@ -20,35 +20,95 @@
         @endif
     </div>
 
-    <section id="vacant-roster" class="space-y-3">
-        <div class="flex flex-wrap items-center gap-2">
+    <section
+        id="vacant-roster"
+        class="space-y-3"
+        x-data="listingVacantRoster(@js($vacantUnits->map(function ($u) {
+            $property = $u->property;
+            $city = trim((string) ($property?->city ?? ''));
+            if ($city === '') {
+                $city = 'Other';
+            }
+
+            return [
+                'id' => (int) $u->id,
+                'city' => $city,
+                'city_label' => $property ? \App\Support\Property\PublicApplyCatalog::cityLabel($city) : $city,
+                'area' => $property ? \App\Support\Property\PublicApplyCatalog::areaLabel($property) : '',
+                'property_id' => (int) $u->property_id,
+                'property' => (string) ($property?->name ?? ''),
+                'property_label' => $property ? \App\Support\Property\PublicApplyCatalog::publicBuildingName($property) : (string) $u->label,
+                'unit_type' => (string) ($u->unit_type ?: ''),
+                'unit_type_label' => $u->unitTypeLabel(),
+                'rent' => $u->listedRentAmount(),
+                'has_photos' => $u->publicImages->isNotEmpty(),
+                'featured' => (bool) $u->public_listing_published,
+                'search' => mb_strtolower(implode(' ', array_filter([
+                    (string) $u->label,
+                    (string) ($property?->name ?? ''),
+                    (string) ($property?->city ?? ''),
+                    $property ? \App\Support\Property\PublicApplyCatalog::areaLabel($property) : '',
+                    (string) $u->listedRentAmount(),
+                ]))),
+            ];
+        })->values()))"
+    >
+        <div class="flex flex-wrap items-center justify-between gap-2">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Vacant units</h2>
+            <p class="text-xs font-medium text-slate-500 dark:text-slate-400" x-text="visibleCount + ' of {{ $vacantUnits->count() }} shown'"></p>
         </div>
 
-        <div class="flex flex-wrap items-end gap-2 print-hide">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 print-hide">
             <input
                 type="search"
-                data-table-filter="parent"
+                x-model="q"
                 autocomplete="off"
-                placeholder="Search unit, property, rent…"
-                class="w-full min-w-0 sm:max-w-md min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
+                placeholder="Search unit, building, rent…"
+                class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 sm:col-span-2"
             />
-            <select
-                data-table-filter="parent"
-                class="w-full min-w-0 sm:w-auto min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
-            >
-                <option value="">All statuses</option>
-                <option value="featured">Featured</option>
-                <option value="standard">On Discover</option>
+            <select x-model="city" @change="onCity()" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All towns</option>
+                <template x-for="opt in cities" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.label"></option>
+                </template>
             </select>
-            <select
-                data-table-filter="parent"
-                class="w-full min-w-0 sm:w-auto min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
-            >
+            <select x-model="area" @change="onArea()" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All estates</option>
+                <template x-for="opt in areas" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.label"></option>
+                </template>
+            </select>
+            <select x-model="property_id" @change="onBuilding()" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All buildings</option>
+                <template x-for="opt in buildings" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.label"></option>
+                </template>
+            </select>
+            <select x-model="unit_type" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All home types</option>
+                <template x-for="opt in unitTypes" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.label"></option>
+                </template>
+            </select>
+            <select x-model="max_rent" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Any asking rent</option>
+                <template x-for="opt in rentBands" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.label"></option>
+                </template>
+            </select>
+            <select x-model="photos" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">All photos</option>
-                <option value="with photos">With photos</option>
-                <option value="no photos">No photos</option>
+                <option value="with">With photos</option>
+                <option value="none">No photos</option>
             </select>
+            <select x-model="listing" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All listing status</option>
+                <option value="featured">Featured</option>
+                <option value="standard">On website</option>
+            </select>
+            <button type="button" @click="clear()" class="min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 px-3 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
+                Clear filters
+            </button>
         </div>
 
         <div class="overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -67,21 +127,7 @@
                 <tbody>
                     @foreach ($vacantUnits as $u)
                         @php
-                            $statusWord = $u->public_listing_published ? 'featured' : 'standard';
-                            $photoWord = $u->publicImages->isNotEmpty() ? 'with photos' : 'no photos';
                             $isSelected = $selectedUnit && (int) $selectedUnit->id === (int) $u->id;
-                            $filterText = mb_strtolower(
-                                implode(' ', [
-                                    (string) $u->label,
-                                    (string) $u->property->name,
-                                    (string) $u->listedRentAmount(),
-                                    \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()),
-                                    $u->vacant_since?->format('Y-m-d') ?? '',
-                                    (string) $u->publicImages->count(),
-                                    $statusWord,
-                                    $photoWord,
-                                ])
-                            );
                         @endphp
                         <tr
                             @class([
@@ -89,7 +135,8 @@
                                 'bg-blue-50/80 dark:bg-blue-950/30 ring-1 ring-inset ring-blue-200/80 dark:ring-blue-800/60' => $isSelected,
                             ])
                             data-listing-unit-id="{{ $u->id }}"
-                            data-filter-text="{{ e($filterText) }}"
+                            x-show="isVisible({{ (int) $u->id }})"
+                            x-cloak
                         >
                             <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->label }}</td>
                             <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200">{{ $u->property->name }}</td>
@@ -117,5 +164,6 @@
                 </tbody>
             </table>
         </div>
+        <p x-show="visibleCount === 0" x-cloak class="text-sm text-slate-500 dark:text-slate-400 px-1">No vacant units match these filters. Clear filters to see the full list.</p>
     </section>
 @endif
