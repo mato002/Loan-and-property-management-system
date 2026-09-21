@@ -44,7 +44,10 @@ final class LandlordHubDataService
         }
 
         $units = PropertyUnit::query()
-            ->with(['property'])
+            ->with([
+                'property',
+                'leases' => fn ($q) => $q->where('pm_leases.status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
+            ])
             ->whereIn('property_id', $propertyIds)
             ->orderBy('property_id')
             ->orderBy('label')
@@ -81,6 +84,7 @@ final class LandlordHubDataService
                     (string) $unit->status,
                     $lease !== null,
                 ),
+                'unit' => $unit,
             ];
         })->values()->all();
     }
