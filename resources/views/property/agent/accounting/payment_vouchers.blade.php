@@ -1,20 +1,22 @@
+@php $appName = config('app.name', 'Property ERP'); @endphp
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
-    title="Payment vouchers (EZEN legacy)"
-    subtitle="Outgoing payments imported from EZEN Payment Voucher Listing — landlord remittances, commissions, tax, and operating expenses."
+    title="Payment vouchers"
+    subtitle="Outgoing payments imported into {{ $appName }} — landlord remittances, commissions, tax, and operating expenses."
     back-route="property.accounting.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     table-min-width="1280px"
     empty-title="No payment vouchers imported"
-    empty-hint="Export Payment Voucher Listing from EZEN as CSV (or PDF/.txt), then run php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --dry-run --agent-user-id=2"
+    empty-hint="Upload a payment voucher listing under Settings → Register imports (dry-run first)."
 >
     <x-slot name="secondary">
         <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
-            <p class="text-lg font-semibold text-slate-900">EZEN outgoing payments</p>
-            <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and KRA rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
+            <p class="text-lg font-semibold text-slate-900">Outgoing payments register</p>
+            <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and tax rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
+            <a href="{{ route('property.settings.register_imports') }}" class="mt-3 inline-flex text-sm font-semibold text-teal-800 hover:underline">Open register imports →</a>
         </div>
     </x-slot>
 

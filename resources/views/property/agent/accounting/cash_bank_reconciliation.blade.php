@@ -83,7 +83,7 @@
                         </div>
                     @endif
                 @empty
-                    <p class="text-sm text-slate-500">Import a Co-op statement with <code>property:import-coop-bank-statement</code>.</p>
+                    <p class="text-sm text-slate-500">No bank statement lines yet. <a href="{{ route('property.revenue.statements.index') }}" class="font-semibold text-teal-800 hover:underline">Upload a statement</a>.</p>
                 @endforelse
             </div>
         </div>

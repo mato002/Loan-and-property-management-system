@@ -26,6 +26,7 @@ use App\Http\Controllers\Property\Agent\PropertyListingsPipelineController;
 use App\Http\Controllers\Property\Agent\PropertyOffboardingController;
 use App\Http\Controllers\Property\Agent\PropertyPortfolioController;
 use App\Http\Controllers\Property\Agent\PropertySettingsStoreWebController;
+use App\Http\Controllers\Property\Agent\PropertyBulkRegisterImportController;
 use App\Http\Controllers\Property\Agent\PropertyTeamUserController;
 use App\Http\Controllers\Property\Agent\PropertyActivityLogController;
 use App\Http\Controllers\Property\Agent\PropertySettingsWebController;
@@ -574,6 +575,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/settings/commission', [PropertySettingsStoreWebController::class, 'storeCommission'])->middleware('property.permission:settings.manage')->name('settings.commission.store');
     Route::get('/settings/payments', [PropertySettingsStoreWebController::class, 'payments'])->name('settings.payments');
     Route::post('/settings/payments', [PropertySettingsStoreWebController::class, 'storePayments'])->middleware('property.permission:settings.manage')->name('settings.payments.store');
+    Route::get('/settings/register-imports', [PropertyBulkRegisterImportController::class, 'index'])->middleware('property.permission:settings.manage')->name('settings.register_imports');
+    Route::post('/settings/register-imports', [PropertyBulkRegisterImportController::class, 'store'])->middleware('property.permission:settings.manage')->name('settings.register_imports.store');
     Route::get('/settings/bank', [PropertySettingsStoreWebController::class, 'bank'])->name('settings.bank');
     Route::post('/settings/bank', [PropertySettingsStoreWebController::class, 'storeBank'])->middleware('property.permission:settings.manage')->name('settings.bank.store');
     Route::get('/settings/equity', [PropertySettingsStoreWebController::class, 'equity'])->name('settings.equity');

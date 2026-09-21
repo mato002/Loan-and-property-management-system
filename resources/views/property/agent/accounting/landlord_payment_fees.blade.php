@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Landlord payment & fees"
-    subtitle="Period landlord remittances, management fees, and payout status — like EZEN landlord payment workspace."
+    subtitle="Period landlord remittances, management fees, and payout status."
     back-route="property.accounting.index"
     :stats="$stats"
     :columns="[]"

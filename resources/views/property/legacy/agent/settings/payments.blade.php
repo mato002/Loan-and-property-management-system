@@ -79,14 +79,17 @@
                     @error('trust_account_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <button type="submit" class="rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save trust account</button>
                 </form>
-                <div class="pt-2 border-t border-slate-100 dark:border-slate-700">
-                    <label class="block text-xs font-medium text-slate-500">Reconciliation import</label>
-                    <form method="post" action="{{ route('property.quick_action.store') }}" enctype="multipart/form-data" class="mt-2 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                        @csrf
-                        <input type="hidden" name="action_key" value="bank_statement_upload" />
-                        <input type="file" name="attachment" accept=".csv,.txt,text/csv" required class="text-sm text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" />
-                        <button type="submit" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 shrink-0">Upload CSV / text</button>
-                    </form>
+                <div class="pt-2 border-t border-slate-100 dark:border-slate-700 space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500">Bank / M-Pesa statement reconciliation</label>
+                        <p class="mt-1 text-xs text-slate-500">Upload Co-op or Safaricom C2B statements, match receipts, and recover missing credits into Unmatched.</p>
+                        <a href="{{ route('property.revenue.statements.index') }}" class="mt-2 inline-flex rounded-lg bg-teal-800 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-900">Open statement upload</a>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500">Register / cutover imports</label>
+                        <p class="mt-1 text-xs text-slate-500">Bulk-load receipt listings, vouchers, bills, and opening balances into {{ config('app.name') }}.</p>
+                        <a href="{{ route('property.settings.register_imports') }}" class="mt-2 inline-flex rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Open register imports</a>
+                    </div>
                 </div>
             </div>
         </div>

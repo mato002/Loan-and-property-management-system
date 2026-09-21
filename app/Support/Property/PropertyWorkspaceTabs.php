@@ -446,6 +446,15 @@ final class PropertyWorkspaceTabs
                 'hub_description' => 'Paybill, STK, settlement.',
             ],
             [
+                'key' => 'register_imports',
+                'label' => 'Register imports',
+                'route' => 'property.settings.register_imports',
+                'active' => ['property.settings.register_imports', 'property.settings.register_imports.*'],
+                'requires_any_pm_permission' => ['settings.manage'],
+                'hub_title' => 'Register imports',
+                'hub_description' => 'Bulk-load receipt listings, vouchers, bills, and opening balances.',
+            ],
+            [
                 'key' => 'bank',
                 'label' => 'Bank sync',
                 'route' => 'property.settings.bank',
