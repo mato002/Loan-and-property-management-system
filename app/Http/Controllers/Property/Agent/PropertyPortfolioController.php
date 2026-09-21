@@ -763,7 +763,7 @@ class PropertyPortfolioController extends Controller
             ];
             $quickActions[] = [
                 'label' => 'Assign lease',
-                'js' => 'window.openLeaseCreateModal && window.openLeaseCreateModal()',
+                'modal' => 'showLeaseCreateForm',
                 'icon' => 'fa-key',
             ];
             $quickActions[] = [

@@ -12,9 +12,10 @@
             && old('return_to') === 'tenant_show',
         'showHubMaintenanceForm' => $errors->hasAny(['property_id','property_unit_id','category','urgency','description'])
             && old('return_to') === 'tenant_show',
+        'showLeaseCreateForm' => false,
     ];
 @endphp
-<x-property.workspace :compact-list="false"
+<x-property.workspace :compact-list="true"
     :title="'Tenant: '.$tenant->name"
     subtitle="360° tenant workspace — see and act without leaving this page."
     back-route="property.tenants.directory"
@@ -29,18 +30,20 @@
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($hubModalDefaults) !!}"></x-slot>
 
     <x-slot name="actions">
-        <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" data-property-modal-open="showHubInvoiceForm" @click="showHubInvoiceForm = true">
-            <i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Invoice
-        </button>
-        <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700" data-property-modal-open="showHubPaymentForm" @click="showHubPaymentForm = true">
-            <i class="fa-solid fa-money-bill" aria-hidden="true"></i> Pay
-        </button>
-        <a href="{{ route('property.tenants.edit', $tenant, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
-        <a href="{{ route('property.tenants.statement', $tenant, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Statement</a>
+        @include('property.agent.partials.hub_quick_actions', ['actions' => $quickActions ?? []])
     </x-slot>
 
     <x-slot name="modals">
         @include('property.agent.tenants.partials.hub_modals')
+        @include('property.agent.partials.lease_create_shell', [
+            'openLeaseCreateModal' => false,
+            'leaseCreateFormUrl' => route('property.leases.create_form', [
+                'pm_tenant_id' => $tenant->id,
+                'return_to' => 'tenant_show',
+                'return_tenant_id' => $tenant->id,
+                'return_tab' => 'leases',
+            ], false),
+        ])
     </x-slot>
 
     @include('property.agent.tenants.partials.hub')

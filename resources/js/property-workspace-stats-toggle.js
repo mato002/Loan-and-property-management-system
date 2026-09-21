@@ -36,7 +36,7 @@ function applyStatsVisibility(panel, visible) {
     }
 
     if (label instanceof HTMLElement) {
-        label.textContent = visible ? 'Hide summary' : 'Show summary';
+        label.textContent = visible ? 'Hide' : 'Show';
     }
 }
 

@@ -1,8 +1,8 @@
-<x-property.workspace :compact-list="false"
+<x-property.workspace :compact-list="true"
     :title="'Property: '.$property->name"
-    :subtitle="'360° property workspace — units, occupancy, utilities, revenue, and offboarding. Period: '.$periodLabel"
+    :subtitle="'360° property workspace — '.$periodLabel"
     back-route="property.properties.list"
-    :stats="$stats"
+    :stats="[]"
     :columns="[]"
 >
     @php
@@ -25,13 +25,29 @@
                 && old('return_to') === 'property_show',
             'showHubMaintenanceForm' => $errors->hasAny(['property_unit_id', 'category', 'urgency', 'description'])
                 && old('return_to') === 'property_show',
+            'showLeaseCreateForm' => false,
         ];
+        $hubSummaryStats = $stats ?? [];
     @endphp
 
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($hubModalDefaults) !!}"></x-slot>
 
+    <x-slot name="actions">
+        @include('property.agent.partials.hub_quick_actions', ['actions' => $quickActions ?? []])
+    </x-slot>
+
     <x-slot name="modals">
         @include('property.agent.properties.partials.hub_modals')
+        @include('property.agent.partials.lease_create_shell', [
+            'openLeaseCreateModal' => false,
+            'leaseCreateFormUrl' => route('property.leases.create_form', array_filter([
+                'property_id' => $property->id,
+                'unit_id' => $firstVacantUnit->id ?? null,
+                'return_to' => 'property_show',
+                'return_property_id' => $property->id,
+                'return_tab' => 'occupancy',
+            ]), false),
+        ])
     </x-slot>
 
     @if ($property->isManagementReadOnly())
@@ -51,55 +67,65 @@
     @endif
 
     <x-slot name="above">
-        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3 sm:p-4 shadow-sm flex flex-wrap items-end gap-2 w-full min-w-0">
-            <input type="hidden" name="tab" value="{{ $activeTab }}" />
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Month</label>
-                <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">FY</label>
-                <input type="number" name="fy" value="{{ $fyValue ?? now()->year }}" min="2000" max="2100" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 w-28" />
-            </div>
-            @if ($activeTab !== 'units')
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Unit status</label>
-                <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="">All</option>
-                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
-                        <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Collection channel</label>
-                <select name="collection_channel" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="">All</option>
-                    @foreach(($availableCollectionChannels ?? []) as $channel)
-                        <option value="{{ $channel }}" @selected(($filters['collection_channel'] ?? '') === $channel)>{{ strtoupper($channel) }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Collection search</label>
-                <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
-            </div>
+        <div class="grid gap-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-stretch">
+            <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 px-2.5 py-2 shadow-sm w-full min-w-0">
+                <input type="hidden" name="tab" value="{{ $activeTab }}" />
+                <div class="w-[8.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Month</label>
+                    <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                <div class="w-[5.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">FY</label>
+                    <input type="number" name="fy" value="{{ $fyValue ?? now()->year }}" min="2000" max="2100" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                @if ($activeTab !== 'units')
+                <div class="w-[8rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Unit status</label>
+                    <select name="unit_status" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="">All</option>
+                        @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="w-[8.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Channel</label>
+                    <select name="collection_channel" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="">All</option>
+                        @foreach(($availableCollectionChannels ?? []) as $channel)
+                            <option value="{{ $channel }}" @selected(($filters['collection_channel'] ?? '') === $channel)>{{ strtoupper($channel) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="w-[10rem] min-w-0 grow sm:grow-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Collection search</label>
+                    <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                @endif
+                <div class="w-[9.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Export type</label>
+                    <select name="export_report" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
+                        <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
+                        <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
+                        <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
+                    </select>
+                </div>
+                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Apply</button>
+                <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">CSV</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">PDF</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Word</a>
+            </form>
+
+            @if (count($hubSummaryStats) > 0)
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 px-2.5 py-2 shadow-sm min-w-0">
+                    <x-property.collapsible-stats storage-key="property.hub.propertySummaryVisible">
+                        <x-property.compact-stat-strip :stats="$hubSummaryStats" />
+                    </x-property.collapsible-stats>
+                </div>
             @endif
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Export report</label>
-                <select name="export_report" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
-                    <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
-                    <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
-                    <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
-                </select>
-            </div>
-            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply period</button>
-            <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export PDF</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export Word</a>
-        </form>
+        </div>
     </x-slot>
 
     <x-property.entity-hub
@@ -108,7 +134,6 @@
         :route-params="['property' => $property->id]"
         :active-tab="$activeTab"
         :preserve-query="$preserveQuery"
-        :quick-actions="$quickActions ?? []"
         :alerts="$alerts ?? []"
     />
 
@@ -1047,15 +1072,5 @@
     @endif
     </div>
 
-    @include('property.agent.partials.lease_create_shell', [
-        'openLeaseCreateModal' => false,
-        'leaseCreateFormUrl' => route('property.leases.create_form', array_filter([
-            'property_id' => $property->id,
-            'unit_id' => $firstVacantUnit->id ?? null,
-            'return_to' => 'property_show',
-            'return_property_id' => $property->id,
-            'return_tab' => 'occupancy',
-        ]), false),
-    ])
 </x-property.workspace>
 

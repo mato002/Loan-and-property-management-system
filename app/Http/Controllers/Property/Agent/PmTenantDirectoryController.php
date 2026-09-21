@@ -1066,7 +1066,7 @@ class PmTenantDirectoryController extends Controller
             ['label' => 'Create invoice', 'modal' => 'showHubInvoiceForm', 'icon' => 'fa-file-invoice', 'tone' => 'primary'],
             ['label' => 'Record payment', 'modal' => 'showHubPaymentForm', 'icon' => 'fa-money-bill'],
             ['label' => 'Record advance', 'modal' => 'showHubAdvanceForm', 'icon' => 'fa-piggy-bank'],
-            ['label' => 'New lease', 'js' => 'window.openLeaseCreateModal && window.openLeaseCreateModal()', 'icon' => 'fa-file-signature'],
+            ['label' => 'New lease', 'modal' => 'showLeaseCreateForm', 'icon' => 'fa-file-signature'],
             ['label' => 'Create notice', 'modal' => 'showHubNoticeForm', 'icon' => 'fa-file-circle-plus'],
             ['label' => 'Maintenance', 'modal' => 'showHubMaintenanceForm', 'icon' => 'fa-wrench'],
             ['label' => 'Edit tenant', 'route' => 'property.tenants.edit', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-pen-to-square', 'tone' => 'muted'],

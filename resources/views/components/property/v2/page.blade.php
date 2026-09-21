@@ -36,8 +36,8 @@
     @endif
 
     <header @class(['property-erp-header property-print-hide print-hide', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
-        <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
-            <div class="min-w-0 flex-[1_1_16rem] basis-full sm:basis-auto">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div class="min-w-0 flex-1">
                 <h1 @class([
                     'font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight',
                     $compactList ? 'text-base sm:text-lg' : 'text-lg sm:text-xl',
@@ -45,13 +45,13 @@
                 @if ($subtitle)
                     <p @class([
                         'text-slate-600 dark:text-slate-400 leading-snug max-w-3xl',
-                        $compactList ? 'text-xs sm:text-sm mt-0.5' : 'text-sm mt-1',
+                        $compactList ? 'text-xs mt-0.5' : 'text-sm mt-1',
                     ])>{{ $subtitle }}</p>
                 @endif
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full min-w-0 flex-[1_1_24rem] sm:w-auto sm:max-w-full sm:ml-auto [&>button]:w-full [&>button]:min-h-[44px] [&>button]:sm:w-auto [&>button]:sm:min-h-0 [&>a]:w-full [&>a]:min-h-[44px] [&>a]:sm:w-auto [&>a]:sm:min-h-0">
+                    <div class="print-hide flex flex-wrap items-center justify-end gap-1.5 w-full sm:w-auto sm:ml-auto sm:max-w-[58%] [&>button]:min-h-0 [&>a]:min-h-0">
                         {{ $actions }}
                     </div>
                 @endif

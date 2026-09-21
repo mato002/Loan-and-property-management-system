@@ -9,7 +9,6 @@
     route-name="property.tenants.show"
     :route-params="['tenant' => $tenant->id]"
     :active-tab="$activeTab"
-    :quick-actions="$quickActions ?? []"
     :alerts="$alerts ?? []"
 />
 
@@ -24,14 +23,4 @@
     @includeWhen($activeTab === 'utilities', 'property.agent.tenants.partials.tab-utilities')
     @includeWhen($activeTab === 'maintenance', 'property.agent.tenants.partials.tab-maintenance')
     @includeWhen($activeTab === 'statement', 'property.agent.tenants.partials.tab-statement')
-
-    @include('property.agent.partials.lease_create_shell', [
-        'openLeaseCreateModal' => false,
-        'leaseCreateFormUrl' => route('property.leases.create_form', [
-            'pm_tenant_id' => $tenant->id,
-            'return_to' => 'tenant_show',
-            'return_tenant_id' => $tenant->id,
-            'return_tab' => 'leases',
-        ], false),
-    ])
 </div>
