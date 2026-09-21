@@ -1,5 +1,5 @@
 /**
- * Property GET filter forms: debounced search + auto-apply on dropdown/date changes.
+ * Property GET filter forms: live row search as you type + auto-apply on dropdown/date changes.
  */
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
@@ -9,9 +9,90 @@ function isPropertyWorkspaceHydrating() {
     return window.__propertyWorkspaceHydrating === true;
 }
 
-/** Long debounce so slow typers can finish before the frame reloads. */
-const SEARCH_DEBOUNCE_MS = 1100;
-const CONTROL_APPLY_DEBOUNCE_MS = 120;
+function liveFilterScope(el) {
+    return (
+        el.closest('.property-ws-wrap')
+        || el.closest('#property-list-results')
+        || el.closest('#property-main')
+        || el.closest('[data-property-filter-toolbar]')?.parentElement
+        || document
+    );
+}
+
+function isLiveSearchControl(control) {
+    if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement) || control.disabled) {
+        return false;
+    }
+    if (control.closest('[x-data*="listingVacantRoster"]')) {
+        return false;
+    }
+    if (control instanceof HTMLInputElement && (control.type === 'hidden' || control.type === 'submit')) {
+        return false;
+    }
+
+    return (
+        control.matches('[data-live-row-filter]')
+        || control.matches('[data-table-filter]')
+        || (control instanceof HTMLInputElement && (
+            control.name === 'q'
+            || control.type === 'search'
+            || control.dataset.autoSearch === 'true'
+        ))
+    );
+}
+
+function liveFilterNeedles(scope) {
+    /** @type {string[]} */
+    const needles = [];
+    const seen = new Set();
+
+    scope.querySelectorAll('input, select').forEach((control) => {
+        if (!isLiveSearchControl(control)) {
+            return;
+        }
+        const value = (control.value || '').toLowerCase().trim();
+        if (value === '' || seen.has(value)) {
+            return;
+        }
+        seen.add(value);
+        needles.push(value);
+    });
+
+    return needles;
+}
+
+function liveFilterRows(scope, needles) {
+    let rows = [
+        ...scope.querySelectorAll('tbody tr[data-filter-text]'),
+        ...scope.querySelectorAll('[data-mobile-record-list] article[data-filter-text]'),
+    ];
+
+    if (rows.length === 0) {
+        rows = [...scope.querySelectorAll('tbody tr')].filter((row) => !row.querySelector('td[colspan]'));
+    }
+
+    rows.forEach((row) => {
+        const hay = (row.getAttribute('data-filter-text') || row.textContent || '').toLowerCase();
+        const visible = needles.every((needle) => hay.includes(needle));
+        row.classList.toggle('hidden', !visible);
+        row.toggleAttribute('hidden', !visible);
+    });
+}
+
+/**
+ * Instantly hide table/card rows that do not match the current search text.
+ * Does not hit the server — same behaviour as the listings vacant-unit search.
+ *
+ * @param {HTMLElement} input
+ */
+export function applyLiveWorkspaceSearch(input) {
+    if (!(input instanceof HTMLElement) || input.closest('[x-data*="listingVacantRoster"]')) {
+        return;
+    }
+
+    const scope = liveFilterScope(input);
+    liveFilterRows(scope, liveFilterNeedles(scope));
+}
 
 /** @typedef {{ inFlight: boolean, queuedSearch: boolean, activeSubmission: object|null }} FilterFormState */
 /** @typedef {{ name: string, formAction: string, selectionStart: number, selectionEnd: number }} SearchFocusMeta */
@@ -19,8 +100,7 @@ const CONTROL_APPLY_DEBOUNCE_MS = 120;
 /** @type {WeakMap<HTMLFormElement, FilterFormState>} */
 const filterFormState = new WeakMap();
 
-/** @type {WeakMap<HTMLInputElement, number>} */
-const searchDebounceTimers = new WeakMap();
+const CONTROL_APPLY_DEBOUNCE_MS = 120;
 
 /** @type {WeakMap<HTMLFormElement, number>} */
 const controlApplyDebounceTimers = new WeakMap();
@@ -259,22 +339,6 @@ export function submitPropertyFilterForm(form, source = 'apply', searchInput = n
     form.requestSubmit();
 }
 
-function scheduleSearchSubmit(form, input) {
-    trackSearchFocus(input);
-
-    const existing = searchDebounceTimers.get(input);
-    if (existing) {
-        window.clearTimeout(existing);
-    }
-
-    const timer = window.setTimeout(() => {
-        searchDebounceTimers.delete(input);
-        submitPropertyFilterForm(form, 'search', input);
-    }, SEARCH_DEBOUNCE_MS);
-
-    searchDebounceTimers.set(input, timer);
-}
-
 function scheduleControlApply(form) {
     const existing = controlApplyDebounceTimers.get(form);
     if (existing) {
@@ -310,11 +374,12 @@ export function wireAutoFilterForms(scopeRoot) {
             .filter((control) => isSearchInput(control))
             .forEach((input) => {
                 input.addEventListener('input', () => {
-                    scheduleSearchSubmit(form, input);
+                    applyLiveWorkspaceSearch(input);
                 });
                 input.addEventListener('focus', () => {
                     trackSearchFocus(input);
                 });
+                applyLiveWorkspaceSearch(input);
             });
 
         formFilterControls(form)
@@ -328,6 +393,10 @@ export function wireAutoFilterForms(scopeRoot) {
         form.addEventListener(
             'submit',
             () => {
+                const active = document.activeElement;
+                if (active instanceof HTMLInputElement && form.contains(active) && isSearchInput(active)) {
+                    persistSearchFocusForSubmit(active);
+                }
                 form.dataset.lastFilterQuery = serializedFormQuery(form);
             },
             { capture: true },
@@ -396,19 +465,13 @@ function bindFilterFormTurboGuards() {
 
         const state = getFilterFormState(form);
         state.inFlight = false;
+        state.queuedSearch = false;
         state.activeSubmission = null;
         form.dataset.lastFilterQuery = serializedFormQuery(form);
 
-        if (state.queuedSearch) {
-            state.queuedSearch = false;
-            const searchInput = form.querySelector('input[name="q"], input[type="search"], input[data-auto-search="true"]');
-            queueMicrotask(() => {
-                submitPropertyFilterForm(
-                    form,
-                    'search',
-                    searchInput instanceof HTMLInputElement ? searchInput : null,
-                );
-            });
+        const searchInput = form.querySelector('input[name="q"], input[type="search"], input[data-auto-search="true"]');
+        if (searchInput instanceof HTMLInputElement) {
+            queueMicrotask(() => applyLiveWorkspaceSearch(searchInput));
         }
     });
 }
@@ -418,6 +481,14 @@ function bindFilterLifecycle() {
         wireAutoFilterForms(scope || document);
         syncPropertyFilterDesktopForms();
     };
+
+    document.addEventListener('input', (event) => {
+        const el = event.target;
+        if (!(el instanceof HTMLInputElement) || !isSearchInput(el) || el.matches('[data-auto-submit="off"]')) {
+            return;
+        }
+        applyLiveWorkspaceSearch(el);
+    });
 
     document.addEventListener('DOMContentLoaded', () => run(document));
     document.addEventListener('turbo:load', () => run(document));

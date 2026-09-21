@@ -201,7 +201,25 @@
 
         <script>
             (function () {
-                const SEARCH_DEBOUNCE_MS = 1100;
+                function applyLiveWorkspaceSearch(input) {
+                    const scope = input.closest('.property-ws-wrap')
+                        || input.closest('#property-list-results')
+                        || input.closest('#property-main')
+                        || document;
+                    const needles = Array.from(scope.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"], input[data-live-row-filter], [data-table-filter]'))
+                        .map((el) => (el.value || '').toLowerCase().trim())
+                        .filter(Boolean);
+                    let rows = Array.from(scope.querySelectorAll('tbody tr[data-filter-text], [data-mobile-record-list] article[data-filter-text]'));
+                    if (rows.length === 0) {
+                        rows = Array.from(scope.querySelectorAll('tbody tr')).filter((row) => !row.querySelector('td[colspan]'));
+                    }
+                    rows.forEach((row) => {
+                        const hay = (row.getAttribute('data-filter-text') || row.textContent || '').toLowerCase();
+                        const visible = needles.every((needle) => hay.includes(needle));
+                        row.classList.toggle('hidden', !visible);
+                        row.toggleAttribute('hidden', !visible);
+                    });
+                }
 
                 function wireAutoFilterForms(scopeRoot) {
                     const root = scopeRoot || document;
@@ -216,10 +234,8 @@
                         const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))
                             .filter((input) => !input.matches('[data-auto-submit="off"]'));
                         searchInputs.forEach((input) => {
-                            input.addEventListener('input', () => {
-                                window.clearTimeout(input._autoSearchTimer);
-                                input._autoSearchTimer = window.setTimeout(() => form.requestSubmit(), SEARCH_DEBOUNCE_MS);
-                            });
+                            input.addEventListener('input', () => applyLiveWorkspaceSearch(input));
+                            applyLiveWorkspaceSearch(input);
                         });
 
                         const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))
