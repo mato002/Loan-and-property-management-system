@@ -103,6 +103,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/revenue/penalties', [RevenueController::class, 'storePenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.store');
     Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
     Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
+    Route::get('/revenue/mpesa-inbox', [PmPaymentController::class, 'mpesaInbox'])->name('revenue.mpesa_inbox');
+    Route::post('/revenue/mpesa-inbox/verify-receipt', [PmPaymentController::class, 'verifyMpesaReceipt'])->middleware('property.permission:payments.record')->name('revenue.mpesa_inbox.verify_receipt');
+    Route::post('/revenue/mpesa-inbox/{payment}/verify-stk', [PmPaymentController::class, 'verifyPendingStk'])->middleware('property.permission:payments.settle')->name('revenue.mpesa_inbox.verify_stk');
     Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
     Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');
     Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
@@ -389,6 +392,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/vendors/work-records', [PmVendorWebController::class, 'workRecords'])->name('vendors.work_records');
     Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
     Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
+    Route::post('/vendors/{vendor}/pay-outstanding-mpesa', [PmVendorWebController::class, 'payOutstandingViaMpesa'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding_mpesa');
     Route::get('/vendors/{vendor}', [PmVendorWebController::class, 'show'])->name('vendors.show');
     Route::get('/vendors', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('vendors'))->name('vendors.index');
 
@@ -420,6 +424,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/accounting/payables/landlord-payouts', [PropertyAccountingController::class, 'landlordPayouts'])->name('accounting.payables.landlord_payouts');
     Route::post('/accounting/payables/landlord-payouts/{payout}/approve', [PropertyAccountingController::class, 'approveLandlordPayout'])->name('accounting.payables.landlord_payouts.approve');
     Route::post('/accounting/payables/landlord-payouts/{payout}/pay', [PropertyAccountingController::class, 'payLandlordPayout'])->name('accounting.payables.landlord_payouts.pay');
+    Route::post('/accounting/payables/landlord-payouts/{payout}/pay-mpesa', [PropertyAccountingController::class, 'payLandlordPayoutViaMpesa'])->name('accounting.payables.landlord_payouts.pay_mpesa');
     Route::get('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'landlordAdvances'])->name('accounting.payables.landlord_advances');
     Route::post('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'storeLandlordAdvance'])->name('accounting.payables.landlord_advances.store');
     Route::post('/accounting/payables/landlord-advances/schedule', [PropertyAccountingController::class, 'updateLandlordAgreedPaySchedule'])->name('accounting.payables.landlord_advances.schedule');
@@ -462,6 +467,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/accounting/payroll/{period}/lines/{line}/payslip/download', [PropertyAccountingController::class, 'payrollLinePayslipDownload'])->name('accounting.payroll.lines.payslip.download');
     Route::post('/accounting/payroll/{period}/lines/{line}/payslip/email', [PropertyAccountingController::class, 'payrollLinePayslipEmail'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.lines.payslip.email');
     Route::post('/accounting/payroll/{period}/lines/{line}/payment', [PropertyAccountingController::class, 'payrollLinePaymentUpdate'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.lines.payment.update');
+    Route::post('/accounting/payroll/{period}/lines/{line}/pay-mpesa', [PropertyAccountingController::class, 'payrollLinePayViaMpesa'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.lines.pay_mpesa');
     Route::get('/accounting/reports/trial-balance', [PropertyAccountingController::class, 'trialBalance'])->name('accounting.reports.trial_balance');
     Route::get('/accounting/reports/trial-balance/export', [PropertyAccountingController::class, 'exportTrialBalanceCsv'])->name('accounting.reports.trial_balance.export');
     Route::get('/accounting/reports/income-statement', [PropertyAccountingController::class, 'incomeStatement'])->name('accounting.reports.income_statement');

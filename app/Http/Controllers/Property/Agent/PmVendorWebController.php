@@ -10,6 +10,8 @@ use App\Models\PmVendor;
 use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyB2cPayoutService;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -209,6 +211,8 @@ class PmVendorWebController extends Controller
             'tableRows' => $rows,
             'paymentEntries' => $paymentEntries,
             'recorderNames' => $recorderNames,
+            'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
+            'outstandingAmount' => $outstandingAmount,
         ]);
     }
 
@@ -365,6 +369,38 @@ class PmVendorWebController extends Controller
         }
 
         return back()->with('success', 'Settled '.count($eligible).' outstanding vendor job payment(s).');
+    }
+
+    public function payOutstandingViaMpesa(Request $request, PmVendor $vendor, PropertyB2cPayoutService $b2c): RedirectResponse
+    {
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+            'payment_note' => ['nullable', 'string', 'max:255'],
+            'confirm_phrase' => ['required', 'string'],
+        ]);
+        if (strtoupper(trim((string) $data['confirm_phrase'])) !== 'PAY') {
+            return back()->withErrors(['confirm_phrase' => 'Type PAY to confirm M-Pesa B2C settlement.'])->withInput();
+        }
+
+        $phone = trim((string) $data['mpesa_phone']);
+        if ($phone === '' && filled($vendor->phone)) {
+            $phone = (string) $vendor->phone;
+        }
+
+        $result = $b2c->initiateVendorOutstanding(
+            $vendor,
+            $phone,
+            $request->user(),
+            $data['payment_note'] ?? null
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['mpesa_phone' => $result['message'] ?? 'B2C failed.'])->withInput();
+        }
+
+        $amount = number_format((float) ($result['amount'] ?? 0), 2);
+
+        return back()->with('success', 'M-Pesa B2C submitted for KES '.$amount.'. Vendor jobs will settle when Safaricom confirms.');
     }
 
     public function store(Request $request): RedirectResponse

@@ -34,7 +34,9 @@ use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\LandlordAdvanceService;
 use App\Services\Property\LandlordPaymentFeesService;
 use App\Services\Property\LandlordSettlementService;
+use App\Services\Property\PropertyB2cPayoutService;
 use App\Services\Property\PropertyCommissionsService;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\FinanceIntegrityService;
 use App\Services\Property\PropertyAccountingPostingService;
@@ -1774,6 +1776,7 @@ class PropertyAccountingController extends Controller
                 'deductions' => (float) $period->total_deductions,
                 'net' => (float) $period->total_net,
             ],
+            'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 
@@ -1989,6 +1992,33 @@ class PropertyAccountingController extends Controller
         ])->save();
 
         return back()->with('success', 'Payslip payment status updated.');
+    }
+
+    public function payrollLinePayViaMpesa(
+        Request $request,
+        AccountingPayrollPeriod $period,
+        AccountingPayrollLine $line,
+        PropertyB2cPayoutService $b2c
+    ): RedirectResponse {
+        $this->ensurePayrollScope($request, $period);
+        abort_unless((int) $line->accounting_payroll_period_id === (int) $period->id, 404);
+
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $line->loadMissing('employee');
+        $phone = trim((string) $data['mpesa_phone']);
+        if ($phone === '' && filled($line->employee?->phone)) {
+            $phone = (string) $line->employee->phone;
+        }
+
+        $result = $b2c->initiatePayrollLine($period, $line, $phone, $request->user());
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['mpesa_phone' => $result['message'] ?? 'B2C failed.'])->withInput();
+        }
+
+        return back()->with('success', 'M-Pesa B2C sent for '.$line->payslip_number.'. Status updates when Safaricom confirms.');
     }
 
     public function payrollEmployeeStore(Request $request): RedirectResponse
@@ -3080,6 +3110,31 @@ class PropertyAccountingController extends Controller
         return back()->with('status', 'Payout #'.$payout->id.' marked as paid.');
     }
 
+    public function payLandlordPayoutViaMpesa(
+        Request $request,
+        PmLandlordPayout $payout,
+        PropertyB2cPayoutService $b2c
+    ): RedirectResponse {
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $defaultPhone = '';
+        $payout->loadMissing('items.landlord');
+        $landlord = $payout->items->first()?->landlord;
+        if ($landlord && filled($landlord->phone)) {
+            $defaultPhone = (string) $landlord->phone;
+        }
+
+        $phone = trim((string) $data['mpesa_phone']) !== '' ? (string) $data['mpesa_phone'] : $defaultPhone;
+        $result = $b2c->initiateLandlordPayout($payout, $phone, $request->user());
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['mpesa_phone' => $result['message'] ?? 'B2C initiation failed.'])->withInput();
+        }
+
+        return back()->with('status', 'M-Pesa B2C sent for payout #'.$payout->id.'. Ledger will post when Safaricom confirms.');
+    }
+
     /**
      * @param  array<string, mixed>  $settlement
      */
@@ -3180,7 +3235,13 @@ class PropertyAccountingController extends Controller
         $status = strtolower(trim($request->string('status')->toString()));
         $rows = PmLandlordPayout::query()
             ->with(['items.property', 'items.landlord'])
-            ->when(in_array($status, ['draft', 'approved', 'paid'], true), fn ($q) => $q->where('status', $status))
+            ->when(in_array($status, ['draft', 'approved', 'paid', 'pending'], true), function ($q) use ($status) {
+                if ($status === 'pending') {
+                    return $q->where('payout_status', 'pending');
+                }
+
+                return $q->where('status', $status);
+            })
             ->orderByDesc('id')
             ->paginate(50)
             ->withQueryString();
@@ -3188,6 +3249,7 @@ class PropertyAccountingController extends Controller
         return property_view('property.agent.accounting.payables_landlord_payouts', [
             'rows' => $rows,
             'filters' => compact('status'),
+            'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 

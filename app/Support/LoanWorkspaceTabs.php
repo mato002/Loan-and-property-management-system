@@ -232,7 +232,7 @@ final class LoanWorkspaceTabs
             ],
             LoanWorkspaces::COLLECTIONS => self::collectionsTabs(),
             LoanWorkspaces::PAYMENTS => [
-                ['key' => 'unposted', 'label' => 'Unposted', 'route' => 'loan.payments.unposted', 'active' => ['loan.payments.unposted', 'loan.payments.create', 'loan.payments.edit', 'loan.payments.post']],
+                ['key' => 'unposted', 'label' => 'Unposted', 'route' => 'loan.payments.unposted', 'active' => ['loan.payments.unposted', 'loan.payments.create', 'loan.payments.edit', 'loan.payments.post', 'loan.payments.stk*']],
                 ['key' => 'processed', 'label' => 'Processed', 'route' => 'loan.payments.processed', 'active' => ['loan.payments.processed', 'loan.payments.processed.print']],
                 ['key' => 'prepayments', 'label' => 'Prepayments', 'route' => 'loan.payments.prepayments', 'active' => ['loan.payments.prepayments']],
                 ['key' => 'overpayments', 'label' => 'Overpayments', 'route' => 'loan.payments.overpayments', 'active' => ['loan.payments.overpayments']],
@@ -265,7 +265,10 @@ final class LoanWorkspaceTabs
             ],
             LoanWorkspaces::FINANCIAL => [
                 ['key' => 'mpesa', 'label' => 'M-Pesa platform', 'route' => 'loan.financial.mpesa_platform', 'active' => ['loan.financial.mpesa_platform']],
-                ['key' => 'payouts', 'label' => 'M-Pesa payouts', 'route' => 'loan.financial.mpesa_payouts', 'active' => ['loan.financial.mpesa_payouts']],
+                ['key' => 'c2b', 'label' => 'C2B inbox', 'route' => 'loan.financial.mpesa_c2b', 'active' => ['loan.financial.mpesa_c2b']],
+                ['key' => 'payouts', 'label' => 'M-Pesa payouts', 'route' => 'loan.financial.mpesa_payouts', 'active' => ['loan.financial.mpesa_payouts*']],
+                ['key' => 'b2c_approvals', 'label' => 'B2C approvals', 'route' => 'loan.financial.mpesa_b2c_approvals', 'active' => ['loan.financial.mpesa_b2c_approvals']],
+                ['key' => 'mpesa_settings', 'label' => 'Daraja settings', 'route' => 'loan.financial.mpesa_settings', 'active' => ['loan.financial.mpesa_settings*']],
                 ['key' => 'wallets', 'label' => 'Client wallets', 'route' => 'loan.financial.account_balances', 'active' => ['loan.financial.account_balances']],
                 ['key' => 'control', 'label' => 'Control accounts', 'route' => 'loan.financial.control_accounts', 'active' => ['loan.financial.control_accounts']],
                 ['key' => 'teller', 'label' => 'Teller operations', 'route' => 'loan.financial.teller_operations', 'active' => ['loan.financial.teller_operations']],

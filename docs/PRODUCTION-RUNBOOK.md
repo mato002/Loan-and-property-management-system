@@ -543,23 +543,56 @@ curl -sS -X POST "https://YOUR_HOST/webhooks/mpesa/stk-callback" \
 
 Replace `CheckoutRequestID` with value from pending payment meta (`meta.daraja.checkout_request_id`).
 
+### Daraja C2B (Paybill / Till confirmation)
+
+| Item | Value |
+|------|--------|
+| Validation URL | `https://YOUR_HOST/webhooks/mpesa/c2b-validation` |
+| Confirmation URL | `https://YOUR_HOST/webhooks/mpesa/c2b-confirmation` |
+| `.env` | `MPESA_C2B_VALIDATION_URL`, `MPESA_C2B_CONFIRMATION_URL`, `MPESA_C2B_SHORTCODE` |
+
+**Register once** from Loan → Financial → **Daraja settings** → Register C2B URLs (or Safaricom portal). Confirmations land in **C2B inbox** and create loan unposted payments (matched by BillRef / phone when possible).
+
+### Receipt verification (Transaction Status Query)
+
+| Item | Value |
+|------|--------|
+| Result URL | `https://YOUR_HOST/webhooks/mpesa/transaction-status` |
+| `.env` | `MPESA_STATUS_RESULT_URL` (initiator reuses `MPESA_B2C_INITIATOR_NAME` + `MPESA_B2C_SECURITY_CREDENTIAL`) |
+| Property UI | Collections → **M-Pesa inbox** → Verify an M-Pesa receipt |
+| Loan UI | Financial → **C2B inbox** → Verify an M-Pesa receipt |
+| Pending STK | M-Pesa inbox row action **Verify STK** (uses STK Query, not Status Query) |
+
+Safaricom returns the result asynchronously. After a successful callback the system tries to create a tenant or loan payment from the receipt.
+
 ### Daraja B2C (loan disbursement)
 
 | Item | Value |
 |------|--------|
 | Result URL | `https://YOUR_HOST/webhooks/mpesa/b2c-result` |
-| `.env` | `MPESA_B2C_RESULT_URL`, `MPESA_B2C_TIMEOUT_URL` (same endpoint) |
+| `.env` | `MPESA_B2C_RESULT_URL`, `MPESA_B2C_TIMEOUT_URL` (same endpoint), `MPESA_B2C_REQUIRE_APPROVAL` |
 
-Check loan module **M-Pesa payouts** screen for displayed callback URL.
+**Flow:** Loan Book → Record disbursement → Method M-Pesa → payout mode **M-Pesa B2C API** → (optional approval) → Safaricom callback → ledger post. Approvals queue: Financial → **B2C approvals**.
+
+Check loan module **M-Pesa payouts** / **Daraja settings** screens for live status.
+
+### Loan STK repayment
+
+| Item | Value |
+|------|--------|
+| UI | Payments → **STK repayment** (`/loan/payments/stk`) |
+| Callback | Same STK callback as property: `/webhooks/mpesa/stk-callback` |
 
 ### M-Pesa incident checklist
 
 - [ ] `MPESA_ENV`, consumer key/secret, shortcode, passkey correct
-- [ ] Callback URLs registered in Safaricom portal match `.env`
+- [ ] Callback URLs registered in Safaricom portal match `.env` (STK, C2B validation/confirmation, B2C result)
+- [ ] C2B URLs registered via Daraja settings (or portal)
 - [ ] `MPESA_VERIFY_SSL=true` in production
 - [ ] Server clock accurate (NTP)
 - [ ] Pending payments not stuck — query `pm_payments` where `status=pending` and channel `mpesa_stk`
-- [ ] SMS forwarder path still works if STK down (`/webhooks/property/payments/sms-ingest`)
+- [ ] B2C awaiting_approval / pending disbursements reviewed
+- [ ] SMS forwarder path still works if STK/C2B down (`/webhooks/property/payments/sms-ingest`, `/webhooks/loan/payments/sms-ingest`)
 
 ---
 

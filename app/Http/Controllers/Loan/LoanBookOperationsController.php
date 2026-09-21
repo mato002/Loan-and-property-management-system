@@ -247,15 +247,39 @@ class LoanBookOperationsController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reference' => ['required', 'string', 'max:80'],
             'method' => ['required', 'string', 'max:40'],
+            'payout_mode' => ['nullable', 'in:manual,b2c'],
             'payout_transaction_id' => [
                 'nullable',
                 'string',
                 'max:80',
-                Rule::requiredIf(in_array($request->input('method'), ['mpesa', 'bank', 'cheque'], true)),
+                Rule::requiredIf(function () use ($request) {
+                    $method = (string) $request->input('method');
+                    $mode = (string) $request->input('payout_mode', 'manual');
+                    if ($method === 'mpesa' && $mode === 'b2c') {
+                        return false;
+                    }
+
+                    return in_array($method, ['mpesa', 'bank', 'cheque'], true);
+                }),
             ],
             'disbursed_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $payoutMode = (string) ($validated['payout_mode'] ?? 'manual');
+        if (($validated['method'] ?? '') !== 'mpesa') {
+            $payoutMode = 'manual';
+        }
+
+        $daraja = app(MpesaDarajaService::class);
+        if ($payoutMode === 'b2c' && ! $daraja->isB2cConfigured()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors([
+                    'payout_mode' => __('Automatic M-Pesa B2C is not configured. Set MPESA_B2C_* in `.env`, or choose Manual record.'),
+                ]);
+        }
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
@@ -292,10 +316,12 @@ class LoanBookOperationsController extends Controller
                 ]);
         }
 
+        $createdDisbursement = null;
+        $b2cInitiated = false;
+        $b2cAwaitingApproval = false;
+
         try {
-            // All methods (including M-Pesa) are recorded as manual payouts: GL posts immediately.
-            // Daraja B2C is only used from "Retry M-Pesa payout" when B2C env is fully configured.
-            DB::transaction(function () use ($validated, $request, $loan) {
+            DB::transaction(function () use ($validated, $request, $loan, $payoutMode, $daraja, &$createdDisbursement, &$b2cInitiated, &$b2cAwaitingApproval) {
                 $removable = $loan->disbursements()->with('accountingJournalEntry')->get()
                     ->filter(fn (LoanBookDisbursement $d) => $d->canBeRemoved());
 
@@ -340,13 +366,57 @@ class LoanBookOperationsController extends Controller
                 }
 
                 $txnRef = trim((string) ($validated['payout_transaction_id'] ?? ''));
-                $needsTxnRef = in_array($validated['method'], ['mpesa', 'bank', 'cheque'], true);
+                $needsTxnRef = in_array($validated['method'], ['mpesa', 'bank', 'cheque'], true) && $payoutMode === 'manual';
+
+                if ($payoutMode === 'b2c') {
+                    $requireApproval = $daraja->requiresB2cApproval();
+                    $canSelfApprove = (bool) ($request->user()?->hasLoanPermission('disbursements.approve') ?? false);
+                    $awaitApproval = $requireApproval && ! $canSelfApprove;
+
+                    $disbursement = LoanBookDisbursement::query()->create([
+                        'loan_book_loan_id' => $validated['loan_book_loan_id'],
+                        'amount' => $validated['amount'],
+                        'reference' => $validated['reference'],
+                        'method' => 'mpesa',
+                        'disbursed_at' => $validated['disbursed_at'],
+                        'notes' => $validated['notes'] ?? null,
+                        'payout_status' => $awaitApproval ? 'awaiting_approval' : 'queued',
+                        'payout_provider' => 'mpesa',
+                        'payout_phone' => $loan->loanClient?->phone,
+                        'payout_requested_at' => now(),
+                        'payout_requested_by' => $request->user()?->id,
+                        'payout_meta' => [
+                            'payout_mode' => 'b2c',
+                            'created_via' => 'disbursement_create',
+                        ],
+                    ]);
+                    $createdDisbursement = $disbursement;
+
+                    if ($awaitApproval) {
+                        $b2cAwaitingApproval = true;
+
+                        return;
+                    }
+
+                    $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout(
+                        $disbursement->fresh(['loan.loanClient']),
+                        $loan,
+                        $request->user()?->id
+                    );
+                    $b2cInitiated = (bool) ($result['ok'] ?? false);
+                    if (! $b2cInitiated) {
+                        throw new \RuntimeException('M-Pesa B2C initiation failed: '.($result['message'] ?: 'No response from provider.'));
+                    }
+
+                    return;
+                }
 
                 $disbursement = LoanBookDisbursement::query()->create(array_merge($validated, [
                     'payout_status' => 'completed',
                     'payout_provider' => $validated['method'] === 'mpesa' ? 'mpesa' : null,
                     'payout_requested_at' => now(),
                     'payout_completed_at' => now(),
+                    'payout_requested_by' => $request->user()?->id,
                     'payout_transaction_id' => $needsTxnRef && $txnRef !== '' ? $txnRef : null,
                 ]));
                 $disbursement->load('loan');
@@ -354,12 +424,37 @@ class LoanBookOperationsController extends Controller
                 $disbursement->update(['accounting_journal_entry_id' => $entry->id]);
 
                 app(LoanBookLoanUpdateService::class)->onDisbursed($disbursement);
+                $createdDisbursement = $disbursement;
             });
         } catch (\RuntimeException $e) {
             return redirect()
                 ->back()
                 ->withInput()
                 ->withErrors(['accounting' => $e->getMessage()]);
+        }
+
+        if ($b2cAwaitingApproval && $createdDisbursement) {
+            $request->user()?->notify(new LoanWorkflowNotification(
+                'Disbursement awaiting B2C approval',
+                'M-Pesa payout for loan '.($loan->loan_number ?? '#'.$loan->id).' needs approval before funds are sent.',
+                route('loan.book.disbursements.show', $createdDisbursement)
+            ));
+
+            return redirect()
+                ->route('loan.book.disbursements.show', $createdDisbursement)
+                ->with('status', __('Disbursement saved. Waiting for B2C approval before sending to M-Pesa.'));
+        }
+
+        if ($payoutMode === 'b2c' && $createdDisbursement) {
+            $request->user()?->notify(new LoanWorkflowNotification(
+                'M-Pesa B2C payout sent',
+                'Disbursement for loan '.($loan->loan_number ?? '#'.$loan->id).' was submitted to M-Pesa. Waiting for callback.',
+                route('loan.book.disbursements.show', $createdDisbursement)
+            ));
+
+            return redirect()
+                ->route('loan.book.disbursements.show', $createdDisbursement)
+                ->with('status', __('B2C payout submitted to M-Pesa. Ledger will post when the Safaricom callback confirms success.'));
         }
 
         $request->user()?->notify(new LoanWorkflowNotification(
@@ -436,10 +531,10 @@ class LoanBookOperationsController extends Controller
                 ->withErrors(['disbursement' => __('This disbursement is already posted. No retry is needed.')]);
         }
 
-        if (($loan_book_disbursement->payout_status ?? '') !== 'failed') {
+        if (! in_array(($loan_book_disbursement->payout_status ?? ''), ['failed', 'queued'], true)) {
             return redirect()
                 ->route('loan.book.disbursements.show', $loan_book_disbursement)
-                ->withErrors(['disbursement' => __('Retry is only allowed when payout status is failed.')]);
+                ->withErrors(['disbursement' => __('Retry is only allowed when payout status is failed or queued.')]);
         }
 
         if (! app(MpesaDarajaService::class)->isB2cConfigured()) {
@@ -450,7 +545,11 @@ class LoanBookOperationsController extends Controller
                 ]);
         }
 
-        $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout($loan_book_disbursement, $loan_book_disbursement->loan);
+        $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout(
+            $loan_book_disbursement,
+            $loan_book_disbursement->loan,
+            auth()->id()
+        );
         if (! $result['ok']) {
             return redirect()
                 ->route('loan.book.disbursements.show', $loan_book_disbursement)
@@ -460,6 +559,83 @@ class LoanBookOperationsController extends Controller
         return redirect()
             ->route('loan.book.disbursements.show', $loan_book_disbursement)
             ->with('status', __('Payout retry sent to M-Pesa. Waiting for callback confirmation.'));
+    }
+
+    public function disbursementsApprovePayout(Request $request, LoanBookDisbursement $loan_book_disbursement): RedirectResponse
+    {
+        $loan_book_disbursement->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_disbursement->loan?->loanClient);
+
+        if (! $request->user()?->hasLoanPermission('disbursements.approve')) {
+            abort(403, 'You do not have permission to approve M-Pesa disbursements.');
+        }
+
+        if (($loan_book_disbursement->payout_status ?? '') !== 'awaiting_approval') {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors(['disbursement' => __('Only disbursements awaiting approval can be approved.')]);
+        }
+
+        if ((int) ($loan_book_disbursement->payout_requested_by ?? 0) === (int) $request->user()->id
+            && ! $request->user()->hasLoanPermission('loan_applications.approve_own')) {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors(['disbursement' => __('You cannot approve a B2C payout you requested. Ask another approver.')]);
+        }
+
+        if (! app(MpesaDarajaService::class)->isB2cConfigured()) {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors(['disbursement' => __('Daraja B2C is not configured.')]);
+        }
+
+        $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout(
+            $loan_book_disbursement,
+            $loan_book_disbursement->loan,
+            $request->user()->id
+        );
+
+        if (! $result['ok']) {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors(['disbursement' => 'M-Pesa B2C failed after approval: '.($result['message'] ?: 'No response from provider.')]);
+        }
+
+        return redirect()
+            ->route('loan.book.disbursements.show', $loan_book_disbursement)
+            ->with('status', __('B2C payout approved and submitted to M-Pesa.'));
+    }
+
+    public function disbursementsRejectPayout(Request $request, LoanBookDisbursement $loan_book_disbursement): RedirectResponse
+    {
+        $loan_book_disbursement->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_disbursement->loan?->loanClient);
+
+        if (! $request->user()?->hasLoanPermission('disbursements.approve')) {
+            abort(403, 'You do not have permission to reject M-Pesa disbursements.');
+        }
+
+        if (($loan_book_disbursement->payout_status ?? '') !== 'awaiting_approval') {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors(['disbursement' => __('Only disbursements awaiting approval can be rejected.')]);
+        }
+
+        $validated = $request->validate([
+            'payout_reject_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $loan_book_disbursement->update([
+            'payout_status' => 'rejected',
+            'payout_rejected_by' => $request->user()->id,
+            'payout_rejected_at' => now(),
+            'payout_reject_reason' => $validated['payout_reject_reason'] ?? null,
+            'payout_result_desc' => 'Rejected before B2C send',
+        ]);
+
+        return redirect()
+            ->route('loan.book.disbursements.show', $loan_book_disbursement)
+            ->with('status', __('B2C payout request rejected. You can remove this line and re-record if needed.'));
     }
 
     public function collectionSheet(Request $request)

@@ -40,6 +40,12 @@ Route::prefix('loan/financial')->middleware('loan.role:accountant,admin,manager'
     Route::post('/mpesa-platform/transactions', [LoanFinancialController::class, 'mpesaPlatformTransactionStore'])->name('mpesa_platform.transactions.store');
     Route::delete('/mpesa-platform/transactions/{mpesa_platform_transaction}', [LoanFinancialController::class, 'mpesaPlatformTransactionDestroy'])->name('mpesa_platform.transactions.destroy');
 
+    Route::get('/mpesa-c2b', [LoanFinancialController::class, 'mpesaC2bInbox'])->name('mpesa_c2b');
+    Route::post('/mpesa-c2b/verify-receipt', [LoanFinancialController::class, 'mpesaVerifyReceipt'])->name('mpesa_c2b.verify_receipt');
+    Route::get('/mpesa-settings', [LoanFinancialController::class, 'mpesaSettings'])->name('mpesa_settings');
+    Route::post('/mpesa-settings/register-c2b', [LoanFinancialController::class, 'mpesaRegisterC2b'])->name('mpesa_settings.register_c2b');
+    Route::get('/mpesa-b2c-approvals', [LoanFinancialController::class, 'mpesaB2cApprovals'])->name('mpesa_b2c_approvals');
+
     Route::get('/mpesa-payouts/create', [LoanFinancialController::class, 'mpesaPayoutsCreate'])->name('mpesa_payouts.create');
     Route::post('/mpesa-payouts', [LoanFinancialController::class, 'mpesaPayoutsStore'])->name('mpesa_payouts.store');
     Route::get('/mpesa-payouts/{mpesa_payout_batch}/edit', [LoanFinancialController::class, 'mpesaPayoutsEdit'])->name('mpesa_payouts.edit');
@@ -450,6 +456,12 @@ Route::prefix('loan/book')->name('loan.book.')->group(function () {
     Route::post('/disbursements/{loan_book_disbursement}/retry-payout', [LoanBookOperationsController::class, 'disbursementsRetryPayout'])
         ->whereNumber('loan_book_disbursement')
         ->name('disbursements.retry_payout');
+    Route::post('/disbursements/{loan_book_disbursement}/approve-payout', [LoanBookOperationsController::class, 'disbursementsApprovePayout'])
+        ->whereNumber('loan_book_disbursement')
+        ->name('disbursements.approve_payout');
+    Route::post('/disbursements/{loan_book_disbursement}/reject-payout', [LoanBookOperationsController::class, 'disbursementsRejectPayout'])
+        ->whereNumber('loan_book_disbursement')
+        ->name('disbursements.reject_payout');
     Route::delete('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsDestroy'])
         ->whereNumber('loan_book_disbursement')
         ->name('disbursements.destroy');
@@ -522,6 +534,8 @@ Route::prefix('loan/payments')->name('loan.payments.')->group(function () {
     Route::post('/reversal', [LoanPaymentsController::class, 'reversalStore'])->name('reversal.store');
     Route::get('/create', [LoanPaymentsController::class, 'create'])->name('create');
     Route::post('/', [LoanPaymentsController::class, 'store'])->name('store');
+    Route::get('/stk', [LoanPaymentsController::class, 'stkCreate'])->name('stk.create');
+    Route::post('/stk', [LoanPaymentsController::class, 'stkStore'])->name('stk.store');
     Route::post('/unposted/auto-match', [LoanPaymentsController::class, 'autoMatch'])->name('unposted.auto_match');
     Route::post('/{loan_book_payment}/assign-loan', [LoanPaymentsController::class, 'assignLoan'])->name('assign_loan');
     Route::get('/{loan_book_payment}/post', [LoanPaymentsController::class, 'postRedirect'])->name('post.redirect');

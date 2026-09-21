@@ -151,10 +151,20 @@ Route::post('/webhooks/mpesa/stk-callback', [MpesaDarajaWebhookController::class
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.mpesa.stk_callback');
 
+Route::post('/webhooks/mpesa/c2b-validation', [MpesaDarajaWebhookController::class, 'c2bValidation'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.mpesa.c2b_validation');
+Route::post('/webhooks/mpesa/c2b-confirmation', [MpesaDarajaWebhookController::class, 'c2bConfirmation'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.mpesa.c2b_confirmation');
+
 // Safaricom Daraja B2C Result URL callback
 Route::post('/webhooks/mpesa/b2c-result', [MpesaDarajaWebhookController::class, 'b2cResultCallback'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.mpesa.b2c_result');
+Route::post('/webhooks/mpesa/transaction-status', [MpesaDarajaWebhookController::class, 'transactionStatusCallback'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.mpesa.transaction_status');
 Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
     ->whereIn('provider', ['kcb', 'equity', 'coop'])
     ->withoutMiddleware([PreventRequestForgery::class])

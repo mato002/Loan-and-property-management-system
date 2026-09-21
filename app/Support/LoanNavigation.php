@@ -231,6 +231,10 @@ final class LoanNavigation
                 'requires_loan_permission' => 'financial.view',
                 'flyout' => [
                     ['label' => 'M-Pesa platform', 'route' => 'loan.financial.mpesa_platform', 'active' => ['loan.financial.mpesa_platform']],
+                    ['label' => 'C2B inbox', 'route' => 'loan.financial.mpesa_c2b', 'active' => ['loan.financial.mpesa_c2b']],
+                    ['label' => 'M-Pesa payouts', 'route' => 'loan.financial.mpesa_payouts', 'active' => ['loan.financial.mpesa_payouts*']],
+                    ['label' => 'B2C approvals', 'route' => 'loan.financial.mpesa_b2c_approvals', 'active' => ['loan.financial.mpesa_b2c_approvals']],
+                    ['label' => 'Daraja settings', 'route' => 'loan.financial.mpesa_settings', 'active' => ['loan.financial.mpesa_settings*']],
                     ['label' => 'Client wallets', 'route' => 'loan.financial.account_balances', 'active' => ['loan.financial.account_balances']],
                     ['label' => 'Teller operations', 'route' => 'loan.financial.teller_operations', 'active' => ['loan.financial.teller_operations']],
                     ['label' => 'Investors list', 'route' => 'loan.financial.investors_list', 'active' => ['loan.financial.investors_list']],

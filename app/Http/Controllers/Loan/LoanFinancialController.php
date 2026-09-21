@@ -12,12 +12,15 @@ use App\Models\FinancialAccount;
 use App\Models\InvestmentPackage;
 use App\Models\Investor;
 use App\Models\LoanClient;
+use App\Models\LoanBookDisbursement;
 use App\Models\MpesaPayoutBatch;
 use App\Models\MpesaPlatformTransaction;
 use App\Models\PmPayment;
 use App\Models\TellerMovement;
 use App\Models\TellerSession;
 use App\Services\ClientWalletService;
+use App\Services\Integrations\MpesaDarajaService;
+use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\LoanBookGlPostingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -184,6 +187,143 @@ class LoanFinancialController extends Controller
         return redirect()
             ->route('loan.financial.mpesa_payouts')
             ->with('status', 'Batch removed.');
+    }
+
+    public function mpesaC2bInbox(): View
+    {
+        $transactions = MpesaPlatformTransaction::query()
+            ->where('channel', 'c2b')
+            ->latest()
+            ->paginate(20);
+
+        return view('loan.financial.mpesa_c2b', [
+            'title' => 'C2B inbox',
+            'subtitle' => 'Paybill/Till confirmations received from Daraja (and manually logged C2B rows).',
+            'transactions' => $transactions,
+            'c2bConfigured' => app(MpesaDarajaService::class)->isC2bConfigured(),
+            'statusQueryConfigured' => app(MpesaDarajaService::class)->isStatusQueryConfigured(),
+            'statusQueryMissing' => app(MpesaDarajaService::class)->missingStatusQueryConfigKeys(),
+        ]);
+    }
+
+    public function mpesaVerifyReceipt(Request $request, MpesaReceiptVerificationService $verifier): RedirectResponse
+    {
+        $data = $request->validate([
+            'receipt' => ['required', 'string', 'max:20'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
+            'bill_ref' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $result = $verifier->requestReceiptVerification(
+            (string) $data['receipt'],
+            'loan',
+            $request->user()?->id,
+            $data['mpesa_phone'] ?? null,
+            $data['bill_ref'] ?? null,
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['receipt' => $result['message'] ?? 'Verification failed.'])->withInput();
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
+    public function mpesaB2cApprovals(): View
+    {
+        $pending = LoanBookDisbursement::query()
+            ->with(['loan.loanClient', 'payoutRequestedBy'])
+            ->where('method', 'mpesa')
+            ->where('payout_status', 'awaiting_approval')
+            ->latest()
+            ->paginate(20);
+
+        return view('loan.financial.mpesa_b2c_approvals', [
+            'title' => 'B2C approvals',
+            'subtitle' => 'M-Pesa disbursements waiting for maker-checker approval before Daraja send.',
+            'pending' => $pending,
+            'canApprove' => (bool) (auth()->user()?->hasLoanPermission('disbursements.approve') ?? false),
+        ]);
+    }
+
+    public function mpesaSettings(): View
+    {
+        $daraja = app(MpesaDarajaService::class);
+        $cfg = (array) config('services.mpesa', []);
+
+        $mask = static function (?string $value): string {
+            $value = trim((string) $value);
+            if ($value === '') {
+                return '— not set —';
+            }
+            if (strlen($value) <= 8) {
+                return str_repeat('•', strlen($value));
+            }
+
+            return substr($value, 0, 4).str_repeat('•', max(4, strlen($value) - 8)).substr($value, -4);
+        };
+
+        return view('loan.financial.mpesa_settings', [
+            'title' => 'Daraja settings',
+            'subtitle' => 'Read-only status of M-Pesa env config. Edit `.env` on the server, then run `php artisan config:clear`.',
+            'env' => $daraja->currentEnv(),
+            'baseUrl' => $daraja->currentBaseUrl(),
+            'stkConfigured' => $daraja->isConfigured(),
+            'stkMissing' => $daraja->missingConfigKeys(),
+            'b2cConfigured' => $daraja->isB2cConfigured(),
+            'b2cMissing' => $daraja->missingB2cConfigKeys(),
+            'c2bConfigured' => $daraja->isC2bConfigured(),
+            'c2bMissing' => $daraja->missingC2bConfigKeys(),
+            'statusQueryConfigured' => $daraja->isStatusQueryConfigured(),
+            'statusQueryMissing' => $daraja->missingStatusQueryConfigKeys(),
+            'b2cRequireApproval' => $daraja->requiresB2cApproval(),
+            'urls' => [
+                'stk_callback' => (string) ($cfg['stk_callback_url'] ?? ''),
+                'c2b_validation' => (string) ($cfg['c2b_validation_url'] ?? ''),
+                'c2b_confirmation' => (string) ($cfg['c2b_confirmation_url'] ?? ''),
+                'b2c_result' => (string) ($cfg['b2c_result_url'] ?? ''),
+                'b2c_timeout' => (string) ($cfg['b2c_timeout_url'] ?? ''),
+                'status_result' => (string) ($cfg['status_result_url'] ?? ''),
+                'status_timeout' => (string) ($cfg['status_timeout_url'] ?? ''),
+            ],
+            'masked' => [
+                'consumer_key' => $mask($cfg['consumer_key'] ?? null),
+                'shortcode' => (string) ($cfg['shortcode'] ?? '—'),
+                'stk_shortcode' => (string) ($cfg['stk_shortcode'] ?? '—'),
+                'b2c_shortcode' => (string) ($cfg['b2c_shortcode'] ?? '—'),
+                'c2b_shortcode' => (string) ($cfg['c2b_shortcode'] ?? '—'),
+                'b2c_initiator' => (string) ($cfg['b2c_initiator_name'] ?? '—'),
+                'passkey' => $mask($cfg['passkey'] ?? null),
+                'b2c_security_credential' => $mask($cfg['b2c_security_credential'] ?? null),
+            ],
+            'verifySsl' => (bool) ($cfg['verify_ssl'] ?? true),
+        ]);
+    }
+
+    public function mpesaRegisterC2b(Request $request): RedirectResponse
+    {
+        if (! $request->user()?->hasLoanPermission('disbursements.configure')
+            && ! in_array(strtolower((string) $request->user()?->effectiveLoanRole()), ['admin', 'manager'], true)) {
+            abort(403, 'Only admins/managers can register C2B URLs.');
+        }
+
+        $daraja = app(MpesaDarajaService::class);
+        if (! $daraja->isC2bConfigured()) {
+            return redirect()
+                ->route('loan.financial.mpesa_settings')
+                ->withErrors(['c2b' => 'C2B is not fully configured. Missing: '.implode('; ', $daraja->missingC2bConfigKeys())]);
+        }
+
+        $result = $daraja->registerC2bUrls();
+        if (! ($result['ok'] ?? false)) {
+            return redirect()
+                ->route('loan.financial.mpesa_settings')
+                ->withErrors(['c2b' => 'Register URL failed: '.($result['message'] ?: 'Unknown error')]);
+        }
+
+        return redirect()
+            ->route('loan.financial.mpesa_settings')
+            ->with('status', 'C2B Validation/Confirmation URLs registered with Safaricom ('.$daraja->currentEnv().').');
     }
 
     public function accountBalances(Request $request): View

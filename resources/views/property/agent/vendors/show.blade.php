@@ -17,6 +17,15 @@
             <input type="text" name="confirm_phrase" placeholder='Type PAY' class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
             <button type="submit" class="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">Pay outstanding</button>
         </form>
+        @if ($b2cConfigured ?? false)
+            <form method="post" action="{{ route('property.vendors.pay_outstanding_mpesa', $vendor, false) }}" class="inline-flex flex-wrap items-center gap-1" data-swal-title="Send vendor payout via M-Pesa?" data-swal-confirm="B2C will send the outstanding total to the vendor phone. Jobs settle when Safaricom confirms." data-swal-confirm-text="Send B2C">
+                @csrf
+                <input type="text" name="mpesa_phone" value="{{ old('mpesa_phone', $vendor->phone) }}" placeholder="M-Pesa phone" required class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
+                <input type="text" name="payment_note" placeholder="Note (optional)" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
+                <input type="text" name="confirm_phrase" placeholder='Type PAY' required class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
+                <button type="submit" class="rounded-xl border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100">Pay via M-Pesa B2C</button>
+            </form>
+        @endif
     </x-slot>
 
     <x-slot name="above">

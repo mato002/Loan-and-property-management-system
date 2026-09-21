@@ -15,6 +15,8 @@ use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentReversalApprovalService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Integrations\MpesaDarajaService;
+use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -28,6 +30,76 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmPaymentController extends Controller
 {
+    public function mpesaInbox(Request $request): View
+    {
+        $channel = strtolower(trim((string) $request->query('channel', '')));
+        $status = strtolower(trim((string) $request->query('status', '')));
+        $allowedChannels = ['mpesa_stk', 'mpesa_sms_ingest', 'mpesa_c2b', 'mpesa'];
+
+        $query = PmPayment::query()
+            ->with(['tenant'])
+            ->whereIn('channel', $allowedChannels)
+            ->when($channel !== '' && in_array($channel, $allowedChannels, true), fn ($q) => $q->where('channel', $channel))
+            ->when(in_array($status, ['pending', 'completed', 'failed'], true), fn ($q) => $q->where('status', $status))
+            ->orderByDesc('id');
+
+        $rows = $query->paginate(40)->withQueryString();
+
+        $todaySum = (float) PmPayment::query()
+            ->whereIn('channel', $allowedChannels)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->whereDate('paid_at', today())
+            ->sum('amount');
+        $pendingCount = (int) PmPayment::query()
+            ->whereIn('channel', ['mpesa_stk'])
+            ->where('status', PmPayment::STATUS_PENDING)
+            ->count();
+
+        return property_view('property.agent.revenue.mpesa_inbox', [
+            'rows' => $rows,
+            'filters' => compact('channel', 'status'),
+            'todaySum' => $todaySum,
+            'pendingCount' => $pendingCount,
+            'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),
+            'c2bConfigured' => app(MpesaDarajaService::class)->isC2bConfigured(),
+            'statusQueryConfigured' => app(MpesaDarajaService::class)->isStatusQueryConfigured(),
+            'statusQueryMissing' => app(MpesaDarajaService::class)->missingStatusQueryConfigKeys(),
+        ]);
+    }
+
+    public function verifyMpesaReceipt(Request $request, MpesaReceiptVerificationService $verifier): RedirectResponse
+    {
+        $data = $request->validate([
+            'receipt' => ['required', 'string', 'max:20'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
+            'bill_ref' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $result = $verifier->requestReceiptVerification(
+            (string) $data['receipt'],
+            'property',
+            $request->user()?->id,
+            $data['mpesa_phone'] ?? null,
+            $data['bill_ref'] ?? null,
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['receipt' => $result['message'] ?? 'Verification failed.'])->withInput();
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
+    public function verifyPendingStk(Request $request, PmPayment $payment, MpesaReceiptVerificationService $verifier): RedirectResponse
+    {
+        $result = $verifier->verifyPendingStkPayment($payment);
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['payment' => $result['message'] ?? 'STK query failed.']);
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
     public function payments(Request $request): View|StreamedResponse
     {
         [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $receivedRangeLabel] = $this->resolvePaymentReceivedRange($request);

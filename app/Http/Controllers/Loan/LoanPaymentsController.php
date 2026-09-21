@@ -10,7 +10,9 @@ use App\Models\LoanBookPayment;
 use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Services\ClientWalletService;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBook\LoanStkRepaymentService;
 use App\Services\LoanBookGlPostingService;
 use App\Support\TabularExport;
 use Carbon\Carbon;
@@ -900,6 +902,56 @@ class LoanPaymentsController extends Controller
         return redirect()
             ->route('loan.payments.unposted')
             ->with('status', 'Payment '.$payment->reference.' created (unposted).');
+    }
+
+    public function stkCreate(Request $request): View
+    {
+        $query = LoanBookLoan::query()
+            ->with('loanClient')
+            ->assignableForRepayment()
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $loans = $query->get();
+        $selectedLoanId = $request->integer('loan_book_loan_id');
+        if (! $loans->contains(fn (LoanBookLoan $loan): bool => (int) $loan->id === $selectedLoanId)) {
+            $selectedLoanId = 0;
+        }
+
+        return view('loan.payments.stk', [
+            'loans' => $loans,
+            'selectedLoanId' => $selectedLoanId,
+            'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),
+            'stkMissing' => app(MpesaDarajaService::class)->missingConfigKeys(),
+        ]);
+    }
+
+    public function stkStore(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+            'amount' => ['required', 'numeric', 'min:1'],
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+
+        $result = app(LoanStkRepaymentService::class)->initiate(
+            $loan,
+            (float) $validated['amount'],
+            (string) $validated['mpesa_phone'],
+            $request->user()?->id
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()
+                ->withInput()
+                ->withErrors(['mpesa_phone' => $result['message'] ?? 'STK push failed.']);
+        }
+
+        return redirect()
+            ->route('loan.payments.unposted')
+            ->with('status', $result['message'] ?? 'STK push sent. Payment will appear here after the borrower confirms.');
     }
 
     public function reversalCreate(Request $request): View

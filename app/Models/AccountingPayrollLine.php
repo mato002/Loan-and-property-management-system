@@ -21,6 +21,12 @@ class AccountingPayrollLine extends Model
         'payment_status',
         'payment_date',
         'payment_reference',
+        'payout_provider',
+        'payout_phone',
+        'payout_status',
+        'payout_conversation_id',
+        'payout_originator_conversation_id',
+        'payout_meta',
     ];
 
     protected function casts(): array
@@ -33,6 +39,7 @@ class AccountingPayrollLine extends Model
             'net_pay' => 'decimal:2',
             'email_sent_at' => 'datetime',
             'payment_date' => 'date',
+            'payout_meta' => 'array',
         ];
     }
 

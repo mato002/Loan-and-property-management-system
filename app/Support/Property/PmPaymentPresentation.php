@@ -71,7 +71,7 @@ final class PmPaymentPresentation
         $channel = strtolower(trim((string) ($payment->channel ?? '')));
 
         return match ($channel) {
-            'mpesa', 'mpesa_sms_ingest', 'mpesa_stk', 'equity_paybill' => 'M-Pesa',
+            'mpesa', 'mpesa_sms_ingest', 'mpesa_stk', 'mpesa_c2b', 'equity_paybill' => 'M-Pesa',
             'bank', 'bank_transfer' => 'Bank transfer',
             'cash' => 'Cash',
             'card' => 'Card',

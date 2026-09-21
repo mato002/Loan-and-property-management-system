@@ -21,9 +21,9 @@ class LoanDisbursementPayoutService
     /**
      * Initiate M-Pesa B2C payout for a loan disbursement row.
      */
-    public function initiateMpesaPayout(LoanBookDisbursement $disbursement, LoanBookLoan $loan): array
+    public function initiateMpesaPayout(LoanBookDisbursement $disbursement, LoanBookLoan $loan, ?int $approvedByUserId = null): array
     {
-        $clientPhone = (string) ($loan->loanClient?->phone ?? '');
+        $clientPhone = (string) ($loan->loanClient?->phone ?? $disbursement->payout_phone ?? '');
         if (trim($clientPhone) === '') {
             return ['ok' => false, 'message' => 'Selected loan client has no phone number for M-Pesa payout.'];
         }
@@ -57,8 +57,9 @@ class LoanDisbursementPayoutService
             $originatorConversationId,
             $resultCode,
             $resultDesc,
+            $approvedByUserId,
         ): void {
-            $disbursement->update([
+            $update = [
                 'payout_status' => ($response['ok'] ?? false) ? 'pending' : 'failed',
                 'payout_provider' => 'mpesa',
                 'payout_phone' => $phone,
@@ -67,13 +68,18 @@ class LoanDisbursementPayoutService
                 'payout_result_code' => is_numeric($resultCode) ? (int) $resultCode : null,
                 'payout_result_desc' => $resultDesc !== '' ? $resultDesc : null,
                 'payout_requested_at' => now(),
-                'payout_meta' => [
+                'payout_meta' => array_merge(is_array($disbursement->payout_meta) ? $disbursement->payout_meta : [], [
                     'initiation' => [
                         'response' => $response,
                         'received_at' => now()->toIso8601String(),
                     ],
-                ],
-            ]);
+                ]),
+            ];
+            if ($approvedByUserId) {
+                $update['payout_approved_by'] = $approvedByUserId;
+                $update['payout_approved_at'] = now();
+            }
+            $disbursement->update($update);
 
             MpesaPlatformTransaction::query()->create([
                 'reference' => $disbursement->reference,
@@ -114,18 +120,53 @@ class LoanDisbursementPayoutService
 
         $tx = MpesaPlatformTransaction::query()
             ->where('channel', 'b2c')
-            ->when($conversationId !== '', fn ($q) => $q->orWhere('conversation_id', $conversationId))
-            ->when($originatorConversationId !== '', fn ($q) => $q->orWhere('originator_conversation_id', $originatorConversationId))
-            ->when($transactionId !== '', fn ($q) => $q->orWhere('transaction_id', $transactionId))
+            ->where(function ($q) use ($conversationId, $originatorConversationId, $transactionId) {
+                $matched = false;
+                if ($conversationId !== '') {
+                    $q->orWhere('conversation_id', $conversationId);
+                    $matched = true;
+                }
+                if ($originatorConversationId !== '') {
+                    $q->orWhere('originator_conversation_id', $originatorConversationId);
+                    $matched = true;
+                }
+                if ($transactionId !== '') {
+                    $q->orWhere('transaction_id', $transactionId);
+                    $matched = true;
+                }
+                if (! $matched) {
+                    $q->whereRaw('1 = 0');
+                }
+            })
             ->orderByDesc('id')
             ->first();
 
         $disbursementId = (int) (data_get($tx?->meta, 'loan_book_disbursement_id') ?? 0);
-        if ($disbursementId <= 0) {
-            return null;
+
+        // Fallback: match disbursement rows directly by conversation IDs.
+        $disbursement = $disbursementId > 0
+            ? LoanBookDisbursement::query()->with('loan')->find($disbursementId)
+            : null;
+
+        if (! $disbursement) {
+            $disbursement = LoanBookDisbursement::query()
+                ->with('loan')
+                ->where('payout_provider', 'mpesa')
+                ->where(function ($q) use ($conversationId, $originatorConversationId) {
+                    if ($conversationId !== '') {
+                        $q->orWhere('payout_conversation_id', $conversationId);
+                    }
+                    if ($originatorConversationId !== '') {
+                        $q->orWhere('payout_originator_conversation_id', $originatorConversationId);
+                    }
+                    if ($conversationId === '' && $originatorConversationId === '') {
+                        $q->whereRaw('1 = 0');
+                    }
+                })
+                ->orderByDesc('id')
+                ->first();
         }
 
-        $disbursement = LoanBookDisbursement::query()->with('loan')->find($disbursementId);
         if (! $disbursement) {
             return null;
         }

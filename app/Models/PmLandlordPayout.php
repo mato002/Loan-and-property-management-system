@@ -18,6 +18,15 @@ class PmLandlordPayout extends Model
         'created_by',
         'approved_by',
         'paid_at',
+        'payout_provider',
+        'payout_phone',
+        'payout_status',
+        'payout_conversation_id',
+        'payout_originator_conversation_id',
+        'payout_transaction_id',
+        'payout_result_desc',
+        'payout_requested_at',
+        'payout_meta',
     ];
 
     protected function casts(): array
@@ -25,6 +34,8 @@ class PmLandlordPayout extends Model
         return [
             'total_amount' => 'decimal:2',
             'paid_at' => 'datetime',
+            'payout_requested_at' => 'datetime',
+            'payout_meta' => 'array',
         ];
     }
 
