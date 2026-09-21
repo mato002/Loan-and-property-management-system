@@ -76,6 +76,7 @@
                         name="pm_lease_id"
                         placeholder="—"
                         :searchable="true"
+                        searchPlaceholder="Search name, phone, or email…"
                         :options="$leaseSelectOptions"
                         :create="['mode' => 'none']"
                     />
@@ -99,6 +100,7 @@
                         name="pm_tenant_id"
                         :required="true"
                         :searchable="true"
+                        searchPlaceholder="Search name, phone, or email…"
                         :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants, old('pm_tenant_id'))"
                         :create="\App\Support\Property\PmTenantQuickCreateFields::quickCreateConfig()"
                     />

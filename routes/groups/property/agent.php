@@ -432,6 +432,10 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/accounting/payables/landlord-payouts/{payout}/approve', [PropertyAccountingController::class, 'approveLandlordPayout'])->name('accounting.payables.landlord_payouts.approve');
     Route::post('/accounting/payables/landlord-payouts/{payout}/pay', [PropertyAccountingController::class, 'payLandlordPayout'])->name('accounting.payables.landlord_payouts.pay');
     Route::post('/accounting/payables/landlord-payouts/{payout}/pay-mpesa', [PropertyAccountingController::class, 'payLandlordPayoutViaMpesa'])->name('accounting.payables.landlord_payouts.pay_mpesa');
+    Route::post('/accounting/payables/landlord-payouts/{payout}/void', [PropertyAccountingController::class, 'voidLandlordPayout'])->name('accounting.payables.landlord_payouts.void');
+    Route::post('/accounting/payables/payment-vouchers/{voucher}/match', [PropertyAccountingController::class, 'matchPaymentVoucher'])->name('accounting.payables.payment_vouchers.match');
+    Route::post('/accounting/payables/accounts-payable/{bill}/mark-paid', [PropertyAccountingController::class, 'markVendorBillPaid'])->name('accounting.payables.accounts_payable.mark_paid');
+    Route::put('/accounting/payables/property-takeon-balances/{takeon}', [PropertyAccountingController::class, 'updatePropertyTakeonBalance'])->whereNumber('takeon')->name('accounting.payables.property_takeon_balances.update');
     Route::get('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'landlordAdvances'])->name('accounting.payables.landlord_advances');
     Route::post('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'storeLandlordAdvance'])->name('accounting.payables.landlord_advances.store');
     Route::post('/accounting/payables/landlord-advances/schedule', [PropertyAccountingController::class, 'updateLandlordAgreedPaySchedule'])->name('accounting.payables.landlord_advances.schedule');

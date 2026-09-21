@@ -1,8 +1,15 @@
 @php
     $s = $settlement;
     $unitStats = $s['unit_stats'] ?? [];
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $accent = $branding['colour'] ?? '#0f766e';
-    $company = $branding['company_name'] ?? 'Property Manager';
+    $metaLine = trim(
+        ((string) ($s['property_name'] ?? '—')).' · '.((string) ($s['period_label'] ?? '—'))
+        .' · Landlord: '.((string) ($s['landlord_name'] ?? '—'))
+        .' · '.((string) ($s['ownership_percent'] ?? 0)).'% ownership'
+        .' · '.((string) ($s['commission_percent'] ?? 0)).'% management fee'
+        .' · Generated '.((string) ($generatedAt ?? now()->format('d M Y H:i')))
+    );
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -12,9 +19,6 @@
     <style>
         @page { size: A4 portrait; margin: 12mm; }
         body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9.5pt; color: #0f172a; margin: 0; }
-        .header { border-bottom: 3px solid {{ $accent }}; padding-bottom: 10px; margin-bottom: 14px; }
-        .company { font-size: 15pt; font-weight: bold; color: {{ $accent }}; }
-        .meta { margin-top: 6px; font-size: 8.5pt; color: #475569; line-height: 1.45; }
         h2 { font-size: 11pt; margin: 14px 0 8px; color: #0f172a; }
         .grid { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
         .grid td { width: 50%; vertical-align: top; padding: 0 8px 0 0; }
@@ -33,15 +37,13 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="company">{{ $company }}</div>
-        <div class="meta">
-            <strong>Landlord settlement statement</strong><br>
-            {{ $s['property_name'] ?? '—' }} · {{ $s['period_label'] ?? '—' }}<br>
-            Landlord: {{ $s['landlord_name'] ?? '—' }} · {{ $s['ownership_percent'] ?? 0 }}% ownership · {{ $s['commission_percent'] ?? 0 }}% management fee<br>
-            Generated {{ $generatedAt ?? now()->format('d M Y H:i') }}
-        </div>
-    </div>
+    @include('property.partials.document_letterhead', [
+        'branding' => $branding,
+        'title' => 'Landlord settlement statement',
+        'subtitle' => null,
+        'meta' => $metaLine,
+        'variant' => 'pdf',
+    ])
 
     <table class="grid"><tr>
         <td>

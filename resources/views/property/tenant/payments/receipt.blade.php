@@ -1,6 +1,6 @@
-@php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Management System'))
-@php($logoRaw = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', '')))
-@php($logoUrl = $logoRaw !== '' ? ((str_starts_with($logoRaw, 'http://') || str_starts_with($logoRaw, 'https://') || str_starts_with($logoRaw, '/')) ? $logoRaw : \Illuminate\Support\Facades\Storage::url($logoRaw)) : null)
+@php($doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot())
+@php($brandName = $doc['company_name'])
+@php($logoUrl = $doc['logo_url'] !== '' ? $doc['logo_url'] : null)
 <x-property-layout>
     <x-slot name="header">Receipt #RCP-PAY-{{ $payment->id }}</x-slot>
 

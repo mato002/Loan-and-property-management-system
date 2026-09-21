@@ -34,6 +34,7 @@ use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\LandlordAdvanceService;
 use App\Services\Property\LandlordPaymentFeesService;
 use App\Services\Property\LandlordSettlementService;
+use App\Services\Property\EzenPaymentVouchersImportService;
 use App\Services\Property\PropertyB2cPayoutService;
 use App\Services\Property\PropertyCommissionsService;
 use App\Services\Integrations\MpesaDarajaService;
@@ -2932,20 +2933,32 @@ class PropertyAccountingController extends Controller
         $remittanceCount = (clone $query)->where('category', PmEzenPaymentVoucher::CATEGORY_REMITTANCE)->count();
         $unmatchedCount = (clone $query)->where('link_status', PmEzenPaymentVoucher::LINK_UNMATCHED)->count();
 
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
         $stats = [
-            ['label' => 'Vouchers', 'value' => (string) $vouchers->total(), 'hint' => 'Imported from EZEN payment listing', 'emphasis' => true],
+            ['label' => 'Vouchers', 'value' => (string) $vouchers->total(), 'hint' => 'Imported payment voucher listing', 'emphasis' => true],
             ['label' => 'Total amount', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered listing total'],
             ['label' => 'Remittances', 'value' => (string) $remittanceCount, 'hint' => 'Rent paid out to landlords'],
             ['label' => 'Unmatched', 'value' => (string) $unmatchedCount, 'hint' => 'Payee not linked yet'],
         ];
 
-        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) {
+        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($landlords) {
             $posted = '—';
             if ($voucher->pm_landlord_payout_id) {
                 $posted = new HtmlString('<a href="'.e(route('property.accounting.payables.landlord_payouts', ['q' => $voucher->pm_landlord_payout_id], false)).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$voucher->pm_landlord_payout_id.'</a>');
             } elseif ($voucher->pm_accounting_entry_id) {
                 $posted = $voucher->ezen_voucher_no;
             }
+
+            $actions = new HtmlString(view('property.agent.partials.payment_voucher_row_actions', [
+                'voucher' => $voucher,
+                'landlords' => $landlords,
+            ])->render());
 
             return [
                 $voucher->ezen_voucher_no,
@@ -2958,12 +2971,13 @@ class PropertyAccountingController extends Controller
                 $voucher->displayCategory(),
                 $voucher->displayLinkStatus(),
                 $posted,
+                $actions,
             ];
         })->all();
 
         return property_view('property.agent.accounting.payment_vouchers', [
             'stats' => $stats,
-            'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status', 'Posted'],
+            'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status', 'Posted', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $vouchers,
             'filters' => $filters,
@@ -3135,14 +3149,32 @@ class PropertyAccountingController extends Controller
         return back()->with('status', 'M-Pesa B2C sent for payout #'.$payout->id.'. Ledger will post when Safaricom confirms.');
     }
 
+    public function voidLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
+    {
+        try {
+            $settlements->voidDraftPayout($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
+
+        return back()->with('status', 'Draft payout #'.$payout->id.' voided.');
+    }
+
     /**
      * @param  array<string, mixed>  $settlement
      */
     private function streamLandlordSettlementPdf(array $settlement): StreamedResponse|Response
     {
+        $propertyAgentId = null;
+        $propertyId = (int) ($settlement['property_id'] ?? 0);
+        if ($propertyId > 0) {
+            $propertyAgentId = Property::query()->whereKey($propertyId)->value('agent_user_id');
+            $propertyAgentId = $propertyAgentId ? (int) $propertyAgentId : null;
+        }
+
         $html = view('property.agent.accounting.landlord_settlement_print', [
             'settlement' => $settlement,
-            'branding' => $this->settlementBranding(),
+            'branding' => $this->settlementBranding($propertyAgentId),
             'generatedAt' => now()->format('d M Y H:i'),
         ])->render();
 
@@ -3151,7 +3183,8 @@ class PropertyAccountingController extends Controller
 
         try {
             $options = new Options;
-            $options->set('isRemoteEnabled', false);
+            $options->set('isRemoteEnabled', true);
+            $options->set('chroot', public_path());
             $options->set('defaultFont', 'DejaVu Sans');
             $dompdf = new Dompdf($options);
             $dompdf->loadHtml($html, 'UTF-8');
@@ -3219,15 +3252,12 @@ class PropertyAccountingController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function settlementBranding(): array
+    /**
+     * @return array<string, mixed>
+     */
+    private function settlementBranding(?int $agentUserId = null): array
     {
-        $raw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($raw) ? json_decode($raw, true) : (is_array($raw) ? $raw : []);
-
-        return array_merge([
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'colour' => '#0f766e',
-        ], is_array($decoded) ? $decoded : []);
+        return \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($agentUserId);
     }
 
     public function landlordPayouts(Request $request): View
@@ -3427,6 +3457,67 @@ class PropertyAccountingController extends Controller
         return back()->with('status', 'Take-on balance removed for '.$label.'. Ledger reversal posted.');
     }
 
+    public function updatePropertyTakeonBalance(Request $request, PmPropertyTakeonBalance $takeon, PropertyTakeonBalanceService $takeons): RedirectResponse
+    {
+        $validated = $request->validate([
+            'balance' => ['required', 'numeric', 'not_in:0'],
+            'balance_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'takeon_form' => ['nullable', 'string'],
+            'takeon_id' => ['nullable', 'integer'],
+            'takeon_label' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $updated = $takeons->recordTakeon(
+            (int) $takeon->property_id,
+            (int) $takeon->landlord_id,
+            (float) $validated['balance'],
+            Carbon::parse($validated['balance_date']),
+            $request->user(),
+            $validated['notes'] ?? null,
+            true,
+        );
+
+        return back()->with('status', 'Take-on balance updated for '.($updated->property?->name ?? 'property').' — '.PropertyMoney::kes((float) $updated->balance).'.');
+    }
+
+    public function matchPaymentVoucher(
+        Request $request,
+        PmEzenPaymentVoucher $voucher,
+        EzenPaymentVouchersImportService $importer,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'landlord_id' => ['required', 'integer', 'exists:users,id'],
+            'post_gl' => ['nullable', 'boolean'],
+        ]);
+
+        $result = $importer->assignLandlordAndPost(
+            $voucher,
+            (int) $data['landlord_id'],
+            $request->user(),
+            $request->boolean('post_gl'),
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['landlord_id' => $result['message'] ?? 'Match failed.'])->withInput();
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
+    public function markVendorBillPaid(Request $request, PmEzenBill $bill): RedirectResponse
+    {
+        $total = (float) $bill->total_amount;
+        $bill->update([
+            'payment_status' => PmEzenBill::STATUS_PAID,
+            'listing_status' => 'closed',
+            'total_paid' => $total,
+            'amount_due' => 0,
+        ]);
+
+        return back()->with('status', 'Bill '.$bill->ezen_bill_no.' marked paid / closed.');
+    }
+
     public function accountsPayable(Request $request): View|StreamedResponse
     {
         if (! Schema::hasTable('pm_ezen_bills')) {
@@ -3518,13 +3609,17 @@ class PropertyAccountingController extends Controller
         $paidCount = (clone $query)->where('payment_status', PmEzenBill::STATUS_PAID)->count();
 
         $stats = [
-            ['label' => 'Bills', 'value' => (string) $bills->total(), 'hint' => 'Imported from EZEN Bills Listing', 'emphasis' => true],
+            ['label' => 'Bills', 'value' => (string) $bills->total(), 'hint' => 'Imported vendor bills listing', 'emphasis' => true],
             ['label' => 'Total billed', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered listing total'],
             ['label' => 'Amount due', 'value' => PropertyMoney::kes((float) $amountDue), 'hint' => 'Still outstanding'],
             ['label' => 'Paid / closed', 'value' => (string) $paidCount, 'hint' => 'Fully settled bills'],
         ];
 
         $rows = $bills->getCollection()->map(function (PmEzenBill $bill) {
+            $actions = new HtmlString(view('property.agent.partials.vendor_bill_row_actions', [
+                'bill' => $bill,
+            ])->render());
+
             return [
                 $bill->ezen_bill_no,
                 $bill->vendor_invoice_no !== null && $bill->vendor_invoice_no !== '' ? $bill->vendor_invoice_no : '—',
@@ -3536,12 +3631,13 @@ class PropertyAccountingController extends Controller
                 number_format((float) $bill->total_paid, 2),
                 number_format((float) $bill->amount_due, 2),
                 $bill->displayListingStatus().' / '.$bill->displayPaymentStatus(),
+                $actions,
             ];
         })->all();
 
         return property_view('property.agent.accounting.payables_accounts', [
             'stats' => $stats,
-            'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status'],
+            'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $bills,
             'filters' => $filters,

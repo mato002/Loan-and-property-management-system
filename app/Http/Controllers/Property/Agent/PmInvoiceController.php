@@ -1032,7 +1032,11 @@ class PmInvoiceController extends Controller
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
         return property_view('property.public.invoice_show', [
             'invoice' => $invoice,
-            'branding' => $this->branding(),
+            'branding' => app(InvoicePdfService::class)->branding(
+                $invoice->unit?->property?->agent_user_id
+                    ? (int) $invoice->unit->property->agent_user_id
+                    : null
+            ),
         ]);
     }
 

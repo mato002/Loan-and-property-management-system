@@ -610,6 +610,64 @@ final class EzenPaymentVouchersImportService
     }
 
     /**
+     * Assign a landlord to an unmatched remittance voucher and post the payout.
+     *
+     * @return array{ok:bool, message:string, payout_id?:int}
+     */
+    public function assignLandlordAndPost(PmEzenPaymentVoucher $voucher, int $landlordId, User $actor, bool $postGl = false): array
+    {
+        return DB::transaction(function () use ($voucher, $landlordId, $actor, $postGl) {
+            $voucher->refresh();
+            if ($voucher->pm_landlord_payout_id || $voucher->pm_accounting_entry_id) {
+                return ['ok' => false, 'message' => 'This voucher is already posted.'];
+            }
+            if ((string) $voucher->category !== PmEzenPaymentVoucher::CATEGORY_REMITTANCE) {
+                return ['ok' => false, 'message' => 'Only remittance vouchers can be matched to a landlord.'];
+            }
+
+            $landlord = User::query()->find($landlordId);
+            if (! $landlord) {
+                return ['ok' => false, 'message' => 'Landlord not found.'];
+            }
+
+            $property = $voucher->property_id ? Property::query()->find((int) $voucher->property_id) : null;
+            $row = [
+                'ezen_voucher_no' => (string) $voucher->ezen_voucher_no,
+                'amount' => (float) $voucher->amount,
+                'txn_date' => $voucher->txn_date?->toDateString() ?? now()->toDateString(),
+                'ref_no' => (string) ($voucher->ref_no ?? ''),
+                'particulars' => (string) ($voucher->particulars ?? ''),
+                'paid_to' => (string) ($voucher->paid_to ?? $landlord->name),
+                'period_month' => $voucher->txn_date?->format('Y-m') ?? now()->format('Y-m'),
+                'method' => (string) ($voucher->method ?? ''),
+                'paid_from' => (string) ($voucher->paid_from ?? ''),
+                'category' => PmEzenPaymentVoucher::CATEGORY_REMITTANCE,
+            ];
+
+            $resolved = [
+                'property' => $property,
+                'landlord' => $landlord,
+                'code' => (string) ($property?->code ?? ''),
+                'name' => (string) $landlord->name,
+            ];
+
+            $payout = $this->postRemittance($row, $actor, $resolved, $postGl);
+            $voucher->update([
+                'pm_landlord_id' => (int) $landlord->id,
+                'property_id' => $property?->id,
+                'pm_landlord_payout_id' => (int) $payout->id,
+                'link_status' => PmEzenPaymentVoucher::LINK_REMITTANCE,
+            ]);
+
+            return [
+                'ok' => true,
+                'message' => 'Matched to '.$landlord->name.' and posted payout #'.$payout->id.'.',
+                'payout_id' => (int) $payout->id,
+            ];
+        });
+    }
+
+    /**
      * @return array{
      *     parsed:int,
      *     register_upserted:int,

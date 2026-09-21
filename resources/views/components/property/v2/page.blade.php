@@ -35,7 +35,7 @@
         <x-property.workspace-tabs :workspace="$resolvedWorkspaceKey" />
     @endif
 
-    <header @class(['property-erp-header', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
+    <header @class(['property-erp-header property-print-hide print-hide', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
         <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
             <div class="min-w-0 flex-[1_1_16rem] basis-full sm:basis-auto">
                 <h1 @class([

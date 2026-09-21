@@ -306,6 +306,162 @@ final class PropertyWorkspaceBranding
         ];
     }
 
+    /**
+     * Branding for receipts, prints, PDF exports, and browser print letterheads.
+     * Prefers the viewing agent's workspace, then Settings branding / login tenant, then global.
+     *
+     * @param  int|null  $agentUserId  Optional property/agent owner to brand the document for.
+     * @return array{
+     *     company_name: string,
+     *     company_logo_url: string,
+     *     logo_url: string,
+     *     logo_src: string,
+     *     contact_email_primary: string,
+     *     contact_phone: string,
+     *     contact_address: string,
+     *     contact_reg_no: string,
+     *     colour: string,
+     *     address: string,
+     *     phone: string,
+     *     email: string,
+     *     contact_line: string
+     * }
+     */
+    public static function documentSnapshot(?int $agentUserId = null): array
+    {
+        $companyName = self::documentValue('company_name', $agentUserId, config('app.name', 'Property Manager'));
+        $logoRaw = self::documentValue('company_logo_url', $agentUserId, '');
+        $logoUrl = self::resolveAssetUrl($logoRaw);
+        $logoSrc = self::resolveLocalFileSrc($logoRaw) ?: $logoUrl;
+        $phone = self::documentValue('contact_phone', $agentUserId, '');
+        $email = self::documentValue('contact_email_primary', $agentUserId, '');
+        $address = self::documentValue('contact_address', $agentUserId, '');
+        $regNo = self::documentValue('contact_reg_no', $agentUserId, '');
+        $colour = '#0f766e';
+
+        $brandingRaw = self::documentValue('branding', $agentUserId, '');
+        if ($brandingRaw !== '') {
+            $decoded = json_decode($brandingRaw, true);
+            if (is_array($decoded)) {
+                if (! empty($decoded['colour'])) {
+                    $colour = (string) $decoded['colour'];
+                }
+                if ($companyName === '' && ! empty($decoded['company_name'])) {
+                    $companyName = (string) $decoded['company_name'];
+                }
+                if ($logoUrl === '' && ! empty($decoded['logo_url'])) {
+                    $logoUrl = self::resolveAssetUrl((string) $decoded['logo_url']);
+                    $logoSrc = self::resolveLocalFileSrc((string) $decoded['logo_url']) ?: $logoUrl;
+                }
+                if ($address === '' && ! empty($decoded['address'])) {
+                    $address = (string) $decoded['address'];
+                }
+                if ($phone === '' && ! empty($decoded['phone'])) {
+                    $phone = (string) $decoded['phone'];
+                }
+                if ($email === '' && ! empty($decoded['email'])) {
+                    $email = (string) $decoded['email'];
+                }
+            }
+        }
+
+        $companyName = trim($companyName) !== '' ? trim($companyName) : (string) config('app.name', 'Property Manager');
+        if (strtolower($companyName) === 'laravel') {
+            $companyName = 'Property Manager';
+        }
+
+        $contactLine = collect([$phone, $email, $address, $regNo !== '' ? 'Reg: '.$regNo : ''])
+            ->filter(static fn ($part) => trim((string) $part) !== '')
+            ->implode(' · ');
+
+        return [
+            'company_name' => $companyName,
+            'company_logo_url' => $logoUrl,
+            'logo_url' => $logoUrl,
+            'logo_src' => $logoSrc,
+            'contact_email_primary' => $email,
+            'contact_phone' => $phone,
+            'contact_address' => $address,
+            'contact_reg_no' => $regNo,
+            'colour' => $colour,
+            'address' => $address,
+            'phone' => $phone,
+            'email' => $email,
+            'contact_line' => $contactLine,
+        ];
+    }
+
+    public static function resolveAssetUrl(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return '';
+        }
+
+        if (str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
+            return $raw;
+        }
+
+        if (str_starts_with($raw, '/')) {
+            return url($raw);
+        }
+
+        if (str_starts_with($raw, 'storage/')) {
+            return url('/'.$raw);
+        }
+
+        return url('/storage/'.ltrim($raw, '/'));
+    }
+
+    /**
+     * Prefer a local filesystem path for DomPDF when the asset lives under public/storage.
+     */
+    public static function resolveLocalFileSrc(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '' || str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
+            return '';
+        }
+
+        $relative = $raw;
+        if (str_starts_with($relative, '/storage/')) {
+            $relative = substr($relative, strlen('/storage/'));
+        } elseif (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+
+        $path = public_path('storage/'.ltrim($relative, '/'));
+        if (is_file($path)) {
+            return $path;
+        }
+
+        return '';
+    }
+
+    private static function documentValue(string $key, ?int $preferredAgentUserId, ?string $default = null): string
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $preferredAgentUserId,
+            self::resolveViewerAgentUserId(),
+            self::settingsEditorAgentUserId(),
+            self::loginBrandingAgentUserId(),
+        ], static fn ($id) => $id !== null && (int) $id > 0)));
+
+        foreach ($candidates as $agentUserId) {
+            $scoped = self::readScopedValue($key, (int) $agentUserId);
+            if ($scoped !== null && trim($scoped) !== '') {
+                return trim($scoped);
+            }
+        }
+
+        $global = PropertyPortalSetting::getGlobalValue($key);
+        if ($global !== null && trim((string) $global) !== '') {
+            return trim((string) $global);
+        }
+
+        return trim((string) ($default ?? ''));
+    }
+
     public static function resolvePublicSiteAgentUserId(?string $host = null): ?int
     {
         static $cache = [];

@@ -5,6 +5,7 @@
     /** @var bool $required */
     /** @var string $placeholder */
     /** @var array<int, array<string, mixed>> $options */
+    $searchPlaceholder = $searchPlaceholder ?? __('Search…');
 @endphp
 
 @if ($useSearch)
@@ -30,7 +31,7 @@
                     x-ref="searchInput"
                     type="search"
                     x-model="query"
-                    placeholder="{{ __('Search name, phone, or email…') }}"
+                    placeholder="{{ $searchPlaceholder }}"
                     class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-600 dark:bg-gray-950"
                     @keydown.escape.prevent="closePicker()"
                 />

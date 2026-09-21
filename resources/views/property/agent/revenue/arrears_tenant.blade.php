@@ -127,7 +127,7 @@
 
     <x-slot name="footer">
         <p class="font-medium text-slate-700 dark:text-slate-300">Quick tip</p>
-        <p class="mt-1">Pick the invoices you want to remind about and choose <span class="font-medium">Selected rows</span> in the dropdown above. Use <span class="font-medium">Single invoice</span> for one-off chases.</p>
+        <p class="mt-1">Use row <span class="font-medium">Actions</span> to view an invoice, record a payment, or send a single reminder. Or pick rows above and choose <span class="font-medium">Selected rows</span> for a batch chase.</p>
     </x-slot>
 
     <script>

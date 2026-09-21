@@ -290,15 +290,11 @@ class TenantPortalController extends Controller
             'tenantContext' => true,
             'pdfUrl' => route('property.tenant.invoices.pdf', $invoice->id),
             'payUrl' => route('property.tenant.payments.pay', ['invoice_id' => $invoice->id]),
-            'branding' => (function () {
-                $b = \App\Models\PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-                $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
-                $defaults = [
-                    'company_name' => 'Property Manager', 'address' => '', 'phone' => '', 'email' => '',
-                    'logo_url' => '', 'colour' => '#1e40af', 'footer_note' => 'Thank you for your business.',
-                ];
-                return array_merge($defaults, is_array($decoded) ? $decoded : []);
-            })(),
+            'branding' => app(\App\Services\Property\InvoicePdfService::class)->branding(
+                $invoice->unit?->property?->agent_user_id
+                    ? (int) $invoice->unit->property->agent_user_id
+                    : null
+            ),
         ]);
     }
 

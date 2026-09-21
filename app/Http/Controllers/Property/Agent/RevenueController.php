@@ -809,16 +809,14 @@ class RevenueController extends Controller
             $lastContact = $r['last_contact']?->format('Y-m-d') ?? '—';
 
             $detailUrl = route('property.revenue.arrears.tenant', ['tenant' => $r['tenant_id']], false);
-            $noticesUrl = route('property.tenants.notices', ['tenant_id' => $r['tenant_id'], 'view' => 1], false);
             $tenantCell = new HtmlString(
                 '<a href="'.e($detailUrl).'" class="font-medium text-slate-800 hover:text-indigo-700">'.$tenantLabel.'</a>'
             );
-            $actions = new HtmlString(
-                '<div class="flex flex-wrap items-center gap-2 text-xs">'.
-                '<a href="'.e($detailUrl).'" class="rounded-md bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">View invoices</a>'.
-                '<a href="'.e($noticesUrl).'" class="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">Open notices</a>'.
-                '</div>'
-            );
+            $actions = new HtmlString(view('property.agent.partials.arrears_row_actions', [
+                'tenantId' => (int) $r['tenant_id'],
+                'invoiceIds' => $r['invoice_ids'] ?? [],
+                'primaryInvoiceId' => (int) (($r['invoice_ids'][0] ?? 0)),
+            ])->render());
 
             return [
                 $selector,
@@ -952,6 +950,9 @@ class RevenueController extends Controller
             $invoiceLink = new HtmlString(
                 '<a href="'.e(route('property.revenue.invoices.show', ['invoice' => $i->id], false)).'" class="text-indigo-600 hover:text-indigo-700 font-medium">'.e((string) ($i->invoice_no ?? '—')).'</a>'
             );
+            $actions = new HtmlString(view('property.agent.partials.arrears_invoice_row_actions', [
+                'invoice' => $i,
+            ])->render());
 
             return [
                 $selector,
@@ -966,6 +967,7 @@ class RevenueController extends Controller
                 PropertyMoney::kes($bal),
                 $i->updated_at?->format('Y-m-d') ?? '—',
                 $workflow,
+                $actions,
             ];
         })->all();
 
@@ -1020,6 +1022,7 @@ class RevenueController extends Controller
             new HtmlString('<span class="font-semibold text-rose-700 dark:text-rose-400">'.PropertyMoney::kes($totalBalance).'</span>'),
             '',
             '',
+            '',
         ];
 
         $reminderTargets = $invoices
@@ -1034,7 +1037,7 @@ class RevenueController extends Controller
             'tenant' => $tenant,
             'tableRows' => $rows,
             'tableFooterRow' => $tableFooterRow,
-            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
+            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow', 'Actions'],
             'reminderTargets' => $reminderTargets,
             'summary' => [
                 'invoice_count' => $invoices->count(),
@@ -1822,6 +1825,10 @@ class RevenueController extends Controller
                 ? new HtmlString('<a href="'.route('property.revenue.payments', ['q' => 'PAY-'.$receipt->pm_payment_id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$receipt->pm_payment_id.'</a>')
                 : '—';
 
+            $actions = new HtmlString(view('property.agent.partials.receipt_register_row_actions', [
+                'receipt' => $receipt,
+            ])->render());
+
             return [
                 $receipt->ezen_receipt_no,
                 $receipt->ref_no !== null && $receipt->ref_no !== '' ? $receipt->ref_no : '—',
@@ -1833,6 +1840,7 @@ class RevenueController extends Controller
                 $receipt->banking_date?->format('Y-m-d') ?? '—',
                 $linkLabel,
                 $paymentLink,
+                $actions,
             ];
         })->all();
 
@@ -1843,7 +1851,7 @@ class RevenueController extends Controller
 
         return property_view('property.agent.revenue.receipts', [
             'stats' => $stats,
-            'columns' => ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment'],
+            'columns' => ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $receipts,
             'filters' => [

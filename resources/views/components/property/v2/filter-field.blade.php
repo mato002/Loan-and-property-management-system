@@ -57,6 +57,7 @@
                 @if ($fieldId) id="{{ $fieldId }}" @endif
                 @if ($name) name="{{ $name }}" @endif
                 {!! $formAttr !!}
+                data-property-searchable="true"
                 class="{{ $inputClass }}"
             >
                 @if ($emptyOption !== null)

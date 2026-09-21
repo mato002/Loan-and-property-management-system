@@ -13,6 +13,9 @@
             $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.approve', $payout)).'" class="inline">'
                 .csrf_field()
                 .'<button type="submit" class="text-emerald-700 hover:text-emerald-800">Approve</button></form>';
+            $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.void', $payout)).'" class="inline" onsubmit="return confirm(\'Void this draft payout? This cannot be undone.\')">'
+                .csrf_field()
+                .'<button type="submit" class="text-rose-700 hover:text-rose-800">Void draft</button></form>';
         }
         if (in_array($payout->status, ['draft', 'approved'], true) && $mpesaStatus !== 'pending') {
             $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.pay', $payout)).'" class="inline" onsubmit="return confirm(\'Mark this payout as paid and post to ledger?\')">'
@@ -26,7 +29,7 @@
             }
         } elseif ($mpesaStatus === 'pending') {
             $actions .= '<span class="text-amber-700 text-xs font-semibold">B2C pending…</span>';
-        } else {
+        } elseif ($payout->status !== 'draft') {
             $actions .= '<span class="text-slate-500">—</span>';
         }
         if ($payout->payout_transaction_id) {

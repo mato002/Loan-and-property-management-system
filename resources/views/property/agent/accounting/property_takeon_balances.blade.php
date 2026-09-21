@@ -1,6 +1,15 @@
 @php
     $showTakeonModal = old('takeon_form') === 'takeon' || request()->query('open') === 'takeon';
     $showImportModal = old('takeon_form') === 'import';
+    $showEditModal = old('takeon_form') === 'edit';
+    $editDefaults = [
+        'id' => (int) old('takeon_id', 0),
+        'balance' => (string) old('balance', ''),
+        'balance_date' => (string) old('balance_date', ''),
+        'notes' => (string) old('notes', ''),
+        'label' => (string) old('takeon_label', ''),
+    ];
+    $takeonUpdateBase = url('/property/accounting/payables/property-takeon-balances');
 @endphp
 <x-property.workspace
     title="Property take-on balances"
@@ -16,6 +25,8 @@
         x-data="{!! \Illuminate\Support\Js::from([
             'showTakeonModal' => $showTakeonModal,
             'showImportModal' => $showImportModal,
+            'showEditModal' => $showEditModal,
+            'editTakeon' => $editDefaults,
         ]) !!}"
     ></x-slot>
 
@@ -86,12 +97,49 @@
                     </div>
                     <div class="sm:col-span-2">
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                        <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Optional — e.g. Ezen take-on import" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Optional — e.g. Opening balance from register" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
                     </div>
                 </div>
                 <div class="flex flex-wrap justify-end gap-2 pt-2">
                     <button type="button" class="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="showTakeonModal = false">Cancel</button>
                     <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">Save &amp; post to ledger</button>
+                </div>
+            </form>
+        </x-property.modal>
+
+        <x-property.modal
+            show="showEditModal"
+            close="showEditModal = false"
+            name="property-takeon-edit"
+            title="Edit take-on balance"
+            max-width="lg"
+        >
+            <p class="mb-3 text-xs text-slate-500 dark:text-slate-400" x-text="editTakeon.label || 'Update balance, date, and notes. Ledger entry will be replaced.'"></p>
+            <form method="post" :action="'{{ $takeonUpdateBase }}/' + editTakeon.id" class="space-y-3">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="takeon_form" value="edit" />
+                <input type="hidden" name="takeon_id" :value="editTakeon.id" />
+                <input type="hidden" name="takeon_label" :value="editTakeon.label" />
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Balance (KES)</label>
+                        <input type="number" name="balance" step="0.01" required x-model="editTakeon.balance" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('balance')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Balance date</label>
+                        <input type="date" name="balance_date" required x-model="editTakeon.balance_date" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('balance_date')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="notes" x-model="editTakeon.notes" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                    </div>
+                </div>
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                    <button type="button" class="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="showEditModal = false">Cancel</button>
+                    <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Update &amp; re-post</button>
                 </div>
             </form>
         </x-property.modal>
@@ -157,7 +205,7 @@ M00015A,2022-05-31,-9500</pre>
         <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ session('status') }}</div>
     @endif
 
-    @if ($errors->any() && ! in_array(old('takeon_form'), ['takeon', 'import'], true))
+    @if ($errors->any() && ! in_array(old('takeon_form'), ['takeon', 'import', 'edit'], true))
         <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{{ $errors->first() }}</div>
     @endif
 
@@ -200,6 +248,17 @@ M00015A,2022-05-31,-9500</pre>
                             <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ ($row['notes'] ?? '') !== '' ? $row['notes'] : '—' }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        class="text-xs font-medium text-slate-700 hover:text-slate-900 dark:text-slate-200"
+                                        @click="editTakeon = {
+                                            id: {{ (int) $row['id'] }},
+                                            balance: '{{ e((string) ($row['balance'] ?? '')) }}',
+                                            balance_date: '{{ e((string) ($row['balance_date'] ?? '')) }}',
+                                            notes: {{ \Illuminate\Support\Js::from((string) ($row['notes'] ?? '')) }},
+                                            label: {{ \Illuminate\Support\Js::from(($row['display_property'] ?? 'Property').' · '.($row['landlord_name'] ?? 'Landlord')) }}
+                                        }; showEditModal = true"
+                                    >Edit</button>
                                     <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id']]) }}" class="text-xs font-medium text-indigo-700 hover:text-indigo-800">Settlement</a>
                                     <form method="post" action="{{ route('property.accounting.payables.property_takeon_balances.destroy', $row['id']) }}" class="inline" onsubmit="return confirm('Remove this take-on balance and reverse the ledger entry?')">
                                         @csrf
@@ -210,7 +269,7 @@ M00015A,2022-05-31,-9500</pre>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">No property take-on balances recorded yet. Add manually or import from Ezen export.</td></tr>
+                        <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">No property take-on balances recorded yet. Add manually or import a CSV.</td></tr>
                     @endforelse
                 </tbody>
             </table>

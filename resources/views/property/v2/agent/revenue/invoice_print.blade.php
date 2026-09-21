@@ -1,9 +1,12 @@
 @php
     use App\Models\PmInvoice;
 
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $accent = $branding['colour'] ?? '#0f766e';
     $accentSoft = '#f0fdfa';
     $accentBorder = '#99f6e4';
+    $logoSrc = (string) (($branding['logo_src'] ?? '') ?: ($branding['logo_url'] ?? $branding['company_logo_url'] ?? ''));
+    $contactLine = (string) ($branding['contact_line'] ?? '');
 
     $subtotal = (float) ($invoice->subtotal_amount ?? $invoice->amount);
     $tax = (float) ($invoice->tax_amount ?? 0);
@@ -440,20 +443,24 @@
 
         <header class="doc-top">
             <div class="doc-top-left">
-                @if (! empty($branding['logo_url']))
-                    <img src="{{ $branding['logo_url'] }}" alt="" class="logo">
+                @if ($logoSrc !== '')
+                    <img src="{{ $logoSrc }}" alt="{{ $branding['company_name'] ?? 'Company' }} logo" class="logo">
                 @endif
                 <p class="company-name">{{ $branding['company_name'] ?? 'Property Manager' }}</p>
                 <div class="company-meta">
-                    @if (! empty($branding['address']))
-                        <div>{{ $branding['address'] }}</div>
-                    @endif
-                    @if (! empty($branding['phone']) || ! empty($branding['email']))
-                        <div>
-                            @if (! empty($branding['phone']))<span>{{ $branding['phone'] }}</span>@endif
-                            @if (! empty($branding['phone']) && ! empty($branding['email']))<span> · </span>@endif
-                            @if (! empty($branding['email']))<span>{{ $branding['email'] }}</span>@endif
-                        </div>
+                    @if ($contactLine !== '')
+                        <div>{{ $contactLine }}</div>
+                    @else
+                        @if (! empty($branding['address']))
+                            <div>{{ $branding['address'] }}</div>
+                        @endif
+                        @if (! empty($branding['phone']) || ! empty($branding['email']))
+                            <div>
+                                @if (! empty($branding['phone']))<span>{{ $branding['phone'] }}</span>@endif
+                                @if (! empty($branding['phone']) && ! empty($branding['email']))<span> · </span>@endif
+                                @if (! empty($branding['email']))<span>{{ $branding['email'] }}</span>@endif
+                            </div>
+                        @endif
                     @endif
                 </div>
             </div>

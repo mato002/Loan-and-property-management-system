@@ -1,4 +1,5 @@
 @php
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $accent = $branding['colour'] ?? '#0f766e';
 @endphp
 <!DOCTYPE html>
@@ -9,9 +10,6 @@
     <style>
         @page { size: A4 portrait; margin: 14mm; }
         body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #0f172a; margin: 0; }
-        .header { border-bottom: 3px solid {{ $accent }}; padding-bottom: 12px; margin-bottom: 16px; }
-        .company { font-size: 16pt; font-weight: bold; color: {{ $accent }}; }
-        .meta { margin-top: 8px; font-size: 9pt; color: #475569; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th { background: #f1f5f9; text-align: left; font-size: 8pt; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid #cbd5e1; }
         td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
@@ -24,18 +22,18 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="company">{{ $branding['company_name'] ?? 'Property Manager' }}</div>
-        <div class="meta">
-            <strong>Utility statement</strong> — {{ $tenant->name }}
-            @if ($tenant->phone) · {{ $tenant->phone }} @endif
-            <br>
-            Generated {{ $generatedAt }}
-            @if (($filters['from'] ?? '') || ($filters['to'] ?? ''))
-                · Period {{ $filters['from'] ?: 'start' }} to {{ $filters['to'] ?: 'today' }}
-            @endif
-        </div>
-    </div>
+    @include('property.partials.document_letterhead', [
+        'branding' => $branding,
+        'title' => 'Utility statement — '.$tenant->name,
+        'subtitle' => collect([
+            $tenant->phone ?: null,
+            'Generated '.$generatedAt,
+            (($filters['from'] ?? '') || ($filters['to'] ?? ''))
+                ? 'Period '.(($filters['from'] ?: 'start').' to '.($filters['to'] ?: 'today'))
+                : null,
+        ])->filter()->implode(' · '),
+        'variant' => 'pdf',
+    ])
 
     <div class="summary">
         <div class="summary-box">

@@ -39,16 +39,25 @@
 </style>
 </head>
 <body>
+@php
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $logoSrc = (string) (($branding['logo_src'] ?? '') ?: ($branding['logo_url'] ?? ''));
+    $contactLine = (string) ($branding['contact_line'] ?? '');
+@endphp
 <div class="header">
     <table>
         <tr>
             <td>
-                @if (!empty($branding['logo_url']))
-                    <img src="{{ $branding['logo_url'] }}" style="max-height:40px; max-width:160px;" alt="">
+                @if ($logoSrc !== '')
+                    <img src="{{ $logoSrc }}" style="max-height:48px; max-width:160px;" alt="{{ $branding['company_name'] ?? 'Company' }} logo">
                 @endif
                 <div class="company-name accent">{{ $branding['company_name'] ?? 'Property Manager' }}</div>
-                <div class="small">{{ $branding['address'] ?? '' }}</div>
-                <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email']))  -  {{ $branding['email'] }} @endif</div>
+                @if ($contactLine !== '')
+                    <div class="small">{{ $contactLine }}</div>
+                @else
+                    <div class="small">{{ $branding['address'] ?? '' }}</div>
+                    <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email']))  -  {{ $branding['email'] }} @endif</div>
+                @endif
             </td>
             <td class="meta">
                 <h1>{{ $invoice->isCreditNote() ? 'CREDIT NOTE' : 'INVOICE' }}</h1>

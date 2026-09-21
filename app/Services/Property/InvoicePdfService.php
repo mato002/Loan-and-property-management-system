@@ -16,6 +16,7 @@ class InvoicePdfService
 
         $options = new Options();
         $options->set('isRemoteEnabled', true);
+        $options->set('chroot', public_path());
         $options->set('defaultFont', 'DejaVu Sans');
 
         $dompdf = new Dompdf($options);
@@ -31,9 +32,11 @@ class InvoicePdfService
      */
     public function printViewData(PmInvoice $invoice): array
     {
+        $invoice->loadMissing(['unit.property']);
+
         return [
             'invoice' => $invoice,
-            'branding' => $this->branding(),
+            'branding' => $this->branding($this->agentUserIdForInvoice($invoice)),
             'payments' => $this->paymentInstructions(),
         ];
     }
@@ -41,26 +44,20 @@ class InvoicePdfService
     /**
      * @return array<string, mixed>
      */
-    public function branding(): array
+    public function branding(?int $agentUserId = null): array
     {
-        $b = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
+        $doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($agentUserId);
 
-        $defaults = [
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'address' => '',
-            'phone' => '',
-            'email' => PropertyPortalSetting::getValue('contact_email_primary', ''),
-            'logo_url' => PropertyPortalSetting::getValue('company_logo_url', ''),
-            'colour' => '#0f766e',
+        return array_merge($doc, [
             'footer_note' => 'Thank you for your business.',
-        ];
-        $merged = array_merge($defaults, is_array($decoded) ? $decoded : []);
-        if (trim((string) ($merged['logo_url'] ?? '')) === '') {
-            $merged['logo_url'] = PropertyPortalSetting::getValue('company_logo_url', '');
-        }
+        ]);
+    }
 
-        return $merged;
+    private function agentUserIdForInvoice(PmInvoice $invoice): ?int
+    {
+        $agentUserId = $invoice->unit?->property?->agent_user_id ?? null;
+
+        return $agentUserId ? (int) $agentUserId : null;
     }
 
     /**

@@ -165,7 +165,7 @@
                             <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusBadge }}">{{ ucfirst((string) $row['status']) }}</span>
                         </td>
                         <td class="px-3 py-3 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
-                            <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month']]) }}" class="text-xs font-medium text-indigo-700 hover:text-indigo-800">Detail</a>
+                            @include('property.agent.partials.landlord_fee_row_actions', ['row' => $row])
                         </td>
                     </tr>
                 @empty

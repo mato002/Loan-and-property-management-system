@@ -96,6 +96,14 @@ class PropertyHrEmployeesController extends Controller
 
             if ($isFieldOfficerList) {
                 $portfolioUrl = route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'], false);
+                $editUrl = route('property.hr.employees.edit', ['employee' => $employee->id], false);
+                $actions = new HtmlString(view('property.agent.hr.employees.partials.row_actions', [
+                    'employee' => $employee,
+                    'showUrl' => $showUrl,
+                    'editUrl' => $editUrl,
+                    'portfolioUrl' => $portfolioUrl,
+                    'isFieldOfficer' => true,
+                ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
                     new HtmlString(
@@ -108,8 +116,20 @@ class PropertyHrEmployeesController extends Controller
                     (string) ($portfolioStats['tenants'] ?? 0),
                     PropertyMoney::kes((float) ($portfolioStats['rent_portfolio'] ?? 0)),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
+                    $actions,
                 ];
             } else {
+                $editUrl = route('property.hr.employees.edit', ['employee' => $employee->id], false);
+                $portfolioUrl = $isFieldOfficer
+                    ? route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'], false)
+                    : null;
+                $actions = new HtmlString(view('property.agent.hr.employees.partials.row_actions', [
+                    'employee' => $employee,
+                    'showUrl' => $showUrl,
+                    'editUrl' => $editUrl,
+                    'portfolioUrl' => $portfolioUrl,
+                    'isFieldOfficer' => $isFieldOfficer,
+                ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
                     new HtmlString(
@@ -122,9 +142,7 @@ class PropertyHrEmployeesController extends Controller
                     (string) ($employee->job_title ?: '—'),
                     (string) ($employee->employment_status ?: '—'),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
-                    $isFieldOfficer
-                        ? new HtmlString('<a href="'.e(route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'], false)).'" data-turbo-frame="property-main" class="text-xs font-medium text-blue-600 hover:underline">View portfolio</a>')
-                        : new HtmlString('<span class="text-xs text-slate-400">—</span>'),
+                    $actions,
                 ];
             }
 
@@ -146,8 +164,8 @@ class PropertyHrEmployeesController extends Controller
             ];
 
         $columns = $isFieldOfficerList
-            ? ['Number', 'Name', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact']
-            : ['Number', 'Name', 'Department', 'Job title', 'Status', 'Contact', 'Portfolio'];
+            ? ['Number', 'Name', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact', 'Actions']
+            : ['Number', 'Name', 'Department', 'Job title', 'Status', 'Contact', 'Actions'];
 
         return property_view('property.agent.hr.employees.index', [
             'filters' => $filters,

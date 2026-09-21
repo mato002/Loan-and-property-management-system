@@ -186,13 +186,7 @@
                                 @endif
                             </td>
                             <td class="px-3 py-3 whitespace-nowrap">
-                                <div class="flex flex-wrap gap-2 text-xs">
-                                    <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month']]) }}" class="text-indigo-700 hover:text-indigo-800">Detail</a>
-                                    <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month'], 'export' => 'pdf']) }}" data-turbo="false" target="_blank" class="text-slate-700 hover:text-slate-900">PDF</a>
-                                    @if (! empty($row['payout_id']))
-                                        <a href="{{ route('property.accounting.payables.landlord_payouts', ['status' => $row['payout_status'] ?? '']) }}" class="text-emerald-700 hover:text-emerald-800">Payout #{{ $row['payout_id'] }}</a>
-                                    @endif
-                                </div>
+                                @include('property.agent.partials.landlord_fee_row_actions', ['row' => $row])
                             </td>
                         </tr>
                     @empty

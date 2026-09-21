@@ -1,6 +1,6 @@
-@php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Management System'))
-@php($logoRaw = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', '')))
-@php($logoUrl = $logoRaw !== '' ? ((str_starts_with($logoRaw, 'http://') || str_starts_with($logoRaw, 'https://') || str_starts_with($logoRaw, '/')) ? $logoRaw : \Illuminate\Support\Facades\Storage::url($logoRaw)) : null)
+@php($doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot())
+@php($brandName = $doc['company_name'])
+@php($logoUrl = $doc['logo_url'] !== '' ? $doc['logo_url'] : null)
 <x-property-layout>
     <x-slot name="header">Receipt #RCP-PAY-{{ $payment->id }}</x-slot>
 
@@ -35,6 +35,9 @@
                         @endif
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Payment receipt</p>
                     </div>
+                    @if (! empty($doc['contact_line']))
+                        <p class="mt-1 text-xs text-slate-500">{{ $doc['contact_line'] }}</p>
+                    @endif
                     <h2 class="mt-1 text-3xl font-black tracking-wide text-indigo-900 dark:text-indigo-200">INVOICE</h2>
                 </div>
                 <div class="text-left sm:text-right">

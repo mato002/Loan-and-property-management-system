@@ -167,6 +167,24 @@ final class LandlordSettlementService
         ]);
     }
 
+    /**
+     * Cancel a draft payout that has not been paid (manual or B2C).
+     */
+    public function voidDraftPayout(PmLandlordPayout $payout, User $actor): void
+    {
+        if ($payout->status !== 'draft') {
+            throw new RuntimeException('Only draft payouts can be voided.');
+        }
+        if ($payout->paid_at !== null || in_array((string) ($payout->payout_status ?? ''), ['pending', 'completed', 'success'], true)) {
+            throw new RuntimeException('This payout already has a payment in progress or completed.');
+        }
+
+        DB::transaction(function () use ($payout): void {
+            $payout->items()->delete();
+            $payout->delete();
+        });
+    }
+
     public function markPayoutPaid(PmLandlordPayout $payout, User $actor): void
     {
         if (! in_array($payout->status, ['draft', 'approved'], true)) {

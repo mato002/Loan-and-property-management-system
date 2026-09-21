@@ -20,6 +20,7 @@ import './property-portal-turbo';
 import './loan-portal-turbo';
 import './staff-module-switch';
 import './property-quick-create-select';
+import './property-searchable-select';
 import './property-listing-publish';
 import './property-invoice-create-sync';
 import './property-payment-reversal';
