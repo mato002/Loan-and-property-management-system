@@ -1,10 +1,10 @@
 <x-property-layout>
     @php
         $status = (string) ($filters['status'] ?? '');
-        $pageTitle = $status === 'matched' ? 'Matched Equity Payments' : 'All Equity Payments';
+        $pageTitle = $status === 'matched' ? 'Matched payments' : 'Payment ingest audit';
         $pageSubtitle = $status === 'matched'
-            ? 'Payments that have been successfully matched/posted from Equity and SMS ingest.'
-            : 'Full transaction audit including matched and unmatched items.';
+            ? 'Tenant-linked payments from every method this agent uses — not one bank only.'
+            : 'Ingest audit for paybill API, SMS, statement recovery, and manual rows.';
     @endphp
     <x-slot name="header">{{ $pageTitle }}</x-slot>
 
@@ -19,19 +19,19 @@
                 <p class="text-sm text-emerald-800">KES {{ number_format((float) ($sourceStats['all']['amount'] ?? 0), 2) }}</p>
             </div>
             <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-indigo-700">Equity API</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-indigo-700">Equity / paybill API</p>
                 <p class="mt-1 text-lg font-semibold text-indigo-900">{{ number_format((int) ($sourceStats['equity']['count'] ?? 0)) }} txns</p>
                 <p class="text-sm text-indigo-800">KES {{ number_format((float) ($sourceStats['equity']['amount'] ?? 0), 2) }}</p>
                 <p class="mt-1 text-xs font-medium text-indigo-700">{{ number_format((float) ($sourceStats['equity']['percent'] ?? 0), 1) }}% of total</p>
             </div>
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">SMS Ingest (M-Pesa/Equity)</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">SMS ingest</p>
                 <p class="mt-1 text-lg font-semibold text-amber-900">{{ number_format((int) ($sourceStats['sms_forwarder']['count'] ?? 0)) }} txns</p>
                 <p class="text-sm text-amber-800">KES {{ number_format((float) ($sourceStats['sms_forwarder']['amount'] ?? 0), 2) }}</p>
                 <p class="mt-1 text-xs font-medium text-amber-700">{{ number_format((float) ($sourceStats['sms_forwarder']['percent'] ?? 0), 1) }}% of total</p>
             </div>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-700">Manual / Legacy</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-700">Statement / manual / other</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ number_format((int) ($sourceStats['manual']['count'] ?? 0)) }} txns</p>
                 <p class="text-sm text-slate-700">KES {{ number_format((float) ($sourceStats['manual']['amount'] ?? 0), 2) }}</p>
                 <p class="mt-1 text-xs font-medium text-slate-700">{{ number_format((float) ($sourceStats['manual']['percent'] ?? 0), 1) }}% of total</p>
@@ -48,9 +48,9 @@
                     <thead class="bg-slate-50 text-slate-600">
                         <tr>
                             <th class="px-4 py-2 text-left font-semibold">Date</th>
-                            <th class="px-4 py-2 text-right font-semibold">Equity API</th>
-                            <th class="px-4 py-2 text-right font-semibold">SMS Ingest</th>
-                            <th class="px-4 py-2 text-right font-semibold">Manual / Legacy</th>
+                            <th class="px-4 py-2 text-right font-semibold">Paybill API</th>
+                            <th class="px-4 py-2 text-right font-semibold">SMS ingest</th>
+                            <th class="px-4 py-2 text-right font-semibold">Other</th>
                             <th class="px-4 py-2 text-right font-semibold">Total</th>
                         </tr>
                     </thead>
@@ -88,9 +88,9 @@
                 <label class="text-xs text-slate-500">Source</label>
                 <select name="source" class="block w-full rounded-xl border-slate-300 shadow-sm">
                     <option value="">All</option>
-                    <option value="equity" @selected($filters['source'] === 'equity')>Equity API</option>
-                    <option value="sms_forwarder" @selected($filters['source'] === 'sms_forwarder')>SMS Ingest (M-Pesa/Equity)</option>
-                    <option value="manual" @selected($filters['source'] === 'manual')>Manual / Legacy</option>
+                    <option value="equity" @selected($filters['source'] === 'equity')>Paybill API</option>
+                    <option value="sms_forwarder" @selected($filters['source'] === 'sms_forwarder')>SMS ingest</option>
+                    <option value="manual" @selected($filters['source'] === 'manual')>Statement / manual / other</option>
                 </select>
             </div>
             <div>
@@ -175,11 +175,13 @@
                             <td class="px-4 py-3">{{ $item->transaction_id }}</td>
                             <td class="px-4 py-3">
                                 @if ($item->payment_method === 'equity')
-                                    <span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">Equity API</span>
+                                    <span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">Paybill API</span>
                                 @elseif ($item->payment_method === 'sms_forwarder')
-                                    <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">SMS Ingest</span>
+                                    <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">SMS ingest</span>
+                                @elseif ($item->payment_method === 'statement_import')
+                                    <span class="inline-flex items-center rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-800">Bank statement</span>
                                 @else
-                                    <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Manual / Legacy</span>
+                                    <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Manual / other</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3">{{ $displayTenantName }}</td>

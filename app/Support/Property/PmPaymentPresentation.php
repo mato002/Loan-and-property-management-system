@@ -81,6 +81,40 @@ final class PmPaymentPresentation
         };
     }
 
+    public static function methodGroupFromChannel(?string $channel): string
+    {
+        $key = strtolower(trim((string) $channel));
+
+        return match ($key) {
+            'mpesa', 'mpesa_sms_ingest', 'mpesa_stk', 'mpesa_c2b', 'c2b' => 'M-Pesa',
+            'equity_paybill', 'equity' => 'Equity',
+            'bank', 'bank_transfer' => 'Bank',
+            'cash' => 'Cash',
+            'card' => 'Card',
+            'cheque' => 'Cheque',
+            'ezen_import', 'ezen_receipt' => 'Register import',
+            'statement_import' => 'Statement',
+            '' => 'Unspecified',
+            default => ucfirst(str_replace('_', ' ', $key)),
+        };
+    }
+
+    public static function originLabel(PmPayment $payment): string
+    {
+        $source = strtolower(trim((string) data_get($payment->meta, 'source', '')));
+
+        return match (true) {
+            $source === '' => 'Manual',
+            str_contains($source, 'ezen') => 'EZEN register',
+            str_contains($source, 'statement') => 'Bank statement',
+            str_contains($source, 'equity') => 'Equity',
+            str_contains($source, 'sms') => 'SMS ingest',
+            str_contains($source, 'c2b') => 'M-Pesa C2B',
+            $source === 'manual' => 'Manual',
+            default => ucfirst(str_replace('_', ' ', $source)),
+        };
+    }
+
     public static function propertyUnit(PmPayment $payment, string $empty = '—'): string|HtmlString
     {
         if ($payment->relationLoaded('allocations')) {

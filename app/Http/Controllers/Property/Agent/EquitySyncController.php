@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\EquitySyncRun;
 use App\Models\Payment;
+use App\Models\PmPayment;
 use App\Models\PmSmsIngest;
 use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
@@ -15,6 +16,7 @@ use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
 use App\Support\Property\BankIntegrationConfig;
 use App\Support\Property\BankIntegrationRegistry;
+use App\Support\Property\PmPaymentPresentation;
 use App\Support\MpesaSmsForwarderParser;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -185,9 +187,23 @@ class EquitySyncController extends Controller
 
         $this->enrichUnmatchedItems($items->getCollection(), $hasPaymentMethod);
 
+        $sourceOptions = $hasPaymentMethod
+            ? UnassignedPayment::query()
+                ->whereNotNull('payment_method')
+                ->where('payment_method', '!=', '')
+                ->distinct()
+                ->orderBy('payment_method')
+                ->pluck('payment_method')
+                ->mapWithKeys(fn ($method) => [
+                    (string) $method => $this->unmatchedSourceLabel((string) $method),
+                ])
+                ->all()
+            : [];
+
         return property_view('property.agent.equity.unmatched_payments', [
             'items' => $items,
             'hasPaymentMethod' => $hasPaymentMethod,
+            'sourceOptions' => $sourceOptions,
             'filters' => [
                 'q' => (string) $request->query('q', ''),
                 'name' => (string) $request->query('name', ''),
@@ -225,7 +241,7 @@ class EquitySyncController extends Controller
                     number_format((float) $item->amount, 2, '.', ''),
                     (string) ($item->account_number ?? ''),
                     (string) ($item->phone ?? ''),
-                    (string) ($item->source_label ?? 'Equity'),
+                    (string) ($item->source_label ?? 'Unknown'),
                     (string) ($item->display_message ?? ''),
                     (string) ($item->reason ?? ''),
                 ];
@@ -275,7 +291,7 @@ class EquitySyncController extends Controller
                     number_format((float) $item->amount, 2, '.', ''),
                     (string) ($item->account_number ?? ''),
                     (string) ($item->phone ?? ''),
-                    (string) ($item->source_label ?? 'Equity'),
+                    (string) ($item->source_label ?? 'Unknown'),
                     (string) ($item->display_message ?? ''),
                     (string) ($item->reason ?? ''),
                 ];
@@ -668,8 +684,15 @@ class EquitySyncController extends Controller
         $equityAmount = (float) data_get($sourceStats, 'equity.total', 0);
         $smsCount = (int) data_get($sourceStats, 'sms_forwarder.c', 0);
         $smsAmount = (float) data_get($sourceStats, 'sms_forwarder.total', 0);
-        $manualCount = (int) data_get($sourceStats, 'manual.c', 0);
-        $manualAmount = (float) data_get($sourceStats, 'manual.total', 0);
+        $manualCount = 0;
+        $manualAmount = 0.0;
+        foreach ($sourceStats as $method => $row) {
+            if (in_array((string) $method, ['equity', 'sms_forwarder'], true)) {
+                continue;
+            }
+            $manualCount += (int) ($row->c ?? 0);
+            $manualAmount += (float) ($row->total ?? 0);
+        }
         $allCount = $equityCount + $smsCount + $manualCount;
         $allAmount = $equityAmount + $smsAmount + $manualAmount;
 
@@ -688,7 +711,16 @@ class EquitySyncController extends Controller
             $query->where('status', (string) $request->query('status'));
         }
         if ($request->filled('source')) {
-            $query->where('payment_method', (string) $request->query('source'));
+            $source = (string) $request->query('source');
+            if ($source === 'manual') {
+                $query->where(function (Builder $inner) {
+                    $inner->whereNull('payment_method')
+                        ->orWhere('payment_method', '')
+                        ->orWhereNotIn('payment_method', ['equity', 'sms_forwarder']);
+                });
+            } else {
+                $query->where('payment_method', $source);
+            }
         }
         if ($request->filled('tenant_id')) {
             $query->where('tenant_id', (int) $request->query('tenant_id'));
@@ -729,11 +761,11 @@ class EquitySyncController extends Controller
                 function () use ($rows) {
                     foreach ($rows as $item) {
                         $source = match ((string) $item->payment_method) {
-                            'equity' => 'Equity API',
-                            'sms_forwarder' => 'SMS Ingest',
+                            'equity' => 'Paybill API',
+                            'sms_forwarder' => 'SMS ingest',
                             'mpesa_c2b' => 'M-Pesa C2B',
-                            'statement_import' => 'Statement upload',
-                            default => 'Manual / Legacy',
+                            'statement_import' => 'Bank statement',
+                            default => 'Manual / other',
                         };
                         yield [
                             optional($item->transaction_date)->format('Y-m-d H:i:s'),
@@ -875,12 +907,166 @@ class EquitySyncController extends Controller
         ]);
     }
 
-    public function matchedPayments(Request $request): View
+    public function matchedPayments(Request $request): View|StreamedResponse
     {
-        // Dedicated page: defaults to `status=matched` while still allowing further filtering.
-        $request->query->set('status', $request->query->get('status', 'matched') ?: 'matched');
+        $qText = trim((string) $request->query('q', ''));
+        $channel = strtolower(trim((string) $request->query('channel', '')));
+        $from = (string) $request->query('from', '');
+        $to = (string) $request->query('to', '');
+        $tenantId = max(0, (int) $request->query('tenant_id', 0));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
-        return $this->allPayments($request);
+        $base = PmPayment::query()
+            ->whereNotNull('pm_tenant_id')
+            ->where('pm_tenant_id', '>', 0)
+            ->where('status', '!=', PmPayment::STATUS_FAILED);
+
+        $applyFilters = function ($query) use ($qText, $channel, $from, $to, $tenantId) {
+            if ($channel !== '') {
+                $query->whereRaw('LOWER(COALESCE(channel, "")) = ?', [$channel]);
+            }
+            if ($tenantId > 0) {
+                $query->where('pm_tenant_id', $tenantId);
+            }
+            if ($from !== '') {
+                $query->whereDate('paid_at', '>=', $from);
+            }
+            if ($to !== '') {
+                $query->whereDate('paid_at', '<=', $to);
+            }
+            if ($qText !== '') {
+                $query->where(function ($inner) use ($qText) {
+                    $inner->where('external_ref', 'like', '%'.$qText.'%')
+                        ->orWhere('channel', 'like', '%'.$qText.'%')
+                        ->orWhere('id', $qText)
+                        ->orWhereHas('tenant', function ($tq) use ($qText) {
+                            $tq->where('name', 'like', '%'.$qText.'%')
+                                ->orWhere('phone', 'like', '%'.$qText.'%')
+                                ->orWhere('account_number', 'like', '%'.$qText.'%');
+                        });
+                });
+            }
+
+            return $query;
+        };
+
+        $listQuery = $applyFilters(
+            (clone $base)->with([
+                'tenant',
+                'allocations.invoice.unit.property',
+                'allocations.invoice.tenant',
+            ])
+        )->orderByDesc('paid_at')->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
+            $rows = (clone $listQuery)->limit(10000)->get();
+
+            return TabularExport::stream(
+                'matched-payments-'.now()->format('Ymd_His'),
+                ['Date', 'Reference', 'Method', 'Origin', 'Tenant', 'Account', 'Phone', 'Amount', 'Property / unit'],
+                function () use ($rows) {
+                    foreach ($rows as $payment) {
+                        yield [
+                            $payment->paid_at?->format('Y-m-d H:i:s') ?? '',
+                            PmPaymentPresentation::transactionRef($payment, (string) ($payment->external_ref ?: 'PAY-'.$payment->id)),
+                            PmPaymentPresentation::paymentMethod($payment, PmPaymentPresentation::methodGroupFromChannel($payment->channel)),
+                            PmPaymentPresentation::originLabel($payment),
+                            (string) ($payment->tenant?->name ?? ''),
+                            (string) ($payment->tenant?->account_number ?? ''),
+                            PmPaymentPresentation::payerPhone($payment, ''),
+                            number_format((float) $payment->amount, 2, '.', ''),
+                            strip_tags((string) PmPaymentPresentation::propertyUnit($payment, '')),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $channelRows = (clone $base)
+            ->selectRaw('LOWER(COALESCE(channel, "")) as channel, COUNT(*) as c, COALESCE(SUM(amount),0) as total')
+            ->groupByRaw('LOWER(COALESCE(channel, ""))')
+            ->orderByDesc('total')
+            ->get();
+
+        $methodStats = [];
+        $allCount = 0;
+        $allAmount = 0.0;
+        foreach ($channelRows as $row) {
+            $label = PmPaymentPresentation::methodGroupFromChannel((string) $row->channel);
+            if (! isset($methodStats[$label])) {
+                $methodStats[$label] = ['label' => $label, 'count' => 0, 'amount' => 0.0];
+            }
+            $methodStats[$label]['count'] += (int) $row->c;
+            $methodStats[$label]['amount'] += (float) $row->total;
+            $allCount += (int) $row->c;
+            $allAmount += (float) $row->total;
+        }
+        uasort($methodStats, fn ($a, $b) => $b['amount'] <=> $a['amount']);
+
+        $channelOptions = $channelRows
+            ->mapWithKeys(function ($row) {
+                $raw = (string) $row->channel;
+
+                return [$raw => PmPaymentPresentation::methodGroupFromChannel($raw)];
+            })
+            ->all();
+
+        $trendFrom = now()->startOfDay()->subDays(6);
+        $trendRaw = (clone $base)
+            ->selectRaw('DATE(paid_at) as d, LOWER(COALESCE(channel, "")) as channel, COALESCE(SUM(amount),0) as total')
+            ->whereDate('paid_at', '>=', $trendFrom->toDateString())
+            ->groupByRaw('DATE(paid_at), LOWER(COALESCE(channel, ""))')
+            ->orderByRaw('DATE(paid_at) asc')
+            ->get();
+
+        $trendMethods = array_keys($methodStats);
+        if ($trendMethods === []) {
+            $trendMethods = ['M-Pesa'];
+        }
+        $trendByDay = [];
+        for ($i = 0; $i < 7; $i++) {
+            $day = $trendFrom->copy()->addDays($i)->toDateString();
+            $row = ['date' => $day, 'total' => 0.0];
+            foreach ($trendMethods as $method) {
+                $row[$method] = 0.0;
+            }
+            $trendByDay[$day] = $row;
+        }
+        foreach ($trendRaw as $row) {
+            $day = (string) ($row->d ?? '');
+            if (! isset($trendByDay[$day])) {
+                continue;
+            }
+            $label = PmPaymentPresentation::methodGroupFromChannel((string) $row->channel);
+            $amount = (float) ($row->total ?? 0);
+            if (! array_key_exists($label, $trendByDay[$day])) {
+                $label = $trendMethods[0] ?? 'M-Pesa';
+            }
+            $trendByDay[$day][$label] = ($trendByDay[$day][$label] ?? 0) + $amount;
+            $trendByDay[$day]['total'] += $amount;
+        }
+
+        $items = $listQuery->paginate($perPage)->withQueryString();
+
+        return property_view('property.agent.revenue.matched_payments', [
+            'items' => $items,
+            'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
+            'methodStats' => array_values($methodStats),
+            'totals' => ['count' => $allCount, 'amount' => $allAmount],
+            'channelOptions' => $channelOptions,
+            'trendMethods' => $trendMethods,
+            'sourceTrend' => array_values($trendByDay),
+            'filters' => [
+                'q' => $qText,
+                'channel' => $channel,
+                'tenant_id' => $tenantId > 0 ? (string) $tenantId : '',
+                'from' => $from,
+                'to' => $to,
+                'per_page' => (string) $perPage,
+            ],
+        ]);
     }
 
     private function notReadyView(string $reason): View
@@ -939,8 +1125,8 @@ class EquitySyncController extends Controller
             }
         }
         if ($hasPaymentMethod && $request->filled('source')) {
-            $source = strtolower((string) $request->query('source'));
-            if (in_array($source, ['equity', 'sms_forwarder'], true)) {
+            $source = strtolower(trim((string) $request->query('source')));
+            if ($source !== '') {
                 $query->where('payment_method', $source);
             }
         }
@@ -1072,16 +1258,26 @@ class EquitySyncController extends Controller
         if ($ingest !== null) {
             $provider = strtolower((string) ($ingest->provider ?? ''));
             if ($provider !== '') {
-                return 'SMS Ingest ('.strtoupper($provider).')';
+                return 'SMS ingest ('.strtoupper($provider).')';
             }
 
-            return 'SMS Ingest';
-        }
-        if ($paymentMethod === 'sms_forwarder') {
-            return 'SMS Ingest';
+            return 'SMS ingest';
         }
 
-        return 'Equity';
+        return $this->unmatchedSourceLabel($paymentMethod);
+    }
+
+    private function unmatchedSourceLabel(string $paymentMethod): string
+    {
+        return match (strtolower(trim($paymentMethod))) {
+            'sms_forwarder' => 'SMS ingest',
+            'statement_import' => 'Bank statement',
+            'mpesa_c2b', 'c2b' => 'M-Pesa C2B',
+            'equity' => 'Equity',
+            'manual' => 'Manual',
+            '' => 'Unknown',
+            default => ucfirst(str_replace('_', ' ', $paymentMethod)),
+        };
     }
 
     private function resolvePayerName(string $message, mixed $payload): string
