@@ -803,6 +803,10 @@ class PmTenantDirectoryController extends Controller
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('national_id', 'like', "%{$search}%");
+
+                if (Schema::hasColumn('pm_tenants', 'account_number')) {
+                    $builder->orWhere('account_number', 'like', "%{$search}%");
+                }
             });
         }
 

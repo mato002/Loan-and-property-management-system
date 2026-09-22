@@ -17,7 +17,7 @@
     ]"
 >
     <x-slot name="primary">
-        <x-property.filter-field type="search" name="q" placeholder="Search name, phone, email, ID…" :value="$filters['q'] ?? ''" wide />
+        <x-property.filter-field type="search" name="q" placeholder="Search name, Ac/No, phone, email, ID…" :value="$filters['q'] ?? ''" wide />
         <x-property.filter-field type="select"
             name="compliance"
             label="Compliance"

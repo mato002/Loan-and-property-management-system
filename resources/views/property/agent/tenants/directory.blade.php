@@ -52,6 +52,11 @@
                                 {{ $group['label'] }} · {{ $group['key'] }}
                                 <span class="ml-1 font-normal normal-case">({{ $group['count'] }} records)</span>
                             </p>
+                            <a
+                                href="{{ route('property.tenants.directory', ['q' => $group['key']], false) }}"
+                                data-turbo-frame="property-main"
+                                class="mt-1 inline-flex text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
+                            >Show in table</a>
                             <ul class="mt-2 divide-y divide-amber-100 dark:divide-amber-900/50">
                                 @foreach ($group['tenants'] as $dup)
                                     <li class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
