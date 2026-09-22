@@ -194,6 +194,7 @@ final class PropertyWorkspaceTabs
         // Keep Collections tabs on statement line review — it is a register view, not an entity form.
         $keepWorkspaceTabs = [
             'property.revenue.statements.show',
+            'property.payments.receipt.show',
         ];
 
         if (! in_array($routeName, $keepWorkspaceTabs, true)) {
