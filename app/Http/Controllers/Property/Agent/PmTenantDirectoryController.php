@@ -66,7 +66,8 @@ class PmTenantDirectoryController extends Controller
                 $query->where('status', PmLease::STATUS_ACTIVE)
                     ->orderByDesc('start_date');
             }])
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get();
         $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
@@ -330,7 +331,8 @@ class PmTenantDirectoryController extends Controller
                     ->with(['units.property'])
                     ->orderByDesc('start_date');
             }])
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
 

@@ -2,6 +2,25 @@
     $appName = $appName ?? config('app.name', 'Property ERP');
     $catalog = $catalog ?? [];
     $selectedType = $selectedType ?? array_key_first($catalog);
+    $lastImportResult = is_array($lastImportResult ?? null)
+        ? $lastImportResult
+        : (is_array(session('register_import_last_result')) ? session('register_import_last_result') : null);
+    $lastSummary = is_array($lastImportResult['summary'] ?? null) ? $lastImportResult['summary'] : [];
+    $lastWarnings = is_array($lastImportResult['warnings'] ?? null) ? $lastImportResult['warnings'] : [];
+    $lastErrors = is_array($lastImportResult['errors'] ?? null) ? $lastImportResult['errors'] : [];
+    $countKeys = [
+        'parsed' => 'Parsed',
+        'tenants_created' => 'Tenants created',
+        'tenants_updated' => 'Tenants updated',
+        'leases_created' => 'Leases created',
+        'leases_updated' => 'Leases updated',
+        'leases_terminated' => 'Leases terminated',
+        'units_linked' => 'Units linked',
+        'imported' => 'Imported',
+        'register_upserted' => 'Register upserted',
+        'matched' => 'Matched',
+        'unmatched' => 'Unmatched',
+    ];
 @endphp
 <x-property.workspace
     title="Register imports"
@@ -24,6 +43,73 @@
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
+        </div>
+    @endif
+
+    @if ($lastImportResult)
+        <div id="last-import-result" class="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm scroll-mt-24">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-900">Last import result</h2>
+                    <p class="mt-1 text-xs text-slate-500">
+                        {{ $lastImportResult['label'] ?? 'Import' }}
+                        · {{ ! empty($lastImportResult['dry_run']) ? 'Dry run' : 'Written' }}
+                        @if (! empty($lastImportResult['ran_at']))
+                            · {{ $lastImportResult['ran_at'] }}
+                        @endif
+                    </p>
+                </div>
+                <p class="text-xs text-slate-500">Stays on this page after you close the success popup. Replaced when you run another import.</p>
+            </div>
+
+            @if (! empty($lastImportResult['message']))
+                <p class="mt-3 text-sm text-slate-700">{{ $lastImportResult['message'] }}</p>
+            @endif
+
+            <div class="mt-3 flex flex-wrap gap-2">
+                @foreach ($countKeys as $key => $label)
+                    @if (isset($lastSummary[$key]) && ! is_array($lastSummary[$key]))
+                        <span class="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                            {{ $label }}: <span class="ml-1 tabular-nums font-semibold">{{ $lastSummary[$key] }}</span>
+                        </span>
+                    @endif
+                @endforeach
+                @if (count($lastWarnings) > 0)
+                    <span class="inline-flex items-center rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                        Warnings: {{ count($lastWarnings) }}
+                    </span>
+                @endif
+                @if (count($lastErrors) > 0)
+                    <span class="inline-flex items-center rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-900">
+                        Errors: {{ count($lastErrors) }}
+                    </span>
+                @endif
+            </div>
+
+            @if (count($lastWarnings) > 0)
+                <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-sm font-semibold">Warnings ({{ count($lastWarnings) }})</h3>
+                        <a href="#last-import-warnings" class="text-xs font-semibold text-amber-800 hover:underline">Jump to list</a>
+                    </div>
+                    <ul id="last-import-warnings" class="mt-2 max-h-72 overflow-y-auto list-disc space-y-1 pl-5 text-sm">
+                        @foreach ($lastWarnings as $warning)
+                            <li class="break-words">{{ $warning }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if (count($lastErrors) > 0)
+                <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-950">
+                    <h3 class="text-sm font-semibold">Errors ({{ count($lastErrors) }})</h3>
+                    <ul class="mt-2 max-h-72 overflow-y-auto list-disc space-y-1 pl-5 text-sm">
+                        @foreach ($lastErrors as $error)
+                            <li class="break-words">{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
         </div>
     @endif
 

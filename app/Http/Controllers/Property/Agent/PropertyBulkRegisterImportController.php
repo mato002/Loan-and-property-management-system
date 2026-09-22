@@ -19,6 +19,7 @@ class PropertyBulkRegisterImportController extends Controller
             'appName' => $appName,
             'catalog' => PropertyBulkRegisterImportService::catalog(),
             'selectedType' => old('import_type', PropertyBulkRegisterImportService::TYPE_TENANTS_LEASES),
+            'lastImportResult' => session('register_import_last_result'),
         ]);
     }
 
@@ -87,11 +88,25 @@ class PropertyBulkRegisterImportController extends Controller
 
         $summary = $result['summary'];
         $errors = is_array($summary['errors'] ?? null) ? $summary['errors'] : [];
+        $warnings = is_array($summary['warnings'] ?? null) ? $summary['warnings'] : [];
         $message = PropertyBulkRegisterImportService::formatSummaryMessage(
             $type,
             $summary,
             (bool) $options['dry_run'],
         );
+
+        $lastResult = [
+            'type' => $type,
+            'label' => PropertyBulkRegisterImportService::catalog()[$type]['label'] ?? $type,
+            'dry_run' => (bool) $options['dry_run'],
+            'message' => $message,
+            'summary' => $summary,
+            'warnings' => $warnings,
+            'errors' => $errors,
+            'ran_at' => now()->format('Y-m-d H:i:s'),
+        ];
+        // Persist until the next import so warnings remain visible after SweetAlert is dismissed.
+        $request->session()->put('register_import_last_result', $lastResult);
 
         if ($errors !== []) {
             return redirect()
@@ -103,7 +118,6 @@ class PropertyBulkRegisterImportController extends Controller
 
         return redirect()
             ->route('property.settings.register_imports')
-            ->with('status', $message)
-            ->with('import_summary', $summary);
+            ->with('status', $message);
     }
 }
