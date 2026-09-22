@@ -32,9 +32,9 @@
             >
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <p class="text-sm font-semibold">Possible duplicates ({{ count($duplicateGroups) }} group{{ count($duplicateGroups) === 1 ? '' : 's' }})</p>
+                        <p class="text-sm font-semibold">Tenant data checks ({{ count($duplicateGroups) }} group{{ count($duplicateGroups) === 1 ? '' : 's' }})</p>
                         <p class="mt-0.5 text-xs text-amber-800/90 dark:text-amber-200/90">
-                            Same name, phone, or account number. Open each profile to compare, then merge or delete the extra record if needed.
+                            True duplicates (same phone/Ac/No) and legacy placeholder names. Same person on two units is kept as two profiles — matching Ezen — and is not listed here.
                         </p>
                     </div>
                     <button
@@ -47,17 +47,35 @@
 
                 <div x-show="open" x-cloak class="mt-3 space-y-3">
                     @foreach ($duplicateGroups as $group)
-                        <div class="rounded-xl border border-amber-200/80 bg-white/80 px-3 py-2.5 dark:border-amber-800 dark:bg-slate-900/50">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                        @php
+                            $severity = (string) ($group['severity'] ?? 'warning');
+                            $boxClass = match ($severity) {
+                                'danger' => 'border-rose-200/80 bg-white/80 dark:border-rose-800 dark:bg-slate-900/50',
+                                'info' => 'border-sky-200/80 bg-white/80 dark:border-sky-800 dark:bg-slate-900/50',
+                                default => 'border-amber-200/80 bg-white/80 dark:border-amber-800 dark:bg-slate-900/50',
+                            };
+                            $titleClass = match ($severity) {
+                                'danger' => 'text-rose-800 dark:text-rose-200',
+                                'info' => 'text-sky-800 dark:text-sky-200',
+                                default => 'text-amber-800 dark:text-amber-200',
+                            };
+                        @endphp
+                        <div class="rounded-xl border px-3 py-2.5 {{ $boxClass }}">
+                            <p class="text-xs font-semibold uppercase tracking-wide {{ $titleClass }}">
                                 {{ $group['label'] }} · {{ $group['key'] }}
                                 <span class="ml-1 font-normal normal-case">({{ $group['count'] }} records)</span>
                             </p>
-                            <a
-                                href="{{ route('property.tenants.directory', ['q' => $group['key']], false) }}"
-                                data-turbo-frame="property-main"
-                                class="mt-1 inline-flex text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
-                            >Show in table</a>
-                            <ul class="mt-2 divide-y divide-amber-100 dark:divide-amber-900/50">
+                            @if (! empty($group['note']))
+                                <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">{{ $group['note'] }}</p>
+                            @endif
+                            @if (($group['type'] ?? '') !== 'placeholder')
+                                <a
+                                    href="{{ route('property.tenants.directory', ['q' => $group['key']], false) }}"
+                                    data-turbo-frame="property-main"
+                                    class="mt-1 inline-flex text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
+                                >Show in table</a>
+                            @endif
+                            <ul class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
                                 @foreach ($group['tenants'] as $dup)
                                     <li class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                                         <div class="min-w-0 text-sm">
@@ -65,7 +83,7 @@
                                             <p class="text-xs text-slate-600 dark:text-slate-300 break-all">
                                                 Ac/No {{ $dup['account_number'] }}
                                                 · {{ $dup['phone'] }}
-                                                · {{ $dup['email'] }}
+                                                · {{ $dup['unit'] ?? '—' }}
                                                 · added {{ $dup['created_at'] }}
                                             </p>
                                         </div>

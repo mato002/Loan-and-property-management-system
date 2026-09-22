@@ -23,7 +23,7 @@ final class PassionLegacyLeasesImportService
      */
     public function importFromPath(string $path, int $agentUserId, bool $dryRun = false, bool $updateExisting = true): array
     {
-        $records = $this->parser->parse($this->extractor->extract($path));
+        $records = $this->parseBestRecords($path);
 
         $summary = [
             'dry_run' => $dryRun,
@@ -66,6 +66,35 @@ final class PassionLegacyLeasesImportService
         }
 
         return $summary;
+    }
+
+    /**
+     * Try every PDF text extract and keep the parse with the most lease rows.
+     * Longer extracts are sometimes more fragmented and parse worse.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function parseBestRecords(string $path): array
+    {
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $candidates = in_array($extension, ['txt', 'text', 'log', 'csv'], true)
+            ? [$this->extractor->extract($path)]
+            : $this->extractor->extractCandidates($path);
+
+        if ($candidates === []) {
+            // Fall back to the normal extractor error path.
+            $candidates = [$this->extractor->extract($path)];
+        }
+
+        $best = [];
+        foreach ($candidates as $text) {
+            $parsed = $this->parser->parse($text);
+            if (count($parsed) > count($best)) {
+                $best = $parsed;
+            }
+        }
+
+        return $best;
     }
 
     /**

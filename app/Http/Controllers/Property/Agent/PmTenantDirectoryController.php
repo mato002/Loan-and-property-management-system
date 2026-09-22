@@ -423,9 +423,12 @@ class PmTenantDirectoryController extends Controller
     }
 
     /**
-     * Groups of tenants that share the same name, phone, or account number.
+     * Groups of tenants that look like true duplicates (not multi-unit same person).
      *
-     * @return list<array{type: string, label: string, key: string, count: int, tenants: list<array<string, mixed>>}>
+     * Same name on different units is normal in Ezen (one person booked as two residents)
+     * and is excluded from merge warnings.
+     *
+     * @return list<array{type: string, label: string, key: string, count: int, severity: string, note: string|null, tenants: list<array<string, mixed>>}>
      */
     private function tenantDuplicateGroups(): array
     {
@@ -452,12 +455,29 @@ class PmTenantDirectoryController extends Controller
 
             $tenants = PmTenant::query()
                 ->where('name', $key)
+                ->with(['leases' => function ($query): void {
+                    $query->where('status', PmLease::STATUS_ACTIVE)
+                        ->with(['units.property'])
+                        ->orderByDesc('start_date');
+                }])
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->limit(20)
-                ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+                ->get();
 
             if ($tenants->count() < 2) {
+                continue;
+            }
+
+            $unitKeys = $tenants
+                ->map(fn (PmTenant $t) => $this->activeUnitKey($t))
+                ->filter()
+                ->values();
+            $uniqueUnits = $unitKeys->unique()->count();
+            $hasDistinctUnits = $unitKeys->count() >= 2 && $uniqueUnits === $unitKeys->count();
+
+            // One person booked on two units → two TNT rows in Ezen; not a merge candidate.
+            if ($hasDistinctUnits) {
                 continue;
             }
 
@@ -466,6 +486,8 @@ class PmTenantDirectoryController extends Controller
                 'label' => 'Same name',
                 'key' => $key,
                 'count' => (int) $row->c,
+                'severity' => 'warning',
+                'note' => 'Same name without distinct units — compare before merging.',
                 'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
             ];
         }
@@ -489,10 +511,15 @@ class PmTenantDirectoryController extends Controller
 
                 $tenants = PmTenant::query()
                     ->where('phone', $key)
+                    ->with(['leases' => function ($query): void {
+                        $query->where('status', PmLease::STATUS_ACTIVE)
+                            ->with(['units.property'])
+                            ->orderByDesc('start_date');
+                    }])
                     ->orderByDesc('created_at')
                     ->orderByDesc('id')
                     ->limit(20)
-                    ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+                    ->get();
 
                 if ($tenants->count() < 2) {
                     continue;
@@ -503,6 +530,8 @@ class PmTenantDirectoryController extends Controller
                     'label' => 'Same phone',
                     'key' => $key,
                     'count' => (int) $row->c,
+                    'severity' => 'warning',
+                    'note' => 'Shared phone across tenant profiles.',
                     'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
                 ];
             }
@@ -527,9 +556,14 @@ class PmTenantDirectoryController extends Controller
 
                 $tenants = PmTenant::query()
                     ->where('account_number', $key)
+                    ->with(['leases' => function ($query): void {
+                        $query->where('status', PmLease::STATUS_ACTIVE)
+                            ->with(['units.property'])
+                            ->orderByDesc('start_date');
+                    }])
                     ->orderByDesc('id')
                     ->limit(20)
-                    ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+                    ->get();
 
                 if ($tenants->count() < 2) {
                     continue;
@@ -540,25 +574,74 @@ class PmTenantDirectoryController extends Controller
                     'label' => 'Same account number',
                     'key' => $key,
                     'count' => (int) $row->c,
+                    'severity' => 'danger',
+                    'note' => 'Identical Ac/No — almost certainly a true duplicate.',
                     'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
                 ];
             }
         }
 
+        // Placeholder names from legacy registers inflate the tenant count vs Ezen.
+        $placeholders = PmTenant::query()
+            ->where(function ($query) use ($placeholderNames): void {
+                foreach ($placeholderNames as $placeholder) {
+                    $query->orWhereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper($placeholder)]);
+                }
+            })
+            ->with(['leases' => function ($query): void {
+                $query->where('status', PmLease::STATUS_ACTIVE)
+                    ->with(['units.property'])
+                    ->orderByDesc('start_date');
+            }])
+            ->orderBy('name')
+            ->orderBy('id')
+            ->limit(40)
+            ->get();
+
+        if ($placeholders->isNotEmpty()) {
+            $groups[] = [
+                'type' => 'placeholder',
+                'label' => 'Placeholder names (legacy)',
+                'key' => 'OCCP / OCCUPIED / VACANT…',
+                'count' => $placeholders->count(),
+                'severity' => 'info',
+                'note' => 'Imported when the old register had no real resident name. These often explain a higher tenant count than Ezen. Rename to the real tenant or remove if the unit should be vacant.',
+                'tenants' => $placeholders->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+            ];
+        }
+
         return $groups;
     }
 
+    private function activeUnitKey(PmTenant $tenant): ?string
+    {
+        $unit = $tenant->leases->first()?->units->first();
+        if (! $unit) {
+            return null;
+        }
+
+        return (int) $unit->property_id.'|'.mb_strtoupper(trim((string) $unit->label));
+    }
+
     /**
-     * @return array{id: int, name: string, account_number: string, phone: string, email: string, created_at: string, show_url: string}
+     * @return array{id: int, name: string, account_number: string, phone: string, email: string, unit: string, created_at: string, show_url: string}
      */
     private function duplicateTenantCard(PmTenant $tenant): array
     {
+        $unit = $tenant->relationLoaded('leases')
+            ? $tenant->leases->first()?->units->first()
+            : null;
+        $unitLabel = $unit
+            ? trim(($unit->property->name ?? '').' / '.$unit->label, ' /')
+            : '—';
+
         return [
             'id' => (int) $tenant->id,
             'name' => (string) $tenant->name,
             'account_number' => (string) ($tenant->account_number ?: '—'),
             'phone' => (string) ($tenant->phone ?: '—'),
             'email' => (string) ($tenant->email ?: '—'),
+            'unit' => $unitLabel !== '' ? $unitLabel : '—',
             'created_at' => $tenant->created_at?->format('Y-m-d H:i') ?? '—',
             'show_url' => route('property.tenants.show', $tenant, false),
         ];
