@@ -12,10 +12,16 @@
         ? $branding
         : \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $company = (string) ($doc['company_name'] ?? 'Property Manager');
-    $logoSrc = (string) (($doc['logo_src'] ?? '') ?: ($doc['logo_url'] ?? $doc['company_logo_url'] ?? ''));
+    $logoSrc = (string) (($doc['logo_embed'] ?? '')
+        ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($doc)
+        ?: ($doc['logo_url'] ?? $doc['company_logo_url'] ?? ''));
     $contactLine = (string) ($doc['contact_line'] ?? '');
     $colour = (string) ($doc['colour'] ?? '#0f766e');
     $isPdf = $variant === 'pdf';
+    $address = trim((string) ($doc['address'] ?? $doc['contact_address'] ?? ''));
+    $phone = trim((string) ($doc['phone'] ?? $doc['contact_phone'] ?? ''));
+    $email = trim((string) ($doc['email'] ?? $doc['contact_email_primary'] ?? ''));
+    $regNo = trim((string) ($doc['contact_reg_no'] ?? ''));
 @endphp
 
 @if ($isPdf)
@@ -31,6 +37,16 @@
                     <div style="font-size:15pt; font-weight:bold; color:{{ $colour }};">{{ $company }}</div>
                     @if ($contactLine !== '')
                         <div style="margin-top:3px; font-size:8pt; color:#475569; line-height:1.4;">{{ $contactLine }}</div>
+                    @else
+                        @if ($address !== '')
+                            <div style="margin-top:3px; font-size:8pt; color:#475569;">{{ $address }}</div>
+                        @endif
+                        @if ($phone !== '' || $email !== '')
+                            <div style="font-size:8pt; color:#475569;">{{ collect([$phone, $email])->filter()->implode(' · ') }}</div>
+                        @endif
+                        @if ($regNo !== '')
+                            <div style="font-size:8pt; color:#64748b;">Reg: {{ $regNo }}</div>
+                        @endif
                     @endif
                     @if (filled($title))
                         <div style="margin-top:6px; font-size:11pt; font-weight:bold; color:#0f172a;">{{ $title }}</div>
@@ -56,6 +72,16 @@
                     <div class="text-lg font-semibold" style="color: {{ $colour }};">{{ $company }}</div>
                     @if ($contactLine !== '')
                         <div class="mt-1 text-xs text-slate-600">{{ $contactLine }}</div>
+                    @else
+                        @if ($address !== '')
+                            <div class="mt-1 text-xs text-slate-600">{{ $address }}</div>
+                        @endif
+                        @if ($phone !== '' || $email !== '')
+                            <div class="text-xs text-slate-600">{{ collect([$phone, $email])->filter()->implode(' · ') }}</div>
+                        @endif
+                        @if ($regNo !== '')
+                            <div class="text-xs text-slate-500">Reg: {{ $regNo }}</div>
+                        @endif
                     @endif
                     @if (filled($title))
                         <div class="mt-2 text-base font-semibold text-slate-900">{{ $title }}</div>

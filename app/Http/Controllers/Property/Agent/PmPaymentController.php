@@ -619,17 +619,21 @@ class PmPaymentController extends Controller
     {
         abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
 
-        $payment->loadMissing(['tenant', 'allocations.invoice']);
+        $payment->loadMissing(['tenant', 'allocations.invoice.unit.property']);
         $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
         $creditCreated = round((float) data_get($payment->meta, 'tenant_credit_created', 0), 2);
         if ($creditCreated <= 0) {
             $creditCreated = max(0.0, round((float) $payment->amount - $allocatedTotal, 2));
         }
 
+        $brandingAgentUserId = $this->brandingAgentUserIdForPayment($payment);
+
         return property_view('property.agent.revenue.payment_receipt', [
             'payment' => $payment,
             'allocatedTotal' => $allocatedTotal,
             'creditCreated' => $creditCreated,
+            'brandingAgentUserId' => $brandingAgentUserId,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId),
         ]);
     }
 
@@ -637,19 +641,39 @@ class PmPaymentController extends Controller
     {
         abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
 
-        $payment->loadMissing(['tenant', 'allocations.invoice']);
+        $payment->loadMissing(['tenant', 'allocations.invoice.unit.property']);
+        $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
+        $creditCreated = round((float) data_get($payment->meta, 'tenant_credit_created', 0), 2);
+        if ($creditCreated <= 0) {
+            $creditCreated = max(0.0, round((float) $payment->amount - $allocatedTotal, 2));
+        }
 
-        $html = view('property.agent.revenue.payment_receipt_download', [
+        $brandingAgentUserId = $this->brandingAgentUserIdForPayment($payment);
+        $data = [
             'payment' => $payment,
-        ])->render();
+            'allocatedTotal' => $allocatedTotal,
+            'creditCreated' => $creditCreated,
+            'brandingAgentUserId' => $brandingAgentUserId,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId),
+            'autoPrint' => $request->boolean('print'),
+        ];
 
-        $fileName = 'receipt-RCP-PAY-'.$payment->id.'.html';
+        // Open as a branded printable document (same letterhead as invoice PDF), not a forced .html download.
+        return response()
+            ->view('property.agent.revenue.payment_receipt_download', $data)
+            ->header('Content-Type', 'text/html; charset=UTF-8');
+    }
 
-        return response()->streamDownload(function () use ($html) {
-            echo $html;
-        }, $fileName, [
-            'Content-Type' => 'text/html; charset=UTF-8',
-        ]);
+    private function brandingAgentUserIdForPayment(PmPayment $payment): ?int
+    {
+        foreach ($payment->allocations as $allocation) {
+            $agentUserId = $allocation->invoice?->unit?->property?->agent_user_id;
+            if ($agentUserId) {
+                return (int) $agentUserId;
+            }
+        }
+
+        return null;
     }
 
     /**

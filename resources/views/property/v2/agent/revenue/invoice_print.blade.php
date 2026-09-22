@@ -5,7 +5,9 @@
     $accent = $branding['colour'] ?? '#0f766e';
     $accentSoft = '#f0fdfa';
     $accentBorder = '#99f6e4';
-    $logoSrc = (string) (($branding['logo_src'] ?? '') ?: ($branding['logo_url'] ?? $branding['company_logo_url'] ?? ''));
+    $logoSrc = (string) (($branding['logo_embed'] ?? '')
+        ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($branding)
+        ?: ($branding['logo_url'] ?? $branding['company_logo_url'] ?? ''));
     $contactLine = (string) ($branding['contact_line'] ?? '');
 
     $subtotal = (float) ($invoice->subtotal_amount ?? $invoice->amount);

@@ -2,6 +2,7 @@
 
 namespace App\Services\Integrations;
 
+use App\Support\Property\MpesaIntegrationConfig;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
@@ -11,7 +12,7 @@ class MpesaDarajaService
 {
     private function config(): array
     {
-        return (array) config('services.mpesa', []);
+        return MpesaIntegrationConfig::resolve();
     }
 
     private function http()
@@ -79,11 +80,11 @@ class MpesaDarajaService
     {
         $cfg = $this->config();
         $checks = [
-            'b2c_shortcode' => 'MPESA_B2C_SHORTCODE or MPESA_SHORTCODE',
-            'b2c_initiator_name' => 'MPESA_B2C_INITIATOR_NAME',
-            'b2c_security_credential' => 'MPESA_B2C_SECURITY_CREDENTIAL',
-            'b2c_result_url' => 'MPESA_B2C_RESULT_URL',
-            'b2c_timeout_url' => 'MPESA_B2C_TIMEOUT_URL',
+            'b2c_shortcode' => 'B2C shortcode (Settings → Payment config or MPESA_B2C_SHORTCODE)',
+            'b2c_initiator_name' => 'B2C initiator (Settings → Payment config or MPESA_B2C_INITIATOR_NAME)',
+            'b2c_security_credential' => 'B2C security credential (Settings → Payment config or MPESA_B2C_SECURITY_CREDENTIAL)',
+            'b2c_result_url' => 'B2C result URL (Settings → Payment config or MPESA_B2C_RESULT_URL)',
+            'b2c_timeout_url' => 'B2C timeout URL (Settings → Payment config or MPESA_B2C_TIMEOUT_URL)',
         ];
         $missing = [];
         foreach ($checks as $configKey => $envHint) {

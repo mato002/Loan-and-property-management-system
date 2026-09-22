@@ -373,6 +373,7 @@ final class PropertyWorkspaceBranding
      *     company_logo_url: string,
      *     logo_url: string,
      *     logo_src: string,
+     *     logo_embed: string,
      *     contact_email_primary: string,
      *     contact_phone: string,
      *     contact_address: string,
@@ -432,7 +433,7 @@ final class PropertyWorkspaceBranding
             ->filter(static fn ($part) => trim((string) $part) !== '')
             ->implode(' · ');
 
-        return [
+        $doc = [
             'company_name' => $companyName,
             'company_logo_url' => $logoUrl,
             'logo_url' => $logoUrl,
@@ -447,6 +448,55 @@ final class PropertyWorkspaceBranding
             'email' => $email,
             'contact_line' => $contactLine,
         ];
+        $doc['logo_embed'] = self::embeddableLogoSrc($doc);
+
+        return $doc;
+    }
+
+    /**
+     * Logo src safe for browser print and Dompdf: data-URI when a local file exists,
+     * otherwise the public URL. Windows file paths (C:\…) never work in <img> tags.
+     *
+     * @param  array<string, mixed>|null  $doc
+     */
+    public static function embeddableLogoSrc(?array $doc = null, ?int $agentUserId = null): string
+    {
+        $doc ??= self::documentSnapshot($agentUserId);
+        $src = trim((string) ($doc['logo_src'] ?? ''));
+        $url = trim((string) (($doc['logo_url'] ?? '') ?: ($doc['company_logo_url'] ?? '')));
+
+        if ($src !== '' && is_file($src)) {
+            $dataUri = self::fileToDataUri($src);
+            if ($dataUri !== '') {
+                return $dataUri;
+            }
+        }
+
+        if ($url !== '' && (str_starts_with($url, 'http://') || str_starts_with($url, 'https://') || str_starts_with($url, 'data:'))) {
+            return $url;
+        }
+
+        if ($src !== '' && (str_starts_with($src, 'http://') || str_starts_with($src, 'https://') || str_starts_with($src, 'data:'))) {
+            return $src;
+        }
+
+        return $url !== '' ? $url : '';
+    }
+
+    public static function fileToDataUri(string $path): string
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            return '';
+        }
+
+        $content = @file_get_contents($path);
+        if ($content === false || $content === '') {
+            return '';
+        }
+
+        $mime = @mime_content_type($path) ?: 'image/png';
+
+        return 'data:'.$mime.';base64,'.base64_encode($content);
     }
 
     public static function resolveAssetUrl(?string $raw): string
@@ -514,13 +564,25 @@ final class PropertyWorkspaceBranding
     }
 
     /**
-     * Prefer a local filesystem path for DomPDF when the asset lives under public/storage.
+     * Prefer a local filesystem path for DomPDF / data-URI embeds.
      */
     public static function resolveLocalFileSrc(?string $raw): string
     {
         $raw = trim((string) $raw);
         if ($raw === '' || str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
             return '';
+        }
+
+        $brandingRelative = self::extractBrandingDiskPath($raw);
+        if ($brandingRelative !== null) {
+            foreach ([
+                storage_path('app/public/property/branding/'.$brandingRelative),
+                public_path('storage/property/branding/'.$brandingRelative),
+            ] as $candidate) {
+                if (is_file($candidate)) {
+                    return $candidate;
+                }
+            }
         }
 
         $relative = $raw;
@@ -533,6 +595,11 @@ final class PropertyWorkspaceBranding
         $path = public_path('storage/'.ltrim($relative, '/'));
         if (is_file($path)) {
             return $path;
+        }
+
+        $storagePublic = storage_path('app/public/'.ltrim($relative, '/'));
+        if (is_file($storagePublic)) {
+            return $storagePublic;
         }
 
         return '';

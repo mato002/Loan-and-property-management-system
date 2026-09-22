@@ -124,8 +124,9 @@ final class LandlordAdvanceService
             ]);
 
             if ($markPaidImmediately) {
-                $this->settlements->approvePayout($payout, $actor);
-                $this->settlements->markPayoutPaid($payout->fresh(['items']), $actor);
+                // Advances are same-session operational posts; skip dual-auth.
+                $this->settlements->approvePayout($payout, $actor, enforceMakerChecker: false);
+                $this->settlements->markPayoutPaid($payout->fresh(['items']), $actor, enforceMakerChecker: false);
             }
 
             return $payout->fresh(['items']);

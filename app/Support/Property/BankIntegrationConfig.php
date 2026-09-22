@@ -96,8 +96,7 @@ final class BankIntegrationConfig
             'retry_times' => max(0, (int) (self::portalValue('bank_api_retry_times') ?: 3)),
             'retry_sleep_ms' => max(0, (int) (self::portalValue('bank_api_retry_sleep_ms') ?: 500)),
             'sync_interval_minutes' => max(1, (int) (self::portalValue(self::SYNC_INTERVAL_KEY) ?: config('equity.sync_interval_minutes', 5))),
-            'sync_enabled' => self::portalValue(self::SYNC_ENABLED_KEY) === '1'
-                || self::portalValue('equity_sync_enabled', '0') === '1',
+            'sync_enabled' => self::isSyncFlagEnabled(),
             'paybill_number' => trim((string) self::portalValue(self::providerKey($provider, 'paybill_number'), '')),
             'webhook_secret' => self::pick($provider, 'webhook_secret', "PROPERTY_BANK_{$envProvider}_WEBHOOK_SECRET"),
             'notes' => trim((string) self::portalValue(self::providerKey($provider, 'notes'), '')),
@@ -215,6 +214,22 @@ final class BankIntegrationConfig
     public static function webhookUrl(string $provider): string
     {
         return url('/webhooks/property/payments/bank/'.$provider);
+    }
+
+    private static function isSyncFlagEnabled(): bool
+    {
+        $primary = self::portalValue(self::SYNC_ENABLED_KEY);
+        if ($primary !== null && $primary !== '') {
+            return $primary === '1';
+        }
+
+        $legacy = self::portalValue('equity_sync_enabled');
+        if ($legacy !== null && $legacy !== '') {
+            return $legacy === '1';
+        }
+
+        // Default on so saving credentials is enough for live tests.
+        return true;
     }
 
     private static function hasStoredCredentials(string $provider): bool

@@ -3112,14 +3112,22 @@ class PropertyAccountingController extends Controller
 
     public function approveLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
     {
-        $settlements->approvePayout($payout, $request->user());
+        try {
+            $settlements->approvePayout($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Payout #'.$payout->id.' approved.');
     }
 
     public function payLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
     {
-        $settlements->markPayoutPaid($payout, $request->user());
+        try {
+            $settlements->markPayoutPaid($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Payout #'.$payout->id.' marked as paid.');
     }

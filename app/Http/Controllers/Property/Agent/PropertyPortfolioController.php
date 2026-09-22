@@ -337,6 +337,10 @@ class PropertyPortfolioController extends Controller
             'perPage' => $perPage,
             'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
             'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $request->user()->id),
+            'expectedColumns' => app(PropertyRegisterImportService::class)->templateColumns(),
+            'lastImportStats' => session('property_register_import_stats'),
+            'lastImportErrors' => session('property_register_import_errors', []),
+            'lastImportWarnings' => session('property_register_import_warnings', []),
         ]);
     }
 
@@ -1740,6 +1744,13 @@ class PropertyPortfolioController extends Controller
                 ->get();
         }
 
+        $monthlyBreakdown = $this->buildLandlordMonthlyBreakdown(
+            $propertyLinks,
+            $propertyIds,
+            Carbon::create($fy, 1, 1)->startOfDay(),
+            Carbon::create($fy, 12, 31)->endOfDay(),
+        );
+
         $totals = [
             'properties' => (int) $propertyBreakdown->count(),
             'ownership_sum' => (float) $propertyBreakdown->sum('ownership_percent'),
@@ -1771,6 +1782,7 @@ class PropertyPortfolioController extends Controller
             'periodEnd' => $periodEnd,
             'monthValue' => $month,
             'fyValue' => $fy,
+            'isMonthScoped' => preg_match('/^\d{4}-\d{2}$/', $month) === 1,
             'commissionPct' => $this->displayCommissionPercent(
                 $propertyBreakdown,
                 (float) $totals['owner_share'],
@@ -1779,9 +1791,87 @@ class PropertyPortfolioController extends Controller
             ),
             'totals' => $totals,
             'propertyBreakdown' => $propertyBreakdown,
+            'monthlyBreakdown' => $monthlyBreakdown,
             'recentCollections' => $recentCollections,
             'portalAccess' => $portalAccess,
         ];
+    }
+
+    /**
+     * Month-by-month owner share / earnings inside the selected period (usually a full FY).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $propertyLinks
+     * @param  list<int>  $propertyIds
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd)
+    {
+        $months = collect();
+        $cursor = $periodStart->copy()->startOfMonth();
+        $endMonth = $periodEnd->copy()->startOfMonth();
+        while ($cursor->lte($endMonth)) {
+            $months->push($cursor->format('Y-m'));
+            $cursor->addMonth();
+        }
+
+        if ($months->isEmpty()) {
+            return collect();
+        }
+
+        $ownershipByProperty = $propertyLinks
+            ->mapWithKeys(fn ($link) => [(int) $link->property_id => ((float) $link->ownership_percent) / 100]);
+
+        $grossByMonthProperty = [];
+        if ($propertyIds !== []) {
+            $allocationRows = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->select(['pu.property_id', 'pay.paid_at', 'a.amount'])
+                ->get();
+
+            foreach ($allocationRows as $row) {
+                $ym = Carbon::parse((string) $row->paid_at)->format('Y-m');
+                $pid = (int) $row->property_id;
+                $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
+        }
+
+        return $months->map(function (string $ym) use ($grossByMonthProperty, $ownershipByProperty, $propertyLinks) {
+            $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
+            $grossCollected = 0.0;
+            $ownerShare = 0.0;
+            $agentEarning = 0.0;
+            $activeProperties = 0;
+
+            foreach ($propertyLinks as $link) {
+                $pid = (int) $link->property_id;
+                $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
+                if ($gross <= 0) {
+                    continue;
+                }
+                $activeProperties++;
+                $pct = (float) ($ownershipByProperty[$pid] ?? 0);
+                $share = $gross * $pct;
+                $commissionPct = $this->propertyCommissionPercent($pid);
+                $grossCollected += $gross;
+                $ownerShare += $share;
+                $agentEarning += $share * ($commissionPct / 100);
+            }
+
+            return [
+                'month' => $ym,
+                'month_label' => $monthStart->format('M Y'),
+                'gross_collected' => $grossCollected,
+                'owner_share' => $ownerShare,
+                'agent_earning' => $agentEarning,
+                'active_properties' => $activeProperties,
+                'has_activity' => $grossCollected > 0.009,
+            ];
+        })->values();
     }
 
     public function landlordsShow(Request $request, User $landlord): View|StreamedResponse
@@ -1794,8 +1884,37 @@ class PropertyPortfolioController extends Controller
 
         $export = $request->string('export')->toString();
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            $exportScope = strtolower((string) $request->query('export_scope', ''));
+            $wantMonthly = $exportScope === 'monthly'
+                || ($exportScope === '' && preg_match('/^\d{4}-\d{2}$/', $month) !== 1);
+
+            if ($wantMonthly) {
+                return TabularExport::stream(
+                    'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
+                    [
+                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Owner share', 'Agent earning', 'Properties with collections',
+                    ],
+                    function () use ($landlord, $snapshot) {
+                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $snapshot) {
+                            return [
+                                (string) $landlord->name,
+                                (string) $landlord->email,
+                                (string) ($snapshot['fyValue'] ?? ''),
+                                (string) ($row['month'] ?? ''),
+                                (string) ($row['month_label'] ?? ''),
+                                (string) number_format((float) ($row['gross_collected'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['agent_earning'] ?? 0), 2, '.', ''),
+                                (string) (int) ($row['active_properties'] ?? 0),
+                            ];
+                        });
+                    },
+                    $export
+                );
+            }
+
             return TabularExport::stream(
-                'landlord-'.$landlord->id.'-snapshot',
+                'landlord-'.$landlord->id.'-snapshot'.($month !== '' ? '-'.$month : ''),
                 [
                     'Landlord Name', 'Landlord Email', 'Period', 'Property', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection',
                 ],
@@ -4260,16 +4379,11 @@ class PropertyPortfolioController extends Controller
         return redirect()->route('property.properties.show', ['property' => $target->property_id]);
     }
 
-    public function propertyRegisterImportForm(): View
+    public function propertyRegisterImportForm(): RedirectResponse
     {
-        $importer = app(PropertyRegisterImportService::class);
-
-        return view('property.agent.properties.register_import', [
-            'expectedColumns' => $importer->templateColumns(),
-            'lastImportStats' => session('property_register_import_stats'),
-            'lastImportErrors' => session('property_register_import_errors', []),
-            'lastImportWarnings' => session('property_register_import_warnings', []),
-        ]);
+        return redirect()
+            ->route('property.properties.list')
+            ->withFragment('import-register');
     }
 
     public function propertyRegisterImportTemplate(): Response
@@ -4290,7 +4404,10 @@ class PropertyPortfolioController extends Controller
 
         $path = $data['file']->getRealPath();
         if (! is_string($path) || $path === '') {
-            return back()->with('error', 'Upload failed. Please try again.');
+            return redirect()
+                ->route('property.properties.list')
+                ->withFragment('import-register')
+                ->with('error', 'Upload failed. Please try again.');
         }
 
         $agentUserId = (int) $request->user()->id;
@@ -4300,7 +4417,8 @@ class PropertyPortfolioController extends Controller
         $warnings = $result['warnings'];
 
         return redirect()
-            ->route('property.properties.register_import')
+            ->route('property.properties.list')
+            ->withFragment('import-register')
             ->with('property_register_import_stats', [
                 'properties_created' => $result['properties_created'],
                 'properties_updated' => $result['properties_updated'],

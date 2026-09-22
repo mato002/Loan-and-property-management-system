@@ -1,9 +1,12 @@
 @php
-    $doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $doc = $doc ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId ?? null);
     $brandName = $doc['company_name'];
-    $logoUrl = $doc['logo_url'] !== '' ? $doc['logo_url'] : null;
+    $logoSrc = (string) (($doc['logo_embed'] ?? '')
+        ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($doc)
+        ?: ($doc['logo_url'] ?? ''));
     $method = \App\Support\Property\PmPaymentPresentation::paymentMethod($payment, strtoupper((string) $payment->channel));
     $ref = \App\Support\Property\PmPaymentPresentation::transactionRef($payment, (string) ($payment->external_ref ?: '—'));
+    $printUrl = route('property.payments.receipt.download', ['payment' => $payment, 'print' => 1]);
 @endphp
 
 <x-property.workspace
@@ -16,14 +19,18 @@
         <a
             href="{{ route('property.payments.receipt.download', $payment) }}"
             data-turbo="false"
+            target="_blank"
+            rel="noopener"
             class="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-[var(--brand-on-primary,#fff)] hover:opacity-95"
             style="background: var(--brand-cta, #059669);"
-        >Download</a>
-        <button
-            type="button"
-            onclick="window.print()"
+        >Open printable</a>
+        <a
+            href="{{ $printUrl }}"
+            data-turbo="false"
+            target="_blank"
+            rel="noopener"
             class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >Print / Save PDF</button>
+        >Print / Save PDF</a>
     </x-slot>
 
     <div class="mx-auto max-w-4xl space-y-4 print:max-w-none">
@@ -36,29 +43,17 @@
                 style="background: var(--brand-primary, #059669);"
             ></div>
 
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <div class="flex items-center gap-3">
-                        @if ($logoUrl)
-                            <img
-                                src="{{ $logoUrl }}"
-                                alt="{{ $brandName }}"
-                                class="h-11 w-11 rounded-xl border border-slate-200 bg-white object-contain p-1 shadow-sm"
-                            >
-                        @else
-                            <span
-                                class="inline-flex h-11 w-11 items-center justify-center rounded-xl text-xs font-extrabold tracking-widest text-[var(--brand-on-primary,#fff)] shadow-sm"
-                                style="background: var(--brand-primary, #059669);"
-                            >PH</span>
-                        @endif
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Payment receipt</p>
-                            <p class="text-lg font-bold text-slate-900">{{ $brandName }}</p>
-                        </div>
-                    </div>
-                    @if (! empty($doc['contact_line']))
-                        <p class="mt-2 text-xs text-slate-500">{{ $doc['contact_line'] }}</p>
-                    @endif
+            @include('property.partials.document_letterhead', [
+                'branding' => $doc,
+                'title' => 'Payment receipt',
+                'subtitle' => 'RCP-PAY-'.$payment->id,
+                'showAccentBar' => false,
+            ])
+
+            <div class="mt-4 flex flex-wrap items-start justify-between gap-4 border-t border-slate-100 pt-4">
+                <div class="text-sm text-slate-600">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">Tenant</p>
+                    <p class="font-semibold text-slate-900">{{ $payment->tenant?->name ?? '—' }}</p>
                 </div>
                 <div class="text-left sm:text-right">
                     <p class="text-xs uppercase tracking-wide text-slate-500">Receipt no</p>
@@ -141,6 +136,6 @@
             </div>
         </div>
 
-        <p class="text-xs text-slate-500">This document confirms receipt of payment. Keep it for your records and account reconciliation.</p>
+        <p class="text-xs text-slate-500">This document confirms receipt of payment. Keep it for your records and account reconciliation. Use <span class="font-semibold">Print / Save PDF</span> for the branded letterhead copy.</p>
     </div>
 </x-property.workspace>

@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Jobs\SendPaymentReceiptJob;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
@@ -93,7 +94,22 @@ class PropertyPaymentSettlementService
             $this->finalizeIdentifiedPayment($payment, null, $remaining);
             $this->repairTenantIfDriftDetected((int) $payment->pm_tenant_id);
 
-            return $payment->fresh();
+            $fresh = $payment->fresh();
+            $paymentId = (int) ($fresh?->id ?? 0);
+            if ($paymentId > 0) {
+                DB::afterCommit(function () use ($paymentId) {
+                    try {
+                        SendPaymentReceiptJob::dispatch($paymentId);
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to queue payment receipt', [
+                            'pm_payment_id' => $paymentId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                });
+            }
+
+            return $fresh;
         });
     }
 

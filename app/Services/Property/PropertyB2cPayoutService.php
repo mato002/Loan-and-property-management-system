@@ -28,11 +28,17 @@ class PropertyB2cPayoutService
      */
     public function initiateLandlordPayout(PmLandlordPayout $payout, string $phone, User $actor): array
     {
-        if (! in_array($payout->status, ['draft', 'approved'], true)) {
-            return ['ok' => false, 'message' => 'Only draft or approved landlord payouts can be sent via M-Pesa.'];
+        if ($payout->status !== 'approved') {
+            return ['ok' => false, 'message' => 'Only approved landlord payouts can be sent via M-Pesa (maker-checker).'];
         }
         if (in_array((string) ($payout->payout_status ?? ''), ['pending', 'queued'], true)) {
             return ['ok' => false, 'message' => 'A B2C payout is already in progress for this batch.'];
+        }
+        if ((int) ($payout->created_by ?? 0) > 0
+            && (int) $payout->created_by === (int) $actor->id
+            && ! ($actor->is_super_admin ?? false)
+        ) {
+            return ['ok' => false, 'message' => 'Maker-checker required: the payout creator cannot send B2C.'];
         }
 
         $msisdn = $this->daraja->normalizeMsisdn($phone);
@@ -40,12 +46,7 @@ class PropertyB2cPayoutService
             return ['ok' => false, 'message' => 'Invalid M-Pesa phone number.'];
         }
         if (! $this->daraja->isB2cConfigured()) {
-            return ['ok' => false, 'message' => 'Daraja B2C is not configured (MPESA_B2C_*).'];
-        }
-
-        if ($payout->status === 'draft') {
-            $this->landlordSettlements->approvePayout($payout, $actor);
-            $payout->refresh();
+            return ['ok' => false, 'message' => 'Daraja B2C is not configured. Add B2C fields under Settings → Payment config (or MPESA_B2C_* in .env).'];
         }
 
         return $this->sendB2c(
@@ -96,7 +97,7 @@ class PropertyB2cPayoutService
             return ['ok' => false, 'message' => 'Invalid vendor M-Pesa phone number.'];
         }
         if (! $this->daraja->isB2cConfigured()) {
-            return ['ok' => false, 'message' => 'Daraja B2C is not configured (MPESA_B2C_*).'];
+            return ['ok' => false, 'message' => 'Daraja B2C is not configured. Add B2C fields under Settings → Payment config (or MPESA_B2C_* in .env).'];
         }
 
         $jobIds = $eligible->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
@@ -142,7 +143,7 @@ class PropertyB2cPayoutService
             return ['ok' => false, 'message' => 'Invalid employee M-Pesa phone number.'];
         }
         if (! $this->daraja->isB2cConfigured()) {
-            return ['ok' => false, 'message' => 'Daraja B2C is not configured (MPESA_B2C_*).'];
+            return ['ok' => false, 'message' => 'Daraja B2C is not configured. Add B2C fields under Settings → Payment config (or MPESA_B2C_* in .env).'];
         }
 
         return $this->sendB2c(

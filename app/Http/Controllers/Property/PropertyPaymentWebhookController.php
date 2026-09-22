@@ -12,6 +12,7 @@ use App\Services\Integrations\MpesaDarajaService;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\PaymentMatchingService;
+use App\Services\Property\PropertyBankTransactionIngestService;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Support\Property\BankIntegrationConfig;
 use App\Support\Property\BankIntegrationRegistry;
@@ -454,6 +455,7 @@ class PropertyPaymentWebhookController extends Controller
 
     public function bankCallback(Request $request, string $provider): JsonResponse
     {
+        $provider = strtolower(trim($provider));
         $providerConfig = (array) config('services.property_banks.providers.'.$provider, []);
         $secret = (string) ($providerConfig['webhook_secret'] ?? '');
         if ($secret === '' && BankIntegrationRegistry::isValidProvider($provider)) {
@@ -465,28 +467,49 @@ class PropertyPaymentWebhookController extends Controller
             return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
         }
 
-        $data = $request->validate([
-            'payment_id' => ['required', 'integer', 'exists:pm_payments,id'],
-            'status' => ['required', 'in:success,failed'],
-            'external_ref' => ['nullable', 'string', 'max:128'],
-            'paid_at' => ['nullable', 'date'],
-            'message' => ['nullable', 'string', 'max:255'],
-        ]);
+        // Mode A: settle an existing pending collection (tenant portal bank collect).
+        if ($request->filled('payment_id') && $request->filled('status')) {
+            $data = $request->validate([
+                'payment_id' => ['required', 'integer', 'exists:pm_payments,id'],
+                'status' => ['required', 'in:success,failed'],
+                'external_ref' => ['nullable', 'string', 'max:128'],
+                'paid_at' => ['nullable', 'date'],
+                'message' => ['nullable', 'string', 'max:255'],
+            ]);
 
-        $payment = app(PropertyPaymentSettlementService::class)->settlePending(
-            (int) $data['payment_id'],
-            (string) $data['status'],
-            $data['external_ref'] ?? null,
-            $data['paid_at'] ?? null,
-            $data['message'] ?? null,
-            $provider,
-            null,
-        );
+            $payment = app(PropertyPaymentSettlementService::class)->settlePending(
+                (int) $data['payment_id'],
+                (string) $data['status'],
+                $data['external_ref'] ?? null,
+                $data['paid_at'] ?? null,
+                $data['message'] ?? null,
+                $provider,
+                null,
+            );
+
+            return response()->json([
+                'ok' => true,
+                'mode' => 'settle_pending',
+                'payment_id' => $payment->id,
+                'status' => $payment->status,
+            ]);
+        }
+
+        // Mode B: inbound paybill / collection notification → match + settle or park unmatched.
+        if (! BankIntegrationRegistry::isValidProvider($provider)) {
+            return response()->json(['ok' => false, 'message' => 'Unknown bank provider'], 422);
+        }
+
+        $result = app(PropertyBankTransactionIngestService::class)->ingest($provider, $request->all());
 
         return response()->json([
-            'ok' => true,
-            'payment_id' => $payment->id,
-            'status' => $payment->status,
-        ]);
+            'ok' => (bool) ($result['ok'] ?? false),
+            'mode' => 'transaction_ingest',
+            'duplicate' => (bool) ($result['duplicate'] ?? false),
+            'matched' => (bool) ($result['matched'] ?? false),
+            'payment_id' => $result['payment_id'] ?? null,
+            'pm_payment_id' => $result['pm_payment_id'] ?? null,
+            'message' => (string) ($result['message'] ?? ''),
+        ], ($result['ok'] ?? false) ? 200 : 422);
     }
 }

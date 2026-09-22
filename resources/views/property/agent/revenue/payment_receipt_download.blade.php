@@ -1,35 +1,47 @@
 @php
-    $doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $doc = $doc ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId ?? null);
     $brandName = $doc['company_name'];
-    $logoUrl = $doc['logo_url'] !== '' ? $doc['logo_url'] : null;
+    $logoSrc = (string) (($doc['logo_embed'] ?? '')
+        ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($doc)
+        ?: ($doc['logo_url'] ?? ''));
     $palette = \App\Support\Property\PropertyBrandPalette::tokens(
         \App\Support\Property\PropertyBrandPalette::resolve('portal')
     );
-    $primary = $palette['primary'];
+    $primary = $doc['colour'] ?? $palette['primary'];
     $primaryHover = $palette['primary_hover'];
     $primarySoft = $palette['primary_soft'];
     $onPrimary = $palette['on_primary'];
     $method = \App\Support\Property\PmPaymentPresentation::paymentMethod($payment, strtoupper((string) $payment->channel));
     $ref = \App\Support\Property\PmPaymentPresentation::transactionRef($payment, (string) ($payment->external_ref ?: '—'));
+    $contactLine = (string) ($doc['contact_line'] ?? '');
+    $address = trim((string) ($doc['address'] ?? ''));
+    $phone = trim((string) ($doc['phone'] ?? ''));
+    $email = trim((string) ($doc['email'] ?? ''));
+    $regNo = trim((string) ($doc['contact_reg_no'] ?? ''));
+    $autoPrint = (bool) ($autoPrint ?? request()->boolean('print'));
 @endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receipt RCP-PAY-{{ $payment->id }}</title>
+    <title>Receipt RCP-PAY-{{ $payment->id }} — {{ $brandName }}</title>
     <style>
-        @page { size: A4; margin: 10mm; }
-        body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .sheet { max-width: 840px; margin: 26px auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); overflow: hidden; }
-        .accent { height: 6px; background: {{ $primary }}; }
-        .hero { padding: 24px 26px 18px; border-bottom: 1px solid #e2e8f0; }
+        @page { size: A4; margin: 12mm; }
+        body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #e8edf2; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .toolbar { max-width: 840px; margin: 0 auto; padding: 14px 16px 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+        .toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .btn { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; text-decoration: none; border: 1px solid #e2e8f0; background: #fff; color: #0f172a; cursor: pointer; }
+        .btn-primary { background: {{ $primary }}; border-color: {{ $primary }}; color: {{ $onPrimary }}; }
+        .sheet { max-width: 840px; margin: 12px auto 28px; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); overflow: hidden; }
+        .accent { height: 5px; background: {{ $primary }}; }
+        .hero { padding: 22px 26px 16px; border-bottom: 2px solid {{ $primary }}; }
         .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
-        .brand-wrap { display: flex; align-items: center; gap: 12px; }
-        .logo-mark { width: 42px; height: 42px; border-radius: 10px; background: {{ $primary }}; color: {{ $onPrimary }}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; }
-        .logo-image { width: 42px; height: 42px; object-fit: contain; border-radius: 10px; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px; box-sizing: border-box; }
-        .eyebrow { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: #64748b; }
-        .brand { margin: 2px 0 0; font-size: 20px; font-weight: 800; color: #0f172a; }
+        .brand-wrap { display: flex; align-items: flex-start; gap: 12px; }
+        .logo-image { max-height: 52px; max-width: 160px; object-fit: contain; display: block; }
+        .company-name { margin: 0; font-size: 18px; font-weight: 800; color: {{ $primary }}; letter-spacing: -0.02em; }
+        .company-meta { margin-top: 4px; font-size: 11px; color: #64748b; line-height: 1.5; }
+        .doc-label { margin: 10px 0 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: #64748b; }
         .meta { text-align: right; font-size: 12px; color: #475569; line-height: 1.7; max-width: 46%; word-break: break-word; }
         .meta strong { color: {{ $primaryHover }}; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
         .chip { display: inline-block; margin-top: 12px; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 6px 12px; background: {{ $primarySoft }}; color: {{ $primaryHover }}; }
@@ -53,33 +65,50 @@
         .grand span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: {{ $primaryHover }}; font-weight: 700; }
         .grand strong { font-size: 22px; color: #0f172a; }
         .terms { margin-top: 14px; font-size: 12px; color: #64748b; line-height: 1.6; }
+        .footer-brand { margin-top: 18px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #64748b; }
+        .footer-brand strong { color: #0f172a; }
         @media print {
-            @page { size: A4; margin: 6mm; }
+            @page { size: A4; margin: 8mm; }
             body { background: #ffffff; }
+            .toolbar { display: none !important; }
             .sheet { margin: 0; border-radius: 0; box-shadow: none; border: 0; max-width: none; }
         }
     </style>
 </head>
 <body>
+    <div class="toolbar">
+        <div style="font-size:12px;color:#64748b;">Payment receipt <strong style="color:#0f172a;">RCP-PAY-{{ $payment->id }}</strong></div>
+        <div class="toolbar-actions">
+            <button type="button" class="btn btn-primary" onclick="window.print()">Print / Save PDF</button>
+            <a class="btn" href="{{ route('property.payments.receipt.show', $payment) }}">Back to receipt</a>
+        </div>
+    </div>
+
     <div class="sheet">
         <div class="accent"></div>
         <div class="hero">
             <div class="header">
                 <div>
                     <div class="brand-wrap">
-                        @if ($logoUrl)
-                            <img src="{{ $logoUrl }}" alt="{{ $brandName }}" class="logo-image">
-                        @else
-                            <span class="logo-mark">PH</span>
+                        @if ($logoSrc !== '')
+                            <img src="{{ $logoSrc }}" alt="{{ $brandName }}" class="logo-image">
                         @endif
                         <div>
-                            <p class="eyebrow">Payment receipt</p>
-                            <p class="brand">{{ $brandName }}</p>
+                            <p class="company-name">{{ $brandName }}</p>
+                            <div class="company-meta">
+                                @if ($contactLine !== '')
+                                    <div>{{ $contactLine }}</div>
+                                @else
+                                    @if ($address !== '')<div>{{ $address }}</div>@endif
+                                    @if ($phone !== '' || $email !== '')
+                                        <div>{{ collect([$phone, $email])->filter()->implode(' · ') }}</div>
+                                    @endif
+                                    @if ($regNo !== '')<div>Reg: {{ $regNo }}</div>@endif
+                                @endif
+                            </div>
+                            <p class="doc-label">Payment receipt</p>
                         </div>
                     </div>
-                    @if (! empty($doc['contact_line']))
-                        <p style="margin:8px 0 0; font-size:11px; color:#64748b;">{{ $doc['contact_line'] }}</p>
-                    @endif
                 </div>
                 <div class="meta">
                     <div>Receipt No: <strong>RCP-PAY-{{ $payment->id }}</strong></div>
@@ -87,7 +116,7 @@
                     <div>Tenant: <strong style="font-family:inherit;color:#0f172a;">{{ $payment->tenant?->name ?? '—' }}</strong></div>
                 </div>
             </div>
-            <span class="chip">Total: KES {{ number_format((float) $payment->amount, 2) }}</span>
+            <span class="chip">Total: {{ \App\Services\Property\PropertyMoney::kes((float) $payment->amount) }}</span>
         </div>
         <div class="content">
             <div class="grid">
@@ -106,7 +135,8 @@
                     <div class="text">
                         <strong>Method:</strong> {{ $method }}<br>
                         <strong>Reference:</strong> <span class="mono">{{ $ref }}</span><br>
-                        <strong>Paid at:</strong> {{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}
+                        <strong>Paid at:</strong> {{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}<br>
+                        <strong>Origin:</strong> {{ \App\Support\Property\PmPaymentPresentation::originLabel($payment) }}
                     </div>
                 </div>
             </div>
@@ -123,7 +153,7 @@
                         @forelse ($payment->allocations as $allocation)
                             <tr>
                                 <td>{{ $allocation->invoice?->invoice_no ?? ('INV-'.$allocation->pm_invoice_id) }}</td>
-                                <td class="amount">KES {{ number_format((float) $allocation->amount, 2) }}</td>
+                                <td class="amount">{{ \App\Services\Property\PropertyMoney::kes((float) $allocation->amount) }}</td>
                             </tr>
                         @empty
                             <tr>
@@ -143,18 +173,29 @@
                     </div>
                 </div>
                 <div class="amount-card">
-                    <div class="row"><span>Subtotal</span><span>KES {{ number_format((float) $payment->amount, 2) }}</span></div>
-                    <div class="row"><span>Tax</span><span>0.00</span></div>
+                    <div class="row"><span>Allocated</span><span>{{ \App\Services\Property\PropertyMoney::kes((float) ($allocatedTotal ?? $payment->allocations->sum('amount'))) }}</span></div>
+                    @if (($creditCreated ?? 0) > 0)
+                        <div class="row"><span>Tenant credit</span><span>{{ \App\Services\Property\PropertyMoney::kes((float) $creditCreated) }}</span></div>
+                    @endif
                     <div class="grand">
                         <span>Grand total</span>
-                        <strong>KES {{ number_format((float) $payment->amount, 2) }}</strong>
+                        <strong>{{ \App\Services\Property\PropertyMoney::kes((float) $payment->amount) }}</strong>
                     </div>
                 </div>
             </div>
             <div class="terms">
                 This document confirms receipt of payment. Keep it for your records and future account reconciliation.
             </div>
+            <div class="footer-brand">
+                Issued by <strong>{{ $brandName }}</strong>
+                @if ($phone !== '' || $email !== '')
+                    · {{ collect([$phone, $email])->filter()->implode(' · ') }}
+                @endif
+            </div>
         </div>
     </div>
+    @if ($autoPrint)
+        <script>window.addEventListener('load', function () { window.print(); });</script>
+    @endif
 </body>
 </html>

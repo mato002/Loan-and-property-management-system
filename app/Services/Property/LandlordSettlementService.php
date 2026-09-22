@@ -155,10 +155,18 @@ final class LandlordSettlementService
         });
     }
 
-    public function approvePayout(PmLandlordPayout $payout, User $actor): void
+    public function approvePayout(PmLandlordPayout $payout, User $actor, bool $enforceMakerChecker = true): void
     {
         if ($payout->status !== 'draft') {
             throw new RuntimeException('Only draft payouts can be approved.');
+        }
+
+        if ($enforceMakerChecker
+            && (int) ($payout->created_by ?? 0) > 0
+            && (int) $payout->created_by === (int) $actor->id
+            && ! ($actor->is_super_admin ?? false)
+        ) {
+            throw new RuntimeException('Maker-checker required: a different administrator must approve this payout.');
         }
 
         $payout->update([
@@ -185,10 +193,22 @@ final class LandlordSettlementService
         });
     }
 
-    public function markPayoutPaid(PmLandlordPayout $payout, User $actor): void
+    public function markPayoutPaid(PmLandlordPayout $payout, User $actor, bool $enforceMakerChecker = true): void
     {
         if (! in_array($payout->status, ['draft', 'approved'], true)) {
             throw new RuntimeException('Payout cannot be marked paid from current status.');
+        }
+
+        if ($payout->status === 'draft') {
+            throw new RuntimeException('Approve the payout before marking it paid (maker-checker).');
+        }
+
+        if ($enforceMakerChecker
+            && (int) ($payout->created_by ?? 0) > 0
+            && (int) $payout->created_by === (int) $actor->id
+            && ! ($actor->is_super_admin ?? false)
+        ) {
+            throw new RuntimeException('Maker-checker required: the payout creator cannot mark it paid.');
         }
 
         DB::transaction(function () use ($payout, $actor) {
@@ -232,6 +252,14 @@ final class LandlordSettlementService
 
             app(PropertyTrustAccountingService::class)->postLandlordPayout($payout->fresh(), (int) $actor->id);
         });
+
+        $fresh = $payout->fresh(['items']);
+        $isRemittance = $fresh?->items->contains(
+            fn ($item) => (string) ($item->line_type ?? '') === self::LINE_REMITTANCE
+        );
+        if ($isRemittance) {
+            \App\Jobs\SendLandlordRemittanceAdviceJob::dispatch((int) $payout->id);
+        }
     }
 
     /**

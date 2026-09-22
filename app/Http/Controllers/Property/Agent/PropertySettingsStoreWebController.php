@@ -1150,7 +1150,7 @@ class PropertySettingsStoreWebController extends Controller
         return property_view('property.agent.settings.payments', [
             'shortcode' => PropertyPortalSetting::getValue('mpesa_shortcode', ''),
             'consumerKey' => PropertyPortalSetting::getValue('mpesa_consumer_key', ''),
-            'callbackUrl' => PropertyPortalSetting::getValue('mpesa_callback_url', ''),
+            'callbackUrl' => PropertyPortalSetting::getValue('mpesa_callback_url', '') ?: url('/webhooks/mpesa/stk-callback'),
             'notes' => PropertyPortalSetting::getValue('payments_notes', ''),
             'trustAccountLabel' => PropertyPortalSetting::getValue('trust_account_label', ''),
             'trustAccountNumber' => PropertyPortalSetting::getValue('trust_account_number', ''),
@@ -1158,6 +1158,15 @@ class PropertySettingsStoreWebController extends Controller
             'hasConsumerSecret' => (bool) strlen((string) PropertyPortalSetting::getValue('mpesa_consumer_secret', '')),
             'hasPasskey' => (bool) strlen((string) PropertyPortalSetting::getValue('mpesa_passkey', '')),
             'customPaymentMethods' => $customPaymentMethods,
+            'b2cShortcode' => PropertyPortalSetting::getValue('mpesa_b2c_shortcode', ''),
+            'b2cInitiatorName' => PropertyPortalSetting::getValue('mpesa_b2c_initiator_name', ''),
+            'b2cResultUrl' => PropertyPortalSetting::getValue('mpesa_b2c_result_url', '') ?: url('/webhooks/mpesa/b2c-result'),
+            'b2cTimeoutUrl' => PropertyPortalSetting::getValue('mpesa_b2c_timeout_url', '') ?: url('/webhooks/mpesa/b2c-result'),
+            'hasB2cSecurityCredential' => (bool) strlen((string) PropertyPortalSetting::getValue('mpesa_b2c_security_credential', '')),
+            'b2cConfigured' => app(\App\Services\Integrations\MpesaDarajaService::class)->isB2cConfigured(),
+            'stkConfigured' => app(\App\Services\Integrations\MpesaDarajaService::class)->isConfigured(),
+            'autoReceiptEnabled' => PropertyPortalSetting::getValue('payment_auto_receipt_enabled', '1') === '1',
+            'autoReceiptChannel' => PropertyPortalSetting::getValue('payment_auto_receipt_channel', 'sms') ?: 'sms',
         ]);
     }
 
@@ -1219,6 +1228,43 @@ class PropertySettingsStoreWebController extends Controller
             return back()->with('success', __('Custom payment methods saved.'));
         }
 
+        if ($request->boolean('save_b2c')) {
+            $data = $request->validate([
+                'mpesa_b2c_shortcode' => ['nullable', 'string', 'max:64'],
+                'mpesa_b2c_initiator_name' => ['nullable', 'string', 'max:128'],
+                'mpesa_b2c_security_credential' => ['nullable', 'string', 'max:2000'],
+                'mpesa_b2c_result_url' => ['nullable', 'string', 'max:500'],
+                'mpesa_b2c_timeout_url' => ['nullable', 'string', 'max:500'],
+            ]);
+
+            foreach (['mpesa_b2c_shortcode', 'mpesa_b2c_initiator_name', 'mpesa_b2c_result_url', 'mpesa_b2c_timeout_url'] as $key) {
+                PropertyPortalSetting::setValue($key, $data[$key] ?? '');
+            }
+            if ($request->filled('mpesa_b2c_security_credential')) {
+                PropertyPortalSetting::setValue('mpesa_b2c_security_credential', (string) $data['mpesa_b2c_security_credential']);
+            }
+
+            \App\Support\Property\MpesaIntegrationConfig::forget();
+            $this->logSettingsActivity('payments', 'M-Pesa B2C payout settings updated');
+
+            return back()->with('success', __('B2C payout settings saved. Landlord and payroll M-Pesa payouts will use these credentials.'));
+        }
+
+        if ($request->boolean('save_auto_receipt')) {
+            PropertyPortalSetting::setValue(
+                'payment_auto_receipt_enabled',
+                $request->boolean('payment_auto_receipt_enabled') ? '1' : '0'
+            );
+            $channel = strtolower(trim((string) $request->input('payment_auto_receipt_channel', 'sms')));
+            if (! in_array($channel, ['sms', 'email', 'both'], true)) {
+                $channel = 'sms';
+            }
+            PropertyPortalSetting::setValue('payment_auto_receipt_channel', $channel);
+            \App\Support\Property\MpesaIntegrationConfig::forget();
+
+            return back()->with('success', __('Automatic payment receipt settings saved.'));
+        }
+
         $data = $request->validate([
             'mpesa_shortcode' => ['nullable', 'string', 'max:64'],
             'mpesa_consumer_key' => ['nullable', 'string', 'max:255'],
@@ -1242,6 +1288,7 @@ class PropertySettingsStoreWebController extends Controller
             PropertyPortalSetting::setValue($key, $value ?? '');
         }
 
+        \App\Support\Property\MpesaIntegrationConfig::forget();
         $this->logSettingsActivity('payments', 'Payment settings updated');
 
         return back()->with('success', __('Payment settings saved (store secrets carefully — encryption not enabled in this build).'));

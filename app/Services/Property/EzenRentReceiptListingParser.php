@@ -138,7 +138,7 @@ final class EzenRentReceiptListingParser
         }
 
         ['head' => $headCombined, 'amount' => $amount, 'receipted_to' => $receiptedTo, 'done_by' => $doneBy] = $peeled;
-        if ($amount <= 0) {
+        if ($amount <= 0 || $this->looksLikePhoneAmount($amount) || $this->looksLikeYearAmount($amount)) {
             return null;
         }
 
@@ -164,11 +164,18 @@ final class EzenRentReceiptListingParser
         $phone = '';
         $tenantName = $afterTnt;
         $particulars = '';
-        if (preg_match('/^(.+?)\s+(0\d{9})\s*(.*)$/s', $afterTnt, $tenantParts) === 1) {
+        if (preg_match('/^(.+?)\s+(0\d{9}|254\d{9})\s*(.*)$/s', $afterTnt, $tenantParts) === 1) {
             $tenantName = trim((string) $tenantParts[1]);
             $phone = trim((string) $tenantParts[2]);
             $particulars = trim((string) $tenantParts[3]);
+        } elseif (preg_match('/^(0\d{9}|254\d{9})\s*(.*)$/s', $afterTnt, $tenantParts) === 1) {
+            $phone = trim((string) $tenantParts[1]);
+            $particulars = trim((string) $tenantParts[2]);
+            $tenantName = '';
         }
+
+        // Strip a trailing lone "0" / phone fragment that PDF extraction sometimes leaves on the name.
+        $tenantName = trim(preg_replace('/\s+0$/', '', $tenantName) ?? $tenantName);
 
         if ($tenantName === '') {
             return null;
@@ -197,27 +204,127 @@ final class EzenRentReceiptListingParser
     private function peelFinishFromCombined(string $combined): ?array
     {
         foreach (self::BANK_LABELS as $bank) {
-            $pattern = '/^(.+)\s+([\d,]+(?:\.\d+)?)\s+('.preg_quote($bank, '/').')\s+(.+)$/i';
-            if (preg_match($pattern, $combined, $match) === 1) {
-                return [
-                    'head' => trim((string) $match[1]),
-                    'amount' => $this->money((string) $match[2]),
-                    'receipted_to' => $bank,
-                    'done_by' => trim((string) $match[4]),
-                ];
+            $lastPos = null;
+            $search = 0;
+            $bankLen = strlen($bank);
+            while (($pos = stripos($combined, $bank, $search)) !== false) {
+                // Require a digit/amount-ish token before the bank label.
+                $beforeProbe = rtrim(substr($combined, 0, $pos));
+                if ($beforeProbe !== '' && preg_match('/[\d,]+(?:\.\d+)?$/u', $beforeProbe) === 1) {
+                    $lastPos = $pos;
+                }
+                $search = $pos + max(1, $bankLen);
             }
+            if ($lastPos === null) {
+                continue;
+            }
+
+            $before = trim(substr($combined, 0, $lastPos));
+            $after = trim(substr($combined, $lastPos + strlen($bank)));
+            if ($before === '' || $after === '') {
+                continue;
+            }
+
+            if (preg_match_all('/\b([\d,]+(?:\.\d+)?)\b/', $before, $moneyMatches, PREG_OFFSET_CAPTURE) < 1) {
+                continue;
+            }
+
+            $chosen = null;
+            for ($i = count($moneyMatches[1]) - 1; $i >= 0; $i--) {
+                $token = (string) $moneyMatches[1][$i][0];
+                $amount = $this->money($token);
+                if ($amount <= 0 || $this->looksLikePhoneAmount($amount)) {
+                    continue;
+                }
+                // Prefer the money token closest to the bank label (rightmost).
+                $tokenPos = (int) $moneyMatches[1][$i][1];
+                $tokenEnd = $tokenPos + strlen($token);
+                $between = trim(substr($before, $tokenEnd));
+                // Allow only light leftovers between amount and bank (none expected).
+                if ($between !== '') {
+                    continue;
+                }
+                $chosen = [
+                    'head' => trim(substr($before, 0, $tokenPos)),
+                    'amount' => $amount,
+                ];
+                break;
+            }
+
+            if ($chosen === null) {
+                continue;
+            }
+
+            return [
+                'head' => $chosen['head'],
+                'amount' => $chosen['amount'],
+                'receipted_to' => $bank,
+                'done_by' => $after,
+            ];
         }
 
         if (preg_match('/^(.+)\s+([\d,]+(?:\.\d+)?)\s+(.+?)\s+([A-Z0-9][A-Z0-9\s.\'-]+)$/i', $combined, $match) === 1) {
+            $amount = $this->money((string) $match[2]);
+            $receiptedTo = trim((string) $match[3]);
+            if ($this->looksLikePhoneAmount($amount) || $this->looksLikeYearAmount($amount)) {
+                return null;
+            }
+            // Weak fallback — only accept when receipted_to looks like a bank/ledger, not particulars text.
+            if (! $this->looksLikeReceiptedToLabel($receiptedTo)) {
+                return null;
+            }
+
             return [
                 'head' => trim((string) $match[1]),
-                'amount' => $this->money((string) $match[2]),
-                'receipted_to' => trim((string) $match[3]),
+                'amount' => $amount,
+                'receipted_to' => $receiptedTo,
                 'done_by' => trim((string) $match[4]),
             ];
         }
 
         return null;
+    }
+
+    private function looksLikeYearAmount(float $amount): bool
+    {
+        $asInt = (int) round($amount);
+
+        return $asInt >= 2000 && $asInt <= 2099 && fmod($amount, 1.0) === 0.0;
+    }
+
+    private function looksLikeReceiptedToLabel(string $label): bool
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return false;
+        }
+
+        foreach (self::BANK_LABELS as $bank) {
+            if (strcasecmp($label, $bank) === 0) {
+                return true;
+            }
+        }
+
+        // Landlord / cash ledger style labels (e.g. "MR & MRS. JOSEPH THUO...")
+        if (preg_match('/\b(BANK|CASH|MPESA|M-PESA|ACCOUNT|LEDGER|MAKAO)\b/i', $label) === 1) {
+            return true;
+        }
+
+        return strlen($label) >= 12 && preg_match('/\b(MR|MRS|MISS|DR)\b/i', $label) === 1;
+    }
+
+    private function looksLikePhoneAmount(float $amount): bool
+    {
+        if ($amount <= 0) {
+            return false;
+        }
+
+        $asInt = (string) (int) round($amount);
+        if (strlen($asInt) >= 9 && strlen($asInt) <= 10 && fmod($amount, 1.0) === 0.0) {
+            return true;
+        }
+
+        return $amount > 500000;
     }
 
     /**
@@ -232,7 +339,9 @@ final class EzenRentReceiptListingParser
 
         foreach (self::BANK_LABELS as $bank) {
             if (preg_match('/\s+[\d,]+(?:\.\d+)?\s+'.preg_quote($bank, '/').'\s+.+$/i', $combined) === 1) {
-                return true;
+                $peeled = $this->peelFinishFromCombined($combined);
+
+                return $peeled !== null && ! $this->looksLikePhoneAmount((float) $peeled['amount']);
             }
         }
 
@@ -249,13 +358,15 @@ final class EzenRentReceiptListingParser
             return false;
         }
 
+        // Only treat as a finish line when a known bank / cash ledger label is present.
+        // Otherwise meter lines like "11.00 units, Late payment..." falsely close the buffer.
         foreach (self::BANK_LABELS as $bank) {
-            if (preg_match('/^([\d,]+(?:\.\d+)?)\s+'.preg_quote($bank, '/').'\s+(.+)$/i', $line)) {
-                return true;
+            if (preg_match('/^([\d,]+(?:\.\d+)?)\s+'.preg_quote($bank, '/').'\s+(.+)$/i', $line, $m) === 1) {
+                return ! $this->looksLikePhoneAmount($this->money((string) $m[1]));
             }
         }
 
-        return preg_match('/^([\d,]+(?:\.\d+)?)\s+(.+\s.+)$/i', $line) === 1;
+        return false;
     }
 
     /**
@@ -294,7 +405,7 @@ final class EzenRentReceiptListingParser
             return $account;
         }
 
-        return 'TNT'.str_pad((string) ((int) $match[1]), 5, '0', STR_PAD_LEFT);
+        return 'TNT'.str_pad((string) ((int) $match[1]), 6, '0', STR_PAD_LEFT);
     }
 
     private function parseDate(string $value): string

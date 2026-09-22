@@ -12,12 +12,12 @@
         if ($payout->status === 'draft') {
             $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.approve', $payout)).'" class="inline">'
                 .csrf_field()
-                .'<button type="submit" class="text-emerald-700 hover:text-emerald-800">Approve</button></form>';
+                .'<button type="submit" class="text-emerald-700 hover:text-emerald-800">Approve (checker)</button></form>';
             $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.void', $payout)).'" class="inline" onsubmit="return confirm(\'Void this draft payout? This cannot be undone.\')">'
                 .csrf_field()
                 .'<button type="submit" class="text-rose-700 hover:text-rose-800">Void draft</button></form>';
         }
-        if (in_array($payout->status, ['draft', 'approved'], true) && $mpesaStatus !== 'pending') {
+        if ($payout->status === 'approved' && $mpesaStatus !== 'pending') {
             $actions .= '<form method="post" action="'.e(route('property.accounting.payables.landlord_payouts.pay', $payout)).'" class="inline" onsubmit="return confirm(\'Mark this payout as paid and post to ledger?\')">'
                 .csrf_field()
                 .'<button type="submit" class="text-indigo-700 hover:text-indigo-800">Mark paid (manual)</button></form>';
@@ -56,7 +56,7 @@
 @endphp
 <x-property.workspace
     title="Landlord payouts"
-    subtitle="Payout lifecycle: draft, approved, paid — manual mark-paid or M-Pesa B2C."
+    subtitle="Maker-checker payouts: draft → approve (different user) → pay via M-Pesa B2C or mark paid."
     back-route="property.accounting.index"
     :stats="[['label' => 'Payouts', 'value' => (string) ($rows->total() ?? 0), 'hint' => 'All statuses']]"
     :columns="['Payout ID', 'Date', 'Landlord / Property', 'Total Amount', 'Status', 'Approved By', 'Paid At', 'Actions']"
@@ -83,7 +83,7 @@
         <div class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{{ $errors->first() }}</div>
     @endif
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        Approve payouts after review. Use <strong>Pay via M-Pesa B2C</strong> to send funds to the landlord phone (ledger posts on Safaricom callback), or <strong>Mark paid</strong> if you already disbursed outside the system.
+        <strong>Maker-checker:</strong> the user who creates a draft cannot approve or disburse it. A second admin must <strong>Approve</strong>, then use <strong>Pay via M-Pesa B2C</strong> (ledger posts on Safaricom callback) or <strong>Mark paid</strong> for off-system transfers. Remittance advice is emailed/SMS’d to the landlord when paid.
         @unless ($b2cConfigured ?? false)
             <span class="block mt-1">B2C not configured — set <code class="font-mono text-xs">MPESA_B2C_*</code> in <code class="font-mono text-xs">.env</code>.</span>
         @endunless

@@ -41,7 +41,9 @@
 <body>
 @php
     $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
-    $logoSrc = (string) (($branding['logo_src'] ?? '') ?: ($branding['logo_url'] ?? ''));
+    $logoSrc = (string) (($branding['logo_embed'] ?? '')
+        ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($branding)
+        ?: ($branding['logo_url'] ?? $branding['company_logo_url'] ?? ''));
     $contactLine = (string) ($branding['contact_line'] ?? '');
 @endphp
 <div class="header">
@@ -56,7 +58,7 @@
                     <div class="small">{{ $contactLine }}</div>
                 @else
                     <div class="small">{{ $branding['address'] ?? '' }}</div>
-                    <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email']))  -  {{ $branding['email'] }} @endif</div>
+                    <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email']))  ·  {{ $branding['email'] }} @endif</div>
                 @endif
             </td>
             <td class="meta">

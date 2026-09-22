@@ -137,6 +137,21 @@ final class ResponsiveTableColumns
         );
     }
 
+    public static function landlordStatementMonthly(): array
+    {
+        return self::build(
+            ['Month', 'Gross collected', 'Owner share', 'Your earnings', 'Active properties', 'Actions'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['is_amount' => true, 'priority' => 3, 'mobile_label' => 'Gross'],
+                2 => ['is_amount' => true, 'priority' => 2, 'mobile_label' => 'Owner share'],
+                3 => ['is_amount' => true, 'priority' => 4, 'mobile_label' => 'Earnings'],
+                4 => ['priority' => 5, 'mobile_label' => 'Properties'],
+                5 => ['is_action' => true],
+            ]
+        );
+    }
+
     /**
      * @param  list<string>  $labels
      * @param  list<ColumnMeta>  $overrides

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Throwable;
 
 class PropertyC2bIngestService
@@ -56,6 +57,11 @@ class PropertyC2bIngestService
         try {
             if ($tenant) {
                 $payment = DB::transaction(function () use ($tenant, $transId, $amount, $msisdn, $billRef, $payload, $txnAt) {
+                    // Re-check inside the transaction against unique external_ref races.
+                    if (PmPayment::query()->where('external_ref', $transId)->lockForUpdate()->exists()) {
+                        return null;
+                    }
+
                     $payment = PmPayment::query()->create([
                         'pm_tenant_id' => $tenant->id,
                         'channel' => 'mpesa_c2b',
@@ -84,6 +90,17 @@ class PropertyC2bIngestService
 
                     return $payment->fresh();
                 });
+
+                if ($payment === null) {
+                    $this->upsertPlatformTx($transId, $amount, $msisdn, $billRef, $payload, null, 'completed');
+
+                    return [
+                        'handled' => true,
+                        'duplicate' => true,
+                        'pm_payment_id' => null,
+                        'message' => 'Property payment already exists for this receipt.',
+                    ];
+                }
 
                 return [
                     'handled' => true,
@@ -129,6 +146,15 @@ class PropertyC2bIngestService
                 'pm_payment_id' => null,
                 'message' => 'No tenant match for C2B confirmation.',
             ];
+        } catch (UniqueConstraintViolationException $e) {
+            $this->upsertPlatformTx($transId, $amount, $msisdn, $billRef, $payload, null, 'completed');
+
+            return [
+                'handled' => true,
+                'duplicate' => true,
+                'pm_payment_id' => null,
+                'message' => 'Property payment already exists for this receipt.',
+            ];
         } catch (Throwable $e) {
             Log::error('Property C2B confirmation failed', [
                 'trans_id' => $transId,
@@ -141,17 +167,6 @@ class PropertyC2bIngestService
 
     private function findTenant(string $billRef, ?string $msisdn): ?PmTenant
     {
-        if ($billRef !== '' && Schema::hasColumn('pm_tenants', 'account_number')) {
-            $byAccount = PmTenant::query()
-                ->where('account_number', $billRef)
-                ->orWhere('account_number', 'like', '%'.$billRef.'%')
-                ->orderByDesc('id')
-                ->first();
-            if ($byAccount) {
-                return $byAccount;
-            }
-        }
-
         $tx = [
             'transaction_id' => 'c2b-probe',
             'amount' => 0,
@@ -168,8 +183,21 @@ class PropertyC2bIngestService
             return PmTenant::query()->find($tenantId);
         }
 
+        // Exact account_number fallback (no fuzzy LIKE — that caused false positives).
+        if ($billRef !== '' && Schema::hasColumn('pm_tenants', 'account_number')) {
+            $normalized = strtoupper(str_replace([' ', '-', '_'], '', $billRef));
+            $byAccount = PmTenant::query()
+                ->whereRaw('UPPER(REPLACE(REPLACE(REPLACE(account_number, " ", ""), "-", ""), "_", "")) = ?', [$normalized])
+                ->orderByDesc('id')
+                ->get();
+            if ($byAccount->count() === 1) {
+                return $byAccount->first();
+            }
+        }
+
         if ($msisdn) {
             $variants = $this->phoneVariants($msisdn);
+
             return PmTenant::query()
                 ->where(function ($q) use ($variants) {
                     foreach ($variants as $v) {

@@ -1,5 +1,10 @@
 @php
     use App\Support\Property\ResponsiveTableColumns;
+    use Illuminate\Support\HtmlString;
+
+    $isMonthScoped = (bool) ($isMonthScoped ?? false);
+    $monthlyBreakdown = collect($monthlyBreakdown ?? []);
+    $fy = (int) ($fyValue ?? now()->year);
 
     $breakdownColumns = ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'];
     $breakdownRows = [];
@@ -13,6 +18,49 @@
             ! empty($row['last_paid_at']) ? \Illuminate\Support\Carbon::parse((string) $row['last_paid_at'])->format('Y-m-d') : '—',
         ];
     }
+
+    $monthlyColumns = ['Month', 'Gross collected', 'Owner share', 'Your earnings', 'Active properties', 'Actions'];
+    $monthlyRows = [];
+    foreach ($monthlyBreakdown as $row) {
+        $ym = (string) ($row['month'] ?? '');
+        $monthUrl = route('property.landlords.show', [
+            'landlord' => $landlord->id,
+            'tab' => 'statement',
+            'month' => $ym,
+            'fy' => $fy,
+        ], false);
+        $exportUrl = route('property.landlords.show', [
+            'landlord' => $landlord->id,
+            'tab' => 'statement',
+            'month' => $ym,
+            'fy' => $fy,
+            'export' => 'csv',
+            'export_scope' => 'property',
+        ], false);
+        $printUrl = route('property.landlords.statement.print', [
+            'landlord' => $landlord->id,
+            'month' => $ym,
+            'fy' => $fy,
+            'print' => 1,
+        ], false);
+
+        $actions = new HtmlString(
+            '<div class="flex flex-wrap gap-2 text-xs font-semibold">'
+            .'<a href="'.e($monthUrl).'" data-turbo-frame="property-main" class="text-indigo-700 hover:underline">Open month</a>'
+            .'<a href="'.e($exportUrl).'" data-turbo="false" class="text-slate-700 hover:underline">Export CSV</a>'
+            .'<a href="'.e($printUrl).'" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print</a>'
+            .'</div>'
+        );
+
+        $monthlyRows[] = [
+            (string) ($row['month_label'] ?? $ym),
+            \App\Services\Property\PropertyMoney::kes((float) ($row['gross_collected'] ?? 0)),
+            \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)),
+            \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)),
+            (string) (int) ($row['active_properties'] ?? 0),
+            $actions,
+        ];
+    }
 @endphp
 
 <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0">
@@ -20,14 +68,26 @@
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
             <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
+            @if (! $isMonthScoped)
+                <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">FY view shows year totals below. Use the month-by-month table (or pick a Month above) to open or export one month.</p>
+            @endif
         </div>
-        <a
-            href="{{ route('property.landlords.statement.print', array_filter(['landlord' => $landlord->id, 'month' => $monthValue ?? null, 'fy' => $fyValue ?? null, 'print' => 1]), false) }}"
-            target="_blank"
-            rel="noopener"
-            data-turbo="false"
-            class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-        >Print statement</a>
+        <div class="flex flex-wrap gap-2">
+            @if (! $isMonthScoped)
+                <a
+                    href="{{ route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'statement', 'fy' => $fy], ['export' => 'csv', 'export_scope' => 'monthly']), false) }}"
+                    data-turbo="false"
+                    class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >Export months CSV</a>
+            @endif
+            <a
+                href="{{ route('property.landlords.statement.print', array_filter(['landlord' => $landlord->id, 'month' => $monthValue ?? null, 'fy' => $fyValue ?? null, 'print' => 1]), false) }}"
+                target="_blank"
+                rel="noopener"
+                data-turbo="false"
+                class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+            >Print statement</a>
+        </div>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mt-4">
@@ -56,7 +116,17 @@
 </div>
 
 @include('property.agent.landlords.partials.responsive-table-section', [
-    'title' => 'Property breakdown',
+    'title' => $isMonthScoped ? 'Month-by-month (FY '.$fy.')' : 'Month-by-month breakdown',
+    'columns' => $monthlyColumns,
+    'rows' => $monthlyRows,
+    'columnConfig' => ResponsiveTableColumns::landlordStatementMonthly(),
+    'emptyTitle' => 'No monthly activity',
+    'emptyHint' => 'No completed collections in this period yet.',
+    'tableMinWidth' => '760px',
+])
+
+@include('property.agent.landlords.partials.responsive-table-section', [
+    'title' => $isMonthScoped ? 'Property breakdown (selected month)' : 'Property breakdown (full period)',
     'columns' => $breakdownColumns,
     'rows' => $breakdownRows,
     'columnConfig' => ResponsiveTableColumns::landlordStatementBreakdown(),

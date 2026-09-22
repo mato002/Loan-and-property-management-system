@@ -170,6 +170,18 @@
                 </div>
 
                 <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-3">
+                    <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Go-live checklist</h2>
+                    <ol class="list-decimal pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1.5">
+                        <li>Save API credentials + paybill number for this bank, enable auto sync if available.</li>
+                        <li>Register the webhook URL above in the bank developer portal (header <code class="font-mono text-[11px]">X-Property-Bank-Webhook-Secret</code>).</li>
+                        <li>Configure STK / B2C under <a href="{{ route('property.settings.payments', [], false) }}" class="text-blue-600 hover:underline">Payment config</a> for M-Pesa collection and landlord/payroll payouts.</li>
+                        <li>Optional backup: <a href="{{ route('property.settings.forwarder', [], false) }}" class="text-blue-600 hover:underline">SMS Forwarder</a> token on the office phone.</li>
+                        <li>Confirm cron (<code class="font-mono text-[11px]">schedule:run</code>) and a queue worker are running.</li>
+                        <li>Test with a small live payment (e.g. KES 1) using a TNT account, then verify ledger + receipt SMS.</li>
+                    </ol>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-3">
                     <h2 class="text-sm font-semibold text-slate-900 dark:text-white">How matching works</h2>
                     <ul class="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
                         <li>Bank paybill transactions arrive via auto sync or webhook.</li>
