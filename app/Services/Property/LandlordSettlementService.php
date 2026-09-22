@@ -6,6 +6,7 @@ use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
 use App\Models\PmLandlordPayoutItem;
+use App\Models\PmLease;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyUnit;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Support\Property\PropertyUnitOccupancyStats;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -79,11 +81,17 @@ final class LandlordSettlementService
         $netAmountDue = max(0.0, $closingBalance);
 
         $deductions = $this->periodDeductions($landlordId, $propertyId, $periodStart, $periodEnd);
+        $additions = $this->periodAdditions($propertyId, $periodStart, $periodEnd);
         $openAdvances = $this->openAdvances($landlordId, $propertyId);
         $agreedPayDay = $link->agreed_pay_day !== null ? (int) $link->agreed_pay_day : null;
         $nextAgreedPayDate = app(LandlordAdvanceService::class)->nextAgreedPayDate($agreedPayDay, $periodEnd);
         $unitStats = PropertyUnitOccupancyStats::forProperty($propertyId);
         $unitLines = $this->unitSettlementLines($propertyId, $periodStart, $periodEnd);
+        $unitTotals = $this->sumUnitLines($unitLines);
+        $additionsTotal = round(collect($additions)->sum('amount'), 2);
+        $deductionsTotal = round(collect($deductions)->sum('amount'), 2);
+        $utilityReceived = round($collected['garbage'] + $collected['water'], 2);
+        $otherExpenses = round(max(0.0, $collected['other']), 2);
 
         return [
             'property_id' => $propertyId,
@@ -95,17 +103,23 @@ final class LandlordSettlementService
             'period_start' => $periodStart,
             'period_end' => $periodEnd,
             'period_label' => $periodStart->format('F Y'),
+            'period_range_label' => $periodStart->format('d/m/Y').' - '.$periodEnd->format('d/m/Y'),
             'period_month' => $periodStart->format('Y-m'),
             'unit_stats' => $unitStats,
             'collected' => $collected,
             'owner_collected' => $ownerCollected,
+            'rent_received' => round($collected['rent'], 2),
+            'utility_received' => $utilityReceived,
+            'other_expenses' => $otherExpenses,
             'management_fee' => $managementFee,
             'net_collected' => $netCollected,
             'balance_brought_forward' => $balanceBf,
             'period_credits' => $periodCredits,
             'period_debits' => $periodDebits,
+            'additions' => $additions,
+            'additions_total' => $additionsTotal,
             'deductions' => $deductions,
-            'deductions_total' => round(collect($deductions)->sum('amount'), 2),
+            'deductions_total' => $deductionsTotal,
             'open_advances' => $openAdvances,
             'open_advances_total' => round(collect($openAdvances)->sum('amount'), 2),
             'agreed_pay_day' => $agreedPayDay,
@@ -114,6 +128,7 @@ final class LandlordSettlementService
             'closing_balance' => $closingBalance,
             'net_amount_due' => $netAmountDue,
             'unit_lines' => $unitLines,
+            'unit_totals' => $unitTotals,
         ];
     }
 
@@ -293,21 +308,70 @@ final class LandlordSettlementService
     }
 
     /**
+     * Passion-style unit matrix: every unit with rent/month, Bal B/F, monthly charges, and paid (Rent/Garbage/Water).
+     *
      * @return list<array<string, mixed>>
      */
     public function unitSettlementLines(int $propertyId, Carbon $start, Carbon $end): array
     {
-        $rows = DB::table('pm_payment_allocations as a')
+        $units = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->orderBy('label')
+            ->get(['id', 'label', 'status', 'rent_amount']);
+
+        if ($units->isEmpty()) {
+            return [];
+        }
+
+        $unitIds = $units->pluck('id')->all();
+
+        $tenantsByUnit = DB::table('pm_lease_unit as lu')
+            ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+            ->join('pm_tenants as t', 't.id', '=', 'l.pm_tenant_id')
+            ->whereIn('lu.property_unit_id', $unitIds)
+            ->where('l.status', PmLease::STATUS_ACTIVE)
+            ->orderByDesc('l.id')
+            ->get(['lu.property_unit_id', 't.name', 'l.monthly_rent'])
+            ->groupBy('property_unit_id')
+            ->map(fn ($rows) => $rows->first());
+
+        $openingByUnit = DB::table('pm_invoices as i')
+            ->whereIn('i.property_unit_id', $unitIds)
+            ->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
+            ->whereDate('i.issue_date', '<', $start->toDateString())
+            ->where('i.balance_due', '>', 0)
+            ->groupBy('i.property_unit_id')
+            ->selectRaw('i.property_unit_id as unit_id')
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_RENT."' THEN i.balance_due ELSE 0 END), 0) as rent_bf,
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_GARBAGE."' THEN i.balance_due ELSE 0 END), 0) as garbage_bf,
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_WATER."' THEN i.balance_due ELSE 0 END), 0) as water_bf
+            ")
+            ->get()
+            ->keyBy('unit_id');
+
+        $billedByUnit = DB::table('pm_invoices as i')
+            ->whereIn('i.property_unit_id', $unitIds)
+            ->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
+            ->whereBetween('i.issue_date', [$start->toDateString(), $end->toDateString()])
+            ->groupBy('i.property_unit_id')
+            ->selectRaw('i.property_unit_id as unit_id')
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_RENT."' THEN i.amount ELSE 0 END), 0) as rent_billed,
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_GARBAGE."' THEN i.amount ELSE 0 END), 0) as garbage_billed,
+                COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_WATER."' THEN i.amount ELSE 0 END), 0) as water_billed
+            ")
+            ->get()
+            ->keyBy('unit_id');
+
+        $paidByUnit = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
             ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->leftJoin('pm_tenants as t', 't.id', '=', 'pay.pm_tenant_id')
-            ->where('pu.property_id', $propertyId)
+            ->whereIn('i.property_unit_id', $unitIds)
             ->where('pay.status', PmPayment::STATUS_COMPLETED)
             ->whereBetween('pay.paid_at', [$start, $end])
-            ->groupBy('pu.id', 'pu.label', 'pu.status', 't.name')
-            ->orderBy('pu.label')
-            ->selectRaw('pu.id as unit_id, pu.label as unit_label, pu.status as unit_status, MAX(t.name) as tenant_name')
+            ->groupBy('i.property_unit_id')
+            ->selectRaw('i.property_unit_id as unit_id')
             ->selectRaw("
                 COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_RENT."' THEN a.amount ELSE 0 END), 0) as rent_received,
                 COALESCE(SUM(CASE WHEN i.invoice_type = '".PmInvoice::TYPE_GARBAGE."' THEN a.amount ELSE 0 END), 0) as garbage_received,
@@ -315,42 +379,153 @@ final class LandlordSettlementService
                 COALESCE(SUM(a.amount), 0) as total_received
             ")
             ->get()
-            ->map(fn ($row) => [
-                'unit_id' => (int) $row->unit_id,
-                'unit_label' => (string) $row->unit_label,
-                'unit_status' => (string) $row->unit_status,
-                'tenant_name' => (string) ($row->tenant_name ?? '—'),
-                'rent_received' => round((float) $row->rent_received, 2),
-                'garbage_received' => round((float) $row->garbage_received, 2),
-                'water_received' => round((float) $row->water_received, 2),
-                'total_received' => round((float) $row->total_received, 2),
-            ])
             ->keyBy('unit_id');
 
-        $ownerUnits = PropertyUnit::query()
-            ->where('property_id', $propertyId)
-            ->where('status', PropertyUnit::STATUS_OWNER_OCCUPIED)
-            ->orderBy('label')
-            ->get(['id', 'label', 'status']);
+        return $units->map(function (PropertyUnit $unit) use ($tenantsByUnit, $openingByUnit, $billedByUnit, $paidByUnit) {
+            $tenantRow = $tenantsByUnit->get($unit->id);
+            $opening = $openingByUnit->get($unit->id);
+            $billed = $billedByUnit->get($unit->id);
+            $paid = $paidByUnit->get($unit->id);
 
-        foreach ($ownerUnits as $unit) {
-            if ($rows->has($unit->id)) {
-                continue;
+            $rentBf = round((float) ($opening->rent_bf ?? 0), 2);
+            $garbageBf = round((float) ($opening->garbage_bf ?? 0), 2);
+            $waterBf = round((float) ($opening->water_bf ?? 0), 2);
+            $rentBilled = round((float) ($billed->rent_billed ?? 0), 2);
+            $garbageBilled = round((float) ($billed->garbage_billed ?? 0), 2);
+            $waterBilled = round((float) ($billed->water_billed ?? 0), 2);
+            $rentReceived = round((float) ($paid->rent_received ?? 0), 2);
+            $garbageReceived = round((float) ($paid->garbage_received ?? 0), 2);
+            $waterReceived = round((float) ($paid->water_received ?? 0), 2);
+            $totalReceived = round((float) ($paid->total_received ?? ($rentReceived + $garbageReceived + $waterReceived)), 2);
+
+            $status = (string) $unit->status;
+            $tenantName = trim((string) ($tenantRow->name ?? ''));
+            if ($tenantName === '') {
+                $tenantName = $status === PropertyUnit::STATUS_OWNER_OCCUPIED
+                    ? 'Owner (LLD)'
+                    : ($status === PropertyUnit::STATUS_VACANT ? 'VACANT' : '—');
             }
 
-            $rows->put($unit->id, [
+            $rentPerMonth = (float) ($tenantRow->monthly_rent ?? 0);
+            if ($rentPerMonth <= 0) {
+                $rentPerMonth = (float) ($unit->rent_amount ?? 0);
+            }
+
+            return [
                 'unit_id' => (int) $unit->id,
                 'unit_label' => (string) $unit->label,
-                'unit_status' => (string) $unit->status,
-                'tenant_name' => 'Owner (LLD)',
-                'rent_received' => 0.0,
-                'garbage_received' => 0.0,
-                'water_received' => 0.0,
-                'total_received' => 0.0,
-            ]);
+                'unit_status' => $status,
+                'tenant_name' => $tenantName,
+                'rent_per_month' => round($rentPerMonth, 2),
+                'rent_bf' => $rentBf,
+                'garbage_bf' => $garbageBf,
+                'water_bf' => $waterBf,
+                'rent_billed' => $rentBilled,
+                'garbage_billed' => $garbageBilled,
+                'water_billed' => $waterBilled,
+                'rent_received' => $rentReceived,
+                'garbage_received' => $garbageReceived,
+                'water_received' => $waterReceived,
+                'total_received' => $totalReceived,
+                'rent_closing' => round(max(0.0, $rentBf + $rentBilled - $rentReceived), 2),
+                'garbage_closing' => round(max(0.0, $garbageBf + $garbageBilled - $garbageReceived), 2),
+                'water_closing' => round(max(0.0, $waterBf + $waterBilled - $waterReceived), 2),
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $unitLines
+     * @return array<string, float>
+     */
+    private function sumUnitLines(array $unitLines): array
+    {
+        $keys = [
+            'rent_per_month', 'rent_bf', 'garbage_bf', 'water_bf',
+            'rent_billed', 'garbage_billed', 'water_billed',
+            'rent_received', 'garbage_received', 'water_received', 'total_received',
+            'rent_closing', 'garbage_closing', 'water_closing',
+        ];
+        $totals = array_fill_keys($keys, 0.0);
+        foreach ($unitLines as $line) {
+            foreach ($keys as $key) {
+                $totals[$key] = round($totals[$key] + (float) ($line[$key] ?? 0), 2);
+            }
         }
 
-        return $rows->values()->sortBy('unit_label')->values()->all();
+        return $totals;
+    }
+
+    /**
+     * Security deposits / period credits treated as statement additions.
+     *
+     * @return list<array{description: string, amount: float, occurred_at: string|null}>
+     */
+    private function periodAdditions(int $propertyId, Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('pm_tenant_deposits')) {
+            return [];
+        }
+
+        $tenantIds = DB::table('pm_lease_unit as lu')
+            ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+            ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
+            ->where('pu.property_id', $propertyId)
+            ->pluck('l.pm_tenant_id')
+            ->merge(
+                DB::table('pm_invoices as i')
+                    ->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+                    ->where('u.property_id', $propertyId)
+                    ->pluck('i.pm_tenant_id')
+            )
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($tenantIds === []) {
+            return [];
+        }
+
+        $unitByTenant = DB::table('pm_lease_unit as lu')
+            ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+            ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
+            ->where('pu.property_id', $propertyId)
+            ->where('l.status', PmLease::STATUS_ACTIVE)
+            ->whereIn('l.pm_tenant_id', $tenantIds)
+            ->orderByDesc('l.id')
+            ->get(['l.pm_tenant_id', 'pu.label'])
+            ->groupBy('pm_tenant_id')
+            ->map(fn ($rows) => (string) ($rows->first()->label ?? ''));
+
+        return DB::table('pm_tenant_deposits as d')
+            ->join('pm_tenants as t', 't.id', '=', 'd.tenant_id')
+            ->whereIn('d.tenant_id', $tenantIds)
+            ->whereBetween('d.created_at', [$start, $end])
+            ->where('d.amount', '>', 0)
+            ->orderBy('d.created_at')
+            ->get(['d.amount', 'd.created_at', 'd.tenant_id', 't.name as tenant_name'])
+            ->map(function ($row) use ($unitByTenant) {
+                $tenant = trim((string) ($row->tenant_name ?? ''));
+                $unit = trim((string) ($unitByTenant->get((int) $row->tenant_id) ?? ''));
+                $label = 'SECURITY DEPOSIT';
+                if ($tenant !== '') {
+                    $label .= ' — '.$tenant;
+                }
+                if ($unit !== '') {
+                    $label .= ' ('.$unit.')';
+                }
+
+                return [
+                    'description' => $label,
+                    'amount' => round((float) $row->amount, 2),
+                    'occurred_at' => $row->created_at
+                        ? Carbon::parse($row->created_at)->format('Y-m-d')
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /**

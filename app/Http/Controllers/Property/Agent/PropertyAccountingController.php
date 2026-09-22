@@ -3187,7 +3187,7 @@ class PropertyAccountingController extends Controller
         ])->render();
 
         $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
-        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m'))).'.pdf';
+        $filename = 'property-account-statement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m'))).'.pdf';
 
         try {
             $options = new Options;
@@ -3196,7 +3196,7 @@ class PropertyAccountingController extends Controller
             $options->set('defaultFont', 'DejaVu Sans');
             $dompdf = new Dompdf($options);
             $dompdf->loadHtml($html, 'UTF-8');
-            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->setPaper('A4', 'landscape');
             $dompdf->render();
 
             return response($dompdf->output(), 200, [
@@ -3217,41 +3217,112 @@ class PropertyAccountingController extends Controller
     private function streamLandlordSettlementCsv(array $settlement): StreamedResponse
     {
         $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
-        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m')));
+        $filename = 'property-account-statement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m')));
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
 
         return TabularExport::stream(
             $filename,
-            ['Section', 'Label', 'Value'],
-            function () use ($settlement) {
-                yield ['Summary', 'Property', (string) ($settlement['property_name'] ?? '')];
-                yield ['Summary', 'Landlord', (string) ($settlement['landlord_name'] ?? '')];
-                yield ['Summary', 'Period', (string) ($settlement['period_label'] ?? '')];
-                yield ['Summary', 'Ownership %', (string) ($settlement['ownership_percent'] ?? 0)];
-                yield ['Summary', 'Commission %', (string) ($settlement['commission_percent'] ?? 0)];
-                yield ['Collections', 'Rent (owner share)', number_format((float) ($settlement['owner_collected']['rent'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Garbage (owner share)', number_format((float) ($settlement['owner_collected']['garbage'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Water (owner share)', number_format((float) ($settlement['owner_collected']['water'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Balance b/f', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Period credits', number_format((float) ($settlement['period_credits'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Period debits', number_format((float) ($settlement['period_debits'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Net amount due', number_format((float) ($settlement['net_amount_due'] ?? 0), 2, '.', '')];
-
-                foreach ($settlement['deductions'] ?? [] as $deduction) {
-                    yield [
-                        'Deduction',
-                        (string) ($deduction['description'] ?? 'Deduction'),
-                        number_format((float) ($deduction['amount'] ?? 0), 2, '.', ''),
-                    ];
-                }
+            [
+                'Section',
+                'Unit',
+                'Tenant',
+                'Rent / month',
+                'Bal B/F Rent',
+                'Bal B/F Garbage',
+                'Bal B/F Water',
+                'Monthly Rent',
+                'Monthly Garbage',
+                'Monthly Water',
+                'Paid Rent',
+                'Paid Garbage',
+                'Paid Water',
+                'Amount',
+            ],
+            function () use ($settlement, $n) {
+                yield [
+                    'Header',
+                    (string) ($settlement['property_name'] ?? ''),
+                    (string) ($settlement['landlord_name'] ?? ''),
+                    '', '', '', '', '', '', '', '', '', '',
+                    (string) (($settlement['period_label'] ?? '').' '.($settlement['period_range_label'] ?? '')),
+                ];
 
                 foreach ($settlement['unit_lines'] ?? [] as $line) {
                     yield [
                         'Unit',
-                        ((string) ($line['unit_label'] ?? '')).' — '.((string) ($line['tenant_name'] ?? '')),
-                        number_format((float) ($line['total_received'] ?? 0), 2, '.', ''),
+                        (string) ($line['unit_label'] ?? ''),
+                        (string) ($line['tenant_name'] ?? ''),
+                        $n((float) ($line['rent_per_month'] ?? 0)),
+                        $n((float) ($line['rent_bf'] ?? 0)),
+                        $n((float) ($line['garbage_bf'] ?? 0)),
+                        $n((float) ($line['water_bf'] ?? 0)),
+                        $n((float) ($line['rent_billed'] ?? 0)),
+                        $n((float) ($line['garbage_billed'] ?? 0)),
+                        $n((float) ($line['water_billed'] ?? 0)),
+                        $n((float) ($line['rent_received'] ?? 0)),
+                        $n((float) ($line['garbage_received'] ?? 0)),
+                        $n((float) ($line['water_received'] ?? 0)),
+                        $n((float) ($line['total_received'] ?? 0)),
                     ];
                 }
+
+                $totals = $settlement['unit_totals'] ?? [];
+                yield [
+                    'Unit totals',
+                    '',
+                    '',
+                    $n((float) ($totals['rent_per_month'] ?? 0)),
+                    $n((float) ($totals['rent_bf'] ?? 0)),
+                    $n((float) ($totals['garbage_bf'] ?? 0)),
+                    $n((float) ($totals['water_bf'] ?? 0)),
+                    $n((float) ($totals['rent_billed'] ?? 0)),
+                    $n((float) ($totals['garbage_billed'] ?? 0)),
+                    $n((float) ($totals['water_billed'] ?? 0)),
+                    $n((float) ($totals['rent_received'] ?? 0)),
+                    $n((float) ($totals['garbage_received'] ?? 0)),
+                    $n((float) ($totals['water_received'] ?? 0)),
+                    $n((float) ($totals['total_received'] ?? 0)),
+                ];
+
+                yield [
+                    'Occupancy',
+                    'Occupied',
+                    (string) (($settlement['unit_stats']['units_occupied'] ?? 0)),
+                    'Vacant',
+                    (string) (($settlement['unit_stats']['units_vacant'] ?? 0)),
+                    '', '', '', '', '', '', '', '', '',
+                ];
+
+                foreach ($settlement['additions'] ?? [] as $addition) {
+                    yield [
+                        'Addition',
+                        '',
+                        (string) ($addition['description'] ?? 'Addition'),
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($addition['amount'] ?? 0)),
+                    ];
+                }
+                yield ['Addition totals', '', 'TOTAL ADDITIONS', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0))];
+
+                foreach ($settlement['deductions'] ?? [] as $deduction) {
+                    yield [
+                        'Deduction',
+                        '',
+                        (string) ($deduction['description'] ?? 'Deduction'),
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($deduction['amount'] ?? 0)),
+                    ];
+                }
+                yield ['Deduction totals', '', 'TOTAL DEDUCTIONS', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0))];
+
+                yield ['Summary', '', 'Rent received', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['rent_received'] ?? 0))];
+                yield ['Summary', '', 'Total utility', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['utility_received'] ?? 0))];
+                yield ['Summary', '', 'Less management fee', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['management_fee'] ?? 0))];
+                yield ['Summary', '', 'Less other expenses', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['other_expenses'] ?? 0))];
+                yield ['Summary', '', 'Add total additions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0))];
+                yield ['Summary', '', 'Less total deductions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0))];
+                yield ['Summary', '', 'Balance B/F', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['balance_brought_forward'] ?? 0))];
+                yield ['Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0))];
             },
             TabularExport::FORMAT_CSV,
         );
