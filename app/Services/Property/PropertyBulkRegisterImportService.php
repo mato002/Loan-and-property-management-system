@@ -148,11 +148,18 @@ final class PropertyBulkRegisterImportService
         $limit = isset($options['limit']) && is_numeric($options['limit']) ? (int) $options['limit'] : null;
 
         return match ($type) {
-            self::TYPE_TENANTS_LEASES => app(PassionLegacyLeasesImportService::class)->importFromPath(
-                $path,
-                $agentUserId,
-                $dryRun,
-                ! (bool) ($options['no_update'] ?? false),
+            self::TYPE_TENANTS_LEASES => tap(
+                app(PassionLegacyLeasesImportService::class)->importFromPath(
+                    $path,
+                    $agentUserId,
+                    $dryRun,
+                    ! (bool) ($options['no_update'] ?? false),
+                ),
+                static function () use ($dryRun): void {
+                    if (! $dryRun) {
+                        PropertyDashboardCache::forgetAll();
+                    }
+                }
             ),
             self::TYPE_RENT_RECEIPTS => app(EzenRentReceiptsImportService::class)->importFromPath(
                 $path,

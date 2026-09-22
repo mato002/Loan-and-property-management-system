@@ -289,10 +289,24 @@ final class PassionLegacyTextNormalizer
     public static function cleanTenantName(?string $name): string
     {
         $name = trim(preg_replace('/\s+/', ' ', (string) $name) ?? '');
-        $name = preg_replace('/^OCCP\s+/i', '', $name) ?? $name;
-        $name = preg_replace('/\s+OCCP$/i', '', $name) ?? $name;
+        // Legacy PDF often glues status tokens onto the tenant name.
+        $name = preg_replace('/\bOCCP\b/i', ' ', $name) ?? $name;
+        $name = preg_replace('/\bOCCUPIED\b/i', ' ', $name) ?? $name;
+        $name = preg_replace('/\bVACANT\b/i', ' ', $name) ?? $name;
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? '');
 
-        return trim($name);
+        if ($name === '' || preg_match('/^(N\/?A|NULL|NONE|-)$/i', $name) === 1) {
+            return '';
+        }
+
+        return $name;
+    }
+
+    public static function isPlaceholderTenantName(?string $name): bool
+    {
+        $clean = self::cleanTenantName($name);
+
+        return $clean === '';
     }
 
     public static function mapUnitStatus(?string $status): string

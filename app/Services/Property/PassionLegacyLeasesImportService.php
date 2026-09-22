@@ -86,6 +86,15 @@ final class PassionLegacyLeasesImportService
             return;
         }
 
+        $tenantName = PassionLegacyTextNormalizer::cleanTenantName($record['tenant_name'] ?? '');
+        if (PassionLegacyTextNormalizer::isPlaceholderTenantName($tenantName)) {
+            $summary['warnings'][] = "Row {$rowNum} ({$record['account_number']}): skipped placeholder tenant name '".trim((string) ($record['tenant_name'] ?? ''))."'.";
+
+            return;
+        }
+
+        $record['tenant_name'] = $tenantName;
+
         $tenant = $this->resolveTenant($record, $agentUserId, $updateExisting, $summary, $rowNum);
 
         $activeLeases = PmLease::query()
