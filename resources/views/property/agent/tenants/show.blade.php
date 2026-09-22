@@ -34,7 +34,14 @@
     </x-slot>
 
     <x-slot name="modals">
-        @include('property.agent.tenants.partials.hub_modals')
+        @include('property.agent.tenants.partials.hub_modals', [
+            'tenant' => $tenant,
+            'hubOpenInvoices' => $hubOpenInvoices ?? collect(),
+            'hubLeases' => $hubLeases ?? collect(),
+            'hubUnits' => $hubUnits ?? collect(),
+            'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
+            'noticeTemplate' => $noticeTemplate ?? '',
+        ])
         @include('property.agent.partials.lease_create_shell', [
             'openLeaseCreateModal' => false,
             'leaseCreateFormUrl' => route('property.leases.create_form', [
