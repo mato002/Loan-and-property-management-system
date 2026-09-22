@@ -191,9 +191,16 @@ final class PropertyWorkspaceTabs
             return false;
         }
 
-        foreach (['.show', '.edit', '.create', '.print', '.pdf', '.download'] as $suffix) {
-            if (str_ends_with($routeName, $suffix)) {
-                return false;
+        // Keep Collections tabs on statement line review — it is a register view, not an entity form.
+        $keepWorkspaceTabs = [
+            'property.revenue.statements.show',
+        ];
+
+        if (! in_array($routeName, $keepWorkspaceTabs, true)) {
+            foreach (['.show', '.edit', '.create', '.print', '.pdf', '.download'] as $suffix) {
+                if (str_ends_with($routeName, $suffix)) {
+                    return false;
+                }
             }
         }
 

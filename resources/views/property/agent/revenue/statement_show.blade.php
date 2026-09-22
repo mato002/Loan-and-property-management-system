@@ -1,4 +1,5 @@
 <x-property.workspace
+    workspace="collections"
     title="Statement · {{ $statement->bank_name }}"
     subtitle="{{ $statement->account_name }} · {{ $statement->periodLabel() }}"
     back-route="property.revenue.statements.index"
