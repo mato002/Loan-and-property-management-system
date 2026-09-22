@@ -1,11 +1,17 @@
 @php
     use App\Support\Property\ResponsiveTableColumns;
-    use Illuminate\Support\HtmlString;
 
     $isMonthScoped = (bool) ($isMonthScoped ?? false);
     $monthlyBreakdown = collect($monthlyBreakdown ?? []);
     $monthSettlements = collect($monthSettlements ?? []);
     $fy = (int) ($fyValue ?? now()->year);
+    $openMonth = $isMonthScoped ? (string) ($monthValue ?? '') : '';
+
+    $fyOverviewUrl = route('property.landlords.show', [
+        'landlord' => $landlord->id,
+        'tab' => 'statement',
+        'fy' => $fy,
+    ], false);
 
     $breakdownColumns = ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'];
     $breakdownRows = [];
@@ -19,50 +25,6 @@
             ! empty($row['last_paid_at']) ? \Illuminate\Support\Carbon::parse((string) $row['last_paid_at'])->format('Y-m-d') : '—',
         ];
     }
-
-    $monthlyColumns = ['Month', 'Gross collected', 'Owner share', 'Your earnings', 'Active properties', 'Actions'];
-    $monthlyRows = [];
-    foreach ($monthlyBreakdown as $row) {
-        $ym = (string) ($row['month'] ?? '');
-        $isCurrentMonth = $isMonthScoped && $ym === (string) ($monthValue ?? '');
-        $monthUrl = route('property.landlords.show', [
-            'landlord' => $landlord->id,
-            'tab' => 'statement',
-            'month' => $ym,
-            'fy' => $fy,
-        ], false);
-        $exportUrl = route('property.landlords.show', [
-            'landlord' => $landlord->id,
-            'tab' => 'statement',
-            'month' => $ym,
-            'fy' => $fy,
-            'export' => 'csv',
-            'export_scope' => 'statement',
-        ], false);
-        $printUrl = route('property.landlords.statement.print', [
-            'landlord' => $landlord->id,
-            'month' => $ym,
-            'fy' => $fy,
-            'print' => 1,
-        ], false);
-
-        $actions = new HtmlString(
-            '<div class="flex flex-wrap gap-2 text-xs font-semibold">'
-            .'<a href="'.e($monthUrl).'" data-turbo-frame="property-main" class="text-indigo-700 hover:underline">'.($isCurrentMonth ? 'Viewing' : 'Open month').'</a>'
-            .'<a href="'.e($exportUrl).'" data-turbo="false" class="text-slate-700 hover:underline">Export statement</a>'
-            .'<a href="'.e($printUrl).'" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print statement</a>'
-            .'</div>'
-        );
-
-        $monthlyRows[] = [
-            ($isCurrentMonth ? '▸ ' : '').(string) ($row['month_label'] ?? $ym),
-            \App\Services\Property\PropertyMoney::kes((float) ($row['gross_collected'] ?? 0)),
-            \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)),
-            \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)),
-            (string) (int) ($row['active_properties'] ?? 0),
-            $actions,
-        ];
-    }
 @endphp
 
 <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0">
@@ -70,11 +32,7 @@
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
             <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
-            @if ($isMonthScoped)
-                <p class="mt-1 text-xs text-teal-800 dark:text-teal-200">Showing property account statement detail for <strong>{{ $periodLabel }}</strong> (units, balances, invoiced, received, additions &amp; deductions).</p>
-            @else
-                <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">FY overview below. Open a month (or use Export / Print on a month row) for the full unit-level statement like the legacy register.</p>
-            @endif
+            <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement under that row. Export / Print stay available for that month.</p>
         </div>
         <div class="flex flex-wrap gap-2">
             @if (! $isMonthScoped)
@@ -130,116 +88,111 @@
     <p class="mt-3 text-xs text-slate-500">Period: {{ $periodLabel }} · Generated {{ now()->format('Y-m-d H:i') }}</p>
 </div>
 
-@if ($isMonthScoped && $monthSettlements->isNotEmpty())
-    @foreach ($monthSettlements as $settlement)
-        @php
-            $unitColumns = ['Unit', 'Tenant', 'Per month', 'B/F rent', 'B/F garbage', 'B/F water', 'Inv. rent', 'Inv. garbage', 'Inv. water', 'Rec. rent', 'Rec. garbage', 'Rec. water'];
-            $unitRows = [];
-            foreach (($settlement['unit_lines'] ?? []) as $line) {
-                $unitRows[] = [
-                    (string) ($line['unit_label'] ?? '—'),
-                    (string) ($line['tenant_name'] ?? '—'),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['rent_per_month'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['rent_bf'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_bf'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['water_bf'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['rent_billed'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_billed'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['water_billed'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['rent_received'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_received'] ?? 0)),
-                    \App\Services\Property\PropertyMoney::kes((float) ($line['water_received'] ?? 0)),
-                ];
-            }
-            $unitStats = $settlement['unit_stats'] ?? [];
-        @endphp
+<div class="property-erp-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm w-full min-w-0 overflow-visible mt-4">
+    <div class="px-3 sm:px-4 py-3 border-b border-slate-100 dark:border-slate-700/80">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Month-by-month (FY {{ $fy }})</h3>
+    </div>
 
-        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-teal-200 dark:border-teal-800 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0 mt-4">
-            <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                    <h3 class="text-base font-semibold text-slate-900 dark:text-white">{{ $settlement['property_name'] ?? 'Property' }}</h3>
-                    <p class="text-xs text-slate-500">
-                        {{ $settlement['period_label'] ?? $periodLabel }}
-                        @if (! empty($settlement['period_range_label']))
-                            ({{ $settlement['period_range_label'] }})
+    <div class="w-full min-w-0">
+        <x-property.responsive.table-wrapper min-width="760px">
+            <table class="property-erp-table w-full table-auto border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:dark:border-slate-700 [&_td]:border [&_td]:border-slate-200 [&_td]:dark:border-slate-700">
+                <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    <tr>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Month</th>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Gross collected</th>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Owner share</th>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Your earnings</th>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Active properties</th>
+                        <th class="px-3 sm:px-4 py-2.5 sm:py-3 whitespace-normal">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($monthlyBreakdown as $row)
+                        @php
+                            $ym = (string) ($row['month'] ?? '');
+                            $isOpen = $openMonth !== '' && $ym === $openMonth;
+                            $expandUrl = route('property.landlords.show', [
+                                'landlord' => $landlord->id,
+                                'tab' => 'statement',
+                                'month' => $ym,
+                                'fy' => $fy,
+                            ], false);
+                            $collapseUrl = $fyOverviewUrl;
+                            $toggleUrl = $isOpen ? $collapseUrl : $expandUrl;
+                            $exportUrl = route('property.landlords.show', [
+                                'landlord' => $landlord->id,
+                                'tab' => 'statement',
+                                'month' => $ym,
+                                'fy' => $fy,
+                                'export' => 'csv',
+                                'export_scope' => 'statement',
+                            ], false);
+                            $printUrl = route('property.landlords.statement.print', [
+                                'landlord' => $landlord->id,
+                                'month' => $ym,
+                                'fy' => $fy,
+                                'print' => 1,
+                            ], false);
+                        @endphp
+                        <tr @class([
+                            'border-t border-slate-100 dark:border-slate-700/80',
+                            'bg-teal-50/70 dark:bg-teal-900/20' => $isOpen,
+                            'hover:bg-slate-50/80 dark:hover:bg-slate-800/40' => ! $isOpen,
+                        ])>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 align-middle">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <a
+                                        href="{{ $toggleUrl }}"
+                                        data-turbo-frame="property-main"
+                                        class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                        aria-expanded="{{ $isOpen ? 'true' : 'false' }}"
+                                        aria-label="{{ $isOpen ? 'Collapse '.$row['month_label'] : 'Expand '.$row['month_label'] }}"
+                                        title="{{ $isOpen ? 'Collapse month detail' : 'Expand month detail' }}"
+                                    >{{ $isOpen ? '−' : '+' }}</a>
+                                    <span @class(['font-semibold text-teal-900 dark:text-teal-100' => $isOpen])>{{ $row['month_label'] ?? $ym }}</span>
+                                </div>
+                            </td>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['gross_collected'] ?? 0)) }}</td>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)) }}</td>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)) }}</td>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ (int) ($row['active_properties'] ?? 0) }}</td>
+                            <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 align-top">
+                                <div class="flex flex-wrap gap-2 text-xs font-semibold">
+                                    <a href="{{ $exportUrl }}" data-turbo="false" class="text-slate-700 hover:underline">Export statement</a>
+                                    <a href="{{ $printUrl }}" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print statement</a>
+                                </div>
+                            </td>
+                        </tr>
+                        @if ($isOpen)
+                            <tr class="border-t border-teal-200 dark:border-teal-800 bg-slate-50/80 dark:bg-slate-900/40">
+                                <td colspan="6" class="px-3 sm:px-4 py-4 align-top">
+                                    @if ($monthSettlements->isEmpty())
+                                        <p class="text-sm text-slate-500">No property statement detail for this month.</p>
+                                    @else
+                                        <div class="space-y-6">
+                                            @foreach ($monthSettlements as $settlement)
+                                                @include('property.agent.landlords.partials.month-statement-detail', [
+                                                    'settlement' => $settlement,
+                                                ])
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </td>
+                            </tr>
                         @endif
-                        · Occupied {{ (int) ($unitStats['units_occupied'] ?? 0) }} · Vacant {{ (int) ($unitStats['units_vacant'] ?? 0) }}
-                    </p>
-                </div>
-                <p class="text-sm font-semibold text-teal-800 dark:text-teal-200 tabular-nums">
-                    Net due {{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['net_amount_due'] ?? 0)) }}
-                </p>
-            </div>
-        </div>
-
-        @include('property.agent.landlords.partials.responsive-table-section', [
-            'title' => 'Units — '.$settlement['property_name'],
-            'columns' => $unitColumns,
-            'rows' => $unitRows,
-            'columnConfig' => ResponsiveTableColumns::landlordStatementUnits(),
-            'emptyTitle' => 'No units',
-            'emptyHint' => 'No units linked to this property.',
-            'tableMinWidth' => '980px',
-        ])
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4">
-                <h4 class="text-sm font-semibold text-slate-900 dark:text-white mb-2">Additions</h4>
-                <ul class="space-y-1 text-sm">
-                    @forelse (($settlement['additions'] ?? []) as $addition)
-                        <li class="flex justify-between gap-3">
-                            <span class="text-slate-600 dark:text-slate-300">{{ $addition['description'] ?? 'Addition' }}</span>
-                            <span class="tabular-nums text-emerald-700 font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($addition['amount'] ?? 0)) }}</span>
-                        </li>
                     @empty
-                        <li class="text-slate-500">No additions in this month.</li>
+                        <tr>
+                            <td colspan="6" class="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
+                                <p class="font-medium text-slate-700 dark:text-slate-200">No monthly activity</p>
+                                <p class="text-sm mt-1">No completed collections in this period yet.</p>
+                            </td>
+                        </tr>
                     @endforelse
-                    <li class="flex justify-between gap-3 border-t border-slate-100 dark:border-slate-700 pt-2 mt-2 font-semibold">
-                        <span>Total additions</span>
-                        <span class="tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['additions_total'] ?? 0)) }}</span>
-                    </li>
-                </ul>
-                <h4 class="text-sm font-semibold text-slate-900 dark:text-white mb-2 mt-4">Deductions / disbursements</h4>
-                <ul class="space-y-1 text-sm">
-                    @forelse (($settlement['deductions'] ?? []) as $deduction)
-                        <li class="flex justify-between gap-3">
-                            <span class="text-slate-600 dark:text-slate-300">{{ $deduction['description'] ?? 'Deduction' }}</span>
-                            <span class="tabular-nums text-rose-700 font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($deduction['amount'] ?? 0)) }}</span>
-                        </li>
-                    @empty
-                        <li class="text-slate-500">No deductions in this month.</li>
-                    @endforelse
-                    <li class="flex justify-between gap-3 border-t border-slate-100 dark:border-slate-700 pt-2 mt-2 font-semibold">
-                        <span>Total deductions</span>
-                        <span class="tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['deductions_total'] ?? 0)) }}</span>
-                    </li>
-                </ul>
-            </div>
-            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4">
-                <h4 class="text-sm font-semibold text-slate-900 dark:text-white mb-2">Statement summary</h4>
-                <dl class="space-y-1.5 text-sm">
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Rent received</dt><dd class="tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['rent_received'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Total utility</dt><dd class="tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['utility_received'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Less management fee ({{ rtrim(rtrim(number_format((float) ($settlement['commission_percent'] ?? 0), 2, '.', ''), '0'), '.') }}%)</dt><dd class="tabular-nums font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['management_fee'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Add additions</dt><dd class="tabular-nums font-medium text-emerald-700">+ {{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['additions_total'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Less deductions</dt><dd class="tabular-nums font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['deductions_total'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3"><dt class="text-slate-500">Balance B/F</dt><dd class="tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['balance_brought_forward'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between gap-3 border-t border-slate-100 dark:border-slate-700 pt-2 mt-1"><dt class="font-semibold">Net amount due</dt><dd class="tabular-nums font-semibold text-teal-800 dark:text-teal-200">{{ \App\Services\Property\PropertyMoney::kes((float) ($settlement['net_amount_due'] ?? 0)) }}</dd></div>
-                </dl>
-            </div>
-        </div>
-    @endforeach
-@endif
-
-@include('property.agent.landlords.partials.responsive-table-section', [
-    'title' => 'Month-by-month (FY '.$fy.')',
-    'columns' => $monthlyColumns,
-    'rows' => $monthlyRows,
-    'columnConfig' => ResponsiveTableColumns::landlordStatementMonthly(),
-    'emptyTitle' => 'No monthly activity',
-    'emptyHint' => 'No completed collections in this period yet.',
-    'tableMinWidth' => '760px',
-])
+                </tbody>
+            </table>
+        </x-property.responsive.table-wrapper>
+    </div>
+</div>
 
 @if (! $isMonthScoped)
     @include('property.agent.landlords.partials.responsive-table-section', [
