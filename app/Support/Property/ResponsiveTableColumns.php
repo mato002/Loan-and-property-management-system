@@ -152,6 +152,27 @@ final class ResponsiveTableColumns
         );
     }
 
+    public static function landlordStatementUnits(): array
+    {
+        return self::build(
+            ['Unit', 'Tenant', 'Per month', 'B/F rent', 'B/F garbage', 'B/F water', 'Inv. rent', 'Inv. garbage', 'Inv. water', 'Rec. rent', 'Rec. garbage', 'Rec. water'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 2, 'mobile_label' => 'Tenant'],
+                2 => ['is_amount' => true, 'priority' => 3, 'mobile_label' => 'Rent/mo'],
+                3 => ['priority' => 6, 'mobile_label' => 'B/F rent'],
+                4 => ['priority' => 7, 'mobile_label' => 'B/F garbage'],
+                5 => ['priority' => 8, 'mobile_label' => 'B/F water'],
+                6 => ['priority' => 4, 'mobile_label' => 'Inv. rent'],
+                7 => ['priority' => 9, 'mobile_label' => 'Inv. garbage'],
+                8 => ['priority' => 10, 'mobile_label' => 'Inv. water'],
+                9 => ['is_amount' => true, 'priority' => 5, 'mobile_label' => 'Rec. rent'],
+                10 => ['priority' => 11, 'mobile_label' => 'Rec. garbage'],
+                11 => ['priority' => 12, 'mobile_label' => 'Rec. water'],
+            ]
+        );
+    }
+
     /**
      * @param  list<string>  $labels
      * @param  list<ColumnMeta>  $overrides

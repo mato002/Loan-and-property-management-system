@@ -1,12 +1,13 @@
 @php
     $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $accent = $branding['colour'] ?? '#0f766e';
+    $settlements = $settlements ?? [];
 @endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PROPERTY ACCOUNT STATEMENT — {{ $settlement['property_name'] ?? '' }}</title>
+    <title>PROPERTY ACCOUNT STATEMENT — {{ $landlord->name ?? '' }} — {{ $periodLabel ?? '' }}</title>
     <style>
         @page { size: A4 landscape; margin: 10mm; }
         body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 8pt; color: #0f172a; margin: 0; }
@@ -39,17 +40,42 @@
         .signs td { width: 25%; vertical-align: top; padding-right: 10px; font-size: 7.5pt; }
         .signs .line { margin-top: 28px; border-top: 1px solid #64748b; padding-top: 3px; color: #475569; }
         .footer { margin-top: 10px; font-size: 7pt; color: #64748b; }
+        .statement-block { page-break-after: always; }
+        .statement-block:last-child { page-break-after: auto; }
+        .toolbar { margin-bottom: 12px; }
+        @media print {
+            .toolbar { display: none !important; }
+        }
     </style>
 </head>
 <body>
-    @include('property.agent.accounting.partials.landlord_settlement_statement_body', [
-        'settlement' => $settlement,
-        'branding' => $branding,
-    ])
+    @if (! ($autoPrint ?? false))
+        <div class="toolbar">
+            <button type="button" onclick="window.print()" style="padding:8px 14px;font-size:10pt;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;">Print</button>
+        </div>
+    @endif
 
-    <div class="footer">
-        Generated {{ $generatedAt ?? now()->format('d M Y H:i') }}.
-        Figures from posted invoices, collections, deposits, and landlord ledger for this property.
-    </div>
+    @forelse ($settlements as $settlement)
+        <div class="statement-block">
+            @include('property.agent.accounting.partials.landlord_settlement_statement_body', [
+                'settlement' => $settlement,
+                'branding' => $branding,
+            ])
+            <div class="footer">
+                Generated {{ $generatedAt ?? now()->format('d M Y H:i') }}.
+                Month statement for {{ $periodLabel ?? ($settlement['period_label'] ?? '') }} only — units, invoiced, received, additions and deductions.
+            </div>
+        </div>
+    @empty
+        <p>No linked properties for this landlord.</p>
+    @endforelse
+
+    @if ($autoPrint ?? false)
+        <script>
+            window.addEventListener('load', function () {
+                window.print();
+            });
+        </script>
+    @endif
 </body>
 </html>

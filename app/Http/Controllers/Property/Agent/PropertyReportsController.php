@@ -688,6 +688,18 @@ class PropertyReportsController extends Controller
             $baseName = strtolower(trim((string) $safeTitle, '-'));
 
             if ($export === 'pdf') {
+                $subtitleParts = [];
+                foreach ((array) ($payload['stats'] ?? []) as $stat) {
+                    if (! is_array($stat)) {
+                        continue;
+                    }
+                    $label = trim((string) ($stat['label'] ?? ''));
+                    $value = trim((string) ($stat['value'] ?? ''));
+                    if ($label !== '' && $value !== '' && $value !== '—') {
+                        $subtitleParts[] = $label.': '.$value;
+                    }
+                }
+
                 return TabularExport::stream(
                     $baseName.'-'.now()->format('Ymd_His'),
                     $columns,
@@ -699,7 +711,12 @@ class PropertyReportsController extends Controller
                             );
                         }
                     },
-                    TabularExport::FORMAT_PDF
+                    TabularExport::FORMAT_PDF,
+                    [
+                        'title' => (string) ($report['title'] ?? 'Report'),
+                        'subtitle' => implode(' · ', $subtitleParts),
+                        'filename_base' => $baseName,
+                    ]
                 );
             }
 

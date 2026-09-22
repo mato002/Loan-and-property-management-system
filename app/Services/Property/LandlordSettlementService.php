@@ -102,7 +102,7 @@ final class LandlordSettlementService
             'commission_percent' => $commissionPct,
             'period_start' => $periodStart,
             'period_end' => $periodEnd,
-            'period_label' => $periodStart->format('F Y'),
+            'period_label' => $periodStart->format('F').' - '.$periodStart->format('Y'),
             'period_range_label' => $periodStart->format('d/m/Y').' - '.$periodEnd->format('d/m/Y'),
             'period_month' => $periodStart->format('Y-m'),
             'unit_stats' => $unitStats,

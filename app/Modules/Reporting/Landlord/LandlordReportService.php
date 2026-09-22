@@ -89,7 +89,7 @@ class LandlordReportService
 				'stats' => [
 					['label' => 'Landlord', 'value' => '—', 'hint' => 'Select a landlord to view statement'],
 				],
-				'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Payments', 'Balance'],
+				'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Credit', 'Debit', 'Balance'],
 				'tableRows' => [],
 				'emptyTitle' => 'Select a landlord',
 				'emptyHint' => 'Use the landlord filter to load the detailed statement.',
@@ -139,17 +139,26 @@ class LandlordReportService
 				$invoiceNo = (string) ($invoiceNosById[(int) $e->reference_id] ?? '—');
 			}
 
-			$payments = $isCredit ? $this->money($amount) : $this->money(0);
+			// Credits = collections / amounts increasing payable to landlord.
+			// Debits = remittances / vouchers paid out (e.g. ezen_payment_voucher).
+			$credit = $isCredit ? $this->money($amount) : $this->money(0);
+			$debit = $isCredit ? $this->money(0) : $this->money($amount);
 
 			return [
 				$this->dateTime((string) $e->occurred_at),
 				(string) $txnType,
 				(string) $txnId,
 				(string) $invoiceNo,
-				$payments,
+				$credit,
+				$debit,
 				$this->money((float) $running),
 			];
 		})->all();
+
+		$closing = (float) $running;
+		$balanceHint = $closing > 0.009
+			? 'Still payable to landlord'
+			: ($closing < -0.009 ? 'Over-remitted / remittances exceed credited collections' : 'Settled');
 
 		return [
 			'landlords' => $landlords,
@@ -157,8 +166,9 @@ class LandlordReportService
 			'stats' => [
 				['label' => 'Landlord', 'value' => (string) ($selected?->name ?? '—'), 'hint' => 'Detailed statement'],
 				['label' => 'Entries', 'value' => (string) count($rows), 'hint' => 'Ledger rows'],
+				['label' => 'Closing balance', 'value' => $this->money($closing), 'hint' => $balanceHint],
 			],
-			'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Payments', 'Balance'],
+			'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Credit', 'Debit', 'Balance'],
 			'tableRows' => $rows,
 		];
 	}

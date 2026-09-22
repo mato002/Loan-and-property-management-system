@@ -27,9 +27,12 @@ use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\LandlordPortalOnboardingService;
+use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyRegisterImportService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
@@ -1874,7 +1877,7 @@ class PropertyPortfolioController extends Controller
         })->values();
     }
 
-    public function landlordsShow(Request $request, User $landlord): View|StreamedResponse
+    public function landlordsShow(Request $request, User $landlord): View|StreamedResponse|Response
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
@@ -1885,9 +1888,14 @@ class PropertyPortfolioController extends Controller
         $export = $request->string('export')->toString();
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             $exportScope = strtolower((string) $request->query('export_scope', ''));
-            $wantMonthly = $exportScope === 'monthly'
-                || ($exportScope === '' && preg_match('/^\d{4}-\d{2}$/', $month) !== 1);
+            $isMonthScoped = preg_match('/^\d{4}-\d{2}$/', $month) === 1;
 
+            // Single-month export = full property account statement (units / B/F / invoiced / received), not FY summaries.
+            if ($isMonthScoped && $exportScope !== 'monthly') {
+                return $this->streamLandlordMonthAccountStatements($landlord, $month, $export);
+            }
+
+            $wantMonthly = $exportScope === 'monthly' || ! $isMonthScoped;
             if ($wantMonthly) {
                 return TabularExport::stream(
                     'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
@@ -1952,6 +1960,11 @@ class PropertyPortfolioController extends Controller
             $periodMonth,
         );
 
+        $monthSettlements = [];
+        if (! empty($snapshot['isMonthScoped'])) {
+            $monthSettlements = $this->buildLandlordMonthSettlements($landlord, (string) $snapshot['monthValue']);
+        }
+
         $linkableProperties = Property::query()
             ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', (int) $request->user()->id))
             ->whereDoesntHave('landlords')
@@ -1963,6 +1976,7 @@ class PropertyPortfolioController extends Controller
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             'activeTab' => $activeTab,
             'linkableProperties' => $linkableProperties,
+            'monthSettlements' => $monthSettlements,
             ...$tabData,
             ...$snapshot,
         ]);
@@ -1980,12 +1994,28 @@ class PropertyPortfolioController extends Controller
         ]));
     }
 
-    public function landlordsStatementPrint(Request $request, User $landlord): View
+    public function landlordsStatementPrint(Request $request, User $landlord): View|Response
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
+
+        // Month print = Ezen-style property account statement(s) for that month only.
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $settlements = $this->buildLandlordMonthSettlements($landlord, $month);
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+
+            return view('property.agent.landlords.landlord_monthly_account_statements_print', [
+                'landlord' => $landlord,
+                'settlements' => $settlements,
+                'periodLabel' => $periodStart->format('F').' - '.$periodStart->format('Y'),
+                'branding' => $this->landlordStatementBranding(),
+                'generatedAt' => now()->format('d M Y H:i'),
+                'autoPrint' => $request->boolean('print'),
+            ]);
+        }
+
         $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
 
         return view('property.agent.landlords.landlord_statement_print', [
@@ -1995,6 +2025,216 @@ class PropertyPortfolioController extends Controller
             'autoPrint' => $request->boolean('print'),
             ...$snapshot,
         ]);
+    }
+
+    /**
+     * Full property-account statements for every property linked to the landlord in one calendar month.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildLandlordMonthSettlements(User $landlord, string $monthYm): array
+    {
+        $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
+        $propertyIdsQuery = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->orderBy('p.name')
+            ->select('pl.property_id');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
+        }
+
+        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+        $service = app(LandlordSettlementService::class);
+        $settlements = [];
+        foreach ($propertyIds as $propertyId) {
+            $settlements[] = $service->buildSettlement($propertyId, (int) $landlord->id, $periodStart, $periodEnd);
+        }
+
+        return $settlements;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export): StreamedResponse|Response
+    {
+        $settlements = $this->buildLandlordMonthSettlements($landlord, $monthYm);
+        $slug = Str::slug((string) $landlord->name).'-'.$monthYm;
+
+        if (in_array($export, ['pdf', 'word'], true)) {
+            $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
+                'landlord' => $landlord,
+                'settlements' => $settlements,
+                'periodLabel' => Carbon::createFromFormat('Y-m', $monthYm)->format('F').' - '.Carbon::createFromFormat('Y-m', $monthYm)->format('Y'),
+                'branding' => $this->landlordStatementBranding(),
+                'generatedAt' => now()->format('d M Y H:i'),
+                'autoPrint' => false,
+            ])->render();
+
+            if ($export === 'word') {
+                return response($html, 200, [
+                    'Content-Type' => 'application/msword; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
+                ]);
+            }
+
+            try {
+                $options = new Options;
+                $options->set('isRemoteEnabled', true);
+                $options->set('chroot', public_path());
+                $options->set('defaultFont', 'DejaVu Sans');
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'landscape');
+                $dompdf->render();
+
+                return response($dompdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="property-account-statement-'.$slug.'.pdf"',
+                ]);
+            } catch (Throwable) {
+                return response($html, 200, [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.html"',
+                ]);
+            }
+        }
+
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+
+        return TabularExport::stream(
+            'property-account-statement-'.$slug,
+            [
+                'Property',
+                'Section',
+                'Unit',
+                'Tenant',
+                'Rent / month',
+                'Bal B/F Rent',
+                'Bal B/F Garbage',
+                'Bal B/F Water',
+                'Invoiced Rent',
+                'Invoiced Garbage',
+                'Invoiced Water',
+                'Received Rent',
+                'Received Garbage',
+                'Received Water',
+                'Amount',
+                'Notes',
+            ],
+            function () use ($settlements, $n, $monthYm) {
+                foreach ($settlements as $settlement) {
+                    $propertyName = (string) ($settlement['property_name'] ?? '');
+                    yield [
+                        $propertyName,
+                        'Header',
+                        '',
+                        (string) ($settlement['landlord_name'] ?? ''),
+                        '', '', '', '', '', '', '', '', '', '',
+                        '',
+                        (string) (($settlement['period_label'] ?? $monthYm).' '.($settlement['period_range_label'] ?? '')),
+                    ];
+
+                    foreach ($settlement['unit_lines'] ?? [] as $line) {
+                        yield [
+                            $propertyName,
+                            'Unit',
+                            (string) ($line['unit_label'] ?? ''),
+                            (string) ($line['tenant_name'] ?? ''),
+                            $n((float) ($line['rent_per_month'] ?? 0)),
+                            $n((float) ($line['rent_bf'] ?? 0)),
+                            $n((float) ($line['garbage_bf'] ?? 0)),
+                            $n((float) ($line['water_bf'] ?? 0)),
+                            $n((float) ($line['rent_billed'] ?? 0)),
+                            $n((float) ($line['garbage_billed'] ?? 0)),
+                            $n((float) ($line['water_billed'] ?? 0)),
+                            $n((float) ($line['rent_received'] ?? 0)),
+                            $n((float) ($line['garbage_received'] ?? 0)),
+                            $n((float) ($line['water_received'] ?? 0)),
+                            $n((float) ($line['total_received'] ?? 0)),
+                            '',
+                        ];
+                    }
+
+                    $totals = $settlement['unit_totals'] ?? [];
+                    yield [
+                        $propertyName,
+                        'Unit totals',
+                        '',
+                        '',
+                        $n((float) ($totals['rent_per_month'] ?? 0)),
+                        $n((float) ($totals['rent_bf'] ?? 0)),
+                        $n((float) ($totals['garbage_bf'] ?? 0)),
+                        $n((float) ($totals['water_bf'] ?? 0)),
+                        $n((float) ($totals['rent_billed'] ?? 0)),
+                        $n((float) ($totals['garbage_billed'] ?? 0)),
+                        $n((float) ($totals['water_billed'] ?? 0)),
+                        $n((float) ($totals['rent_received'] ?? 0)),
+                        $n((float) ($totals['garbage_received'] ?? 0)),
+                        $n((float) ($totals['water_received'] ?? 0)),
+                        $n((float) ($totals['total_received'] ?? 0)),
+                        '',
+                    ];
+
+                    yield [
+                        $propertyName,
+                        'Occupancy',
+                        'Occupied',
+                        (string) (($settlement['unit_stats']['units_occupied'] ?? 0)),
+                        'Vacant',
+                        (string) (($settlement['unit_stats']['units_vacant'] ?? 0)),
+                        '', '', '', '', '', '', '', '', '', '',
+                    ];
+
+                    foreach ($settlement['additions'] ?? [] as $addition) {
+                        yield [
+                            $propertyName,
+                            'Addition',
+                            '',
+                            (string) ($addition['description'] ?? 'Addition'),
+                            '', '', '', '', '', '', '', '', '', '',
+                            $n((float) ($addition['amount'] ?? 0)),
+                            '',
+                        ];
+                    }
+                    yield [
+                        $propertyName, 'Addition totals', '', 'TOTAL ADDITIONS',
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($settlement['additions_total'] ?? 0)), '',
+                    ];
+
+                    foreach ($settlement['deductions'] ?? [] as $deduction) {
+                        yield [
+                            $propertyName,
+                            'Deduction',
+                            '',
+                            (string) ($deduction['description'] ?? 'Deduction'),
+                            '', '', '', '', '', '', '', '', '', '',
+                            $n((float) ($deduction['amount'] ?? 0)),
+                            '',
+                        ];
+                    }
+                    yield [
+                        $propertyName, 'Deduction totals', '', 'TOTAL DEDUCTIONS',
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($settlement['deductions_total'] ?? 0)), '',
+                    ];
+
+                    yield [$propertyName, 'Summary', '', 'Rent received', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['rent_received'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Total utility', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['utility_received'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less management fee', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['management_fee'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less other expenses', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['other_expenses'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Add total additions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less total deductions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Balance B/F', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['balance_brought_forward'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0)), ''];
+                }
+            },
+            TabularExport::FORMAT_CSV,
+        );
     }
 
     /**
