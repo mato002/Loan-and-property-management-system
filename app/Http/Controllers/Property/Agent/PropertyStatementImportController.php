@@ -83,6 +83,10 @@ class PropertyStatementImportController extends Controller
 
         $status = trim((string) $request->query('status', ''));
         $lines = PmBankStatementLine::query()
+            ->with([
+                'ezenReceipt.tenant',
+                'payment.tenant',
+            ])
             ->where('pm_bank_statement_id', $statement->id)
             ->when($status !== '', fn ($q) => $q->where('match_status', $status))
             ->orderByDesc('txn_date')
