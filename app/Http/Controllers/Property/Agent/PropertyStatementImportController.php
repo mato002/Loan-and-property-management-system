@@ -124,6 +124,38 @@ class PropertyStatementImportController extends Controller
         return back()->with('status', $msg.' Open Collections → Unmatched to assign tenants.');
     }
 
+    public function recoverLine(
+        Request $request,
+        PmBankStatement $statement,
+        PmBankStatementLine $line,
+        PropertyStatementMissingPaymentRecoveryService $recovery,
+    ): RedirectResponse {
+        $this->authorizeStatement($request, $statement);
+
+        if ((int) $line->pm_bank_statement_id !== (int) $statement->id) {
+            abort(404);
+        }
+
+        $result = $recovery->recoverLine($line, (int) $request->user()->id);
+        $unassignedId = (int) ($result['unassigned_payment_id'] ?? 0);
+
+        if ($result['errors'] !== []) {
+            return back()->withErrors(['recovery' => implode('; ', array_slice($result['errors'], 0, 3))]);
+        }
+
+        if ($unassignedId > 0) {
+            return redirect()
+                ->route('property.equity.unmatched.show', $unassignedId)
+                ->with('status', 'Line sent to Unmatched. Assign a tenant to settle.');
+        }
+
+        if (($result['recovered'] ?? 0) > 0) {
+            return back()->with('status', 'Line recovered into Unmatched.');
+        }
+
+        return back()->with('status', 'Nothing to recover for this line.');
+    }
+
     public function rematch(
         Request $request,
         PmBankStatement $statement,

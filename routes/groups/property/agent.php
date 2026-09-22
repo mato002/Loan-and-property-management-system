@@ -112,6 +112,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/revenue/statements', [PropertyStatementImportController::class, 'store'])->middleware('property.permission:payments.record')->name('revenue.statements.store');
     Route::get('/revenue/statements/{statement}', [PropertyStatementImportController::class, 'show'])->name('revenue.statements.show');
     Route::post('/revenue/statements/{statement}/recover', [PropertyStatementImportController::class, 'recover'])->middleware('property.permission:payments.record')->name('revenue.statements.recover');
+    Route::post('/revenue/statements/{statement}/lines/{line}/recover', [PropertyStatementImportController::class, 'recoverLine'])->middleware('property.permission:payments.record')->name('revenue.statements.lines.recover');
     Route::post('/revenue/statements/{statement}/rematch', [PropertyStatementImportController::class, 'rematch'])->middleware('property.permission:payments.record')->name('revenue.statements.rematch');
     Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
     Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');

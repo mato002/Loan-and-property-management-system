@@ -49,6 +49,7 @@
                     <th class="px-3 py-2">Amount</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2">How it matched</th>
+                    <th class="px-3 py-2 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -59,6 +60,11 @@
                         $tenantUnit = $line->matchedUnitLabel();
                         $tenantName = $line->matchedTenantName();
                         $phone = $line->displayPhone();
+                        $unassignedId = (int) ($line->unassigned_payment_id ?? 0);
+                        $paymentId = (int) ($line->pm_payment_id ?? 0);
+                        $canRecover = $line->direction === 'credit'
+                            && $line->match_status === 'unmatched'
+                            && $line->line_type === 'mpesa_c2b';
                     @endphp
                     <tr>
                         <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
@@ -112,10 +118,36 @@
                                 <div class="mt-0.5 text-slate-400 truncate">{{ $line->narration }}</div>
                             @endif
                         </td>
+                        <td class="px-3 py-2 text-right whitespace-nowrap">
+                            <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                @if ($canRecover)
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.recover', [$statement, $line]) }}">
+                                        @csrf
+                                        <button type="submit" class="rounded-lg bg-amber-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-800">
+                                            Assign tenant
+                                        </button>
+                                    </form>
+                                @elseif ($unassignedId > 0)
+                                    <a href="{{ route('property.equity.unmatched.show', $unassignedId) }}" class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100">
+                                        Open Unmatched
+                                    </a>
+                                @elseif ($paymentId > 0)
+                                    <a href="{{ route('property.payments.receipt.show', $paymentId) }}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
+                                        View receipt
+                                    </a>
+                                @elseif ($tenantId)
+                                    <a href="{{ route('property.tenants.show', $tenantId) }}" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        Open tenant
+                                    </a>
+                                @else
+                                    <span class="text-xs text-slate-400">—</span>
+                                @endif
+                            </div>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-3 py-8 text-center text-slate-500">
+                        <td colspan="9" class="px-3 py-8 text-center text-slate-500">
                             <p class="font-medium text-slate-700">No transactions were read from this upload.</p>
                             <p class="mt-1 text-sm">
                                 Header totals can still show on the list even when the PDF text was not extracted.
