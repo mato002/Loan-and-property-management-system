@@ -103,6 +103,7 @@
                     <th class="px-3 py-2">Phone</th>
                     <th class="px-3 py-2 text-right">Amount</th>
                     <th class="px-3 py-2">Property / unit</th>
+                    <th class="px-3 py-2 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -125,10 +126,23 @@
                         <td class="px-3 py-2"><x-phone-link :value="\App\Support\Property\PmPaymentPresentation::payerPhone($payment, '')" /></td>
                         <td class="px-3 py-2 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $payment->amount) }}</td>
                         <td class="px-3 py-2 text-slate-600">{!! \App\Support\Property\PmPaymentPresentation::propertyUnit($payment) !!}</td>
+                        <td class="px-3 py-2 text-right whitespace-nowrap">
+                            <div class="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs font-semibold">
+                                @if ($payment->pm_tenant_id)
+                                    <a href="{{ route('property.tenants.show', $payment->pm_tenant_id) }}" class="text-slate-600 hover:text-slate-900 hover:underline">Tenant</a>
+                                @endif
+                                @if ($payment->status === \App\Models\PmPayment::STATUS_COMPLETED)
+                                    <a href="{{ route('property.payments.receipt.show', $payment) }}" class="text-blue-700 hover:underline">Receipt</a>
+                                    <a href="{{ route('property.payments.receipt.download', $payment) }}" data-turbo="false" class="text-slate-600 hover:text-slate-900 hover:underline">Download</a>
+                                @else
+                                    <span class="font-normal text-slate-400">{{ ucfirst((string) $payment->status) }}</span>
+                                @endif
+                            </div>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-3 py-8 text-center text-slate-500">No matched tenant payments in this filter.</td>
+                        <td colspan="9" class="px-3 py-8 text-center text-slate-500">No matched tenant payments in this filter.</td>
                     </tr>
                 @endforelse
             </tbody>
