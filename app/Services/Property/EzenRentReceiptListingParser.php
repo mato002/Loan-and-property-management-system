@@ -299,18 +299,29 @@ final class EzenRentReceiptListingParser
             return false;
         }
 
+        // Particulars text must never land in receipted_to (e.g. "MRS … DEPOSIT, Late payment…").
+        if (preg_match('/\b(DEPOSIT|LATE\s+PAYMENT|CHARGE|RENT\s+FOR|GARBAGE|WATER|METER)\b/i', $label) === 1) {
+            return false;
+        }
+        if (str_contains($label, ',') || strlen($label) > 80) {
+            return false;
+        }
+
         foreach (self::BANK_LABELS as $bank) {
             if (strcasecmp($label, $bank) === 0) {
                 return true;
             }
         }
 
-        // Landlord / cash ledger style labels (e.g. "MR & MRS. JOSEPH THUO...")
+        // Landlord / cash ledger style labels (e.g. "MR & MRS. JOSEPH THUO", "CASH ACCOUNT").
         if (preg_match('/\b(BANK|CASH|MPESA|M-PESA|ACCOUNT|LEDGER|MAKAO)\b/i', $label) === 1) {
             return true;
         }
 
-        return strlen($label) >= 12 && preg_match('/\b(MR|MRS|MISS|DR)\b/i', $label) === 1;
+        return strlen($label) >= 12
+            && strlen($label) <= 64
+            && preg_match('/\b(MR|MRS|MISS|DR)\b/i', $label) === 1
+            && preg_match('/\d{4}/', $label) !== 1;
     }
 
     private function looksLikePhoneAmount(float $amount): bool

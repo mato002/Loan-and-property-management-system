@@ -13,6 +13,8 @@ use RuntimeException;
  */
 final class PropertyBulkRegisterImportService
 {
+    public const TYPE_TENANTS_LEASES = 'tenants_leases';
+
     public const TYPE_RENT_RECEIPTS = 'rent_receipts';
 
     public const TYPE_PAYMENT_VOUCHERS = 'payment_vouchers';
@@ -37,6 +39,11 @@ final class PropertyBulkRegisterImportService
         $app = (string) config('app.name', 'Property ERP');
 
         return [
+            self::TYPE_TENANTS_LEASES => [
+                'label' => 'Tenants & active leases',
+                'description' => 'Sync tenants, units, and active leases from the legacy active-leases register PDF (or extracted .txt). Matches property codes already in '.$app.'; creates or updates tenants and leases.',
+                'accept' => '.pdf,.txt',
+            ],
             self::TYPE_RENT_RECEIPTS => [
                 'label' => 'Rent receipt listing',
                 'description' => 'Import tenant receipt listings into '.$app.' (allocate to open invoices or store in the receipt register).',
@@ -141,6 +148,12 @@ final class PropertyBulkRegisterImportService
         $limit = isset($options['limit']) && is_numeric($options['limit']) ? (int) $options['limit'] : null;
 
         return match ($type) {
+            self::TYPE_TENANTS_LEASES => app(PassionLegacyLeasesImportService::class)->importFromPath(
+                $path,
+                $agentUserId,
+                $dryRun,
+                ! (bool) ($options['no_update'] ?? false),
+            ),
             self::TYPE_RENT_RECEIPTS => app(EzenRentReceiptsImportService::class)->importFromPath(
                 $path,
                 $agentUserId,
@@ -252,7 +265,28 @@ final class PropertyBulkRegisterImportService
         $label = self::catalog()[$type]['label'] ?? $type;
         $parts = [$dryRun ? 'Dry run' : 'Import complete', $label];
 
-        foreach (['parsed', 'imported', 'register_upserted', 'matched', 'unmatched', 'remittances', 'expenses', 'commissions', 'taxes', 'leases_updated', 'takeon', 'posted', 'vendors', 'payments_posted', 'enriched_existing'] as $key) {
+        foreach ([
+            'parsed',
+            'imported',
+            'register_upserted',
+            'matched',
+            'unmatched',
+            'remittances',
+            'expenses',
+            'commissions',
+            'taxes',
+            'tenants_created',
+            'tenants_updated',
+            'leases_created',
+            'leases_updated',
+            'leases_terminated',
+            'units_linked',
+            'takeon',
+            'posted',
+            'vendors',
+            'payments_posted',
+            'enriched_existing',
+        ] as $key) {
             if (isset($summary[$key]) && ! is_array($summary[$key])) {
                 $parts[] = str_replace('_', ' ', $key).': '.$summary[$key];
             }

@@ -18,7 +18,7 @@ class PropertyBulkRegisterImportController extends Controller
         return property_view('property.agent.settings.register_imports', [
             'appName' => $appName,
             'catalog' => PropertyBulkRegisterImportService::catalog(),
-            'selectedType' => old('import_type', PropertyBulkRegisterImportService::TYPE_RENT_RECEIPTS),
+            'selectedType' => old('import_type', PropertyBulkRegisterImportService::TYPE_TENANTS_LEASES),
         ]);
     }
 

@@ -1162,6 +1162,12 @@ final class EzenRentReceiptsImportService
             $linkStatus = PmEzenReceiptRegister::LINK_TENANT;
         }
 
+        $receiptedTo = trim((string) ($row['receipted_to'] ?? ''));
+        if ($receiptedTo !== '' && ! $this->looksLikeSafeReceiptedTo($receiptedTo)) {
+            $receiptedTo = '';
+        }
+        $doneBy = trim((string) ($row['done_by'] ?? ''));
+
         PmEzenReceiptRegister::query()->updateOrCreate(
             [
                 'agent_user_id' => $agentUserId,
@@ -1172,14 +1178,14 @@ final class EzenRentReceiptsImportService
                 'property_code' => strtoupper(trim((string) ($row['property_code'] ?? ''))) ?: null,
                 'unit_label' => trim((string) ($row['unit_label'] ?? '')) ?: null,
                 'tnt_account' => strtoupper(trim((string) ($row['tnt_account'] ?? ''))) ?: null,
-                'register_tenant_name' => trim((string) ($row['tenant_name'] ?? '')) ?: null,
+                'register_tenant_name' => $this->clip((string) ($row['tenant_name'] ?? ''), 191) ?: null,
                 'phone' => trim((string) ($row['phone'] ?? '')) ?: null,
-                'particulars' => trim((string) ($row['particulars'] ?? '')) ?: null,
+                'particulars' => $this->clip((string) ($row['particulars'] ?? ''), 500) ?: null,
                 'amount' => round((float) ($row['amount'] ?? 0), 2),
                 'txn_date' => (string) ($row['txn_date'] ?? '') ?: null,
                 'banking_date' => (string) ($row['banking_date'] ?? '') ?: null,
-                'receipted_to' => trim((string) ($row['receipted_to'] ?? '')) ?: null,
-                'done_by' => trim((string) ($row['done_by'] ?? '')) ?: null,
+                'receipted_to' => $this->clip($receiptedTo, 191) ?: null,
+                'done_by' => $this->clip($doneBy, 191) ?: null,
                 'pm_tenant_id' => $tenant?->id,
                 'pm_payment_id' => $payment?->id,
                 'link_status' => $linkStatus,
@@ -1187,6 +1193,29 @@ final class EzenRentReceiptsImportService
         );
 
         return true;
+    }
+
+    private function looksLikeSafeReceiptedTo(string $label): bool
+    {
+        $label = trim($label);
+        if ($label === '' || strlen($label) > 120) {
+            return false;
+        }
+        if (preg_match('/\b(DEPOSIT|LATE\s+PAYMENT|CHARGE|RENT\s+FOR|GARBAGE|WATER|METER)\b/i', $label) === 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function clip(string $value, int $max): string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) <= $max) {
+            return $value;
+        }
+
+        return rtrim(substr($value, 0, $max - 1)).'…';
     }
 
     private function resolveLinkedPayment(string $receiptNo, string $refNo, ?int $tenantId): ?PmPayment

@@ -5,10 +5,11 @@
 @endphp
 <x-property.workspace
     title="Register imports"
-    subtitle="Bulk-load receipt listings, vouchers, bills, and opening balances into {{ $appName }}. Works for any agency portfolio — formats from common property systems are supported."
+    subtitle="Bulk-load tenants &amp; leases, receipt listings, vouchers, bills, and opening balances into {{ $appName }}. Prefer Dry run first so counts match before writing."
     back-route="property.settings.index"
 >
     <x-slot name="actions">
+        <a href="{{ route('property.tenants.index') }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Tenants</a>
         <a href="{{ route('property.revenue.statements.index') }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Bank / M-Pesa statements</a>
         <a href="{{ route('property.revenue.receipts') }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Receipts</a>
     </x-slot>
@@ -48,6 +49,9 @@
                 <template x-for="(meta, key) in @js($catalog)" :key="key">
                     <p class="mt-2 text-xs text-slate-500" x-show="type === key" x-text="meta.description" x-cloak></p>
                 </template>
+                <p class="mt-2 text-xs text-amber-800" x-show="type === 'tenants_leases'" x-cloak>
+                    Properties must already exist with matching codes (e.g. A00039A). Run Dry run first — the summary shows tenants/leases created vs updated, plus any unmatched property/unit warnings.
+                </p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
@@ -112,9 +116,9 @@
                     <input type="checkbox" name="include_deposits" value="1" class="rounded border-slate-300">
                     Include deposit invoice rows
                 </label>
-                <label class="inline-flex items-center gap-2" x-show="['deposits','billing_schedule'].includes(type)" x-cloak>
+                <label class="inline-flex items-center gap-2" x-show="['deposits','billing_schedule','tenants_leases'].includes(type)" x-cloak>
                     <input type="checkbox" name="no_update" value="1" class="rounded border-slate-300">
-                    Skip rows that already have values
+                    <span x-text="type === 'tenants_leases' ? 'Do not update existing tenants / leases (create only)' : 'Skip rows that already have values'"></span>
                 </label>
                 <label class="inline-flex items-center gap-2" x-show="type === 'statement_balances'" x-cloak>
                     <input type="checkbox" name="sync_invoices" value="1" class="rounded border-slate-300">
