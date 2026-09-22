@@ -20,6 +20,63 @@
             :workflow-url="route('property.tenants.leases', absolute: false)"
             storage-key="property.tenants.getting_started.dismissed"
         />
+
+        @php
+            $duplicateGroups = $duplicateGroups ?? [];
+        @endphp
+        @if (count($duplicateGroups) > 0)
+            <div
+                id="tenant-duplicates"
+                class="mt-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                x-data="{ open: true }"
+            >
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm font-semibold">Possible duplicates ({{ count($duplicateGroups) }} group{{ count($duplicateGroups) === 1 ? '' : 's' }})</p>
+                        <p class="mt-0.5 text-xs text-amber-800/90 dark:text-amber-200/90">
+                            Same name, phone, or account number. Open each profile to compare, then merge or delete the extra record if needed.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex self-start rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100"
+                        @click="open = !open"
+                        x-text="open ? 'Hide list' : 'Show list'"
+                    ></button>
+                </div>
+
+                <div x-show="open" x-cloak class="mt-3 space-y-3">
+                    @foreach ($duplicateGroups as $group)
+                        <div class="rounded-xl border border-amber-200/80 bg-white/80 px-3 py-2.5 dark:border-amber-800 dark:bg-slate-900/50">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                {{ $group['label'] }} · {{ $group['key'] }}
+                                <span class="ml-1 font-normal normal-case">({{ $group['count'] }} records)</span>
+                            </p>
+                            <ul class="mt-2 divide-y divide-amber-100 dark:divide-amber-900/50">
+                                @foreach ($group['tenants'] as $dup)
+                                    <li class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                                        <div class="min-w-0 text-sm">
+                                            <a href="{{ $dup['show_url'] }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline dark:text-indigo-300">{{ $dup['name'] }}</a>
+                                            <p class="text-xs text-slate-600 dark:text-slate-300 break-all">
+                                                Ac/No {{ $dup['account_number'] }}
+                                                · {{ $dup['phone'] }}
+                                                · {{ $dup['email'] }}
+                                                · added {{ $dup['created_at'] }}
+                                            </p>
+                                        </div>
+                                        <a
+                                            href="{{ $dup['show_url'] }}"
+                                            data-turbo-frame="property-main"
+                                            class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                        >Open</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </x-slot>
 
     <x-slot name="actions">

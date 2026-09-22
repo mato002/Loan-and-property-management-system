@@ -7,6 +7,7 @@
     :table-rows="$tableRows"
     :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
+    :legacy-toolbar="false"
     empty-title="No units"
     empty-hint="Add properties and units to see occupancy across the portfolio."
 >
@@ -16,62 +17,8 @@
         <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">Vacant listings</a>
     </x-slot>
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['status' => 'vacant', 'preset' => 'vacant']), false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Vacant only</a>
-            <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['status' => 'notice', 'preset' => 'notice']), false) }}" class="rounded-lg border border-orange-300 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-50">Notice only</a>
-            <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['status' => 'vacant', 'age_bucket' => '90_plus', 'preset' => 'long_vacant']), false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Long vacant 90+ days</a>
-            <a href="{{ route('property.properties.occupancy', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Clear presets</a>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.occupancy') }}" class="w-full grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-12">
-            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit or property..." class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 sm:col-span-2 lg:col-span-4 min-w-0" />
-            <select name="property_id" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
-                <option value="">All properties</option>
-                @foreach(($propertyOptions ?? []) as $p)
-                    <option value="{{ $p->id }}" @selected((string) ($filters['property_id'] ?? '') === (string) $p->id)>{{ $p->name }}</option>
-                @endforeach
-            </select>
-            <select name="status" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
-                <option value="">All statuses</option>
-                @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
-                    <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
-                @endforeach
-            </select>
-            <select name="age_bucket" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
-                <option value="">Vacancy age: All</option>
-                <option value="0_30" @selected(($filters['age_bucket'] ?? '') === '0_30')>0-30 days</option>
-                <option value="31_60" @selected(($filters['age_bucket'] ?? '') === '31_60')>31-60 days</option>
-                <option value="61_90" @selected(($filters['age_bucket'] ?? '') === '61_90')>61-90 days</option>
-                <option value="90_plus" @selected(($filters['age_bucket'] ?? '') === '90_plus')>90+ days</option>
-            </select>
-            <input type="hidden" name="preset" value="{{ $filters['preset'] ?? '' }}" />
-            <div class="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-2">
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-                <a href="{{ route('property.properties.occupancy', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-                @include('property.agent.partials.export_dropdown', [
-                    'csvUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'csv']), false),
-                    'pdfUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'pdf']), false),
-                    'wordUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'word']), false),
-                ])
-            </div>
-        </form>
-
-        <form id="occupancy-bulk-form" method="post" action="{{ route('property.properties.occupancy.bulk', absolute: false) }}" class="w-full mt-2 flex flex-wrap items-center gap-2">
-            @csrf
-            <select name="bulk_action" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                <option value="mark_vacant">Bulk: Mark vacant</option>
-                <option value="mark_occupied">Bulk: Mark occupied</option>
-                <option value="mark_notice">Bulk: Mark notice</option>
-                <option value="open_assign">Bulk: Open assign tenant</option>
-                <option value="open_publish">Bulk: Open publish listing</option>
-                <option value="open_property">Bulk: Open property</option>
-            </select>
-            <button type="submit" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Run on selected units</button>
-            <span class="text-xs text-slate-500">Tick units in the table first, then run bulk action.</span>
-        </form>
+        @include('property.agent.partials.filter_toolbars.occupancy', get_defined_vars())
     </x-slot>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

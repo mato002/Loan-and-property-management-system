@@ -403,6 +403,7 @@ class PmTenantDirectoryController extends Controller
             'tenantFields' => $this->tenantFieldConfig(),
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
             'stats' => $stats,
+            'duplicateGroups' => $this->tenantDuplicateGroups(),
             'filters' => [
                 'q' => (string) request()->string('q'),
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '0',
@@ -418,6 +419,148 @@ class PmTenantDirectoryController extends Controller
             'tenantPager' => $tenants,
             'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,
+        ];
+    }
+
+    /**
+     * Groups of tenants that share the same name, phone, or account number.
+     *
+     * @return list<array{type: string, label: string, key: string, count: int, tenants: list<array<string, mixed>>}>
+     */
+    private function tenantDuplicateGroups(): array
+    {
+        $groups = [];
+        $placeholderNames = [
+            'OCCP', 'OCCUPIED', 'VACANT', 'OWNER', 'OWNER (LLD)', 'LLD', 'N/A', 'NA', 'NONE', '—', '-',
+        ];
+
+        $nameKeys = PmTenant::query()
+            ->select('name', DB::raw('COUNT(*) as c'))
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->groupBy('name')
+            ->having('c', '>', 1)
+            ->orderByDesc('c')
+            ->limit(40)
+            ->get();
+
+        foreach ($nameKeys as $row) {
+            $key = trim((string) $row->name);
+            if ($key === '' || in_array(mb_strtoupper($key), $placeholderNames, true)) {
+                continue;
+            }
+
+            $tenants = PmTenant::query()
+                ->where('name', $key)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit(20)
+                ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+
+            if ($tenants->count() < 2) {
+                continue;
+            }
+
+            $groups[] = [
+                'type' => 'name',
+                'label' => 'Same name',
+                'key' => $key,
+                'count' => (int) $row->c,
+                'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+            ];
+        }
+
+        if (Schema::hasColumn('pm_tenants', 'phone')) {
+            $phoneKeys = PmTenant::query()
+                ->select('phone', DB::raw('COUNT(*) as c'))
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '')
+                ->groupBy('phone')
+                ->having('c', '>', 1)
+                ->orderByDesc('c')
+                ->limit(40)
+                ->get();
+
+            foreach ($phoneKeys as $row) {
+                $key = trim((string) $row->phone);
+                if ($key === '') {
+                    continue;
+                }
+
+                $tenants = PmTenant::query()
+                    ->where('phone', $key)
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->limit(20)
+                    ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+
+                if ($tenants->count() < 2) {
+                    continue;
+                }
+
+                $groups[] = [
+                    'type' => 'phone',
+                    'label' => 'Same phone',
+                    'key' => $key,
+                    'count' => (int) $row->c,
+                    'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+                ];
+            }
+        }
+
+        if (Schema::hasColumn('pm_tenants', 'account_number')) {
+            $accountKeys = PmTenant::query()
+                ->select('account_number', DB::raw('COUNT(*) as c'))
+                ->whereNotNull('account_number')
+                ->where('account_number', '!=', '')
+                ->groupBy('account_number')
+                ->having('c', '>', 1)
+                ->orderByDesc('c')
+                ->limit(20)
+                ->get();
+
+            foreach ($accountKeys as $row) {
+                $key = strtoupper(trim((string) $row->account_number));
+                if ($key === '') {
+                    continue;
+                }
+
+                $tenants = PmTenant::query()
+                    ->where('account_number', $key)
+                    ->orderByDesc('id')
+                    ->limit(20)
+                    ->get(['id', 'name', 'account_number', 'phone', 'email', 'created_at']);
+
+                if ($tenants->count() < 2) {
+                    continue;
+                }
+
+                $groups[] = [
+                    'type' => 'account_number',
+                    'label' => 'Same account number',
+                    'key' => $key,
+                    'count' => (int) $row->c,
+                    'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+                ];
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @return array{id: int, name: string, account_number: string, phone: string, email: string, created_at: string, show_url: string}
+     */
+    private function duplicateTenantCard(PmTenant $tenant): array
+    {
+        return [
+            'id' => (int) $tenant->id,
+            'name' => (string) $tenant->name,
+            'account_number' => (string) ($tenant->account_number ?: '—'),
+            'phone' => (string) ($tenant->phone ?: '—'),
+            'email' => (string) ($tenant->email ?: '—'),
+            'created_at' => $tenant->created_at?->format('Y-m-d H:i') ?? '—',
+            'show_url' => route('property.tenants.show', $tenant, false),
         ];
     }
 
