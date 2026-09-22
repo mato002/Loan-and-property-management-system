@@ -45,6 +45,8 @@
             <th colspan="3" class="group">Balance B/F</th>
             <th colspan="3" class="group">Amount invoiced</th>
             <th colspan="3" class="group">Amount received</th>
+            <th rowspan="2">Total inv.</th>
+            <th rowspan="2">Total rec.</th>
         </tr>
         <tr>
             <th>Rent</th><th>Garbage</th><th>Water</th>
@@ -54,6 +56,18 @@
     </thead>
     <tbody>
         @forelse ($s['unit_lines'] ?? [] as $line)
+            @php
+                $lineInv = (float) ($line['total_billed'] ?? (
+                    (float) ($line['rent_billed'] ?? 0)
+                    + (float) ($line['garbage_billed'] ?? 0)
+                    + (float) ($line['water_billed'] ?? 0)
+                ));
+                $lineRec = (float) ($line['total_received'] ?? (
+                    (float) ($line['rent_received'] ?? 0)
+                    + (float) ($line['garbage_received'] ?? 0)
+                    + (float) ($line['water_received'] ?? 0)
+                ));
+            @endphp
             <tr>
                 <td class="left">{{ $line['unit_label'] ?? '—' }}</td>
                 <td class="left">{{ $line['tenant_name'] ?? '—' }}</td>
@@ -67,11 +81,25 @@
                 <td class="num">{{ $kes((float) ($line['rent_received'] ?? 0)) }}</td>
                 <td class="num">{{ $kes((float) ($line['garbage_received'] ?? 0)) }}</td>
                 <td class="num">{{ $kes((float) ($line['water_received'] ?? 0)) }}</td>
+                <td class="num">{{ $kes($lineInv) }}</td>
+                <td class="num">{{ $kes($lineRec) }}</td>
             </tr>
         @empty
-            <tr><td colspan="12" class="left">No units on this property.</td></tr>
+            <tr><td colspan="14" class="left">No units on this property.</td></tr>
         @endforelse
         @if (! empty($s['unit_lines']))
+            @php
+                $footerInv = (float) ($unitTotals['total_billed'] ?? (
+                    (float) ($unitTotals['rent_billed'] ?? 0)
+                    + (float) ($unitTotals['garbage_billed'] ?? 0)
+                    + (float) ($unitTotals['water_billed'] ?? 0)
+                ));
+                $footerRec = (float) ($unitTotals['total_received'] ?? (
+                    (float) ($unitTotals['rent_received'] ?? 0)
+                    + (float) ($unitTotals['garbage_received'] ?? 0)
+                    + (float) ($unitTotals['water_received'] ?? 0)
+                ));
+            @endphp
             <tr class="totals">
                 <td class="left" colspan="2">TOTALS</td>
                 <td class="num">{{ $kes((float) ($unitTotals['rent_per_month'] ?? 0)) }}</td>
@@ -84,6 +112,8 @@
                 <td class="num">{{ $kes((float) ($unitTotals['rent_received'] ?? 0)) }}</td>
                 <td class="num">{{ $kes((float) ($unitTotals['garbage_received'] ?? 0)) }}</td>
                 <td class="num">{{ $kes((float) ($unitTotals['water_received'] ?? 0)) }}</td>
+                <td class="num">{{ $kes($footerInv) }}</td>
+                <td class="num">{{ $kes($footerRec) }}</td>
             </tr>
         @endif
     </tbody>

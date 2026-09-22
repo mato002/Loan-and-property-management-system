@@ -426,6 +426,7 @@ final class LandlordSettlementService
                 'rent_received' => $rentReceived,
                 'garbage_received' => $garbageReceived,
                 'water_received' => $waterReceived,
+                'total_billed' => round($rentBilled + $garbageBilled + $waterBilled, 2),
                 'total_received' => $totalReceived,
                 'rent_closing' => round(max(0.0, $rentBf + $rentBilled - $rentReceived), 2),
                 'garbage_closing' => round(max(0.0, $garbageBf + $garbageBilled - $garbageReceived), 2),
@@ -442,7 +443,7 @@ final class LandlordSettlementService
     {
         $keys = [
             'rent_per_month', 'rent_bf', 'garbage_bf', 'water_bf',
-            'rent_billed', 'garbage_billed', 'water_billed',
+            'rent_billed', 'garbage_billed', 'water_billed', 'total_billed',
             'rent_received', 'garbage_received', 'water_received', 'total_received',
             'rent_closing', 'garbage_closing', 'water_closing',
         ];
