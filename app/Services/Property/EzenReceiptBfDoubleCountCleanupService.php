@@ -12,8 +12,9 @@ use Throwable;
 
 /**
  * Fixes EZEN cutover double-counts:
- * - Reverses rent-receipt payments posted while snapshot B/F is still the source of truth
- * - Restores opening_arrears_status when B/F was retired after an incomplete EZEN invoice import
+ * - Snapshot B/F mode: reverse rent-receipt payments that double-count against live B/F
+ * - Full invoice mode: retire leftover B/F instead of reversing legitimate receipt payments
+ * - Restore opening_arrears_status when B/F was retired after an incomplete EZEN invoice import
  */
 final class EzenReceiptBfDoubleCountCleanupService
 {
@@ -27,9 +28,11 @@ final class EzenReceiptBfDoubleCountCleanupService
      *     reversed:int,
      *     skipped_no_bf:int,
      *     skipped_already_reversed:int,
+     *     skipped_full_history:int,
      *     register_unlinked:int,
      *     bf_restored:int,
      *     bf_kept_retired:int,
+     *     bf_retired_mode_b:int,
      *     errors:list<string>,
      *     samples:list<string>
      * }
@@ -41,14 +44,17 @@ final class EzenReceiptBfDoubleCountCleanupService
             'reversed' => 0,
             'skipped_no_bf' => 0,
             'skipped_already_reversed' => 0,
+            'skipped_full_history' => 0,
             'register_unlinked' => 0,
             'bf_restored' => 0,
             'bf_kept_retired' => 0,
+            'bf_retired_mode_b' => 0,
             'errors' => [],
             'samples' => [],
         ];
 
         $this->restorePrematureBfRetirements($agentUserId, $dryRun, $summary);
+        $this->retireBfWhenFullInvoiceHistory($agentUserId, $dryRun, $summary);
         $this->reverseDoubleCountedPayments($agentUserId, $dryRun, $summary);
 
         return $summary;
@@ -86,9 +92,7 @@ final class EzenReceiptBfDoubleCountCleanupService
                 (string) ($tenant->name ?? ''),
                 number_format((float) $tenant->opening_arrears_amount, 2),
             );
-            if (count($summary['samples']) < 40) {
-                $summary['samples'][] = $sample;
-            }
+            $this->pushSample($summary, $sample);
 
             if ($dryRun) {
                 $summary['bf_restored']++;
@@ -98,6 +102,56 @@ final class EzenReceiptBfDoubleCountCleanupService
 
             $tenant->update(['opening_arrears_status' => 'pending']);
             $summary['bf_restored']++;
+        }
+    }
+
+    /**
+     * Tenants with substantial EZEN invoice history should not keep live snapshot B/F.
+     * Retire B/F so receipt payments stay (Mode B) instead of being reversed.
+     *
+     * @param  array<string, mixed>  $summary
+     */
+    private function retireBfWhenFullInvoiceHistory(?int $agentUserId, bool $dryRun, array &$summary): void
+    {
+        if (! Schema::hasColumn('pm_tenants', 'opening_arrears_status')) {
+            // Without status column we cannot safely retire; skip Mode B handling here.
+            return;
+        }
+
+        $query = PmTenant::query()
+            ->withoutGlobalScopes()
+            ->where('opening_arrears_amount', '>', 0)
+            ->where(function ($q): void {
+                $q->whereNull('opening_arrears_status')
+                    ->orWhereNotIn('opening_arrears_status', ['superseded', 'retired']);
+            });
+
+        if ($agentUserId && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $query->where('agent_user_id', $agentUserId);
+        }
+
+        foreach ($query->orderBy('id')->cursor() as $tenant) {
+            if (! $this->carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
+                continue;
+            }
+
+            $sample = sprintf(
+                'RETIRE B/F (full EZEN history) T#%d %s %s amount=%s',
+                $tenant->id,
+                (string) ($tenant->account_number ?? ''),
+                (string) ($tenant->name ?? ''),
+                number_format((float) $tenant->opening_arrears_amount, 2),
+            );
+            $this->pushSample($summary, $sample);
+
+            if ($dryRun) {
+                $summary['bf_retired_mode_b']++;
+
+                continue;
+            }
+
+            $tenant->update(['opening_arrears_status' => 'retired']);
+            $summary['bf_retired_mode_b']++;
         }
     }
 
@@ -133,8 +187,16 @@ final class EzenReceiptBfDoubleCountCleanupService
                 continue;
             }
 
-            // Re-load status after possible B/F restore in the same run.
+            // Re-load status after possible B/F restore/retire in the same run.
             $tenant->refresh();
+
+            // Mode B: full invoice history owns the ledger — keep receipt payments.
+            if ($this->carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
+                $summary['skipped_full_history']++;
+
+                continue;
+            }
+
             $openingArrears = $this->carryForward->tenantOpeningArrearsInDue($tenant);
             if ($openingArrears <= 0.009) {
                 $summary['skipped_no_bf']++;
@@ -151,9 +213,7 @@ final class EzenReceiptBfDoubleCountCleanupService
                 number_format((float) $payment->amount, 2),
                 number_format($openingArrears, 2),
             );
-            if (count($summary['samples']) < 40) {
-                $summary['samples'][] = $sample;
-            }
+            $this->pushSample($summary, $sample);
 
             if ($dryRun) {
                 $summary['reversed']++;
@@ -214,5 +274,15 @@ final class EzenReceiptBfDoubleCountCleanupService
                 ->where('pm_payment_id', $payment->id)
                 ->update(['pm_payment_id' => null]);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private function pushSample(array &$summary, string $sample): void
+    {
+        if (count($summary['samples']) < 40) {
+            $summary['samples'][] = $sample;
+        }
     }
 }

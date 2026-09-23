@@ -393,6 +393,14 @@ php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2 --dr
 php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2
 ```
 
+The cleanup is mode-aware:
+
+- **Full EZEN invoice history** → keep receipt payments; **retire** leftover snapshot B/F
+- **Snapshot B/F only** (thin/no invoice history) → **reverse** receipt payments that double-count against B/F
+- **Premature B/F retirement** → restore B/F when invoice history is incomplete
+
+**Do not run the live cleanup** on an old dry-run that only says “Would reverse: 477” — redeploy this build first and re-check dry-run. Reversing hundreds of payments on Mode B tenants would wipe the money trail.
+
 Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6 invoices **or** billed total ≥ B/F). A single lease-fee invoice will not wipe take-on debt.
 
 Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
