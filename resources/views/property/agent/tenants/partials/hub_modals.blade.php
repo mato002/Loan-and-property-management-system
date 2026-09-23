@@ -5,6 +5,26 @@
     $advanceCreditsEnabled = $advanceCreditsEnabled ?? false;
     $noticeTemplate = $noticeTemplate ?? '';
     $tenantReturn = \App\Support\Property\TenantHubRedirect::hiddenFields((int) $tenant->id, 'overview');
+    $hubTenantId = (int) $tenant->id;
+    $hubLeaseOptions = $hubLeases->map(function ($l) use ($hubTenantId) {
+        $unitIds = $l->units->pluck('id')->implode(',');
+        $rent = (float) ($l->monthly_rent ?? 0);
+        $unitSummary = $l->units
+            ->map(fn ($u) => trim(($u->property?->name ?? '').' / '.$u->label, ' /'))
+            ->filter()
+            ->implode(', ');
+
+        return [
+            'value' => $l->id,
+            'label' => $unitSummary !== '' ? "#{$l->id} · {$unitSummary}" : 'Lease #'.$l->id,
+            'selected' => (string) old('pm_lease_id') === (string) $l->id,
+            'attrs' => [
+                'data-tenant-id' => (string) $hubTenantId,
+                'data-unit-ids' => $unitIds,
+                'data-rent' => (string) $rent,
+            ],
+        ];
+    })->all();
 @endphp
 
 {{-- Create invoice --}}
@@ -33,27 +53,6 @@
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Lease</label>
-                @php
-                    $hubLeaseOptions = $hubLeases->map(function ($l) {
-                        $unitIds = $l->units->pluck('id')->implode(',');
-                        $rent = (float) ($l->monthly_rent ?? 0);
-                        $unitSummary = $l->units
-                            ->map(fn ($u) => trim(($u->property?->name ?? '').' / '.$u->label, ' /'))
-                            ->filter()
-                            ->implode(', ');
-
-                        return [
-                            'value' => $l->id,
-                            'label' => $unitSummary !== '' ? "#{$l->id} · {$unitSummary}" : 'Lease #'.$l->id,
-                            'selected' => (string) old('pm_lease_id') === (string) $l->id,
-                            'attrs' => [
-                                'data-tenant-id' => (string) $tenant->id,
-                                'data-unit-ids' => $unitIds,
-                                'data-rent' => (string) $rent,
-                            ],
-                        ];
-                    })->all();
-                @endphp
                 <x-property.quick-create-select
                     selectId="hub-invoice-lease"
                     name="pm_lease_id"
