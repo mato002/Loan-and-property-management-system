@@ -408,7 +408,7 @@ php artisan property:restore-ezen-receipt-bf-cleanup-mistakes --dry-run
 php artisan property:restore-ezen-receipt-bf-cleanup-mistakes
 ```
 
-That re-posts payments only for tenants with full EZEN invoice history; snapshot-B/F reversals stay reversed.
+That **reactivates** the same payment rows (avoids `external_ref` unique errors); snapshot-B/F reversals stay reversed.
 
 Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6 invoices **or** billed total ≥ B/F). A single lease-fee invoice will not wipe take-on debt.
 

@@ -3,15 +3,18 @@
 namespace App\Services\Property;
 
 use App\Models\PmEzenReceiptRegister;
+use App\Models\PmInvoice;
 use App\Models\PmPayment;
+use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Undoes mistaken reversals from the first (over-aggressive) B/F cleanup run:
- * re-posts EZEN receipt payments for tenants who already have full invoice history.
+ * Undoes mistaken reversals from the first (over-aggressive) B/F cleanup run.
+ * Reactivates the same payment row (avoids external_ref unique collisions).
  * Snapshot-B/F tenants who were correctly reversed are left alone.
  */
 final class RestoreEzenReceiptBfCleanupMistakesService
@@ -63,8 +66,8 @@ final class RestoreEzenReceiptBfCleanupMistakesService
         $summary['scanned'] = $payments->count();
         $retiredTenantIds = [];
 
-        foreach ($payments as $old) {
-            $tenant = $old->tenant;
+        foreach ($payments as $payment) {
+            $tenant = $payment->tenant;
             if (! $tenant instanceof PmTenant) {
                 $summary['skipped_no_tenant']++;
 
@@ -73,14 +76,13 @@ final class RestoreEzenReceiptBfCleanupMistakesService
 
             $tenant->refresh();
 
-            // Only restore Mode B (full invoice history). Snapshot B/F reversals stay.
             if (! $this->carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
                 $summary['skipped_snapshot_bf']++;
 
                 continue;
             }
 
-            if ($this->hasActiveReplacementPayment($old)) {
+            if ($this->hasOtherActiveDuplicate($payment)) {
                 $summary['skipped_already_restored']++;
                 $this->maybeRetireBf($tenant, $dryRun, $retiredTenantIds, $summary);
 
@@ -88,12 +90,12 @@ final class RestoreEzenReceiptBfCleanupMistakesService
             }
 
             $sample = sprintf(
-                'RESTORE PAY#%d %s TNT#%d %s amount=%s',
-                $old->id,
-                (string) ($old->external_ref ?? ''),
+                'REACTIVATE PAY#%d %s TNT#%d %s amount=%s',
+                $payment->id,
+                (string) ($payment->external_ref ?? ''),
                 $tenant->id,
                 (string) ($tenant->account_number ?? ''),
-                number_format((float) $old->amount, 2),
+                number_format((float) $payment->amount, 2),
             );
             if (count($summary['samples']) < 40) {
                 $summary['samples'][] = $sample;
@@ -107,35 +109,8 @@ final class RestoreEzenReceiptBfCleanupMistakesService
             }
 
             try {
-                $meta = is_array($old->meta) ? $old->meta : [];
-                $meta['restored_from_cleanup_mistake'] = [
-                    'from_payment_id' => (int) $old->id,
-                    'restored_at' => now()->toIso8601String(),
-                ];
-                unset($meta['reversal']);
-
-                $new = $this->payments->recordAdvancePayment([
-                    'pm_tenant_id' => (int) $tenant->id,
-                    'channel' => (string) ($old->channel ?: 'bank'),
-                    'amount' => round((float) $old->amount, 2),
-                    'external_ref' => $old->external_ref,
-                    'paid_at' => $old->paid_at ?? now(),
-                    'meta' => $meta,
-                ], $actor);
-
-                if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
-                    $agentId = $old->agent_user_id ?? $tenant->agent_user_id;
-                    if ($agentId) {
-                        $new->forceFill(['agent_user_id' => (int) $agentId])->save();
-                    }
-                }
-
-                $oldMeta = is_array($old->meta) ? $old->meta : [];
-                $oldMeta['cleanup_mistake_restored_as_payment_id'] = (int) $new->id;
-                $old->meta = $oldMeta;
-                $old->save();
-
-                $this->relinkRegister($old, $new, $tenant);
+                $this->reactivatePayment($payment, $actor);
+                $this->relinkRegister($payment, $tenant);
                 $summary['restored']++;
                 $this->maybeRetireBf($tenant, false, $retiredTenantIds, $summary);
             } catch (Throwable $e) {
@@ -144,6 +119,71 @@ final class RestoreEzenReceiptBfCleanupMistakesService
         }
 
         return $summary;
+    }
+
+    private function reactivatePayment(PmPayment $payment, ?User $actor): void
+    {
+        DB::transaction(function () use ($payment, $actor): void {
+            /** @var PmPayment $payment */
+            $payment = PmPayment::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($payment->id);
+            if ($payment->status === PmPayment::STATUS_COMPLETED) {
+                return;
+            }
+
+            $allocations = PmPaymentAllocation::query()
+                ->where('pm_payment_id', $payment->id)
+                ->where('is_reversed', true)
+                ->lockForUpdate()
+                ->get();
+
+            $invoiceIds = [];
+            foreach ($allocations as $allocation) {
+                $allocation->is_reversed = false;
+                $allocation->reversed_by = null;
+                $allocation->reversed_at = null;
+                $allocation->reversal_reason = null;
+                $allocation->save();
+                if ((int) $allocation->pm_invoice_id > 0) {
+                    $invoiceIds[] = (int) $allocation->pm_invoice_id;
+                }
+            }
+
+            foreach (array_unique($invoiceIds) as $invoiceId) {
+                $invoice = PmInvoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
+                if ($invoice) {
+                    $invoice->syncAmountPaidFromAllocations();
+                }
+            }
+
+            // If cleanup reversed without leaving allocations, re-allocate to open invoices.
+            $activeAlloc = PmPaymentAllocation::query()
+                ->where('pm_payment_id', $payment->id)
+                ->where(function ($q): void {
+                    $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+                })
+                ->sum('amount');
+            $remaining = round((float) $payment->amount - (float) $activeAlloc, 2);
+
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            $meta['restored_from_cleanup_mistake'] = [
+                'reactivated_at' => now()->toIso8601String(),
+                'prior_reversal' => $meta['reversal'] ?? null,
+            ];
+            unset($meta['reversal']);
+
+            $payment->meta = $meta;
+            $payment->status = PmPayment::STATUS_COMPLETED;
+            if (Schema::hasColumn('pm_payments', 'reversal_status')) {
+                $payment->reversal_status = null;
+            }
+            $payment->save();
+
+            if ($remaining > 0.009 && $activeAlloc <= 0.009) {
+                $remaining = $this->payments->allocatePaymentToOpenInvoices($payment);
+            }
+
+            $this->payments->finalizeIdentifiedPayment($payment->fresh(), $actor, max(0.0, $remaining));
+        });
     }
 
     private function wasCleanupReversal(PmPayment $payment): bool
@@ -160,20 +200,9 @@ final class RestoreEzenReceiptBfCleanupMistakesService
             || str_contains($reason, 'snapshot opening-arrears B/F');
     }
 
-    private function hasActiveReplacementPayment(PmPayment $old): bool
+    private function hasOtherActiveDuplicate(PmPayment $old): bool
     {
         $meta = is_array($old->meta) ? $old->meta : [];
-        if (! empty($meta['cleanup_mistake_restored_as_payment_id'])) {
-            $exists = PmPayment::query()
-                ->withoutGlobalScopes()
-                ->whereKey((int) $meta['cleanup_mistake_restored_as_payment_id'])
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->exists();
-            if ($exists) {
-                return true;
-            }
-        }
-
         $receiptNo = strtoupper(trim((string) ($meta['ezen_receipt_no'] ?? '')));
         $refNo = strtoupper(trim((string) ($meta['ezen_ref_no'] ?? $old->external_ref ?? '')));
 
@@ -204,34 +233,34 @@ final class RestoreEzenReceiptBfCleanupMistakesService
         return $q->exists();
     }
 
-    private function relinkRegister(PmPayment $old, PmPayment $new, PmTenant $tenant): void
+    private function relinkRegister(PmPayment $payment, PmTenant $tenant): void
     {
         if (! Schema::hasTable('pm_ezen_receipt_register')) {
             return;
         }
 
-        $meta = is_array($old->meta) ? $old->meta : [];
+        $meta = is_array($payment->meta) ? $payment->meta : [];
         $receiptNo = strtoupper(trim((string) ($meta['ezen_receipt_no'] ?? '')));
 
-        $q = PmEzenReceiptRegister::query()->where(function ($inner) use ($old, $receiptNo, $tenant): void {
-            $inner->where('pm_payment_id', $old->id);
-            if ($receiptNo !== '') {
-                $inner->orWhere(function ($r) use ($receiptNo, $tenant): void {
-                    $r->where('ezen_receipt_no', $receiptNo)
-                        ->where(function ($t) use ($tenant): void {
-                            $t->where('pm_tenant_id', $tenant->id);
-                            if ($tenant->account_number) {
-                                $t->orWhere('tnt_account', $tenant->account_number);
-                            }
-                        });
-                });
-            }
-        });
-
-        $q->update([
-            'pm_payment_id' => $new->id,
-            'pm_tenant_id' => $tenant->id,
-        ]);
+        PmEzenReceiptRegister::query()
+            ->where(function ($inner) use ($payment, $receiptNo, $tenant): void {
+                $inner->where('pm_payment_id', $payment->id);
+                if ($receiptNo !== '') {
+                    $inner->orWhere(function ($r) use ($receiptNo, $tenant): void {
+                        $r->where('ezen_receipt_no', $receiptNo)
+                            ->where(function ($t) use ($tenant): void {
+                                $t->where('pm_tenant_id', $tenant->id);
+                                if ($tenant->account_number) {
+                                    $t->orWhere('tnt_account', $tenant->account_number);
+                                }
+                            });
+                    });
+                }
+            })
+            ->update([
+                'pm_payment_id' => $payment->id,
+                'pm_tenant_id' => $tenant->id,
+            ]);
     }
 
     /**
