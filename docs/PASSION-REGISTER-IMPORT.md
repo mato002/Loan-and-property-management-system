@@ -399,7 +399,16 @@ The cleanup is mode-aware:
 - **Snapshot B/F only** (thin/no invoice history) → **reverse** receipt payments that double-count against B/F
 - **Premature B/F retirement** → restore B/F when invoice history is incomplete
 
-**Do not run the live cleanup** on an old dry-run that only says “Would reverse: 477” — redeploy this build first and re-check dry-run. Reversing hundreds of payments on Mode B tenants would wipe the money trail.
+**Do not run the live cleanup** on an old dry-run that only says “Would reverse: 477” — redeploy the mode-aware build first and re-check dry-run.
+
+If the first (over-aggressive) cleanup already ran and reversed Mode B receipt payments, restore them with:
+
+```bash
+php artisan property:restore-ezen-receipt-bf-cleanup-mistakes --dry-run
+php artisan property:restore-ezen-receipt-bf-cleanup-mistakes
+```
+
+That re-posts payments only for tenants with full EZEN invoice history; snapshot-B/F reversals stay reversed.
 
 Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6 invoices **or** billed total ≥ B/F). A single lease-fee invoice will not wipe take-on debt.
 
