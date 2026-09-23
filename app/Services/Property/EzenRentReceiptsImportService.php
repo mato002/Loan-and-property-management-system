@@ -463,6 +463,27 @@ final class EzenRentReceiptsImportService
             return $this->skipResult('skipped_no_tenant', $warnings, $registerUpserted);
         }
 
+        // Snapshot B/F already nets historical EZEN receipts — keep register only, never post a payment.
+        $openingArrearsDue = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
+        if ($openingArrearsDue > 0.009) {
+            $warnings[] = 'Row '.$rowNum.' '.$receiptNo.': tenant has active opening arrears B/F ('
+                .number_format($openingArrearsDue, 2).') — receipt kept on register only (not posted).';
+
+            return [
+                'imported' => false,
+                'skipped_existing' => false,
+                'skipped_no_tenant' => false,
+                'skipped_no_open_balance' => true,
+                'skipped_zero_amount' => false,
+                'enriched_existing' => false,
+                'skipped_no_match' => false,
+                'register_upserted' => $registerUpserted,
+                'allocated' => 0.0,
+                'unallocated' => 0.0,
+                'warnings' => $warnings,
+            ];
+        }
+
         if (! $this->namesLooselyMatch((string) ($row['tenant_name'] ?? ''), (string) $tenant->name)) {
             $warnings[] = 'Row '.$rowNum.' '.$receiptNo.': register "'.($row['tenant_name'] ?? '')
                 .'" vs system "'.$tenant->name.'" — applied to '.$tenant->account_number.'.';

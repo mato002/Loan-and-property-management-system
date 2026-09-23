@@ -177,6 +177,7 @@ final class FinancialReportingFormulaService
      * @return array{
      *     invoice_ar: float,
      *     uninvoiced_cf: float,
+     *     opening_arrears: float,
      *     tenant_credit: float,
      *     total_due: float
      * }
@@ -184,13 +185,18 @@ final class FinancialReportingFormulaService
     public function tenantTotalDueBreakdown(PmTenant $tenant): array
     {
         $invoiceAr = $this->outstandingForTenant((int) $tenant->id, null, true);
-        $uninvoicedCf = $this->uninvoicedCarryForwardForTenant($tenant);
+        $openingArrears = $this->carryForward->tenantOpeningArrearsInDue($tenant);
+        // When snapshot B/F is live, it already represents take-on debt — do not also add lease JSON CF.
+        $uninvoicedCf = $openingArrears > 0.009
+            ? 0.0
+            : $this->uninvoicedCarryForwardForTenant($tenant);
         $credit = $this->tenantCredits->balanceForTenant((int) $tenant->id);
-        $totalDue = max(0.0, round($invoiceAr + $uninvoicedCf - $credit, 2));
+        $totalDue = max(0.0, round($invoiceAr + $uninvoicedCf + $openingArrears - $credit, 2));
 
         return [
             'invoice_ar' => $invoiceAr,
             'uninvoiced_cf' => $uninvoicedCf,
+            'opening_arrears' => $openingArrears,
             'tenant_credit' => $credit,
             'total_due' => $totalDue,
         ];

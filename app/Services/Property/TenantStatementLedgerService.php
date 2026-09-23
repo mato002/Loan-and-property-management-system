@@ -33,16 +33,36 @@ final class TenantStatementLedgerService
         $leases = $tenant->leases ?? collect();
 
         $invoices = $this->invoicesForStatement($tenant, $leases, $fromDate, $toDate);
-        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
-        $registerReceipts = $this->unpostedReceiptsForStatement($tenant, $leases, $payments, $fromDate, $toDate);
-
-        $openingInvoices = 0.0;
-        $openingPayments = 0.0;
-        $openingRegister = 0.0;
         $openingArrears = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
         $openingArrearsAsOf = $tenant->opening_arrears_as_of
             ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
             : null;
+        $hasEzenInvoiceHistory = $invoices->contains(function (PmInvoice $invoice): bool {
+            $origin = $invoice->carry_forward_origin;
+            if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
+                return true;
+            }
+
+            return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
+        });
+        // Snapshot B/F and EZEN receipt credits are mutually exclusive: the B/F already nets
+        // historical receipts. Full EZEN invoice replay retires B/F and owns the receipt trail.
+        $suppressEzenReceiptCredits = $hasEzenInvoiceHistory || $openingArrears > 0.009;
+
+        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
+        if ($suppressEzenReceiptCredits) {
+            $payments = $payments
+                ->reject(fn (PmPayment $payment): bool => $this->isEzenRentReceiptImportPayment($payment))
+                ->values();
+        }
+
+        $registerReceipts = $suppressEzenReceiptCredits
+            ? collect()
+            : $this->unpostedReceiptsForStatement($tenant, $leases, $payments, $fromDate, $toDate);
+
+        $openingInvoices = 0.0;
+        $openingPayments = 0.0;
+        $openingRegister = 0.0;
 
         if ($fromDate) {
             $openingInvoices = (float) $this->invoiceBaseQuery($tenant, $leases)
@@ -66,20 +86,28 @@ final class TenantStatementLedgerService
                 ->unique()
                 ->values();
 
-            $openingPayments = (float) PmPayment::query()
+            $openingPaymentsQuery = PmPayment::query()
                 ->whereIn('id', $openingPaymentIds)
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->sum('amount');
+                ->where('status', PmPayment::STATUS_COMPLETED);
+            if ($suppressEzenReceiptCredits) {
+                $openingPaymentsQuery->where(function ($query): void {
+                    $query->whereNull('meta->source')
+                        ->orWhere('meta->source', '!=', 'ezen_rent_receipt_import');
+                });
+            }
+            $openingPayments = (float) $openingPaymentsQuery->sum('amount');
 
-            $registerOpeningQuery = $this->receiptRegisterBaseQuery($tenant, $leases);
-            if ($registerOpeningQuery !== null) {
-                $openingRegister = (float) $registerOpeningQuery
-                    ->where(function ($query) use ($openingPaymentIds): void {
-                        $query->whereNull('pm_payment_id')
-                            ->orWhereNotIn('pm_payment_id', $openingPaymentIds->all() ?: [0]);
-                    })
-                    ->whereDate('txn_date', '<', $fromDate->toDateString())
-                    ->sum('amount');
+            if (! $suppressEzenReceiptCredits) {
+                $registerOpeningQuery = $this->receiptRegisterBaseQuery($tenant, $leases);
+                if ($registerOpeningQuery !== null) {
+                    $openingRegister = (float) $registerOpeningQuery
+                        ->where(function ($query) use ($openingPaymentIds): void {
+                            $query->whereNull('pm_payment_id')
+                                ->orWhereNotIn('pm_payment_id', $openingPaymentIds->all() ?: [0]);
+                        })
+                        ->whereDate('txn_date', '<', $fromDate->toDateString())
+                        ->sum('amount');
+                }
             }
 
             if ($openingArrears > 0 && ($openingArrearsAsOf === null || $openingArrearsAsOf->lt($fromDate))) {
@@ -456,5 +484,12 @@ final class TenantStatementLedgerService
         }
 
         return $digits;
+    }
+
+    private function isEzenRentReceiptImportPayment(PmPayment $payment): bool
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+
+        return ($meta['source'] ?? '') === 'ezen_rent_receipt_import';
     }
 }

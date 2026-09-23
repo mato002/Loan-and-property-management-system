@@ -61,6 +61,22 @@ class CarryForwardConsolidationService
             return false;
         }
 
+        if ($this->tenantHasNonEzenCarryForwardInvoices($tenantId)) {
+            return true;
+        }
+
+        return $this->tenantHasEzenImportedInvoices($tenantId);
+    }
+
+    /**
+     * True carry-forward / [Carry-forward] invoices (not EZEN rental invoice imports).
+     */
+    public function tenantHasNonEzenCarryForwardInvoices(int $tenantId): bool
+    {
+        if ($tenantId <= 0) {
+            return false;
+        }
+
         if (Schema::hasTable('pm_lease_carry_forward_lines')) {
             $hasLine = PmLeaseCarryForwardLine::query()
                 ->where('pm_tenant_id', $tenantId)
@@ -83,14 +99,28 @@ class CarryForwardConsolidationService
             ->exists();
     }
 
+    public function tenantHasEzenImportedInvoices(int $tenantId): bool
+    {
+        if ($tenantId <= 0) {
+            return false;
+        }
+
+        return PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('pm_tenant_id', $tenantId)
+            ->where(function ($inner): void {
+                $inner->where('description', 'like', '[EZEN INV%');
+                if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
+                    $inner->orWhere('carry_forward_origin->source', 'ezen_rental_invoice_import');
+                }
+            })
+            ->exists();
+    }
+
     public function tenantOpeningArrearsInDue(PmTenant $tenant): float
     {
         $amount = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
         if ($amount <= 0) {
-            return 0.0;
-        }
-
-        if ($this->tenantHasInvoicedCarryForward((int) $tenant->id)) {
             return 0.0;
         }
 
@@ -101,7 +131,44 @@ class CarryForwardConsolidationService
             }
         }
 
+        // Only true CF invoices supersede snapshot B/F here. EZEN invoice imports retire B/F
+        // explicitly via opening_arrears_status after a complete cutover — a single EZEN
+        // invoice must not wipe take-on debt.
+        if ($this->tenantHasNonEzenCarryForwardInvoices((int) $tenant->id)) {
+            return 0.0;
+        }
+
         return $amount;
+    }
+
+    /**
+     * Whether EZEN invoice history is substantial enough to replace snapshot opening arrears.
+     */
+    public function tenantEzenInvoicesReplaceOpeningArrears(PmTenant $tenant): bool
+    {
+        $bf = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
+        if ($bf <= 0.009) {
+            return false;
+        }
+
+        $agg = PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('pm_tenant_id', $tenant->id)
+            ->where(function ($inner): void {
+                $inner->where('description', 'like', '[EZEN INV%');
+                if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
+                    $inner->orWhere('carry_forward_origin->source', 'ezen_rental_invoice_import');
+                }
+            })
+            ->selectRaw('COUNT(*) as invoice_count')
+            ->selectRaw('COALESCE(SUM(amount), 0) as billed_total')
+            ->first();
+
+        $count = (int) ($agg->invoice_count ?? 0);
+        $billed = round((float) ($agg->billed_total ?? 0), 2);
+
+        // Complete cutover: enough history lines, or billed amount at least covers take-on B/F.
+        return $count >= 6 || $billed + 0.009 >= $bf;
     }
 
     public function leaseJsonUninvoicedInDue(PmLease $lease): float

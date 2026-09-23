@@ -1427,7 +1427,7 @@ class PmTenantDirectoryController extends Controller
             ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices, payments, and imported receipts'],
             ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Charges and opening arrears'],
             ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Payments and imported receipts'],
-            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Amount due after invoices, carry-forward, credits, and imported receipts'],
+            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Amount due after invoices, opening arrears B/F, credits, and (when B/F is not active) imported receipts'],
             ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Debit − credit on this statement'],
         ];
 

@@ -382,8 +382,18 @@ php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_recei
 | `--property=A00039A` | Limit to one property code |
 | `--limit=100` | Test first N parsed rows |
 | `--include-already-paid` | Import even when tenant has no open invoice balance |
+| `--register-only` | Save receipts to the register without creating payments (correct when tenant B/F snapshot is live) |
 
 **Important:** If you already imported invoice **PAID** amounts in Phase 7, leave the default behaviour (skip tenants with no open balance) to avoid **double-counting** receipts. Use `--include-already-paid` only when invoices were imported without payments.
+
+**Snapshot B/F vs receipts (mutually exclusive):** When a tenant still has active `opening_arrears_amount` (Phase 5 / 6c take-on), that balance already nets historical EZEN receipts. Passion will **not** credit those receipts again on the statement, and Phase 8 will keep them **register-only** (no payment posted). After a mistaken post-against-B/F import — or after B/F was retired by an incomplete Phase 7 invoice import — clean up with:
+
+```bash
+php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2 --dry-run
+php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2
+```
+
+Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6 invoices **or** billed total ≥ B/F). A single lease-fee invoice will not wipe take-on debt.
 
 Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
 

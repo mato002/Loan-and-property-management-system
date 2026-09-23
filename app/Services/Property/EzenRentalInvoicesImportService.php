@@ -4,6 +4,7 @@ namespace App\Services\Property;
 
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmTenant;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
@@ -93,6 +94,10 @@ final class EzenRentalInvoicesImportService
             }
         }
 
+        if (! $dryRun && Schema::hasColumn('pm_tenants', 'opening_arrears_status')) {
+            $this->retireSnapshotOpeningArrears($agentUserId);
+        }
+
         return $summary;
     }
 
@@ -120,19 +125,18 @@ final class EzenRentalInvoicesImportService
     ): array {
         $warnings = [];
         $memo = trim((string) ($row['memo'] ?? ''));
+        if ($this->isDepositMemo($memo) && ! $includeDeposits) {
+            return [
+                'imported' => false,
+                'skipped_existing' => false,
+                'skipped_deposit' => true,
+                'skipped_unmatched' => false,
+                'payments_posted' => 0,
+                'warnings' => $warnings,
+            ];
+        }
         $invoiceType = $this->invoiceTypeFromMemo($memo);
         if ($invoiceType === null) {
-            if ($this->isDepositMemo($memo) && ! $includeDeposits) {
-                return [
-                    'imported' => false,
-                    'skipped_existing' => false,
-                    'skipped_deposit' => true,
-                    'skipped_unmatched' => false,
-                    'payments_posted' => 0,
-                    'warnings' => $warnings,
-                ];
-            }
-
             throw new RuntimeException('Unsupported memo: '.$memo);
         }
 
@@ -181,7 +185,16 @@ final class EzenRentalInvoicesImportService
         ['unit' => $unit, 'tenant_name' => $tenantName, 'lease' => $lease] = $resolved;
         if (! $this->namesLooselyMatch($tenantName, (string) $lease->pmTenant?->name)) {
             $warnings[] = 'Row '.$rowNum.' '.$ezenNo.': tenant "'.$tenantName.'" vs system "'
-                .$lease->pmTenant?->name.'" — applied to lease on '.$unit->label.'.';
+                .$lease->pmTenant?->name.'" on '.$unit->label.' — skipped (previous occupant).';
+
+            return [
+                'imported' => false,
+                'skipped_existing' => false,
+                'skipped_deposit' => false,
+                'skipped_unmatched' => true,
+                'payments_posted' => 0,
+                'warnings' => $warnings,
+            ];
         }
 
         if ($dryRun) {
@@ -494,7 +507,7 @@ final class EzenRentalInvoicesImportService
     {
         $upper = strtoupper($memo);
         if (str_contains($upper, 'RENT DEPOSIT') || str_contains($upper, 'WATER DEPOSIT') || str_contains($upper, 'ELECTRICITY DEPOSIT')) {
-            return null;
+            return PmInvoice::TYPE_OTHER;
         }
         if (str_starts_with($upper, 'RENT FOR')) {
             return PmInvoice::TYPE_RENT;
@@ -535,6 +548,46 @@ final class EzenRentalInvoicesImportService
         }
 
         return substr($issueDate, 0, 7);
+    }
+
+    private function retireSnapshotOpeningArrears(int $agentUserId): void
+    {
+        $tenantIds = PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('agent_user_id', $agentUserId)
+            ->where(function ($query): void {
+                $query->where('description', 'like', '[EZEN INV%');
+                if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
+                    $query->orWhere('carry_forward_origin->source', 'ezen_rental_invoice_import');
+                }
+            })
+            ->pluck('pm_tenant_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($tenantIds->isEmpty()) {
+            return;
+        }
+
+        $carryForward = app(CarryForwardConsolidationService::class);
+
+        PmTenant::query()
+            ->withoutGlobalScopes()
+            ->whereIn('id', $tenantIds)
+            ->where('opening_arrears_amount', '>', 0)
+            ->where(function ($query): void {
+                $query->whereNull('opening_arrears_status')
+                    ->orWhereNotIn('opening_arrears_status', ['superseded', 'retired']);
+            })
+            ->get()
+            ->each(function (PmTenant $tenant) use ($carryForward): void {
+                if (! $carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
+                    return;
+                }
+
+                $tenant->update(['opening_arrears_status' => 'retired']);
+            });
     }
 
     private function namesLooselyMatch(string $a, string $b): bool
