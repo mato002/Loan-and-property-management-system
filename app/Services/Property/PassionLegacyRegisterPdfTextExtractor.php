@@ -104,7 +104,7 @@ final class PassionLegacyRegisterPdfTextExtractor
     {
         $process = new Process(['pdftotext', '-layout', $path, '-']);
         try {
-            $process->setTimeout(20);
+            $process->setTimeout(180);
             $process->mustRun();
         } catch (ProcessFailedException) {
             return null;
@@ -129,7 +129,7 @@ PY;
         foreach (['python3', 'python', 'py'] as $binary) {
             $process = new Process([$binary, '-c', $script, $path]);
             try {
-                $process->setTimeout(20);
+                $process->setTimeout(180);
                 $process->mustRun();
             } catch (ProcessFailedException) {
                 continue;
@@ -235,6 +235,10 @@ PY;
             '/PAYMENT VOUCHER LISTING/i',
             '/STATEMENT OF ACCOUNT/i',
             '/MPESAC2B_/i',
+            '/RENTAL INVOICING/i',
+            '/RENT RECEIPT/i',
+            '/\bINV\d{4,}\b/',
+            '/\bRC\d{4,}\b/',
         ];
 
         foreach ($markers as $pattern) {

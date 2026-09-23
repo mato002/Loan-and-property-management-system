@@ -34,6 +34,7 @@ use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
+use App\Services\Property\TenantStatementLedgerService;
 use App\Support\Property\PropertyEntityHub;
 use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\PropertyFilterCascadeCatalog;
@@ -1254,27 +1255,33 @@ class PmTenantDirectoryController extends Controller
                 ->get();
         }
 
-        $lastPayment = $tenant->payments()
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->with('allocations')
-            ->orderByDesc('paid_at')
-            ->orderByDesc('id')
-            ->first();
+        $recentLedger = app(TenantStatementLedgerService::class)->build($tenant, null, null);
+        $recentInvoices = $recentLedger['invoices']
+            ->sortByDesc(fn ($invoice) => $invoice->issue_date?->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $recentPayments = $recentLedger['payments']
+            ->sortByDesc(fn ($payment) => $payment->paid_at?->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $recentRegisterReceipts = $recentLedger['registerReceipts']
+            ->sortByDesc(fn ($receipt) => optional($receipt->txn_date ?? $receipt->banking_date)->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $lastPayment = $recentPayments->first(
+            fn ($payment) => (string) $payment->status === PmPayment::STATUS_COMPLETED
+        );
+        if (! $lastPayment) {
+            $lastPayment = $tenant->payments()
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->with('allocations')
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->first();
+        }
         $lastPaymentAmount = $lastPayment
-            ? $formulas->collectionsFromPayments([$lastPayment])
-            : 0.0;
-
-        $recentInvoices = $tenant->invoices()
-            ->billableAr()
-            ->orderByDesc('issue_date')
-            ->orderByDesc('id')
-            ->limit(25)
-            ->get();
-        $recentPayments = $tenant->payments()
-            ->orderByDesc('paid_at')
-            ->orderByDesc('id')
-            ->limit(25)
-            ->get();
+            ? (float) $lastPayment->amount
+            : (float) ($recentRegisterReceipts->first()?->amount ?? 0);
         $recentNotices = PmTenantNotice::query()
             ->where('pm_tenant_id', $tenant->id)
             ->orderByDesc('created_at')
@@ -1328,6 +1335,7 @@ class PmTenantDirectoryController extends Controller
             'lastPaymentAmount' => $lastPaymentAmount,
             'recentInvoices' => $recentInvoices,
             'recentPayments' => $recentPayments,
+            'recentRegisterReceipts' => $recentRegisterReceipts,
             'recentNotices' => $recentNotices,
             'utilityReadings' => $utilityReadings,
             'standingExtras' => $standingExtras,
@@ -1353,132 +1361,13 @@ class PmTenantDirectoryController extends Controller
         $fromDate = $from !== '' ? Carbon::parse($from)->startOfDay() : null;
         $toDate = $to !== '' ? Carbon::parse($to)->endOfDay() : null;
 
-        $invoiceQuery = PmInvoice::query()
-            ->billableAr()
-            ->with(['unit.property'])
-            ->where('pm_tenant_id', $tenant->id)
-            ->when($fromDate, fn ($q) => $q->whereDate('issue_date', '>=', $fromDate->toDateString()))
-            ->when($toDate, fn ($q) => $q->whereDate('issue_date', '<=', $toDate->toDateString()));
-
-        $paymentQuery = PmPayment::query()
-            ->with(['allocations.invoice'])
-            ->where('pm_tenant_id', $tenant->id)
-            ->when($fromDate, fn ($q) => $q->whereDate('paid_at', '>=', $fromDate->toDateString()))
-            ->when($toDate, fn ($q) => $q->whereDate('paid_at', '<=', $toDate->toDateString()));
-
-        $invoices = $invoiceQuery->orderBy('issue_date')->orderBy('id')->get();
-        $payments = $paymentQuery->orderBy('paid_at')->orderBy('id')->get();
-
-        $openingInvoices = 0.0;
-        $openingPayments = 0.0;
-        $openingArrears = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
-        $openingArrearsAsOf = $tenant->opening_arrears_as_of
-            ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
-            : null;
-        if ($fromDate) {
-            $openingInvoices = (float) PmInvoice::query()
-                ->billableAr()
-                ->where('pm_tenant_id', $tenant->id)
-                ->whereDate('issue_date', '<', $fromDate->toDateString())
-                ->sum('amount');
-
-            $openingPayments = (float) DB::table('pm_payment_allocations as a')
-                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-                ->where('pay.pm_tenant_id', $tenant->id)
-                ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->whereDate('pay.paid_at', '<', $fromDate->toDateString())
-                ->sum('a.amount');
-
-            if ($openingArrears > 0 && ($openingArrearsAsOf === null || $openingArrearsAsOf->lt($fromDate))) {
-                $openingInvoices += $openingArrears;
-            }
-        }
-
-        $openingBalance = $openingInvoices - $openingPayments;
-
-        $entries = collect();
-
-        foreach ($invoices as $invoice) {
-            $label = $invoice->invoice_no ?: 'INV-'.$invoice->id;
-            $unitLabel = trim(($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—'));
-
-            $entries->push([
-                'date' => $invoice->issue_date?->toDateString(),
-                'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
-                'type' => 'Invoice',
-                'ref' => $label,
-                'description' => ($invoice->invoice_type ? strtoupper((string) $invoice->invoice_type) : 'CHARGE').($unitLabel !== '— / —' ? ' · '.$unitLabel : ''),
-                'debit' => (float) $invoice->amount,
-                'credit' => 0.0,
-                'payment_id' => null,
-            ]);
-        }
-
-        if ($openingArrears > 0) {
-            $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
-            $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
-            $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
-            if ($inRange) {
-                $items = collect((array) ($tenant->opening_arrears_items ?? []))
-                    ->filter(fn ($item): bool => is_array($item) && (float) ($item['amount'] ?? 0) > 0)
-                    ->map(function (array $item): string {
-                        $customLabel = trim((string) ($item['label'] ?? ''));
-                        $label = $customLabel !== ''
-                            ? $customLabel
-                            : ($this->openingArrearsTypeOptions()[(string) ($item['type'] ?? '')] ?? ucfirst(str_replace('_', ' ', (string) ($item['type'] ?? 'Other'))));
-                        $period = (string) ($item['period'] ?? '');
-                        $ref = trim((string) ($item['reference'] ?? ''));
-                        $bits = [$label, $period !== '' ? "({$period})" : null, PropertyMoney::kes((float) ($item['amount'] ?? 0))];
-                        if ($ref !== '') {
-                            $bits[] = '['.$ref.']';
-                        }
-
-                        return implode(' ', array_values(array_filter($bits, fn ($v): bool => (string) $v !== '')));
-                    });
-                $partsText = $items->isEmpty() ? '' : ' Breakdown: '.$items->implode(' · ');
-                $entries->push([
-                    'date' => $entryDate,
-                    'timestamp' => $entryTs,
-                    'type' => 'Opening arrears',
-                    'ref' => 'B/F-'.$tenant->id,
-                    'description' => trim((string) (($tenant->opening_arrears_notes ?: 'Brought-forward debt captured at tenant onboarding.').$partsText)),
-                    'debit' => $openingArrears,
-                    'credit' => 0.0,
-                    'payment_id' => null,
-                ]);
-            }
-        }
-
-        foreach ($payments as $payment) {
-            $label = $payment->external_ref ?: 'PAY-'.$payment->id;
-            $allocTo = $payment->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
-            $desc = strtoupper((string) $payment->channel);
-            if ($allocTo !== '') {
-                $desc .= ' · Alloc: '.$allocTo;
-            }
-            $desc .= ' · '.ucfirst((string) $payment->status);
-
-            $isCompleted = $payment->status === PmPayment::STATUS_COMPLETED;
-
-            $entries->push([
-                'date' => $payment->paid_at?->toDateString(),
-                'timestamp' => $payment->paid_at?->timestamp ?? 0,
-                'type' => 'Payment',
-                'ref' => $label,
-                'description' => $desc,
-                'debit' => 0.0,
-                'credit' => $isCompleted ? (float) $payment->allocations->sum('amount') : 0.0,
-                'payment_id' => $isCompleted ? $payment->id : null,
-                'status' => ucfirst((string) $payment->status),
-            ]);
-        }
-
-        $entries = $entries
-            ->sortBy([
-                ['timestamp', 'asc'],
-                ['type', 'asc'],
-            ])
-            ->values();
+        $ledger = app(TenantStatementLedgerService::class)->build($tenant, $fromDate, $toDate);
+        $invoices = $ledger['invoices'];
+        $payments = $ledger['payments'];
+        $openingArrears = $ledger['openingArrears'];
+        $openingBalance = $ledger['openingBalance'];
+        $entries = $ledger['entries'];
+        $unpostedReceiptTotal = $ledger['unpostedReceiptTotal'];
 
         $running = $openingBalance;
         $totalDebit = 0.0;
@@ -1529,17 +1418,17 @@ class PmTenantDirectoryController extends Controller
         }
 
         $billingSnapshot = $formulas->tenantBillingSnapshot($tenant);
-        $canonicalOutstanding = $formulas->tenantStatementClosingBalance((int) $tenant->id);
-        $closingBalance = $canonicalOutstanding;
-        $ledgerRunningBalance = max(0.0, $running);
+        $canonicalOutstanding = $formulas->tenantTotalDue($tenant);
+        $closingBalance = round($canonicalOutstanding - $unpostedReceiptTotal, 2);
+        $ledgerRunningBalance = $running;
 
         $stats = [
             ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => 'Statement owner'],
-            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices + payments (informational)'],
-            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Ledger charges'],
-            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Allocation credits in ledger'],
-            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Canonical billable invoice AR'],
-            ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Informational debit − credit'],
+            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices, payments, and imported receipts'],
+            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Charges and opening arrears'],
+            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Payments and imported receipts'],
+            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Amount due after invoices, carry-forward, credits, and imported receipts'],
+            ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Debit − credit on this statement'],
         ];
 
         $tenant->loadMissing([
@@ -1575,11 +1464,14 @@ class PmTenantDirectoryController extends Controller
         ];
 
         $paymentSummary = [
-            'count' => $payments->count(),
-            'completedCount' => $payments->where('status', PmPayment::STATUS_COMPLETED)->count(),
+            'count' => $payments->count() + $ledger['registerReceipts']->count(),
+            'completedCount' => $payments->where('status', PmPayment::STATUS_COMPLETED)->count() + $ledger['registerReceipts']->count(),
             'pendingCount' => $payments->where('status', PmPayment::STATUS_PENDING)->count(),
             'failedCount' => $payments->where('status', PmPayment::STATUS_FAILED)->count(),
-            'completedAmount' => $formulas->collectionsFromPayments($payments),
+            'completedAmount' => round(
+                (float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount') + $unpostedReceiptTotal,
+                2
+            ),
             'pendingAmount' => (float) $payments->where('status', PmPayment::STATUS_PENDING)->sum('amount'),
         ];
 

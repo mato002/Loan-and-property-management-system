@@ -340,6 +340,6 @@ final class EzenRentalInvoiceScheduleParser
             return is_string($contents) ? $contents : '';
         }
 
-        return app(PassionLegacyRegisterPdfTextExtractor::class)->extract($path);
+        return app(PassionLegacyRegisterPdfTextExtractor::class)->extractAny($path);
     }
 }

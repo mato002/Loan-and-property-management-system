@@ -29,8 +29,19 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No payments recorded yet.</td></tr>
+                @unless(($recentRegisterReceipts ?? collect())->isNotEmpty())
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No payments recorded yet.</td></tr>
+                @endunless
             @endforelse
+            @foreach (($recentRegisterReceipts ?? []) as $receipt)
+                <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                    <td class="px-4 py-3">{{ optional($receipt->txn_date ?? $receipt->banking_date)->format('Y-m-d') ?? '—' }}</td>
+                    <td class="px-4 py-3 tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) $receipt->amount) }}</td>
+                    <td class="px-4 py-3">{{ $receipt->displayPaymentMethod() }}</td>
+                    <td class="px-4 py-3 font-mono text-xs">{{ $receipt->ezen_receipt_no ?: ($receipt->ref_no ?: '—') }}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500">Imported receipt</td>
+                </tr>
+            @endforeach
         </tbody>
     </table>
 </div>
