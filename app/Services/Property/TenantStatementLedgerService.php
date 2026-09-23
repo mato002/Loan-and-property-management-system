@@ -45,18 +45,38 @@ final class TenantStatementLedgerService
 
             return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
         });
-        // Snapshot B/F and EZEN receipt credits are mutually exclusive: the B/F already nets
-        // historical receipts. Full EZEN invoice replay retires B/F and owns the receipt trail.
-        $suppressEzenReceiptCredits = $hasEzenInvoiceHistory || $openingArrears > 0.009;
 
-        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
-        if ($suppressEzenReceiptCredits) {
-            $payments = $payments
-                ->reject(fn (PmPayment $payment): bool => $this->isEzenRentReceiptImportPayment($payment))
+        // Residual B/F kept beside a rent-only EZEN replay (late fees / DBNs not imported):
+        // present B/F as the EZEN closing residual and hide the misleading rent replay lines.
+        $residualBfWithEzenRentHistory = $openingArrears > 0.009 && $hasEzenInvoiceHistory;
+        if ($residualBfWithEzenRentHistory) {
+            $invoices = $invoices
+                ->reject(fn (PmInvoice $invoice): bool => $this->isEzenImportedInvoice($invoice))
                 ->values();
         }
 
-        $registerReceipts = $suppressEzenReceiptCredits
+        // Snapshot B/F already nets historical receipts — suppress register + receipt-import
+        // payments only in pure snapshot mode (no EZEN invoice history).
+        $snapshotBfMode = $openingArrears > 0.009 && ! $hasEzenInvoiceHistory;
+        $suppressRegisterCredits = $hasEzenInvoiceHistory || $openingArrears > 0.009;
+
+        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
+        if ($residualBfWithEzenRentHistory) {
+            $payments = $payments
+                ->reject(function (PmPayment $payment): bool {
+                    return $this->isEzenRentReceiptImportPayment($payment)
+                        || $this->isEzenRentalInvoiceImportPayment($payment);
+                })
+                ->values();
+        } elseif ($snapshotBfMode) {
+            $payments = $payments
+                ->reject(fn (PmPayment $payment): bool => $this->isEzenRentReceiptImportPayment($payment))
+                ->values();
+        } elseif ($hasEzenInvoiceHistory) {
+            $payments = $this->dedupeInvoiceImportsAgainstReceiptImports($payments);
+        }
+
+        $registerReceipts = $suppressRegisterCredits
             ? collect()
             : $this->unpostedReceiptsForStatement($tenant, $leases, $payments, $fromDate, $toDate);
 
@@ -89,7 +109,7 @@ final class TenantStatementLedgerService
             $openingPaymentsQuery = PmPayment::query()
                 ->whereIn('id', $openingPaymentIds)
                 ->where('status', PmPayment::STATUS_COMPLETED);
-            if ($suppressEzenReceiptCredits) {
+            if ($snapshotBfMode) {
                 $openingPaymentsQuery->where(function ($query): void {
                     $query->whereNull('meta->source')
                         ->orWhere('meta->source', '!=', 'ezen_rent_receipt_import');
@@ -97,7 +117,7 @@ final class TenantStatementLedgerService
             }
             $openingPayments = (float) $openingPaymentsQuery->sum('amount');
 
-            if (! $suppressEzenReceiptCredits) {
+            if (! $suppressRegisterCredits) {
                 $registerOpeningQuery = $this->receiptRegisterBaseQuery($tenant, $leases);
                 if ($registerOpeningQuery !== null) {
                     $openingRegister = (float) $registerOpeningQuery
@@ -491,5 +511,78 @@ final class TenantStatementLedgerService
         $meta = is_array($payment->meta) ? $payment->meta : [];
 
         return ($meta['source'] ?? '') === 'ezen_rent_receipt_import';
+    }
+
+    private function isEzenRentalInvoiceImportPayment(PmPayment $payment): bool
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+
+        return ($meta['source'] ?? '') === 'ezen_rental_invoice_import';
+    }
+
+    private function isEzenImportedInvoice(PmInvoice $invoice): bool
+    {
+        $origin = $invoice->carry_forward_origin;
+        if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
+            return true;
+        }
+
+        return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
+    }
+
+    /**
+     * @param  Collection<int, PmPayment>  $payments
+     * @return Collection<int, PmPayment>
+     */
+    private function dedupeInvoiceImportsAgainstReceiptImports(Collection $payments): Collection
+    {
+        $receiptRefs = $payments
+            ->filter(fn (PmPayment $payment): bool => $this->isEzenRentReceiptImportPayment($payment))
+            ->flatMap(fn (PmPayment $payment): array => $this->paymentRefKeys($payment))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($receiptRefs === []) {
+            return $payments->values();
+        }
+
+        $refSet = array_fill_keys($receiptRefs, true);
+
+        return $payments
+            ->reject(function (PmPayment $payment) use ($refSet): bool {
+                if (! $this->isEzenRentalInvoiceImportPayment($payment)) {
+                    return false;
+                }
+                foreach ($this->paymentRefKeys($payment) as $key) {
+                    if ($key !== '' && isset($refSet[$key])) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->values();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function paymentRefKeys(PmPayment $payment): array
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $keys = [
+            strtoupper(trim((string) ($payment->external_ref ?? ''))),
+            strtoupper(trim((string) ($meta['mpesa_ref'] ?? ''))),
+            strtoupper(trim((string) ($meta['ezen_ref_no'] ?? ''))),
+        ];
+        $receiptNo = strtoupper(trim((string) ($meta['ezen_receipt_no'] ?? '')));
+        if ($receiptNo !== '') {
+            $keys[] = $receiptNo;
+            $keys[] = 'EZEN-'.$receiptNo;
+        }
+
+        return array_values(array_unique(array_filter($keys, fn (string $k): bool => $k !== '' && $k !== 'CASH')));
     }
 }

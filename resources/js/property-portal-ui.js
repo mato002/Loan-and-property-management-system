@@ -14,7 +14,7 @@ function applyPropertyTableFilters(el) {
             return;
         }
         const controls = wrap.querySelectorAll(
-            '[data-table-filter="parent"], input[name="q"]:not([type="hidden"]), input[data-live-row-filter], input[data-auto-search="true"]',
+            '[data-table-filter="parent"], input[data-live-row-filter], input[data-auto-search="true"]',
         );
         const rows = [
             ...wrap.querySelectorAll('tbody tr[data-filter-text]'),

@@ -1419,16 +1419,17 @@ class PmTenantDirectoryController extends Controller
 
         $billingSnapshot = $formulas->tenantBillingSnapshot($tenant);
         $canonicalOutstanding = $formulas->tenantTotalDue($tenant);
-        $closingBalance = round($canonicalOutstanding - $unpostedReceiptTotal, 2);
         $ledgerRunningBalance = $running;
+        // Statement closing follows the ledger the user sees (avoids AR=0 while unpaid lines remain visible).
+        $closingBalance = round($ledgerRunningBalance, 2);
 
         $stats = [
             ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => 'Statement owner'],
             ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices, payments, and imported receipts'],
             ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Charges and opening arrears'],
             ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Payments and imported receipts'],
-            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Amount due after invoices, opening arrears B/F, credits, and (when B/F is not active) imported receipts'],
-            ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Debit − credit on this statement'],
+            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Running balance on this statement (matches ledger)'],
+            ['label' => 'Amount due', 'value' => PropertyMoney::kes(round($canonicalOutstanding - $unpostedReceiptTotal, 2)), 'hint' => 'Canonical AR + opening arrears − credits'],
         ];
 
         $tenant->loadMissing([

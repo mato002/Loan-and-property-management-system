@@ -79,6 +79,29 @@ final class EzenReceiptBfDoubleCountCleanupService
         }
 
         foreach ($query->orderBy('id')->cursor() as $tenant) {
+            // Rent invoices netted out but take-on B/F still matches EZEN residual (late fees, etc.).
+            if ($this->carryForward->tenantOpeningArrearsIsResidualAfterInvoiceNet($tenant)) {
+                $sample = sprintf(
+                    'RESTORE residual B/F T#%d %s %s amount=%s',
+                    $tenant->id,
+                    (string) ($tenant->account_number ?? ''),
+                    (string) ($tenant->name ?? ''),
+                    number_format((float) $tenant->opening_arrears_amount, 2),
+                );
+                $this->pushSample($summary, $sample);
+
+                if ($dryRun) {
+                    $summary['bf_restored']++;
+
+                    continue;
+                }
+
+                $tenant->update(['opening_arrears_status' => 'pending']);
+                $summary['bf_restored']++;
+
+                continue;
+            }
+
             if ($this->carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
                 $summary['bf_kept_retired']++;
 
@@ -132,6 +155,13 @@ final class EzenReceiptBfDoubleCountCleanupService
 
         foreach ($query->orderBy('id')->cursor() as $tenant) {
             if (! $this->carryForward->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
+                continue;
+            }
+
+            // Leave residual take-on in place when rent invoices already net to zero.
+            $invoiceAr = round((float) app(FinancialReportingFormulaService::class)
+                ->outstandingForTenant((int) $tenant->id, null, true), 2);
+            if ($invoiceAr <= 0.009) {
                 continue;
             }
 

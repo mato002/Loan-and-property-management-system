@@ -4,6 +4,7 @@
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
 const SEARCH_FOCUS_STORAGE_KEY = 'property.portal.searchFocus';
+const SEARCH_SUBMIT_DEBOUNCE_MS = 320;
 
 function isPropertyWorkspaceHydrating() {
     return window.__propertyWorkspaceHydrating === true;
@@ -19,6 +20,38 @@ function liveFilterScope(el) {
     );
 }
 
+/**
+ * Paginated directory filters must search on the server. Client-only row hiding
+ * only covers the current page and looks like "search broken".
+ */
+function prefersServerSearch(control) {
+    if (!(control instanceof HTMLInputElement) || control.disabled) {
+        return false;
+    }
+    // Explicit client-only search (small in-memory tables).
+    if (
+        control.matches('[data-live-row-filter-only], [data-table-filter]')
+        || control.dataset.liveRowFilter === '1'
+        || control.dataset.serverSearch === 'false'
+    ) {
+        return false;
+    }
+
+    const form = control.form || control.closest('form');
+    if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'get') {
+        return false;
+    }
+    if (form.matches('[data-live-row-filter-only]')) {
+        return false;
+    }
+
+    return (
+        control.name === 'q'
+        || control.dataset.serverSearch === 'true'
+        || control.dataset.serverSearch === '1'
+    );
+}
+
 function isLiveSearchControl(control) {
     if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement) || control.disabled) {
         return false;
@@ -29,14 +62,16 @@ function isLiveSearchControl(control) {
     if (control instanceof HTMLInputElement && (control.type === 'hidden' || control.type === 'submit')) {
         return false;
     }
+    if (prefersServerSearch(control)) {
+        return false;
+    }
 
     return (
         control.matches('[data-live-row-filter]')
         || control.matches('[data-table-filter]')
         || (control instanceof HTMLInputElement && (
-            control.name === 'q'
-            || control.type === 'search'
-            || control.dataset.autoSearch === 'true'
+            control.dataset.autoSearch === 'true'
+            || control.dataset.liveRowFilter === '1'
         ))
     );
 }
@@ -104,6 +139,9 @@ const CONTROL_APPLY_DEBOUNCE_MS = 120;
 
 /** @type {WeakMap<HTMLFormElement, number>} */
 const controlApplyDebounceTimers = new WeakMap();
+
+/** @type {WeakMap<HTMLFormElement, number>} */
+const searchSubmitDebounceTimers = new WeakMap();
 
 /** @type {SearchFocusMeta|null} */
 let pendingSearchFocusMeta = null;
@@ -353,6 +391,29 @@ function scheduleControlApply(form) {
     controlApplyDebounceTimers.set(form, timer);
 }
 
+/**
+ * @param {HTMLFormElement} form
+ * @param {HTMLInputElement} input
+ */
+function scheduleServerSearchSubmit(form, input) {
+    const existing = searchSubmitDebounceTimers.get(form);
+    if (existing) {
+        window.clearTimeout(existing);
+    }
+
+    const timer = window.setTimeout(() => {
+        searchSubmitDebounceTimers.delete(form);
+        // New search should always start at page 1.
+        const pageInput = form.querySelector('input[name="page"]');
+        if (pageInput instanceof HTMLInputElement) {
+            pageInput.value = '1';
+        }
+        submitPropertyFilterForm(form, 'search', input);
+    }, SEARCH_SUBMIT_DEBOUNCE_MS);
+
+    searchSubmitDebounceTimers.set(form, timer);
+}
+
 export function wireAutoFilterForms(scopeRoot) {
     if (isPropertyWorkspaceHydrating()) {
         return;
@@ -374,12 +435,18 @@ export function wireAutoFilterForms(scopeRoot) {
             .filter((control) => isSearchInput(control))
             .forEach((input) => {
                 input.addEventListener('input', () => {
+                    if (prefersServerSearch(input)) {
+                        scheduleServerSearchSubmit(form, input);
+                        return;
+                    }
                     applyLiveWorkspaceSearch(input);
                 });
                 input.addEventListener('focus', () => {
                     trackSearchFocus(input);
                 });
-                applyLiveWorkspaceSearch(input);
+                if (!prefersServerSearch(input)) {
+                    applyLiveWorkspaceSearch(input);
+                }
             });
 
         formFilterControls(form)
@@ -470,7 +537,7 @@ function bindFilterFormTurboGuards() {
         form.dataset.lastFilterQuery = serializedFormQuery(form);
 
         const searchInput = form.querySelector('input[name="q"], input[type="search"], input[data-auto-search="true"]');
-        if (searchInput instanceof HTMLInputElement) {
+        if (searchInput instanceof HTMLInputElement && !prefersServerSearch(searchInput)) {
             queueMicrotask(() => applyLiveWorkspaceSearch(searchInput));
         }
     });
@@ -485,6 +552,13 @@ function bindFilterLifecycle() {
     document.addEventListener('input', (event) => {
         const el = event.target;
         if (!(el instanceof HTMLInputElement) || !isSearchInput(el) || el.matches('[data-auto-submit="off"]')) {
+            return;
+        }
+        if (prefersServerSearch(el)) {
+            const form = el.form || el.closest('form');
+            if (form instanceof HTMLFormElement) {
+                scheduleServerSearchSubmit(form, el);
+            }
             return;
         }
         applyLiveWorkspaceSearch(el);

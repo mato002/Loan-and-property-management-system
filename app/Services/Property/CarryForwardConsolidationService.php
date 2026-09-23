@@ -171,6 +171,30 @@ class CarryForwardConsolidationService
         return $count >= 6 || $billed + 0.009 >= $bf;
     }
 
+    /**
+     * Retired B/F that still represents residual debt after rent invoices net to zero
+     * (e.g. EZEN late-fee DBNs never imported). Safe to restore as active opening arrears.
+     */
+    public function tenantOpeningArrearsIsResidualAfterInvoiceNet(PmTenant $tenant): bool
+    {
+        $bf = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
+        if ($bf <= 0.009) {
+            return false;
+        }
+
+        if (Schema::hasColumn('pm_tenants', 'opening_arrears_status')) {
+            $status = (string) ($tenant->opening_arrears_status ?? '');
+            if ($status !== 'retired') {
+                return false;
+            }
+        }
+
+        $invoiceAr = round((float) app(FinancialReportingFormulaService::class)
+            ->outstandingForTenant((int) $tenant->id, null, true), 2);
+
+        return $invoiceAr <= 0.009;
+    }
+
     public function leaseJsonUninvoicedInDue(PmLease $lease): float
     {
         if ($this->tenantHasInvoicedCarryForward((int) $lease->pm_tenant_id)) {
