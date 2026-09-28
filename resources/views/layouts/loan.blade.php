@@ -577,5 +577,30 @@
             window.addEventListener('beforeprint', buildPrintSurface);
         })();
         </script>
+        <div
+            id="loan-form-modal-host"
+            data-turbo-permanent
+            x-data="loanFormModalHost"
+            x-cloak
+        >
+            <div
+                x-show="open"
+                x-transition.opacity
+                class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/50 px-4 py-8"
+                @keydown.escape.window="handleClose()"
+            >
+                <div class="relative w-full max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" @click.outside="handleClose()">
+                    <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-white" x-text="title"></h2>
+                        <button type="button" class="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" @click="handleClose()">Close</button>
+                    </div>
+                    <div class="max-h-[75vh] overflow-y-auto px-5 py-4">
+                        <p x-show="loading" class="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading…</p>
+                        <p x-show="error" x-text="error" class="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></p>
+                        <div x-ref="frameHost"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </body>
 </html>
