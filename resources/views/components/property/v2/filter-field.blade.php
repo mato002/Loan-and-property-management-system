@@ -57,6 +57,7 @@
                 @if ($fieldId) id="{{ $fieldId }}" @endif
                 @if ($name) name="{{ $name }}" @endif
                 {!! $formAttr !!}
+                data-property-searchable="true"
                 class="{{ $inputClass }}"
             >
                 @if ($emptyOption !== null)
@@ -86,6 +87,7 @@
                 @if ($name) name="{{ $name }}" @endif
                 value="{{ is_scalar($resolvedValue) ? $resolvedValue : '' }}"
                 @if ($placeholder) placeholder="{{ $placeholder }}" @endif
+                @if ($type === 'search') autocomplete="off" data-live-row-filter="1" data-server-search="false" @endif
                 {!! $formAttr !!}
                 class="{{ $inputClass }} {{ $type === 'search' ? 'md:min-w-[11rem] md:max-w-[18rem]' : '' }}"
                 @if ($type === 'number') step="any" @endif
