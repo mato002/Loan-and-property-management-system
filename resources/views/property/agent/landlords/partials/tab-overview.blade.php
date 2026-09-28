@@ -13,7 +13,7 @@
         <p class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ $totals['active_tenants'] ?? 0 }}</p>
     </div>
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3">
-        <p class="text-[11px] uppercase tracking-wide text-slate-500">Pending share</p>
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Still to pay</p>
         <p class="text-sm sm:text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) (($shareToDate['pending_share'] ?? 0) > 0.009 ? $shareToDate['pending_share'] : ($totals['pending_share'] ?? 0))) }}</p>
     </div>
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3">

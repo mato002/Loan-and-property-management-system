@@ -4,7 +4,7 @@
 @endphp
 <div class="px-1 py-1">
     <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Monthly share breakdown</p>
-    <p class="mb-2 text-[11px] text-slate-500">Collected is money received for that month's bills, including receipts that were not posted onto an invoice. Paid to landlord is remittances for that month. Pending is unpaid invoices billed that month.</p>
+    <p class="mb-2 text-[11px] text-slate-500">Collected is money received for that month's bills, including receipts that were not posted onto an invoice. Paid to landlord is remittances for that month. Pending is what is still owed to the landlord after your earnings and that remittance.</p>
     <div class="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-gray-800">
         <table class="w-full min-w-full text-xs">
             <thead class="sticky top-0 bg-slate-50 text-slate-500 dark:bg-slate-900/80">
@@ -45,7 +45,7 @@
                         <td class="px-3 py-2 text-right tabular-nums {{ $overRemitted ? 'font-semibold text-rose-700 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-200' }}" @if ($overRemitted) title="This remittance is higher than the month's receipts. It can include a balance brought forward." @endif>
                             {{ \App\Services\Property\PropertyMoney::kes($remitted) }}
                         </td>
-                        <td class="px-3 py-2 text-right tabular-nums {{ ((float) ($m['pending_share'] ?? 0)) > 0.009 ? 'text-amber-800 dark:text-amber-200 font-medium' : 'text-slate-800 dark:text-slate-100' }}">
+                        <td class="px-3 py-2 text-right tabular-nums {{ ((float) ($m['pending_share'] ?? 0)) > 0.009 ? 'text-amber-800 dark:text-amber-200 font-medium' : 'text-slate-800 dark:text-slate-100' }}" title="Owner share minus your earnings, minus what was already paid.">
                             {{ \App\Services\Property\PropertyMoney::kes((float) ($m['pending_share'] ?? 0)) }}
                         </td>
                         <td class="px-3 py-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
