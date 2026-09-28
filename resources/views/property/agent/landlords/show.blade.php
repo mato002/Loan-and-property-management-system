@@ -9,16 +9,22 @@
 
     $portfolioColumns = ['Property', 'Ownership', 'Agreed pay', 'Commission', 'Units', 'Tenants', 'Owner share', 'Pending', 'Your earnings', 'Last collection', 'Actions'];
     $portfolioRows = [];
+    $portfolioExpansions = [];
+    $currentShareMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
     foreach ($propertyBreakdown as $row) {
         $propertyUrl = route('property.properties.show', ['property' => $row['property_id']], false);
         $viewAction = new HtmlString(
             '<a href="'.e($propertyUrl).'" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">View</a>'
         );
+        $portfolioExpansions[] = new HtmlString(
+            view('property.agent.landlords.partials.monthly-share-panel', [
+                'months' => $row['monthly_shares'] ?? [],
+                'currentMonth' => $currentShareMonth,
+            ])->render()
+        );
         $portfolioRows[] = [
             new HtmlString(
                 view('property.agent.landlords.partials.monthly-share-toggle', [
-                    'months' => $row['monthly_shares'] ?? [],
-                    'currentMonth' => preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m'),
                     'propertyUrl' => $propertyUrl,
                     'propertyName' => (string) $row['property_name'],
                 ])->render()

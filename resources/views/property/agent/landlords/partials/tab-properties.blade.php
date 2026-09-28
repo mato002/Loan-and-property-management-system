@@ -9,6 +9,7 @@
         'title' => 'Portfolio breakdown',
         'columns' => $portfolioColumns,
         'rows' => $portfolioRows,
+        'rowExpansions' => $portfolioExpansions ?? [],
         'columnConfig' => ResponsiveTableColumns::landlordPortfolio(),
         'emptyTitle' => 'No linked properties',
         'emptyHint' => 'Use Quick Actions → Link property to attach an unlinked property to this landlord.',

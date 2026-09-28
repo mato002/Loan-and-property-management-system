@@ -55,6 +55,7 @@
     'title' => 'Portfolio snapshot ('.$periodLabel.')',
     'columns' => $portfolioColumns,
     'rows' => array_slice($portfolioRows, 0, 5),
+    'rowExpansions' => array_slice($portfolioExpansions ?? [], 0, 5),
     'columnConfig' => ResponsiveTableColumns::landlordPortfolio(),
     'emptyTitle' => 'No linked properties',
     'emptyHint' => 'Attach this landlord from the property list.',

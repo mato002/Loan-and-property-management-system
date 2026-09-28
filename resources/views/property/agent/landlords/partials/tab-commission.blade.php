@@ -1,6 +1,8 @@
 @php
     $commissionTotals = $commissionTotals ?? ['collected' => 0, 'landlord_share' => 0, 'commission' => 0, 'landlord_net' => 0];
     $commissionRows = $commissionRows ?? [];
+    $monthlyByProperty = collect($propertyBreakdown ?? [])->keyBy('property_id');
+    $currentShareMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
 @endphp
 
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -45,18 +47,38 @@
                         <th class="px-4 py-3 text-right">Net to owner</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                    @foreach ($commissionRows as $row)
+                @foreach ($commissionRows as $row)
+                    @php
+                        $pid = (int) ($row['property_id'] ?? 0);
+                        $propertyUrl = $pid > 0 ? route('property.properties.show', ['property' => $pid], false) : '#';
+                        $breakdown = $monthlyByProperty->get($pid);
+                        $months = is_array($breakdown) ? ($breakdown['monthly_shares'] ?? []) : [];
+                    @endphp
+                    <tbody x-data="{ open: false }" class="border-t border-slate-100 dark:border-slate-700">
                         <tr>
-                            <td class="px-4 py-3 font-medium">{{ $row['property_name'] ?? '—' }}</td>
+                            <td class="px-4 py-3 font-medium">
+                                @include('property.agent.landlords.partials.monthly-share-toggle', [
+                                    'propertyUrl' => $propertyUrl,
+                                    'propertyName' => (string) ($row['property_name'] ?? '—'),
+                                ])
+                            </td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) ($row['ownership_percent'] ?? 0), 2) }}%</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) ($row['rate_pct'] ?? 0), 2) }}%</td>
                             <td class="px-4 py-3 text-right tabular-nums font-medium text-emerald-700">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['commission'] ?? 0)) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['landlord_net'] ?? 0)) }}</td>
                         </tr>
-                    @endforeach
-                </tbody>
+                        <tr x-show="open" x-cloak class="bg-slate-50/70 dark:bg-slate-900/40">
+                            <td colspan="6" class="px-4 py-3" data-row-ignore-click>
+                                @include('property.agent.landlords.partials.monthly-share-panel', [
+                                    'months' => $months,
+                                    'currentMonth' => $currentShareMonth,
+                                    'variant' => 'commission',
+                                ])
+                            </td>
+                        </tr>
+                    </tbody>
+                @endforeach
             </table>
         </div>
     @endif
