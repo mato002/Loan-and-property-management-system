@@ -52,6 +52,9 @@ final class AttachedUtilityChargeService
             if ($chargeType === '' || in_array($chargeType, self::SKIP_CHARGE_TYPES, true)) {
                 continue;
             }
+            if ($this->isVariableRule($rule)) {
+                continue;
+            }
 
             $unitIds = $this->resolveUnitIds(
                 (int) $rule['property_id'],
@@ -185,6 +188,7 @@ final class AttachedUtilityChargeService
                     'property_unit_id' => $scopeUnitId,
                     'charge_type' => $chargeType,
                     'label' => $label !== '' ? $label : Str::of($chargeType)->replace('_', ' ')->title()->toString(),
+                    'amount_mode' => $this->normalizeAmountMode($row),
                     'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0,
                     'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0,
                     'notes' => trim((string) ($row['notes'] ?? '')),
@@ -193,6 +197,136 @@ final class AttachedUtilityChargeService
         }
 
         return $rules;
+    }
+
+    /**
+     * Occupied units that still need a manual monthly charge for variable templates.
+     *
+     * @return list<array{unit_id:int,property_name:string,unit_label:string,charge_type:string,charge_label:string}>
+     */
+    public function missingVariableEntries(string $billingMonth, ?int $propertyId = null): array
+    {
+        if (! preg_match('/^\d{4}-\d{2}$/', $billingMonth)) {
+            return [];
+        }
+
+        $needed = [];
+        $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
+        $all = json_decode($raw, true);
+        $all = is_array($all) ? $all : [];
+
+        foreach ($all as $pid => $rows) {
+            $pid = (int) $pid;
+            if ($propertyId !== null && $propertyId > 0 && $pid !== $propertyId) {
+                continue;
+            }
+            if (! is_array($rows)) {
+                continue;
+            }
+            foreach ($rows as $row) {
+                if (! is_array($row) || ! $this->isVariableRule($row)) {
+                    continue;
+                }
+                $chargeType = $this->normalizeChargeType((string) ($row['charge_type'] ?? ''));
+                if ($chargeType === '' || in_array($chargeType, self::SKIP_CHARGE_TYPES, true)) {
+                    continue;
+                }
+                $scopeUnitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== ''
+                    ? (int) $row['property_unit_id']
+                    : null;
+                $label = trim((string) ($row['label'] ?? ''));
+                $typeLabel = $label !== ''
+                    ? $label
+                    : Str::of($chargeType)->replace('_', ' ')->title()->toString();
+                foreach ($this->resolveUnitIds($pid, $scopeUnitId) as $unitId) {
+                    if (! $this->unitHasActiveLease($unitId)) {
+                        continue;
+                    }
+                    $key = $unitId.'|'.$chargeType;
+                    $needed[$key] = [
+                        'unit_id' => $unitId,
+                        'charge_type' => $chargeType,
+                        'charge_label' => $typeLabel,
+                    ];
+                }
+            }
+        }
+
+        if ($needed === []) {
+            return [];
+        }
+
+        $unitIds = array_values(array_unique(array_map(fn (array $row) => $row['unit_id'], $needed)));
+        $existing = PmUnitUtilityCharge::query()
+            ->where('billing_month', $billingMonth)
+            ->whereIn('property_unit_id', $unitIds)
+            ->get(['property_unit_id', 'charge_type']);
+        foreach ($existing as $charge) {
+            $key = ((int) $charge->property_unit_id).'|'.$this->normalizeChargeType((string) $charge->charge_type);
+            unset($needed[$key]);
+        }
+
+        if ($needed === []) {
+            return [];
+        }
+
+        $units = PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->with(['property' => function ($q): void {
+                $q->withoutGlobalScopes();
+            }])
+            ->whereIn('id', array_values(array_unique(array_map(fn (array $row) => $row['unit_id'], $needed))))
+            ->get()
+            ->keyBy('id');
+
+        $missing = [];
+        foreach ($needed as $row) {
+            $unit = $units->get($row['unit_id']);
+            $missing[] = [
+                'unit_id' => $row['unit_id'],
+                'property_name' => (string) ($unit?->property?->name ?? '—'),
+                'unit_label' => (string) ($unit?->label ?? '—'),
+                'charge_type' => $row['charge_type'],
+                'charge_label' => $row['charge_label'],
+            ];
+        }
+
+        usort($missing, function (array $a, array $b): int {
+            return [$a['property_name'], $a['unit_label'], $a['charge_label']]
+                <=> [$b['property_name'], $b['unit_label'], $b['charge_label']];
+        });
+
+        return $missing;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rule
+     */
+    private function isVariableRule(array $rule): bool
+    {
+        return $this->normalizeAmountMode($rule) === 'variable';
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function normalizeAmountMode(array $row): string
+    {
+        $mode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
+        if (in_array($mode, ['variable', 'manual', 'monthly'], true)) {
+            return 'variable';
+        }
+        if ($mode === 'fixed') {
+            return 'fixed';
+        }
+        $fixed = is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0;
+        $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
+        if ($fixed > 0.009 || $rate > 0.009) {
+            return 'fixed';
+        }
+        $type = $this->normalizeChargeType((string) ($row['charge_type'] ?? ''));
+
+        return $type === 'water' ? 'variable' : 'fixed';
     }
 
     private function ruleKey(int $propertyId, ?int $unitId, string $chargeType): string

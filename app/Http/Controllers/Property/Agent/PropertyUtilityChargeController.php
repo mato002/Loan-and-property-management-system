@@ -315,9 +315,13 @@ class PropertyUtilityChargeController extends Controller
             ]);
         }
 
+        $missingVariableCharges = app(AttachedUtilityChargeService::class)
+            ->missingVariableEntries($readinessMonth);
+
         $billingReadiness = [
             'month' => $readinessMonth,
             'missing' => $missingWaterReadings,
+            'missing_variable' => $missingVariableCharges,
             'anomalies' => $usageAnomalies->values(),
             'water_enabled_units' => $waterEnabledUnitIds->count(),
             'recorded_units' => $monthReadings->count(),
@@ -343,6 +347,7 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Standing extras', 'value' => PropertyMoney::kes((float) $standingRegister['monthly_total']), 'hint' => ((int) $standingRegister['lease_count']).' leases'],
             ['label' => 'Month progress', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth.' captured'],
             ['label' => 'Missing meters', 'value' => (string) collect($billingReadiness['missing'])->count(), 'hint' => 'Need readings'],
+            ['label' => 'Need monthly entry', 'value' => (string) collect($billingReadiness['missing_variable'] ?? [])->count(), 'hint' => 'Variable charges'],
             ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Posted this ledger'],
         ];
 
@@ -352,6 +357,7 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Readings captured', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth, 'tone' => 'info'],
             ['label' => 'Uninvoiced', 'value' => (string) $uninvoicedReadings, 'hint' => 'Readings pending invoice', 'tone' => $uninvoicedReadings > 0 ? 'warning' : 'success'],
             ['label' => 'Usage alerts', 'value' => (string) collect($billingReadiness['anomalies'])->count(), 'hint' => 'Review before billing', 'tone' => collect($billingReadiness['anomalies'])->count() > 0 ? 'danger' : 'success'],
+            ['label' => 'Need monthly entry', 'value' => (string) collect($billingReadiness['missing_variable'] ?? [])->count(), 'hint' => 'Variable charges', 'tone' => collect($billingReadiness['missing_variable'] ?? [])->count() > 0 ? 'warning' : 'success'],
             ['label' => 'Rate corrections', 'value' => (string) count($waterRateAdjustments), 'hint' => 'Bill water supplement', 'tone' => count($waterRateAdjustments) > 0 ? 'warning' : 'success'],
         ];
 

@@ -363,6 +363,15 @@ php artisan property:import-ezen-billing-schedule storage/passion-legacy/ezen_se
 
 Expected: ~222 extras, ~213 leases updated, ~KES 49,654 applied. Unmatched OCCP placeholders are skipped.
 
+Then turn those lease extras into **expense rules** (property-wide when every occupied unit pays the same amount; otherwise per unit):
+
+```bash
+php artisan property:derive-expense-rules --agent-user-id=1 --dry-run
+php artisan property:derive-expense-rules --agent-user-id=1 --force
+```
+
+Water is skipped (meter readings). Settings → Expense charge rules will show Garbage / Service charge. New months: `php artisan utility:materialize-attached-charges --month=YYYY-MM` (automation toggle must be on).
+
 ---
 
 ## Phase 7 — EZEN rental invoice history (full)

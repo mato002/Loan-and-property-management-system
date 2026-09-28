@@ -15,7 +15,14 @@
             '<a href="'.e($propertyUrl).'" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">View</a>'
         );
         $portfolioRows[] = [
-            new HtmlString('<a href="'.e($propertyUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 dark:text-white hover:text-blue-700 break-words">'.e((string) $row['property_name']).'</a>'),
+            new HtmlString(
+                view('property.agent.landlords.partials.monthly-share-toggle', [
+                    'months' => $row['monthly_shares'] ?? [],
+                    'currentMonth' => preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m'),
+                    'propertyUrl' => $propertyUrl,
+                    'propertyName' => (string) $row['property_name'],
+                ])->render()
+            ),
             number_format((float) $row['ownership_percent'], 2).'%',
             ! empty($row['agreed_pay_day']) ? 'Day '.((int) $row['agreed_pay_day']) : '—',
             number_format((float) ($row['commission_percent'] ?? 0), 2).'%',

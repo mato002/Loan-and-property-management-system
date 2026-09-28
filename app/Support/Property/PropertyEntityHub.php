@@ -40,6 +40,7 @@ final class PropertyEntityHub
         ['key' => 'occupancy', 'label' => 'Occupancy'],
         ['key' => 'landlords', 'label' => 'Landlords'],
         ['key' => 'utilities', 'label' => 'Utilities'],
+        ['key' => 'deposits', 'label' => 'Deposits'],
         ['key' => 'maintenance', 'label' => 'Maintenance'],
         ['key' => 'performance', 'label' => 'Performance'],
         ['key' => 'revenue', 'label' => 'Revenue'],
