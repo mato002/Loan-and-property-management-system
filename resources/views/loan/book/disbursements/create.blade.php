@@ -34,28 +34,27 @@
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
-                    <label for="amount" class="block text-xs font-semibold text-slate-600 mb-1">Payout amount (cash to borrower)</label>
-                    <input
-                        id="amount"
-                        name="amount"
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        value="{{ $defaultAmount }}"
-                        required
-                        class="w-full rounded-lg border-slate-200 text-sm tabular-nums"
-                        data-disbursement-amount
-                    />
-                    <p id="amount_hint" class="mt-1 text-xs text-slate-500">
+                <div id="product_terms_box" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 @if (! $selectedLoan) hidden @endif">
+                    <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">From loan product</p>
+                    <p id="product_terms_text">
                         @if ($selectedLoan)
-                            Auto-filled from loan principal: <span class="font-semibold tabular-nums">{{ number_format((float) $selectedLoan->principal, 2) }}</span>. Do not add interest or fees — those are collected on repayment.
-                        @else
-                            Select a loan to auto-fill the principal amount paid out to the client.
+                            {{ $selectedLoan->product_name ?: '—' }}
+                            · Payout {{ number_format((float) $selectedLoan->principal, 2) }}
+                            · Rate {{ number_format((float) $selectedLoan->interest_rate, 4) }}%
+                            · Term {{ $selectedLoan->term_value ?: '—' }} {{ $selectedLoan->term_unit ?: '' }}
+                            · Maturity {{ optional($selectedLoan->maturity_date)->format('Y-m-d') ?: '—' }}
                         @endif
                     </p>
-                    @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-[11px] text-slate-500">These values and the payout amount are already on the loan. Fill only method, reference if needed, and date.</p>
                 </div>
+                <input
+                    id="amount"
+                    name="amount"
+                    type="hidden"
+                    value="{{ $defaultAmount }}"
+                    data-disbursement-amount
+                />
+                @error('amount')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
                 <div>
                     <label for="method" class="block text-xs font-semibold text-slate-600 mb-1">Method</label>
                     <select id="method" name="method" required class="w-full rounded-lg border-slate-200 text-sm">
@@ -90,21 +89,14 @@
                     <p id="payout_transaction_hint" class="text-xs text-slate-500"></p>
                     @error('payout_transaction_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
-                    <label for="reference" class="block text-xs font-semibold text-slate-600 mb-1">Reference / voucher</label>
-                    <input id="reference" name="reference" value="{{ old('reference') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
-                    @error('reference')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
+                <input id="reference" name="reference" type="hidden" value="{{ old('reference') }}" />
+                @error('reference')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
                 <div>
                     <label for="disbursed_at" class="block text-xs font-semibold text-slate-600 mb-1">Disbursement date</label>
                     <input id="disbursed_at" name="disbursed_at" type="date" value="{{ old('disbursed_at', now()->toDateString()) }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                     @error('disbursed_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
-                    <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
-                    <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes') }}</textarea>
-                    @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
+                <input id="notes" name="notes" type="hidden" value="{{ old('notes') }}" />
                 <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save</button>
             </form>
         </div>
@@ -120,6 +112,11 @@
                 'id' => (int) $loan->id,
                 'loan_number' => (string) $loan->loan_number,
                 'client_name' => (string) ($loan->loanClient?->full_name ?? ''),
+                'product_name' => (string) ($loan->product_name ?? ''),
+                'interest_rate' => round((float) ($loan->interest_rate ?? 0), 4),
+                'term_value' => $loan->term_value !== null ? (int) $loan->term_value : null,
+                'term_unit' => (string) ($loan->term_unit ?? ''),
+                'maturity_date' => optional($loan->maturity_date)->format('Y-m-d'),
                 'principal' => $principal,
                 'suggested_amount' => $principal,
             ],
@@ -135,7 +132,8 @@
 
         const loanSelect = form.querySelector('#loan_book_loan_id');
         const amountInput = form.querySelector('#amount');
-        const amountHint = form.querySelector('#amount_hint');
+        const productTermsBox = form.querySelector('#product_terms_box');
+        const productTermsText = form.querySelector('#product_terms_text');
         const referenceInput = form.querySelector('#reference');
         const notesInput = form.querySelector('#notes');
         const dateInput = form.querySelector('#disbursed_at');
@@ -192,10 +190,6 @@
             }
         };
 
-        const initialReference = referenceInput?.value ?? '';
-        const initialNotes = notesInput?.value ?? '';
-        let lastSuggestedAmount = amountInput?.value ?? '';
-
         const formatDateYmd = (rawDate) => {
             if (rawDate) return rawDate;
             const today = new Date();
@@ -214,9 +208,7 @@
         const applyLoanDefaults = () => {
             const selectedId = loanSelect?.value ? String(loanSelect.value) : '';
             if (!selectedId || !loanData[selectedId]) {
-                if (amountHint) {
-                    amountHint.textContent = 'Select a loan to auto-fill the principal amount paid out to the client.';
-                }
+                productTermsBox?.classList.add('hidden');
                 return;
             }
 
@@ -227,19 +219,23 @@
             const compactDate = ymd.replace(/-/g, '');
             const generatedRef = `DISB-${selectedLoan.loan_number}-${compactDate}`;
 
-            if (amountInput && (amountInput.value === '' || amountInput.value === lastSuggestedAmount)) {
+            if (amountInput) {
                 amountInput.value = amountText;
-                lastSuggestedAmount = amountText;
             }
 
-            if (amountHint && suggestedAmount > 0) {
-                amountHint.innerHTML = `Auto-filled from loan principal: <span class="font-semibold tabular-nums">${formatMoney(suggestedAmount)}</span>. Do not add interest or fees — those are collected on repayment.`;
+            if (productTermsBox && productTermsText) {
+                const rate = Number(selectedLoan.interest_rate || 0).toFixed(4);
+                const term = [selectedLoan.term_value, selectedLoan.term_unit].filter(Boolean).join(' ') || '—';
+                const maturity = selectedLoan.maturity_date || '—';
+                const payout = suggestedAmount > 0 ? formatMoney(suggestedAmount) : '—';
+                productTermsText.textContent = `${selectedLoan.product_name || '—'} · Payout ${payout} · Rate ${rate}% · Term ${term} · Maturity ${maturity}`;
+                productTermsBox.classList.remove('hidden');
             }
 
-            if (referenceInput && (referenceInput.value === '' || referenceInput.value === initialReference)) {
+            if (referenceInput) {
                 referenceInput.value = generatedRef;
             }
-            if (notesInput && (notesInput.value === '' || notesInput.value === initialNotes)) {
+            if (notesInput) {
                 notesInput.value = `Loan disbursement for ${selectedLoan.loan_number} - ${selectedLoan.client_name}.`;
             }
         };
@@ -250,6 +246,7 @@
                 applyLoanDefaults();
             }
         }
+        dateInput?.addEventListener('change', applyLoanDefaults);
         if (methodSelect) {
             methodSelect.addEventListener('change', syncPayoutTransactionField);
             syncPayoutTransactionField();

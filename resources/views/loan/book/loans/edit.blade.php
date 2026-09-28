@@ -27,7 +27,7 @@
                     </select>
                     @error('loan_book_application_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
+                <div data-inherit-wrap="application">
                     <label for="loan_client_id" class="block text-xs font-semibold text-slate-600 mb-1">Client</label>
                     <select id="loan_client_id" name="loan_client_id" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($clients as $c)
@@ -36,7 +36,7 @@
                     </select>
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div id="section-tags">
+                <div id="section-tags" data-inherit-wrap="application">
                     <div class="mb-1 flex items-center justify-between gap-2">
                         <label for="product_name" class="block text-xs font-semibold text-slate-600">Loan product</label>
                         <button type="button" id="open-product-modal" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">+ Add product</button>
@@ -49,17 +49,21 @@
                     </select>
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div id="section-charges" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label for="principal" class="block text-xs font-semibold text-slate-600 mb-1">Principal</label>
-                        <input id="principal" name="principal" type="number" step="0.01" min="0" value="{{ old('principal', $loan->principal) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                        @error('principal')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
-                    <div>
-                        <label for="balance" class="block text-xs font-semibold text-slate-600 mb-1">Balance (amount to repay)</label>
-                        <input id="balance" name="balance" type="number" step="0.01" min="0" value="{{ old('balance', $loan->balance) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                        @error('balance')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
+                <div id="inherited_summary" class="hidden rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                    <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Already captured</p>
+                    <p id="inherited_summary_text"></p>
+                    <p class="mt-1 text-[11px] text-slate-500">Client, product, amount, rate, term, and maturity are reused. Change the product or application to change those values.</p>
+                </div>
+                <div id="section-charges" data-inherit-wrap="application">
+                    <label for="principal" class="block text-xs font-semibold text-slate-600 mb-1">Principal</label>
+                    <input id="principal" name="principal" type="number" step="0.01" min="0" value="{{ old('principal', $loan->principal) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    @error('principal')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div id="product-terms-fields" class="space-y-4">
+                <div>
+                    <label for="balance" class="block text-xs font-semibold text-slate-600 mb-1">Balance (amount to repay)</label>
+                    <input id="balance" name="balance" type="number" step="0.01" min="0" value="{{ old('balance', $loan->balance) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    @error('balance')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -74,7 +78,6 @@
                                 <option value="{{ $v }}" @selected(old('interest_rate_period', $loan->interest_rate_period ?? 'annual') === $v)>{{ $lab }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500">How the rate % is interpreted. If you change this after repayments exist, use Rebuild snapshot on the loan.</p>
                         @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
@@ -91,9 +94,9 @@
                                 <option value="{{ $unit }}" @selected(old('term_unit', $loan->term_unit ?? 'monthly') === $unit)>{{ $label }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500">How long the loan runs (e.g. 6 monthly = 6 months).</p>
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -117,7 +120,7 @@
                         <input id="disbursed_at" name="disbursed_at" type="datetime-local" value="{{ old('disbursed_at', $loan->disbursed_at?->format('Y-m-d\TH:i')) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                         @error('disbursed_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
-                    <div>
+                    <div data-inherit-wrap="product">
                         <label for="maturity_date" class="block text-xs font-semibold text-slate-600 mb-1">Maturity</label>
                         <input id="maturity_date" name="maturity_date" type="date" value="{{ old('maturity_date', $loan->maturity_date?->format('Y-m-d')) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                         @error('maturity_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -309,23 +312,107 @@
             return key && productDefaults[key] ? productDefaults[key] : null;
         };
 
+        const syncLockedSelect = (el, locked) => {
+            if (!el) return;
+            const hiddenId = `${el.id}_locked`;
+            let hidden = form.querySelector(`#${hiddenId}`);
+            if (locked) {
+                if (!hidden) {
+                    hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.id = hiddenId;
+                    hidden.name = el.getAttribute('name') || el.name;
+                    el.insertAdjacentElement('afterend', hidden);
+                    el.removeAttribute('name');
+                }
+                hidden.value = el.value;
+                el.disabled = true;
+            } else {
+                if (hidden) {
+                    el.setAttribute('name', hidden.name);
+                    hidden.remove();
+                }
+                el.disabled = false;
+            }
+            el.classList.toggle('bg-slate-50', locked);
+            el.classList.toggle('text-slate-600', locked);
+        };
+
+        const lockTextField = (el, locked) => {
+            if (!el) return;
+            el.readOnly = locked;
+            el.classList.toggle('bg-slate-50', locked);
+            el.classList.toggle('text-slate-600', locked);
+        };
+
         const applyProductDefaults = () => {
             const rule = selectedProductRule();
-            if (!rule) return;
+            const hasProduct = Boolean(rule);
+            if (rule) {
+                if (interestRateInput && rule.default_interest_rate !== null) {
+                    interestRateInput.value = Number(rule.default_interest_rate).toFixed(4);
+                }
+                if (interestRatePeriodSelect && rule.default_interest_rate_period) {
+                    const period = String(rule.default_interest_rate_period).toLowerCase();
+                    if ([...interestRatePeriodSelect.options].some((option) => option.value === period)) {
+                        interestRatePeriodSelect.value = period;
+                    }
+                }
+                if (termValueInput && Number(rule.default_term_months || 0) > 0) {
+                    termValueInput.value = String(rule.default_term_months);
+                }
+                if (termUnitSelect && rule.default_term_unit) {
+                    termUnitSelect.value = String(rule.default_term_unit).toLowerCase();
+                }
+            }
 
-            if (interestRateInput && rule.default_interest_rate !== null) {
-                interestRateInput.value = Number(rule.default_interest_rate).toFixed(4);
+            lockTextField(interestRateInput, hasProduct && rule?.default_interest_rate !== null);
+            syncLockedSelect(interestRatePeriodSelect, hasProduct && Boolean(rule?.default_interest_rate_period));
+            lockTextField(termValueInput, hasProduct && Number(rule?.default_term_months || 0) > 0);
+            syncLockedSelect(termUnitSelect, hasProduct && Boolean(rule?.default_term_unit));
+            lockTextField(maturityInput, hasProduct && Number(rule?.default_term_months || 0) > 0);
+            lockTextField(balanceInput, hasProduct);
+            if (hasProduct) {
+                calculateMaturityFromSchedule();
+                recalculateBalanceFromInputs();
             }
-            if (termValueInput && Number(rule.default_term_months || 0) > 0) {
-                termValueInput.value = String(rule.default_term_months);
+            syncInheritedPresentation();
+        };
+
+        const syncInheritedPresentation = () => {
+            const applicationLinked = Boolean(applicationSelect?.value);
+            const productLocked = Boolean(selectedProductRule());
+            form.querySelectorAll('[data-inherit-wrap="application"]').forEach((wrap) => {
+                wrap.classList.toggle('hidden', applicationLinked);
+            });
+            const hideTerms = productLocked || applicationLinked;
+            form.querySelector('#product-terms-fields')?.classList.toggle('hidden', hideTerms);
+            form.querySelector('[data-inherit-wrap="product"]')?.classList.toggle('hidden', hideTerms);
+
+            const summary = form.querySelector('#inherited_summary');
+            const summaryText = form.querySelector('#inherited_summary_text');
+            if (summary && summaryText) {
+                summary.classList.toggle('hidden', !(applicationLinked || productLocked));
+                const clientLabel = clientSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+                const parts = [
+                    clientLabel,
+                    productInput?.value || '',
+                    principalInput?.value ? `Principal ${principalInput.value}` : '',
+                    interestRateInput?.value ? `Rate ${interestRateInput.value}% ${interestRatePeriodSelect?.value || ''}`.trim() : '',
+                    termValueInput?.value ? `Term ${termValueInput.value} ${termUnitSelect?.value || ''}`.trim() : '',
+                    maturityInput?.value ? `Maturity ${maturityInput.value}` : '',
+                    balanceInput?.value ? `Balance ${balanceInput.value}` : '',
+                ].filter(Boolean);
+                summaryText.textContent = parts.join(' · ');
             }
-            if (termUnitSelect && rule.default_term_unit) {
-                termUnitSelect.value = String(rule.default_term_unit).toLowerCase();
-            }
+
+            syncLockedSelect(clientSelect, applicationLinked);
+            syncLockedSelect(productInput, applicationLinked);
+            lockTextField(principalInput, applicationLinked);
         };
 
         const recalculateBalanceFromInputs = () => {
-            if (!balanceInput || balanceTouched) return;
+            if (!balanceInput || (balanceTouched && !selectedProductRule())) return;
             const principal = Number(principalInput?.value || 0);
             const rate = Number(interestRateInput?.value || 0);
             if (!Number.isFinite(principal) || principal <= 0) {
@@ -470,11 +557,13 @@
         };
 
         if (applicationSelect) {
-            applicationSelect.addEventListener('change', applyApplicationDefaults);
+            applicationSelect.addEventListener('change', () => {
+                applyApplicationDefaults();
+                applyProductDefaults();
+            });
         }
         productInput?.addEventListener('change', () => {
             applyProductDefaults();
-            recalculateBalanceFromInputs();
         });
         principalInput?.addEventListener('input', recalculateBalanceFromInputs);
         interestRateInput?.addEventListener('input', recalculateBalanceFromInputs);
@@ -541,6 +630,7 @@
                     }
                     productInput.value = data.product.name;
                 }
+                applyProductDefaults();
                 closeModal(productModal);
             } catch (error) {
                 modalError.textContent = error instanceof Error ? error.message : 'Failed to save product.';

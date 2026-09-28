@@ -28,7 +28,6 @@
                             <option value="{{ $productName }}" @selected(old('product_name', $application->product_name) === $productName)>{{ $productName }}</option>
                         @endforeach
                     </select>
-                    @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500" x-text="selectedProductHint"></p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -37,6 +36,8 @@
                         <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $application->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                </div>
+                <div id="product-terms-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
                         <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm">
@@ -131,14 +132,14 @@
                 const interestInput = this.$el.querySelector('#interest_rate');
                 const interestPeriodSelect = this.$el.querySelector('#interest_rate_period');
                 const name = (productSelect?.value ?? '').trim();
-                if (!name) {
+                const meta = name ? (this.productMetaByName[name] ?? null) : null;
+                if (!name || !meta) {
                     this.selectedProductHint = '';
-                    return;
-                }
-
-                const meta = this.productMetaByName[name] ?? null;
-                if (!meta) {
-                    this.selectedProductHint = '';
+                    this.lockProductOwnedField(interestInput, false);
+                    this.lockProductOwnedSelect(interestPeriodSelect, false);
+                    this.lockProductOwnedField(termInput, false);
+                    this.lockProductOwnedSelect(termUnitSelect, false);
+                    this.$el.querySelector('#product-terms-fields')?.classList.remove('hidden');
                     return;
                 }
 
@@ -155,28 +156,26 @@
                     const defaultInterestValue = defaultInterestType === 'percent'
                         ? `${Number(meta.default_interest_rate).toFixed(4)}%`
                         : Number(meta.default_interest_rate).toFixed(2);
-                    parts.push(`Default interest: ${defaultInterestValue} per ${interestPeriodLabel}.`);
-                    const currentRate = (interestInput?.value ?? '').trim();
-                    if (interestInput && currentRate === '') {
+                    parts.push(`From product: ${defaultInterestValue} per ${interestPeriodLabel}.`);
+                    if (interestInput) {
                         interestInput.value = String(meta.default_interest_rate);
                         interestInput.dispatchEvent(new Event('input', { bubbles: true }));
                         interestInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if (interestPeriodSelect && (interestPeriodSelect.value ?? '') === 'annual') {
+                    if (interestPeriodSelect) {
                         interestPeriodSelect.value = defaultInterestPeriod;
                         interestPeriodSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
                 if (meta.default_term_months) {
                     const defaultTermUnit = String(meta.default_term_unit ?? 'monthly').toLowerCase();
-                    parts.push(`Default term: ${meta.default_term_months} ${defaultTermUnit}.`);
-                    const current = (termInput?.value ?? '').trim();
-                    if (termInput && current === '') {
+                    parts.push(`Term: ${meta.default_term_months} ${defaultTermUnit}.`);
+                    if (termInput) {
                         termInput.value = String(meta.default_term_months);
                         termInput.dispatchEvent(new Event('input', { bubbles: true }));
                         termInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if (termUnitSelect && (!(termUnitSelect.value ?? '').trim() || (termUnitSelect.value ?? '') === 'monthly')) {
+                    if (termUnitSelect) {
                         termUnitSelect.value = defaultTermUnit;
                         termUnitSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
@@ -184,7 +183,43 @@
                 if (meta.charges_summary) {
                     parts.push(`Charges: ${meta.charges_summary}.`);
                 }
-                this.selectedProductHint = parts.join(' ');
+                this.lockProductOwnedField(interestInput, meta.default_interest_rate !== null && meta.default_interest_rate !== undefined);
+                this.lockProductOwnedSelect(interestPeriodSelect, Boolean(meta.default_interest_rate_period));
+                this.lockProductOwnedField(termInput, Boolean(meta.default_term_months));
+                this.lockProductOwnedSelect(termUnitSelect, Boolean(meta.default_term_unit));
+                this.$el.querySelector('#product-terms-fields')?.classList.toggle('hidden', Boolean(meta));
+                this.selectedProductHint = parts.join(' ') || 'Product terms are locked. Fill amount and the remaining application details.';
+            },
+            lockProductOwnedField(el, locked) {
+                if (!el) return;
+                el.readOnly = locked;
+                el.classList.toggle('bg-slate-50', locked);
+                el.classList.toggle('text-slate-600', locked);
+            },
+            lockProductOwnedSelect(el, locked) {
+                if (!el) return;
+                const hiddenId = `${el.id}_locked`;
+                let hidden = this.$el.querySelector(`#${hiddenId}`);
+                if (locked) {
+                    if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.id = hiddenId;
+                        hidden.name = el.getAttribute('name') || el.name;
+                        el.insertAdjacentElement('afterend', hidden);
+                        el.removeAttribute('name');
+                    }
+                    hidden.value = el.value;
+                    el.disabled = true;
+                } else {
+                    if (hidden) {
+                        el.setAttribute('name', hidden.name);
+                        hidden.remove();
+                    }
+                    el.disabled = false;
+                }
+                el.classList.toggle('bg-slate-50', locked);
+                el.classList.toggle('text-slate-600', locked);
             },
         };
     }
