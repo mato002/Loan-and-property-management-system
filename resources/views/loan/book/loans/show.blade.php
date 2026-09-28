@@ -187,14 +187,14 @@
                 <div class="mt-4 border-t border-slate-100 pt-4 space-y-2">
                     <a href="{{ route('loan.book.loans.edit', $loan) }}" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Edit loan</a>
                     @if ($loan->application)
-                        <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync term and rate period from linked application and recalculate this loan snapshot?">
+                        <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync the term from the linked application, keep this product's interest period, and recompute the balance?">
                             @csrf
                             <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">
                                 Sync schedule
                             </button>
                         </form>
                     @endif
-                    <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" data-swal-confirm="Rebuild this loan snapshot from disbursements and processed payments?">
+                    <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" data-swal-confirm="Rebuild this loan from disbursements and payments, using the product interest period (monthly stays monthly)?">
                         @csrf
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">
                             Rebuild snapshot

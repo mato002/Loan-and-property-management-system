@@ -1583,7 +1583,9 @@ class LoanBookApplicationsController extends Controller
                     'default_interest_rate_type' => $hasDefaultRateType ? (string) ($product->default_interest_rate_type ?? 'percent') : 'percent',
                     'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
                     'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
-                    'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
+                    'default_interest_rate_period' => $hasDefaultRatePeriod
+                        ? strtolower(trim((string) ($product->default_interest_rate_period ?? '')))
+                        : 'annual',
                     'charges_summary' => $hasCharges
                         ? $product->charges->map(function ($charge): string {
                             $amount = (string) $charge->amount_type === 'percent'
