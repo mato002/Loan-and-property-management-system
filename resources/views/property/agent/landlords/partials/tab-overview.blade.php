@@ -14,7 +14,7 @@
     </div>
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3">
         <p class="text-[11px] uppercase tracking-wide text-slate-500">Pending share</p>
-        <p class="text-sm sm:text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($totals['pending_share'] ?? 0)) }}</p>
+        <p class="text-sm sm:text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) (($shareToDate['pending_share'] ?? 0) > 0.009 ? $shareToDate['pending_share'] : ($totals['pending_share'] ?? 0))) }}</p>
     </div>
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3">
         <p class="text-[11px] uppercase tracking-wide text-slate-500">Ledger payable</p>
@@ -52,7 +52,7 @@
 </div>
 
 @include('property.agent.landlords.partials.responsive-table-section', [
-    'title' => 'Portfolio snapshot ('.$periodLabel.')',
+    'title' => 'Portfolio snapshot ('.$sharePeriodHint.')',
     'columns' => $portfolioColumns,
     'rows' => array_slice($portfolioRows, 0, 5),
     'rowExpansions' => array_slice($portfolioExpansions ?? [], 0, 5),
