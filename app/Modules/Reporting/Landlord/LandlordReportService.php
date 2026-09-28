@@ -184,10 +184,7 @@ class LandlordReportService
 			->get(['id', 'name']);
 		$selectedLandlordId = $this->filterLandlordId();
 		$search = trim((string) request()->query('q', ''));
-		$perPage = (int) request()->query('per_page', 30);
-		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
-			$perPage = 30;
-		}
+		$perPage = \App\Support\ListPageSize::resolve(request()->query('per_page'), 30);
 
 		$baseQuery = PmLandlordLedgerEntry::query()
 			->join('users', 'users.id', '=', 'pm_landlord_ledger_entries.user_id')
@@ -322,10 +319,7 @@ class LandlordReportService
 		$selectedLandlordId = $this->filterLandlordId();
 		$propertyQ = $this->filterPropertySearch();
 		$q = trim((string) request()->query('q', ''));
-		$perPage = (int) request()->query('per_page', 30);
-		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
-			$perPage = 30;
-		}
+		$perPage = \App\Support\ListPageSize::resolve(request()->query('per_page'), 30);
 
 		$links = DB::table('property_landlord as pl')
 			->join('users as u', 'u.id', '=', 'pl.user_id')
@@ -427,7 +421,7 @@ class LandlordReportService
 			->get(['id', 'name']);
 		$landlordId = $this->filterLandlordId();
 		$q = trim((string) request()->query('q', ''));
-		$perPage = min(200, max(10, (int) request()->integer('per_page', 30)));
+		$perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 30);
 
 		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property', 'allocations']);
 		ReportScope::applyToPayment($query, ReportScope::fromRequest());
@@ -777,10 +771,7 @@ class LandlordReportService
 		}
 		$rowsRaw = $rowsRaw->all();
 
-		$perPage = (int) request()->query('per_page', 30);
-		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
-			$perPage = 30;
-		}
+		$perPage = \App\Support\ListPageSize::resolve(request()->query('per_page'), 30);
 		$paginator = $this->paginateCollection(collect($rowsRaw), $perPage);
 		$pageRowsRaw = $paginator->getCollection();
 

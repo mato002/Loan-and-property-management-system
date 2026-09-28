@@ -26,7 +26,7 @@ class SuperAdminUserController extends Controller
         if (! in_array($role, ['', 'agent', 'landlord', 'tenant', 'super_admin', 'none'], true)) {
             $role = '';
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $userQuery = User::query()
             ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {

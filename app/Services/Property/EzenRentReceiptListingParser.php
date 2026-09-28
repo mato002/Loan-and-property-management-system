@@ -138,7 +138,7 @@ final class EzenRentReceiptListingParser
         }
 
         ['head' => $headCombined, 'amount' => $amount, 'receipted_to' => $receiptedTo, 'done_by' => $doneBy] = $peeled;
-        if ($amount <= 0 || $this->looksLikePhoneAmount($amount) || $this->looksLikeYearAmount($amount)) {
+        if ($amount <= 0 || $this->looksLikePhoneAmount($amount)) {
             return null;
         }
 

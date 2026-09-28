@@ -64,7 +64,7 @@ class LoanClientsController extends Controller
         $branch = trim((string) $request->query('branch', ''));
         $status = trim((string) $request->query('status', ''));
         $employeeId = (int) $request->query('employee_id', 0);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 15);
 
         if ($search !== '') {
             $q->where(function ($query) use ($search) {

@@ -176,7 +176,7 @@ class PropertyPortfolioController extends Controller
         }
         $q->orderBy($sort, $dir)->orderBy('name');
 
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
         $portfolio = $q->paginate($perPage)->withQueryString();
 
         $stats = [
@@ -1205,7 +1205,7 @@ class PropertyPortfolioController extends Controller
             ];
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.publish-panel', $u, absolute: false).'" data-listing-publish data-listing-unit-id="'.$u->id.'" data-property-form-modal="off" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($lease) {
                 $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
                 if ($tenant?->name) {
@@ -2693,7 +2693,7 @@ class PropertyPortfolioController extends Controller
             ->pluck('c', 'status');
         $avgRent = (float) ((clone $query)->setEagerLoads([])->reorder()->avg('rent_amount') ?? 0);
 
-        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
         $units = $query->paginate($perPage)->withQueryString();
         $unitCollection = $units->getCollection();
 
@@ -3524,10 +3524,11 @@ class PropertyPortfolioController extends Controller
         if ($unit->status === PropertyUnit::STATUS_VACANT) {
             array_unshift($actions, [
                 'label' => 'Edit listing (vacant unit)',
-                'href' => route('property.listings.create', ['selected_unit' => $unit->id], absolute: false).'#listing-publish',
+                'href' => route('property.listings.publish-panel', $unit, absolute: false),
                 'kind' => 'primary',
                 'icon' => 'fa-solid fa-pen-to-square',
-                'turbo_frame' => 'property-main',
+                'listing_publish' => true,
+                'listing_unit_id' => $unit->id,
             ]);
         }
 
@@ -4445,7 +4446,7 @@ class PropertyPortfolioController extends Controller
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.publish-panel', $u, absolute: false).'" data-listing-publish data-listing-unit-id="'.$u->id.'" data-property-form-modal="off" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
                 if ($lease) {
                     $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';

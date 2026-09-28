@@ -44,6 +44,7 @@ final class EzenRentalInvoicesImportService
         bool $postGl = false,
         ?string $propertyCodeFilter = null,
         ?int $limit = null,
+        bool $chargesOnly = false,
     ): array {
         $rows = $this->parser->parsePath($path);
         if ($propertyCodeFilter !== null && trim($propertyCodeFilter) !== '') {
@@ -82,6 +83,7 @@ final class EzenRentalInvoicesImportService
                     $postGl,
                     $unitsByProperty,
                     $rowNum,
+                    $chargesOnly,
                 );
                 $summary['imported'] += $result['imported'] ? 1 : 0;
                 $summary['skipped_existing'] += $result['skipped_existing'] ? 1 : 0;
@@ -122,6 +124,7 @@ final class EzenRentalInvoicesImportService
         bool $postGl,
         array $unitsByProperty,
         int $rowNum,
+        bool $chargesOnly = false,
     ): array {
         $warnings = [];
         $memo = trim((string) ($row['memo'] ?? ''));
@@ -205,7 +208,7 @@ final class EzenRentalInvoicesImportService
                 'skipped_existing' => false,
                 'skipped_deposit' => false,
                 'skipped_unmatched' => false,
-                'payments_posted' => $paid > 0.009 ? 1 : 0,
+                'payments_posted' => (! $chargesOnly && $paid > 0.009) ? 1 : 0,
                 'warnings' => $warnings,
             ];
         }
@@ -232,6 +235,7 @@ final class EzenRentalInvoicesImportService
                 $paid,
                 $postGl,
                 $actor,
+                $chargesOnly,
                 &$paymentsPosted,
             ): void {
                 $invoiceNo = PmInvoice::nextInvoiceNumber();
@@ -267,7 +271,7 @@ final class EzenRentalInvoicesImportService
                     PropertyAccountingPostingService::postInvoiceIssued($invoice->fresh(), $actor);
                 }
 
-                if ($paid > 0.009) {
+                if (! $chargesOnly && $paid > 0.009) {
                     $tenantPhone = trim((string) (
                         $lease->pmTenant?->phone
                         ?? $lease->pmTenant?->user?->phone

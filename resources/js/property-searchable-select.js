@@ -19,6 +19,9 @@ function shouldEnhance(select) {
     if (!(select instanceof HTMLSelectElement)) {
         return false;
     }
+    if (/(?:^|_)per_page$/.test(select.name || '') || select.dataset.pageSizeSelect === '1') {
+        return false;
+    }
     if (select.getAttribute(ENHANCED_ATTR) === '1') {
         return false;
     }

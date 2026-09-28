@@ -606,7 +606,7 @@ class LoanPaymentsController extends Controller
         }
 
         $query = $this->reportQuery($request);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $payments = (clone $query)
             ->with(['loan.loanClient', 'postedByUser'])
@@ -1298,7 +1298,7 @@ class LoanPaymentsController extends Controller
         $channel = trim((string) $request->input('channel', ''));
         $from = trim((string) $request->input('from', ''));
         $to = trim((string) $request->input('to', ''));
-        $perPage = min(200, max(10, (int) $request->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 20);
 
         $paymentsQuery = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -1410,7 +1410,7 @@ class LoanPaymentsController extends Controller
         $status = $allowStatus ? trim((string) $request->query('status', '')) : '';
         $from = trim((string) $request->query('from', ''));
         $to = trim((string) $request->query('to', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $query
             ->when($q !== '', function (Builder $builder) use ($q): void {

@@ -700,9 +700,7 @@ class PmMaintenanceWebController extends Controller
      */
     private function listPerPage(array $filters): int
     {
-        $value = (int) ($filters['per_page'] ?? 20);
-
-        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
+        return \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
     }
 
     public function frequency(): View

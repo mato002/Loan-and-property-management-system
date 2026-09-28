@@ -92,7 +92,7 @@ class RevenueController extends Controller
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
             'sort' => strtolower(trim((string) $request->query('sort', 'unit'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
-            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+            'per_page' => (string) \App\Support\ListPageSize::resolve($request->query('per_page'), 30),
         ];
         $sort = (string) $filters['sort'];
         $dir = (string) $filters['dir'];
@@ -186,7 +186,7 @@ class RevenueController extends Controller
             'property_id' => max(0, (int) $request->query('property_id', 0)),
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
-            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+            'per_page' => (string) \App\Support\ListPageSize::resolve($request->query('per_page'), 30),
         ];
         $q = (string) $filters['q'];
         $perPage = (int) $filters['per_page'];
@@ -555,7 +555,7 @@ class RevenueController extends Controller
             $filters['from'] = $rangeFrom->toDateString();
             $filters['to'] = $rangeTo->toDateString();
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $today = now()->startOfDay();
         $todayStr = $today->toDateString();
@@ -1532,7 +1532,7 @@ class RevenueController extends Controller
             'sort' => strtolower(trim((string) $request->query('sort', 'name'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmPenaltyRule::query();
         if ($filters['q'] !== '') {
@@ -1561,25 +1561,17 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'penalty-rules-'.now()->format('Ymd_His'),
-                ['Rule name', 'Scope', 'Trigger', 'Formula', 'Cap', 'Effective', 'Status'],
+                ['Rule name', 'How it is calculated', 'When it is charged', 'Wait after due date', 'Maximum charge', 'Starts', 'Status'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $r) {
-                        $parts = [$r->formula];
-                        if ($r->percent !== null) {
-                            $parts[] = (string) $r->percent.'%';
-                        }
-                        if ($r->amount !== null) {
-                            $parts[] = PropertyMoney::kes((float) $r->amount);
-                        }
-
                         yield [
                             (string) $r->name,
-                            (string) $r->scope,
-                            (string) $r->trigger_event.' (grace '.$r->grace_days.'d)',
-                            implode(' · ', array_filter($parts)),
+                            PmPenaltyRule::formulaLabel((string) $r->formula),
+                            PmPenaltyRule::compoundingLabel((string) $r->compounding_mode),
+                            (string) ((int) $r->grace_days).' day(s)',
                             $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—',
                             $r->effective_from?->format('Y-m-d') ?? '—',
-                            $r->is_active ? 'Active' : 'Off',
+                            $r->is_active ? 'On' : 'Off',
                         ];
                     }
                 },
@@ -1591,23 +1583,26 @@ class RevenueController extends Controller
         $active = $rules->getCollection()->where('is_active', true);
 
         $rows = $rules->getCollection()->map(function (PmPenaltyRule $r) {
-            $parts = [$r->formula, str_replace('_', ' ', (string) ($r->compounding_mode ?? 'simple'))];
-            if ($r->percent !== null) {
-                $parts[] = (string) $r->percent.'%';
+            $how = PmPenaltyRule::formulaLabel((string) $r->formula);
+            if ($r->percent !== null && (float) $r->percent > 0) {
+                $how .= ' · '.(string) $r->percent.'%';
             }
-            if ($r->amount !== null) {
-                $parts[] = PropertyMoney::kes((float) $r->amount);
+            if ($r->amount !== null && (float) $r->amount > 0) {
+                $how .= ' · '.PropertyMoney::kes((float) $r->amount);
+            }
+
+            $maximum = $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : 'No limit';
+            if ($r->cumulative_cap !== null && (float) $r->cumulative_cap > 0) {
+                $maximum .= ' (total '.PropertyMoney::kes((float) $r->cumulative_cap).')';
             }
 
             return [
                 $r->name,
-                $r->scope,
-                $r->trigger_event.' (grace '.$r->grace_days.'d)',
-                implode(' · ', array_filter($parts)),
-                ($r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—')
-                    .($r->cumulative_cap !== null ? ' / cum '.PropertyMoney::kes((float) $r->cumulative_cap) : ''),
-                $r->effective_from?->format('Y-m-d') ?? '—',
-                $r->is_active ? 'Active' : 'Off',
+                $how,
+                PmPenaltyRule::compoundingLabel((string) $r->compounding_mode).' · wait '.(int) $r->grace_days.' day(s)',
+                $maximum,
+                $r->effective_from?->format('Y-m-d') ?? 'Immediately',
+                $r->is_active ? 'On' : 'Off',
             ];
         })->all();
 
@@ -1615,10 +1610,10 @@ class RevenueController extends Controller
             'stats' => [
                 ['label' => 'Rules', 'value' => (string) $rules->total(), 'hint' => 'Filtered total'],
                 ['label' => 'Active', 'value' => (string) $active->count(), 'hint' => ''],
-                ['label' => 'Applied (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => 'Posting not automated'],
-                ['label' => 'Waived (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => ''],
+                ['label' => 'Charged this month', 'value' => PropertyMoney::kes(0), 'hint' => 'Charges posted this month'],
+                ['label' => 'Waived this month', 'value' => PropertyMoney::kes(0), 'hint' => ''],
             ],
-            'columns' => ['Rule name', 'Scope', 'Trigger', 'Formula', 'Cap', 'Effective', 'Status'],
+            'columns' => ['Rule name', 'How it is calculated', 'When it is charged', 'Maximum charge', 'Starts', 'Status'],
             'tableRows' => $rows,
             'penaltyRules' => $rules->getCollection(),
             'paginator' => $rules,
@@ -1636,10 +1631,10 @@ class RevenueController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:128'],
-            'scope' => ['required', 'string', 'max:64'],
-            'trigger_event' => ['required', 'string', 'max:64'],
+            'scope' => ['required', 'in:global'],
+            'trigger_event' => ['required', 'in:days_after_due'],
             'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
-            'formula' => ['required', 'string', 'max:64'],
+            'formula' => ['required', 'in:percent_of_rent,flat,percent_plus_flat'],
             'compounding_mode' => ['required', 'in:simple,daily_compound,one_shot'],
             'amount' => ['nullable', 'numeric', 'min:0'],
             'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -1692,7 +1687,7 @@ class RevenueController extends Controller
             'sort' => strtolower(trim((string) $request->query('sort', 'banking_date'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmEzenReceiptRegister::query()->with(['tenant', 'payment']);
         if ($filters['q'] !== '') {
@@ -1880,7 +1875,7 @@ class RevenueController extends Controller
             'sort' => strtolower(trim((string) $request->query('sort', 'updated_at'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmInvoice::query()
             ->with(['tenant', 'unit.property'])

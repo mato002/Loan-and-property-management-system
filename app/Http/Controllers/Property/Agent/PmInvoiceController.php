@@ -588,7 +588,7 @@ class PmInvoiceController extends Controller
                 $filters['to'] = $rangeTo->toDateString();
             }
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $baseQuery = $this->applyInvoiceListFilters(
             PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id', 'items', 'events']),

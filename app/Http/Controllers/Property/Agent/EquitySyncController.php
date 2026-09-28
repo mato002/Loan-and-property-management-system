@@ -44,7 +44,7 @@ class EquitySyncController extends Controller
         $to = (string) $request->query('to', '');
         $sort = strtolower(trim((string) $request->query('sort', 'started_at')));
         $dir = strtolower(trim((string) $request->query('dir', 'desc')));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $query = EquitySyncRun::query();
         if ($status !== '') {
@@ -182,7 +182,7 @@ class EquitySyncController extends Controller
 
         $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
         $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
         $items = $query->paginate($perPage)->withQueryString();
 
         $this->enrichUnmatchedItems($items->getCollection(), $hasPaymentMethod);
@@ -654,7 +654,7 @@ class EquitySyncController extends Controller
             return $this->notReadyView('Payments table is missing. Run migrations first.');
         }
         $qText = trim((string) $request->query('q', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
         $sort = strtolower(trim((string) $request->query('sort', 'transaction_date')));
         $dir = strtolower(trim((string) $request->query('dir', 'desc')));
 
@@ -914,7 +914,7 @@ class EquitySyncController extends Controller
         $from = (string) $request->query('from', '');
         $to = (string) $request->query('to', '');
         $tenantId = max(0, (int) $request->query('tenant_id', 0));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $base = PmPayment::query()
             ->whereNotNull('pm_tenant_id')

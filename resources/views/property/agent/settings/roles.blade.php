@@ -10,6 +10,7 @@
 >
     <x-slot name="above">
         @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.roles'])
+        @include('property.agent.settings.partials.custom_roles')
     </x-slot>
 
     <x-slot name="actions">
@@ -21,7 +22,7 @@
 
     <x-slot name="footer">
         <p class="text-sm text-slate-600 dark:text-slate-300">
-            Role changes are managed from user profile/administration workflows in this build. This page gives a live assignment overview for agent, landlord, and tenant access.
+            Create a custom role in the form above, then open Set permissions to choose what that role can do. The table below is who currently has a portal login.
         </p>
     </x-slot>
 </x-property.workspace>

@@ -651,7 +651,10 @@ class PropertyReportsController extends Controller
         $report = $reports[$reportKey];
         $payload = ($report['builder'])();
         $q = trim((string) $request->query('q', ''));
-        $perPage = min(200, max(10, (int) $request->integer('per_page', (int) ($payload['perPage'] ?? 30))));
+        $perPage = \App\Support\ListPageSize::resolve(
+            $request->input('per_page', $payload['perPage'] ?? 30),
+            (int) ($payload['perPage'] ?? 30)
+        );
 
         if ($q !== '' && ! isset($payload['paginator']) && isset($payload['tableRows']) && is_array($payload['tableRows'])) {
             $payload['tableRows'] = array_values(array_filter(

@@ -21,6 +21,46 @@ php artisan property:wipe-passion-portfolio --agent-user-id=2 --force
 
 Then run phases **1 → 5** below using `.txt` register files (most reliable on production). **Do not skip phase 3 or 4.** **Do not** run cleanup or reconcile on a fresh import.
 
+---
+
+## Financial re-import (Mode B — keep structure, wipe money only)
+
+Use this when properties / units / tenants / leases are fine but invoices, payments, credits, and take-on balances are mixed or wrong. **Keeps** portfolio structure. **Deletes** money history for one agent.
+
+```bash
+# 1) Preview (use the agent that owns the portfolio — local is often #1; production Passion Homes is usually #2)
+php artisan property:wipe-passion-financials --agent-user-id=1 --dry-run
+
+# 2) Wipe finances only (local first, then production)
+php artisan property:wipe-passion-financials --agent-user-id=1 --force
+```
+
+**Removed:** invoices, payments, allocations, tenant credits, deposits held, lease carry-forward lines, landlord ledger/payouts/take-on, EZEN receipt/voucher/bill registers, bank statement imports, accounting journals (chart of accounts kept), opening arrears on tenants/leases.
+
+**Kept:** properties, units, landlords, tenants, leases, amenities/config.
+
+### Mode B re-import order (after financial wipe)
+
+**Do not** run Phase 6c (tenant statement B/F) — that fights full history.
+
+```bash
+# Phase 7 — rental invoices as CHARGES only (do not post the PAID column)
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.txt \
+  --charges-only --dry-run --agent-user-id=1
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.txt \
+  --charges-only --agent-user-id=1
+
+# Phase 8 — every EZEN receipt as a real payment (NOT --register-only)
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt \
+  --include-already-paid --dry-run --agent-user-id=1
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt \
+  --include-already-paid --agent-user-id=1
+```
+
+Spot-check 5–10 tenants against EZEN statements. Closing should come from invoice charges + receipt payments. Late-fee **DBN** rows are still not in the invoice/receipt listings — export EZEN **Debit Notes / late payment charges** and we will import those next. Do not mix Phase 6c B/F with this mode.
+
+**Mode A alternative:** if you only want closing balances (no line history), skip Phase 7/8 payments and use Phase 6c B/F + Phase 8 `--register-only` instead. Do not mix Mode A and Mode B.
+
 Expected dashboard after a clean run:
 
 | Card | Target |

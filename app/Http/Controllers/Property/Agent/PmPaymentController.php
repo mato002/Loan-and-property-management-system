@@ -129,7 +129,7 @@ class PmPaymentController extends Controller
             $filters['from'] = $rangeFrom->toDateString();
             $filters['to'] = $rangeTo->toDateString();
         }
-        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
 
         $baseQuery = $this->applyPaymentListFilters(
             PmPayment::query()->with([

@@ -56,15 +56,20 @@ class PropertySettingsWebController extends Controller
             ];
         })->all();
 
+        $customRoles = Schema::hasTable('pm_roles')
+            ? PmRole::query()->withCount(['permissions', 'users'])->orderBy('portal_scope')->orderBy('name')->get()
+            : collect();
+
         return property_view('property.agent.settings.roles', [
             'stats' => [
                 ['label' => 'Portal users', 'value' => (string) $portalUsers->count(), 'hint' => 'Agent / landlord / tenant'],
                 ['label' => 'Agents', 'value' => (string) $portalUsers->where('property_portal_role', 'agent')->count(), 'hint' => ''],
                 ['label' => 'Landlords', 'value' => (string) $portalUsers->where('property_portal_role', 'landlord')->count(), 'hint' => ''],
-                ['label' => 'Custom roles', 'value' => (string) (Schema::hasTable('pm_roles') ? PmRole::query()->count() : 0), 'hint' => 'System setup'],
+                ['label' => 'Custom roles', 'value' => (string) $customRoles->count(), 'hint' => 'Create and assign below'],
             ],
             'columns' => ['User', 'Email', 'Role', 'Portfolios', 'Last updated', 'MFA', 'Actions'],
             'tableRows' => $rows,
+            'customRoles' => $customRoles,
         ]);
     }
 

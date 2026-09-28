@@ -961,7 +961,7 @@ class PropertyAccountingController extends Controller
         $onlyImbalanced = $request->boolean('only_imbalanced');
         $sort = strtolower(trim($request->string('sort')->toString()));
         $dir = strtolower(trim($request->string('dir')->toString()));
-        $perPage = max(10, min(200, (int) $request->query('per_page', 50)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 50);
 
         $entries = PmAccountingEntry::query()
             ->whereDate('entry_date', '<=', $asAt);
@@ -1051,7 +1051,7 @@ class PropertyAccountingController extends Controller
         $from = $request->date('from')?->toDateString() ?? now()->startOfMonth()->toDateString();
         $to = $request->date('to')?->toDateString() ?? now()->endOfMonth()->toDateString();
         $propertyId = (int) $request->integer('property_id');
-        $perPage = max(10, min(200, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $queryBase = PmAccountingEntry::query()
             ->with('property')
@@ -2870,7 +2870,7 @@ class PropertyAccountingController extends Controller
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmEzenPaymentVoucher::query()->with(['property', 'landlord', 'payout']);
         if ($filters['q'] !== '') {
@@ -3622,7 +3622,7 @@ class PropertyAccountingController extends Controller
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmEzenBill::query();
         if ($filters['q'] !== '') {

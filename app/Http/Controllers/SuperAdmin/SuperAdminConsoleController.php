@@ -141,7 +141,7 @@ class SuperAdminConsoleController extends Controller
         if (! in_array($module, ['', 'property', 'loan'], true)) {
             $module = '';
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
         $status = strtolower(trim((string) $request->query('status', '')));
         if (! in_array($status, ['', 'pending', 'approved', 'revoked'], true)) {
             $status = '';
@@ -346,7 +346,7 @@ class SuperAdminConsoleController extends Controller
         if (! in_array($role, ['', 'super_admin', 'agent', 'landlord', 'tenant'], true)) {
             $role = '';
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
         $items = Schema::hasTable('pm_portal_actions')
             ? PmPortalAction::query()
                 ->with('user:id,name,email')
@@ -487,7 +487,7 @@ class SuperAdminConsoleController extends Controller
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status', '');
         $package = $request->query('package', '');
-        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
 
         $query = Schema::hasTable('agent_subscriptions')
             ? AgentSubscription::query()

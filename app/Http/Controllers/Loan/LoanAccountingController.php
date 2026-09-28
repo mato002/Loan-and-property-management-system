@@ -709,7 +709,7 @@ class LoanAccountingController extends Controller
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
 
-        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 20);
         $entries = $q->paginate($perPage)->withQueryString();
 
         return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'status', 'createdBy', 'accountId', 'accounts', 'perPage'));
@@ -1428,7 +1428,7 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 20);
         $rows = $ordered->paginate($perPage)->withQueryString();
 
         $availableMonths = AccountingRequisition::query()
@@ -1646,7 +1646,7 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 20);
         $rows = $q->paginate($perPage)->withQueryString();
 
         $utilityTypes = AccountingUtilityPayment::query()
@@ -1789,7 +1789,7 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $perPage = max(10, min(200, (int) request()->input('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 25);
         $rows = $q->paginate($perPage)->withQueryString();
 
         $balance = (float) AccountingPettyCashEntry::query()
@@ -1920,7 +1920,7 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 20);
         $rows = $q->paginate($perPage)->withQueryString();
 
         $employees = Employee::query()->orderBy('first_name')->orderBy('last_name')->get(['id', 'first_name', 'last_name', 'employee_number']);

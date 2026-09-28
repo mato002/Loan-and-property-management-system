@@ -49,7 +49,7 @@ class LoanBookOperationsController extends Controller
         $method = trim((string) $request->query('method', ''));
         $from = trim((string) $request->query('from', ''));
         $to = trim((string) $request->query('to', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
         $calendarYear = min(2100, max(2000, (int) $request->query('cal_year', now()->year)));
         $calendarMonth = min(12, max(1, (int) $request->query('cal_month', now()->month)));
         $calendarRegionId = max(0, (int) $request->query('cal_region_id', 0));
@@ -658,7 +658,7 @@ class LoanBookOperationsController extends Controller
 
         $q = trim((string) $request->query('q', ''));
         $channel = trim((string) $request->query('channel', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
 
         $entriesQuery = LoanBookCollectionEntry::query()
             ->with([
@@ -983,7 +983,7 @@ class LoanBookOperationsController extends Controller
         if (! in_array($reportMode, ['detail', 'branch'], true)) {
             $reportMode = 'detail';
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
         try {
             $from = Carbon::parse($from)->toDateString();
             $to = Carbon::parse($to)->toDateString();
@@ -1259,7 +1259,7 @@ class LoanBookOperationsController extends Controller
         $active = trim((string) $request->query('active', ''));
         $monthRaw = trim((string) $request->query('month', now()->format('Y-m')));
         $dayRaw = trim((string) $request->query('day', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
         try {
             $monthDate = Carbon::createFromFormat('Y-m', $monthRaw)->startOfMonth();
         } catch (\Throwable) {
@@ -1435,7 +1435,7 @@ class LoanBookOperationsController extends Controller
         $branch = trim((string) $request->query('branch', ''));
         $year = trim((string) $request->query('year', ''));
         $month = trim((string) $request->query('month', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $ratesQuery = LoanBookCollectionRate::query()
             ->when($q !== '', fn ($builder) => $builder->where('branch', 'like', '%'.$q.'%'))

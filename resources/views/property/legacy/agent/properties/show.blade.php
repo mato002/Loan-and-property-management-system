@@ -22,7 +22,13 @@
         <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
         @if ($firstVacantUnit)
             <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
-            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
+            <a
+                href="{{ route('property.listings.publish-panel', $firstVacantUnit, false) }}"
+                data-listing-publish
+                data-listing-unit-id="{{ $firstVacantUnit->id }}"
+                data-property-form-modal="off"
+                class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+            >Publish vacant unit</a>
         @endif
         @if (($property->landlords?->count() ?? 0) === 0)
             <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>

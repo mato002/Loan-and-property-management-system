@@ -1878,7 +1878,7 @@ class LoanAccountingBooksController extends Controller
         $from = request()->string('from')->toString();
         $to = request()->string('to')->toString();
         $search = trim(request()->string('q')->toString());
-        $perPage = min(200, max(10, (int) request()->integer('per_page', 15)));
+        $perPage = \App\Support\ListPageSize::resolve(request()->input('per_page'), 15);
         $sort = strtolower(trim(request()->string('sort')->toString() ?: 'statement_date'));
         $dir = strtolower(trim(request()->string('dir')->toString() ?: 'desc'));
         $export = request()->string('export')->toString();

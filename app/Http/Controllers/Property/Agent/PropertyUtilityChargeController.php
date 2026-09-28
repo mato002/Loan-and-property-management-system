@@ -55,8 +55,8 @@ class PropertyUtilityChargeController extends Controller
         if (! in_array($filters['ops_tab'], $allowedOpsTabs, true)) {
             $filters['ops_tab'] = '';
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
-        $wrPerPage = min(200, max(10, (int) $request->query('wr_per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
+        $wrPerPage = \App\Support\ListPageSize::resolve($request->query('wr_per_page'), 20);
 
         $query = PmUnitUtilityCharge::query()
             ->with(['unit' => function ($q): void {

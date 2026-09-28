@@ -14,6 +14,7 @@ class ImportEzenRentalInvoicesCommand extends Command
         {--property= : Optional property code filter (e.g. A00039A)}
         {--limit= : Import only the first N parsed rows (for testing)}
         {--include-deposits : Import RENT DEPOSIT / WATER DEPOSIT invoice rows}
+        {--charges-only : Create invoices without posting the PAID column as payments (use with Phase 8 --include-already-paid)}
         {--post-gl : Post invoice issuance to trust GL (default off for bulk history)}
         {--dry-run : Parse and match without saving}';
 
@@ -41,6 +42,7 @@ class ImportEzenRentalInvoicesCommand extends Command
             (bool) $this->option('post-gl'),
             $this->option('property') ? (string) $this->option('property') : null,
             $limit,
+            (bool) $this->option('charges-only'),
         );
 
         $this->line('Parsed: '.$summary['parsed']);

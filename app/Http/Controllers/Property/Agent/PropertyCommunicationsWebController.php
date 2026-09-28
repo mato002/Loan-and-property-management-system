@@ -45,10 +45,7 @@ class PropertyCommunicationsWebController extends Controller
     public function notifications(Request $request): View
     {
         $filters = $request->only(['q', 'channel', 'status', 'read', 'from', 'to', 'sort', 'dir', 'per_page']);
-        $perPage = (int) ($filters['per_page'] ?? 25);
-        if (! in_array($perPage, [10, 25, 50, 100], true)) {
-            $perPage = 25;
-        }
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 25);
 
         $query = $this->notificationLogsQuery($filters);
         $aggregates = $this->notificationLogAggregates($query);
@@ -240,10 +237,7 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         $filters = $this->normalizeMessageFilters($rawFilters);
-        $perPage = (int) ($filters['per_page'] ?? 25);
-        if (! in_array($perPage, [10, 25, 50, 100], true)) {
-            $perPage = 25;
-        }
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 25);
 
         $query = $this->messageLogsQuery($filters);
         $aggregates = $this->messageLogAggregates($query);
@@ -398,10 +392,7 @@ class PropertyCommunicationsWebController extends Controller
         /** @var BulkSmsService $bulk */
         $bulk = app(BulkSmsService::class);
         $filters = $request->only(['status', 'page', 'per_page']);
-        $perPage = (int) ($filters['per_page'] ?? 20);
-        if (! in_array($perPage, [10, 20, 50, 100], true)) {
-            $perPage = 20;
-        }
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
         $filters['per_page'] = $perPage;
 
         $history = $bulk->providerSmsHistory($filters);

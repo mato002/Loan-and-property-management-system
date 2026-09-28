@@ -30,7 +30,7 @@ class PropertyActivityLogController extends Controller
             'from' => trim((string) $request->query('from', '')),
             'to' => trim((string) $request->query('to', '')),
             'page' => max(1, (int) $request->query('page', 1)),
-            'per_page' => min(100, max(10, (int) $request->query('per_page', 30))),
+            'per_page' => \App\Support\ListPageSize::resolve($request->query('per_page'), 30),
         ];
 
         if ($filters['from'] === '' || $filters['to'] === '') {

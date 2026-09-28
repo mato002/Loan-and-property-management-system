@@ -42,7 +42,7 @@ class SuperAdminAgentWorkspaceController extends Controller
             $statusFilter = '';
         }
         $q = trim((string) $request->query('q', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
 
         $agents = User::query()
             ->with(['moduleAccesses' => fn ($q) => $q->where('module', 'property')])

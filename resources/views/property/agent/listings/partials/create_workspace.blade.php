@@ -10,16 +10,6 @@
         >Go to Units</a>
     </div>
 @else
-    <div
-        id="listing-publish-slot"
-        class="mb-8 scroll-mt-24 min-h-0"
-        data-listings-create-url="{{ route('property.listings.create', absolute: false) }}"
-    >
-        @if ($selectedUnit)
-            @include('property.agent.listings.partials.publish_editor', ['selectedUnit' => $selectedUnit])
-        @endif
-    </div>
-
     <section
         id="vacant-roster"
         class="space-y-3"

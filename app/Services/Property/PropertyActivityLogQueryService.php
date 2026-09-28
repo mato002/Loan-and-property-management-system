@@ -36,7 +36,7 @@ final class PropertyActivityLogQueryService
     {
         $entries = $this->collect($filters);
         $page = max(1, (int) ($filters['page'] ?? 1));
-        $perPage = min(100, max(10, (int) ($filters['per_page'] ?? 30)));
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 30);
         $total = $entries->count();
         $items = $entries->slice(($page - 1) * $perPage, $perPage)->values();
 

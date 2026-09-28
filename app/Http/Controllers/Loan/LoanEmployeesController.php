@@ -115,7 +115,7 @@ class LoanEmployeesController extends Controller
         $q = trim((string) $request->query('q', ''));
         $department = trim((string) $request->query('department', ''));
         $branch = trim((string) $request->query('branch', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 15);
 
         $employeesQuery = Employee::query()
             ->when($q !== '', function ($builder) use ($q) {
@@ -621,7 +621,7 @@ class LoanEmployeesController extends Controller
         $status = trim((string) $request->query('status', ''));
         $leaveType = trim((string) $request->query('leave_type', ''));
         $employeeId = (int) $request->query('employee_id', 0);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
         $fields = $this->leaveWorkflowFormDefinitions();
         $mapped = $this->mappedLeaveFields($fields);
         $custom = $this->leaveCustomFields($fields, $mapped);
@@ -762,7 +762,7 @@ class LoanEmployeesController extends Controller
     public function groups(Request $request)
     {
         $q = trim((string) $request->query('q', ''));
-        $perPage = min(120, max(12, (int) $request->query('per_page', 24)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 24);
         $permissionOptions = $this->staffGroupPermissionOptions();
         $permissionKeys = array_keys($permissionOptions);
 
@@ -942,7 +942,7 @@ class LoanEmployeesController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $employeeId = (int) $request->query('employee_id', 0);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $portfoliosQuery = StaffPortfolio::query()
             ->with('employee')
@@ -1072,7 +1072,7 @@ class LoanEmployeesController extends Controller
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
         $stage = trim((string) $request->query('stage', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $applicationsQuery = StaffLoanApplication::query()
             ->with('employee')
@@ -1187,7 +1187,7 @@ class LoanEmployeesController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $loansQuery = StaffLoan::query()
             ->with('employee')

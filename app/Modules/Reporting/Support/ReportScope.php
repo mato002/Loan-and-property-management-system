@@ -40,7 +40,7 @@ final class ReportScope
             'tenant_id' => (string) $tenantId,
             'pm_tenant_id' => (string) $tenantId,
             'landlord_id' => (string) max(0, (int) request()->query('landlord_id', 0)),
-            'per_page' => (string) min(200, max(10, (int) request()->integer('per_page', 30))),
+            'per_page' => (string) \App\Support\ListPageSize::resolve(request()->input('per_page'), 30),
         ];
     }
 

@@ -1,10 +1,10 @@
-/**
+﻿/**
  * Property GET filter forms: live row search as you type + auto-apply on dropdown/date changes.
  */
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
 const SEARCH_FOCUS_STORAGE_KEY = 'property.portal.searchFocus';
-const SEARCH_SUBMIT_DEBOUNCE_MS = 320;
+const SEARCH_SUBMIT_DEBOUNCE_MS = 450;
 
 function isPropertyWorkspaceHydrating() {
     return window.__propertyWorkspaceHydrating === true;
@@ -21,14 +21,14 @@ function liveFilterScope(el) {
 }
 
 /**
- * Paginated directory filters must search on the server. Client-only row hiding
- * only covers the current page and looks like "search broken".
+ * Paginated directory filters can still opt into server search with
+ * data-server-search="1". Default search boxes live-filter the table only.
  */
 function prefersServerSearch(control) {
     if (!(control instanceof HTMLInputElement) || control.disabled) {
         return false;
     }
-    // Explicit client-only search (small in-memory tables).
+    // Explicit client-only search (default for registers / listings-style).
     if (
         control.matches('[data-live-row-filter-only], [data-table-filter]')
         || control.dataset.liveRowFilter === '1'
@@ -45,10 +45,14 @@ function prefersServerSearch(control) {
         return false;
     }
 
+    // Only when explicitly marked — never just because name="q".
+    return control.dataset.serverSearch === 'true' || control.dataset.serverSearch === '1';
+}
+
+function isSearchInput(el) {
     return (
-        control.name === 'q'
-        || control.dataset.serverSearch === 'true'
-        || control.dataset.serverSearch === '1'
+        el instanceof HTMLInputElement &&
+        (el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true')
     );
 }
 
@@ -62,8 +66,10 @@ function isLiveSearchControl(control) {
     if (control instanceof HTMLInputElement && (control.type === 'hidden' || control.type === 'submit')) {
         return false;
     }
-    if (prefersServerSearch(control)) {
-        return false;
+
+    // Include the main search box even when it also triggers a server refresh.
+    if (control instanceof HTMLInputElement && isSearchInput(control)) {
+        return true;
     }
 
     return (
@@ -106,12 +112,63 @@ function liveFilterRows(scope, needles) {
         rows = [...scope.querySelectorAll('tbody tr')].filter((row) => !row.querySelector('td[colspan]'));
     }
 
-    rows.forEach((row) => {
+    const mobileCards = rows.length > 0
+        ? []
+        : [...scope.querySelectorAll('[data-mobile-record-list] article')];
+
+    const targets = rows.length > 0 ? rows : mobileCards;
+
+    let visible = 0;
+    targets.forEach((row) => {
         const hay = (row.getAttribute('data-filter-text') || row.textContent || '').toLowerCase();
-        const visible = needles.every((needle) => hay.includes(needle));
-        row.classList.toggle('hidden', !visible);
-        row.toggleAttribute('hidden', !visible);
+        const match = needles.every((needle) => hay.includes(needle));
+        row.classList.toggle('hidden', !match);
+        row.toggleAttribute('hidden', !match);
+        if (match) {
+            visible += 1;
+        }
     });
+
+    scope.querySelectorAll('[data-live-filter-count]').forEach((el) => {
+        if (!(el instanceof HTMLElement)) {
+            return;
+        }
+        const total = Number(el.dataset.liveFilterTotal || targets.length) || targets.length;
+        if (needles.length === 0) {
+            el.textContent = `${total} shown`;
+        } else {
+            el.textContent = `${visible} of ${total} shown`;
+        }
+        el.hidden = targets.length === 0;
+    });
+
+    ensureLiveFilterEmptyHint(scope, needles.length > 0 && targets.length > 0 && visible === 0);
+}
+
+function ensureLiveFilterEmptyHint(scope, show) {
+    const host =
+        scope.querySelector('[data-property-list-results], #property-list-results, .property-ws-wrap table')?.closest('.property-ws-wrap')
+        || scope.querySelector('table')?.parentElement
+        || (scope instanceof HTMLElement ? scope : null);
+
+    if (!(host instanceof HTMLElement)) {
+        return;
+    }
+
+    let hint = host.querySelector('[data-live-filter-empty-hint]');
+    if (!show) {
+        hint?.remove();
+        return;
+    }
+
+    if (!hint) {
+        hint = document.createElement('p');
+        hint.setAttribute('data-live-filter-empty-hint', '1');
+        hint.className = 'mt-3 text-sm text-slate-600 dark:text-slate-300 px-1';
+        const tableWrap = host.querySelector('.overflow-x-auto, table')?.parentElement || host;
+        tableWrap.appendChild(hint);
+    }
+    hint.textContent = 'No rows on this page match. Click Apply to search the full register.';
 }
 
 /**
@@ -162,13 +219,6 @@ function serializedFormQuery(form) {
     } catch {
         return '';
     }
-}
-
-function isSearchInput(el) {
-    return (
-        el instanceof HTMLInputElement &&
-        (el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true')
-    );
 }
 
 function isAutoApplyControl(el) {
@@ -414,12 +464,194 @@ function scheduleServerSearchSubmit(form, input) {
     searchSubmitDebounceTimers.set(form, timer);
 }
 
+/**
+ * Instant table filter only (listings-style). Server search runs when the user
+ * clicks Apply — never on each keystroke, so registers do not full-reload while typing.
+ * @param {HTMLInputElement} input
+ */
+function handleSearchInput(input) {
+    applyLiveWorkspaceSearch(input);
+}
+
+/**
+ * Dropdown/date auto-submit only when the form opts in. Default is Apply-only so
+ * filtering does not replace the whole workspace frame while adjusting filters.
+ */
+function formAllowsAutoApply(form) {
+    if (!(form instanceof HTMLFormElement)) {
+        return false;
+    }
+    return form.dataset.autoApplyFilters === 'true' || form.dataset.autoApplyFilters === '1';
+}
+
+function parseCount(value) {
+    const n = parseInt(String(value || '').replace(/,/g, ''), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function findListTotal(select) {
+    const scopes = [
+        select.closest('form')?.parentElement,
+        select.closest('section, article, .card'),
+        select.closest('#property-main, #loan-main, main'),
+        document.getElementById('property-main'),
+        document.body,
+    ].filter((node) => node instanceof HTMLElement);
+
+    for (const scope of scopes) {
+        const marked = scope.querySelector('[data-list-total]');
+        const markedTotal = parseCount(marked?.getAttribute('data-list-total'));
+        if (markedTotal) {
+            return markedTotal;
+        }
+        const text = scope.innerText || '';
+        const showing = text.match(/Showing\s+[\d,]+\s*[-–—]\s*[\d,]+\s+of\s+([\d,]+)/i);
+        if (showing) {
+            return parseCount(showing[1]);
+        }
+        const records = text.match(/\(([\d,]+)\s+records\)/i);
+        if (records) {
+            return parseCount(records[1]);
+        }
+    }
+
+    return null;
+}
+
+function pageSizeSteps(total) {
+    const steps = [10, 20, 30, 50, 100, 200, 500, 1000];
+    if (total && total > 1000) {
+        steps.push(2000, 5000);
+    }
+    return steps.filter((size) => !total || size < total);
+}
+
+function ensurePageSizeOption(select, value, label) {
+    let option = Array.from(select.options).find((item) => item.value === value);
+    if (!option) {
+        option = document.createElement('option');
+        option.value = value;
+        const all = Array.from(select.options).find((item) => item.value === 'all');
+        if (all) {
+            select.insertBefore(option, all);
+        } else {
+            select.appendChild(option);
+        }
+    }
+    option.textContent = label;
+    return option;
+}
+
+function bindCustomPageSize(select) {
+    const holder = select.parentElement;
+    if (!holder) {
+        return;
+    }
+    let input = holder.querySelector('[data-page-size-custom]');
+    if (!(input instanceof HTMLInputElement)) {
+        input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.placeholder = 'No.';
+        input.setAttribute('data-page-size-custom', '1');
+        input.setAttribute('aria-label', 'Custom rows per page');
+        input.title = 'Type how many rows to show, then click Apply';
+        input.className = 'min-h-[38px] w-[4.25rem] shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-sm';
+        if (!holder.classList.contains('flex')) {
+            holder.classList.add('flex', 'items-center', 'gap-1');
+        }
+        select.after(input);
+    }
+    if (input.dataset.pageSizeBound === '1') {
+        return;
+    }
+    input.dataset.pageSizeBound = '1';
+
+    const applyCustom = () => {
+        const raw = input.value.trim();
+        if (raw === '') {
+            return;
+        }
+        const size = parseCount(raw);
+        if (!size) {
+            return;
+        }
+        ensurePageSizeOption(select, String(size), `${size.toLocaleString()} / page`);
+        select.value = String(size);
+    };
+
+    input.addEventListener('change', applyCustom);
+    select.addEventListener('change', () => {
+        if (select.value !== input.value.trim()) {
+            input.value = '';
+        }
+    });
+    select.form?.addEventListener('submit', () => {
+        if (input.value.trim() !== '') {
+            applyCustom();
+        }
+    }, { capture: true });
+}
+
+function enhancePageSizeSelects(root) {
+    const scope = root || document;
+    scope.querySelectorAll('select[name="per_page"], select[name$="_per_page"]').forEach((select) => {
+        if (!(select instanceof HTMLSelectElement)) {
+            return;
+        }
+        const total = findListTotal(select);
+        if (select.dataset.pageSizeEnhanced === '1' && (select.dataset.pageSizeTotal || !total)) {
+            return;
+        }
+        select.dataset.pageSizeSelect = '1';
+        select.dataset.propertySearchable = 'false';
+        select.dataset.pageSizeEnhanced = '1';
+        if (total) {
+            select.dataset.pageSizeTotal = String(total);
+        }
+        const requested = new URLSearchParams(window.location.search).get(select.name) || select.value;
+        const steps = pageSizeSteps(total);
+        const requestedNum = parseCount(requested);
+        if (requestedNum && !steps.includes(requestedNum) && (!total || requestedNum < total)) {
+            steps.push(requestedNum);
+            steps.sort((a, b) => a - b);
+        }
+
+        const previous = String(requested || select.value || '');
+        select.innerHTML = '';
+        steps.forEach((size) => {
+            const option = document.createElement('option');
+            option.value = String(size);
+            option.textContent = `${size.toLocaleString()} / page`;
+            select.appendChild(option);
+        });
+        const all = document.createElement('option');
+        all.value = 'all';
+        all.textContent = total ? `All (${total.toLocaleString()})` : 'All';
+        select.appendChild(all);
+
+        if (previous.toLowerCase() === 'all') {
+            select.value = 'all';
+        } else if (Array.from(select.options).some((option) => option.value === previous)) {
+            select.value = previous;
+        }
+
+        bindCustomPageSize(select);
+        const custom = select.parentElement?.querySelector('[data-page-size-custom]');
+        if (custom instanceof HTMLInputElement && requestedNum && !pageSizeSteps(total).includes(requestedNum)) {
+            custom.value = String(requestedNum);
+        }
+    });
+}
+
 export function wireAutoFilterForms(scopeRoot) {
+    const root = scopeRoot || document;
+    enhancePageSizeSelects(root);
+
     if (isPropertyWorkspaceHydrating()) {
         return;
     }
-
-    const root = scopeRoot || document;
     const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));
 
     forms.forEach((form) => {
@@ -434,28 +666,31 @@ export function wireAutoFilterForms(scopeRoot) {
         formFilterControls(form)
             .filter((control) => isSearchInput(control))
             .forEach((input) => {
+                // Prefer listings-style live row filter; do not auto-submit on type.
+                if (input.dataset.serverSearch === '1' || input.dataset.serverSearch === 'true') {
+                    input.dataset.serverSearch = 'false';
+                }
+                if (!input.hasAttribute('data-live-row-filter')) {
+                    input.dataset.liveRowFilter = '1';
+                }
                 input.addEventListener('input', () => {
-                    if (prefersServerSearch(input)) {
-                        scheduleServerSearchSubmit(form, input);
-                        return;
-                    }
-                    applyLiveWorkspaceSearch(input);
+                    handleSearchInput(input);
                 });
                 input.addEventListener('focus', () => {
                     trackSearchFocus(input);
                 });
-                if (!prefersServerSearch(input)) {
-                    applyLiveWorkspaceSearch(input);
-                }
+                applyLiveWorkspaceSearch(input);
             });
 
-        formFilterControls(form)
-            .filter((control) => isAutoApplyControl(control))
-            .forEach((control) => {
-                control.addEventListener('change', () => {
-                    scheduleControlApply(form);
+        if (formAllowsAutoApply(form)) {
+            formFilterControls(form)
+                .filter((control) => isAutoApplyControl(control))
+                .forEach((control) => {
+                    control.addEventListener('change', () => {
+                        scheduleControlApply(form);
+                    });
                 });
-            });
+        }
 
         form.addEventListener(
             'submit',
@@ -537,7 +772,7 @@ function bindFilterFormTurboGuards() {
         form.dataset.lastFilterQuery = serializedFormQuery(form);
 
         const searchInput = form.querySelector('input[name="q"], input[type="search"], input[data-auto-search="true"]');
-        if (searchInput instanceof HTMLInputElement && !prefersServerSearch(searchInput)) {
+        if (searchInput instanceof HTMLInputElement) {
             queueMicrotask(() => applyLiveWorkspaceSearch(searchInput));
         }
     });
@@ -554,14 +789,7 @@ function bindFilterLifecycle() {
         if (!(el instanceof HTMLInputElement) || !isSearchInput(el) || el.matches('[data-auto-submit="off"]')) {
             return;
         }
-        if (prefersServerSearch(el)) {
-            const form = el.form || el.closest('form');
-            if (form instanceof HTMLFormElement) {
-                scheduleServerSearchSubmit(form, el);
-            }
-            return;
-        }
-        applyLiveWorkspaceSearch(el);
+        handleSearchInput(el);
     });
 
     document.addEventListener('DOMContentLoaded', () => run(document));
