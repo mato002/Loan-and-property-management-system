@@ -67,6 +67,11 @@ final class LandlordPaymentFeesService
         $ledgerBefore = $this->ledgerNetBefore($propertyIds, $periodStart);
         $ledgerCredits = $this->ledgerDirectionSum($propertyIds, PmLandlordLedgerEntry::DIRECTION_CREDIT, $periodStart, $periodEnd);
         $ledgerDebits = $this->ledgerDirectionSum($propertyIds, PmLandlordLedgerEntry::DIRECTION_DEBIT, $periodStart, $periodEnd);
+        $remittedInPeriod = [];
+        foreach ($this->settlements->landlordRemittances($propertyIds, $landlordId, $periodStart, $periodEnd) as $remittance) {
+            $remitKey = ((int) $remittance['property_id']).'|'.((int) $remittance['landlord_id']);
+            $remittedInPeriod[$remitKey] = ($remittedInPeriod[$remitKey] ?? 0.0) + (float) $remittance['amount'];
+        }
         $payoutItems = $this->payoutItemsForPeriod($propertyIds, $periodMonth);
         $feesPostedKeys = $this->postedFeeKeys($propertyIds, $periodMonth);
         $openAdvanceTotals = app(LandlordAdvanceService::class)->openAdvanceTotalsByKey($propertyIds);
@@ -85,7 +90,7 @@ final class LandlordPaymentFeesService
             $managementFee = round($grossCollected * ($commissionPct / 100), 2);
             $balanceBf = $ledgerBefore[$key] ?? 0.0;
             $periodCredits = $ledgerCredits[$key] ?? 0.0;
-            $periodDebits = $ledgerDebits[$key] ?? 0.0;
+            $periodDebits = ($ledgerDebits[$key] ?? 0.0) + ($remittedInPeriod[$key] ?? 0.0);
             $closingBalance = round($balanceBf + $periodCredits - $periodDebits, 2);
             $amountPayable = max(0.0, $closingBalance);
 
@@ -111,6 +116,11 @@ final class LandlordPaymentFeesService
                 continue;
             }
 
+            $paidPosted = $payout?->status === 'paid' ? (float) ($payoutItem?->amount ?? $payout->total_amount) : null;
+            if ($paidPosted === null && ($remittedInPeriod[$key] ?? 0) > 0.009) {
+                $paidPosted = round((float) $remittedInPeriod[$key], 2);
+            }
+
             $rows[] = [
                 'property_id' => $pid,
                 'landlord_id' => $lid,
@@ -126,7 +136,7 @@ final class LandlordPaymentFeesService
                 'management_fee_tax' => 0.0,
                 'amount_payable' => $amountPayable,
                 'closing_balance' => $closingBalance,
-                'paid_posted' => $payout?->status === 'paid' ? (float) ($payoutItem?->amount ?? $payout->total_amount) : null,
+                'paid_posted' => $paidPosted,
                 'paid_posted_on' => $payout?->paid_at?->format('d/m/Y'),
                 'payout_id' => $payout?->id,
                 'payout_status' => $payout?->status,

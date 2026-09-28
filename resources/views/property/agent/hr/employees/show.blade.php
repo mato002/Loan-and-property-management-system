@@ -70,7 +70,7 @@
                     <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
                         <p><span class="text-slate-500">Name:</span> {{ $employee->full_name }}</p>
                         <p><span class="text-slate-500">Email:</span> {{ $employee->email ?: '—' }}</p>
-                        <p><span class="text-slate-500">Phone:</span> {{ $employee->phone ?: '—' }}</p>
+                        <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$employee->phone" /></p>
                         <p><span class="text-slate-500">National ID:</span> {{ $employee->national_id ?: '—' }}</p>
                         <p><span class="text-slate-500">Hire date:</span> {{ $employee->hire_date?->format('Y-m-d') ?? '—' }}</p>
                         @if ($employee->supervisor)

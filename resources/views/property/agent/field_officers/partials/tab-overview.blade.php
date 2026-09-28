@@ -2,7 +2,7 @@
     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Profile</h3>
     <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
         <p><span class="text-slate-500 dark:text-slate-400">Name:</span> {{ $fieldOfficer->name }}</p>
-        <p><span class="text-slate-500 dark:text-slate-400">Phone:</span> {{ $fieldOfficer->phone ?: '—' }}</p>
+        <p><span class="text-slate-500 dark:text-slate-400">Phone:</span> <x-phone-link :value="$fieldOfficer->phone" /></p>
         <p>
             <span class="text-slate-500 dark:text-slate-400">Portal access:</span>
             @if ($fieldOfficer->portal_access)

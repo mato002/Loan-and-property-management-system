@@ -45,7 +45,7 @@
         @endif
         <dl class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div class="rounded-lg bg-white/70 dark:bg-gray-900/40 p-3"><dt class="text-xs font-medium text-slate-500 uppercase">Login email</dt><dd class="mt-1 break-all">{{ $landlord->email ?: '—' }}</dd></div>
-            <div class="rounded-lg bg-white/70 dark:bg-gray-900/40 p-3"><dt class="text-xs font-medium text-slate-500 uppercase">Login phone</dt><dd class="mt-1">{{ $landlord->phone ?: '—' }}</dd></div>
+            <div class="rounded-lg bg-white/70 dark:bg-gray-900/40 p-3"><dt class="text-xs font-medium text-slate-500 uppercase">Login phone</dt><dd class="mt-1"><x-phone-link :value="$landlord->phone" /></dd></div>
             <div class="rounded-lg bg-white/70 dark:bg-gray-900/40 p-3 sm:col-span-2"><dt class="text-xs font-medium text-slate-500 uppercase">Portal sign-in URL</dt><dd class="mt-1 break-all"><a href="{{ $portal['login_url'] ?? '#' }}" class="text-indigo-600 hover:underline" target="_blank" rel="noopener">{{ $portal['login_url'] ?? '—' }}</a></dd></div>
         </dl>
         @if (auth()->check() && auth()->user()?->hasPmPermission('users.impersonate'))

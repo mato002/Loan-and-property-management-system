@@ -14,6 +14,7 @@ use App\Models\PmTenantNotice;
 use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
+use App\Support\Property\PhoneLink;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -40,6 +41,7 @@ use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\TenantCompliancePresentation;
 use App\Support\Property\TenantProfileStatus;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 
 class PmTenantDirectoryController extends Controller
@@ -370,12 +372,10 @@ class PmTenantDirectoryController extends Controller
             return [
                 new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
                 $t->account_number ?? '—',
-                $t->phone ?? '—',
+                PhoneLink::html($t->phone),
                 $t->email ?? '—',
                 $unitLabel,
-                (float) ($t->opening_arrears_amount ?? 0) > 0
-                    ? number_format((float) $t->opening_arrears_amount, 2)
-                    : '—',
+                WorkspaceRowAlert::followUpAmount((float) ($t->opening_arrears_amount ?? 0)),
                 $activeLease?->monthly_rent !== null
                     ? number_format((float) $activeLease->monthly_rent, 2)
                     : '—',
@@ -679,9 +679,9 @@ class PmTenantDirectoryController extends Controller
                 new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
                 $t->account_number ?? '—',
                 $t->national_id ?: '—',
-                $t->phone ?? '—',
+                PhoneLink::html($t->phone),
                 $t->email ?? '—',
-                $t->emergency_contact ?: '—',
+                PhoneLink::html($t->emergency_contact),
                 TenantCompliancePresentation::riskCell($t),
                 TenantCompliancePresentation::portalCell($t),
                 TenantProfileStatus::badge($t),

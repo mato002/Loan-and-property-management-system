@@ -279,4 +279,23 @@ final class WorkspaceRowAlert
 
         return $lines;
     }
+
+    /**
+     * Outstanding money that still needs follow-up. Empty / zero stays a dash.
+     */
+    public static function followUpAmount(float $amount, ?string $formatted = null): HtmlString|string
+    {
+        if ($amount <= 0.009) {
+            return '—';
+        }
+
+        $label = $formatted ?? number_format($amount, 2);
+
+        return new HtmlString(
+            '<span class="sr-only">unpaid</span>'.
+            '<span class="inline-flex items-center rounded-md bg-rose-600 px-2 py-0.5 text-xs font-bold tabular-nums text-white shadow-sm" title="Outstanding — follow up">'.
+            e($label).
+            '</span>'
+        );
+    }
 }

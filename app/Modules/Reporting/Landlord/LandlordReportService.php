@@ -13,6 +13,7 @@ use App\Modules\Reporting\Support\ReportFilters;
 use App\Modules\Reporting\Support\ReportScope;
 use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\LandlordSettlementService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -118,42 +119,66 @@ class LandlordReportService
 			? collect()
 			: PmInvoice::query()->whereIn('id', $invoiceIds)->pluck('invoice_no', 'id');
 
-		$running = 0.0;
-		$rows = $entries->map(function (PmLandlordLedgerEntry $e) use (&$running, $invoiceNosById) {
+		$scope = ReportScope::fromRequest();
+		$propertyId = (int) ($scope['property_id'] ?? 0);
+		$from = $this->filterDateFrom();
+		$to = $this->filterDateTo();
+		$remittances = app(LandlordSettlementService::class)->landlordRemittances(
+			$propertyId > 0 ? [$propertyId] : [],
+			$landlordId,
+			$from ? Carbon::parse($from)->startOfDay() : null,
+			$to ? Carbon::parse($to)->endOfDay() : null,
+		);
+
+		$events = [];
+		foreach ($entries as $e) {
 			$amount = (float) $e->amount;
 			$isCredit = $e->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT;
-
-			if ($e->balance_after !== null) {
-				$running = (float) $e->balance_after;
-			} else {
-				$running += $isCredit ? $amount : (-1 * $amount);
-			}
-
 			$txnType = $e->reference_type ?: ($isCredit ? 'Credit' : 'Debit');
 			$txnId = ($e->reference_type && $e->reference_id)
 				? strtoupper((string) $e->reference_type).'-'.$e->reference_id
 				: 'LED-'.$e->id;
-
 			$invoiceNo = '—';
 			if ($e->reference_type === 'invoice' && $e->reference_id) {
 				$invoiceNo = (string) ($invoiceNosById[(int) $e->reference_id] ?? '—');
 			}
-
-			// Credits = collections / amounts increasing payable to landlord.
-			// Debits = remittances / vouchers paid out (e.g. ezen_payment_voucher).
-			$credit = $isCredit ? $this->money($amount) : $this->money(0);
-			$debit = $isCredit ? $this->money(0) : $this->money($amount);
-
-			return [
-				$this->dateTime((string) $e->occurred_at),
-				(string) $txnType,
-				(string) $txnId,
-				(string) $invoiceNo,
-				$credit,
-				$debit,
-				$this->money((float) $running),
+			$events[] = [
+				'at' => (string) $e->occurred_at,
+				'type' => (string) $txnType,
+				'txn' => (string) $txnId,
+				'invoice' => (string) $invoiceNo,
+				'credit' => $isCredit ? $amount : 0.0,
+				'debit' => $isCredit ? 0.0 : $amount,
 			];
-		})->all();
+		}
+		foreach ($remittances as $remittance) {
+			$events[] = [
+				'at' => (string) ($remittance['occurred_at'] ?? ''),
+				'type' => 'remittance',
+				'txn' => (string) ($remittance['source_id'] ?? 'REMIT'),
+				'invoice' => '—',
+				'credit' => 0.0,
+				'debit' => (float) $remittance['amount'],
+			];
+		}
+		usort($events, static function (array $a, array $b): int {
+			return strcmp($a['at'], $b['at']) ?: strcmp($a['txn'], $b['txn']);
+		});
+
+		$running = 0.0;
+		$rows = [];
+		foreach ($events as $event) {
+			$running += (float) $event['credit'] - (float) $event['debit'];
+			$rows[] = [
+				$this->dateTime((string) $event['at']),
+				(string) $event['type'],
+				(string) $event['txn'],
+				(string) $event['invoice'],
+				$this->money((float) $event['credit']),
+				$this->money((float) $event['debit']),
+				$this->money($running),
+			];
+		}
 
 		$closing = (float) $running;
 		$balanceHint = $closing > 0.009

@@ -24,6 +24,7 @@ use App\Services\Property\RentRollQuery;
 use App\Services\Property\TenantCommunicationStageService;
 use App\Models\PropertyPortalSetting;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -827,7 +828,7 @@ class RevenueController extends Controller
                 $typesText,
                 $oldestDue,
                 (string) ($r['aging_label'] ?? $r['days_late']),
-                PropertyMoney::kes((float) $r['balance']),
+                WorkspaceRowAlert::followUpAmount((float) $r['balance'], PropertyMoney::kes((float) $r['balance'])),
                 $lastContact,
                 $r['workflow'],
                 $actions,
@@ -964,7 +965,7 @@ class RevenueController extends Controller
                 $agingLabel,
                 PropertyMoney::kes((float) $i->amount),
                 PropertyMoney::kes((float) $i->amount_paid),
-                PropertyMoney::kes($bal),
+                WorkspaceRowAlert::followUpAmount($bal, PropertyMoney::kes($bal)),
                 $i->updated_at?->format('Y-m-d') ?? '—',
                 $workflow,
                 $actions,

@@ -36,7 +36,7 @@
         <dl class="mt-3 space-y-2 text-sm">
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="text-slate-900 dark:text-white font-medium">{{ $landlord->name }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Email</dt><dd class="text-slate-900 dark:text-white break-all">{{ $landlord->email ?: '—' }}</dd></div>
-            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900 dark:text-white">{{ $landlord->phone ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900 dark:text-white"><x-phone-link :value="$landlord->phone" /></dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Ownership total</dt><dd class="text-slate-900 dark:text-white tabular-nums">{{ number_format((float) ($totals['ownership_sum'] ?? 0), 2) }}%</dd></div>
         </dl>
     </div>
