@@ -18,7 +18,7 @@
                 <button type="submit" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700">Check</button>
             </form>
         </div>
-        <div class="grid gap-3 sm:grid-cols-3">
+        <div class="grid gap-3 sm:grid-cols-4">
             <div class="rounded-xl border border-slate-200 bg-white p-3">
                 <p class="text-xs text-slate-500">Water-enabled units</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ (int) ($billingReadiness['water_enabled_units'] ?? 0) }}</p>
@@ -31,6 +31,10 @@
                 <p class="text-xs text-slate-500">Missing readings</p>
                 <p class="mt-1 text-lg font-semibold text-rose-700">{{ collect($billingReadiness['missing'] ?? [])->count() }}</p>
             </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <p class="text-xs text-slate-500">Need monthly entry</p>
+                <p class="mt-1 text-lg font-semibold text-rose-700">{{ collect($billingReadiness['missing_variable'] ?? [])->count() }}</p>
+            </div>
         </div>
         <div class="grid gap-3 lg:grid-cols-2">
             <div class="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
@@ -38,7 +42,7 @@
                 @if (collect($billingReadiness['missing'] ?? [])->isEmpty())
                     <p class="text-sm text-emerald-700">All water-enabled units have readings for this month.</p>
                 @else
-                    <ul class="space-y-1 text-sm text-slate-700">
+                    <ul class="space-y-1 text-sm text-slate-700 max-h-48 overflow-auto">
                         @foreach (($billingReadiness['missing'] ?? []) as $row)
                             <li>{{ $row['property_name'] ?? '—' }} / {{ $row['unit_label'] ?? '—' }}</li>
                         @endforeach
@@ -46,6 +50,22 @@
                 @endif
             </div>
             <div class="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                <h4 class="text-sm font-semibold text-slate-900">Variable charges to enter</h4>
+                @if (collect($billingReadiness['missing_variable'] ?? [])->isEmpty())
+                    <p class="text-sm text-emerald-700">No variable charges waiting for this month.</p>
+                @else
+                    <ul class="space-y-1 text-sm text-slate-700 max-h-48 overflow-auto">
+                        @foreach (($billingReadiness['missing_variable'] ?? []) as $row)
+                            <li>
+                                {{ $row['property_name'] ?? '—' }} / {{ $row['unit_label'] ?? '—' }}
+                                — {{ $row['charge_label'] ?? $row['charge_type'] ?? 'Charge' }}
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="text-xs text-slate-500">Post these from Utilities → Add charge line.</p>
+                @endif
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3 space-y-2 lg:col-span-2">
                 <h4 class="text-sm font-semibold text-slate-900">Usage anomalies</h4>
                 @if (collect($billingReadiness['anomalies'] ?? [])->isEmpty())
                     <p class="text-sm text-emerald-700">No unusual usage patterns detected for this month.</p>

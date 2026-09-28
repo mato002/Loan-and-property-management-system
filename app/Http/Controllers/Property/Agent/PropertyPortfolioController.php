@@ -17,6 +17,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\CsvExport;
+use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\PropertyEntityHub;
 use App\Services\Property\LandlordHubDataService;
@@ -231,12 +232,13 @@ class PropertyPortfolioController extends Controller
                 '</span>'
             );
             $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-            $chargeBreakdownCell = count($chargeTemplates) === 0
+            $chargeTypeLabels = $this->uniqueChargeTypeLabels($chargeTemplates);
+            $chargeBreakdownCell = $chargeTypeLabels === []
                 ? '—'
                 : new HtmlString(
-                    '<div class="space-y-1">'.
-                    collect($chargeTemplates)->map(function (array $template): string {
-                        return '<div class="text-xs text-slate-700 leading-5">'.e($this->formatChargeTemplateSummary($template)).'</div>';
+                    '<div class="space-y-0.5">'.
+                    collect($chargeTypeLabels)->map(function (string $label): string {
+                        return '<div class="text-xs text-slate-700 leading-5 whitespace-nowrap">'.e($label).'</div>';
                     })->implode('').
                     '</div>'
                 );
@@ -394,9 +396,7 @@ class PropertyPortfolioController extends Controller
                         ? 'No units'
                         : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
                     $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-                    $chargeSummary = collect($chargeTemplates)
-                        ->map(fn (array $template): string => $this->formatChargeTemplateSummary($template))
-                        ->implode('; ');
+                    $chargeSummary = implode('; ', $this->uniqueChargeTypeLabels($chargeTemplates));
 
                     yield [
                         $p->id,
@@ -906,12 +906,13 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
-            'charge_templates' => ['nullable', 'array', 'max:50'],
+            'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
             'expense_definitions' => ['nullable', 'array', 'max:50'],
             'expense_definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
@@ -936,9 +937,9 @@ class PropertyPortfolioController extends Controller
             'deposit_definitions.*.is_active' => ['nullable', 'in:0,1'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
-        $hasChargeTemplates = $request->has('charge_templates');
+        $hasChargeTemplates = $request->boolean('utility_templates_save') || $request->has('charge_templates');
         $hasExpenseDefinitions = $request->has('expense_definitions');
-        $hasDepositDefinitions = $request->has('deposit_definitions');
+        $hasDepositDefinitions = $request->boolean('deposit_rules_save') || $request->has('deposit_definitions');
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
         $expenseDefinitions = $this->normalizePropertyExpenseDefinitions((int) $property->id, (array) ($data['expense_definitions'] ?? []));
         $depositDefinitions = $this->normalizePropertyDepositDefinitions((int) $property->id, (array) ($data['deposit_definitions'] ?? []));
@@ -964,8 +965,10 @@ class PropertyPortfolioController extends Controller
         $property->update($data);
         $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
         if ($hasChargeTemplates) {
+            $previousTemplates = $this->propertyChargeTemplates((int) $property->id);
             $this->setPropertyChargeTemplates((int) $property->id, $chargeTemplates);
             $this->syncExpenseRulesFromUtilityTemplates((int) $property->id, $chargeTemplates);
+            $this->applyChargeTemplatesToLeases((int) $property->id, $previousTemplates, $chargeTemplates);
         }
         if ($hasExpenseDefinitions) {
             $this->setPropertyExpenseDefinitions((int) $property->id, $expenseDefinitions);
@@ -974,10 +977,17 @@ class PropertyPortfolioController extends Controller
             $this->setPropertyDepositDefinitions((int) $property->id, $depositDefinitions);
         }
 
+        $success = 'Property updated.';
+        if ($hasChargeTemplates) {
+            $success = 'Utility templates saved. Current leases and future monthly charges now use these amounts.';
+        } elseif ($hasDepositDefinitions) {
+            $success = 'Deposit rules saved.';
+        }
+
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
-            back()->with('success', 'Property updated.'),
-            'Property updated.',
+            back()->with('success', $success),
+            $success,
         );
     }
 
@@ -1747,12 +1757,19 @@ class PropertyPortfolioController extends Controller
                 ->get();
         }
 
-        $monthlyBreakdown = $this->buildLandlordMonthlyBreakdown(
+        $monthlyPack = $this->buildLandlordMonthlyBreakdown(
             $propertyLinks,
             $propertyIds,
             Carbon::create($fy, 1, 1)->startOfDay(),
             Carbon::create($fy, 12, 31)->endOfDay(),
         );
+        $monthlyBreakdown = $monthlyPack['months'];
+        $monthlyByProperty = $monthlyPack['by_property'];
+        $propertyBreakdown = $propertyBreakdown->map(function (array $row) use ($monthlyByProperty) {
+            $row['monthly_shares'] = $monthlyByProperty[(int) $row['property_id']] ?? [];
+
+            return $row;
+        })->values();
 
         $totals = [
             'properties' => (int) $propertyBreakdown->count(),
@@ -1805,9 +1822,9 @@ class PropertyPortfolioController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, object>  $propertyLinks
      * @param  list<int>  $propertyIds
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return array{months:\Illuminate\Support\Collection<int, array<string, mixed>>, by_property: array<int, list<array<string, mixed>>>}
      */
-    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd)
+    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd): array
     {
         $months = collect();
         $cursor = $periodStart->copy()->startOfMonth();
@@ -1818,7 +1835,7 @@ class PropertyPortfolioController extends Controller
         }
 
         if ($months->isEmpty()) {
-            return collect();
+            return ['months' => collect(), 'by_property' => []];
         }
 
         $ownershipByProperty = $propertyLinks
@@ -1843,7 +1860,28 @@ class PropertyPortfolioController extends Controller
             }
         }
 
-        return $months->map(function (string $ym) use ($grossByMonthProperty, $ownershipByProperty, $propertyLinks) {
+        $byProperty = [];
+        foreach ($propertyLinks as $link) {
+            $pid = (int) $link->property_id;
+            $pct = (float) ($ownershipByProperty[$pid] ?? 0);
+            $commissionPct = $this->propertyCommissionPercent($pid);
+            $lines = [];
+            foreach ($months as $ym) {
+                $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
+                $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
+                $share = $gross * $pct;
+                $lines[] = [
+                    'month' => $ym,
+                    'month_label' => $monthStart->format('M Y'),
+                    'gross_collected' => $gross,
+                    'owner_share' => $share,
+                    'agent_earning' => $share * ($commissionPct / 100),
+                ];
+            }
+            $byProperty[$pid] = $lines;
+        }
+
+        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $ownershipByProperty, $propertyLinks) {
             $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
             $grossCollected = 0.0;
             $ownerShare = 0.0;
@@ -1875,6 +1913,8 @@ class PropertyPortfolioController extends Controller
                 'has_activity' => $grossCollected > 0.009,
             ];
         })->values();
+
+        return ['months' => $monthTotals, 'by_property' => $byProperty];
     }
 
     public function landlordsShow(Request $request, User $landlord): View|StreamedResponse|Response
@@ -2489,12 +2529,13 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
-            'charge_templates' => ['nullable', 'array', 'max:50'],
+            'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
@@ -2568,12 +2609,13 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
-            'charge_templates' => ['nullable', 'array', 'max:50'],
+            'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
@@ -2807,7 +2849,7 @@ class PropertyPortfolioController extends Controller
 
     /**
      * @param  array<int, array<string, mixed>>  $templates
-     * @return array<int, array{property_unit_id:int|null,charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>
+     * @return array<int, array{property_unit_id:int|null,charge_type:string,label:string,amount_mode:string,rate_per_unit:float,fixed_charge:float,notes:string}>
      */
     private function normalizePropertyChargeTemplates(array $templates): array
     {
@@ -2822,23 +2864,54 @@ class PropertyPortfolioController extends Controller
                 continue;
             }
             $label = trim((string) ($row['label'] ?? ''));
-            $rate = is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0;
-            $fixed = is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0;
+            $amountMode = $this->normalizeTemplateAmountMode($row);
+            $isVariable = $amountMode === 'variable';
+            $rate = $isVariable ? 0.0 : (is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0);
+            $fixed = $isVariable ? 0.0 : (is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0);
             $notes = trim((string) ($row['notes'] ?? ''));
-            if ($label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
+            if (! $isVariable && $label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
                 continue;
             }
             $normalized[] = [
                 'property_unit_id' => $propertyUnitId,
                 'charge_type' => $chargeType,
-                'label' => $label !== '' ? $label : ucfirst($chargeType),
+                'label' => $label !== '' ? $label : ucfirst(str_replace('_', ' ', $chargeType)),
+                'amount_mode' => $amountMode,
                 'rate_per_unit' => round($rate, 2),
                 'fixed_charge' => round($fixed, 2),
                 'notes' => Str::limit($notes, 500, ''),
             ];
         }
 
-        return array_slice($normalized, 0, 50);
+        return array_slice($normalized, 0, 200);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function normalizeTemplateAmountMode(array $row): string
+    {
+        $mode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
+        if (in_array($mode, ['variable', 'manual', 'monthly'], true)) {
+            return 'variable';
+        }
+        if ($mode === 'fixed') {
+            return 'fixed';
+        }
+        if ($this->templateStandingAmount($row) > 0.009) {
+            return 'fixed';
+        }
+        $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+
+        return $type === 'water' ? 'variable' : 'fixed';
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isVariableChargeTemplate(array $row): bool
+    {
+        return $this->normalizeTemplateAmountMode($row) === 'variable';
     }
 
     /**
@@ -2884,6 +2957,10 @@ class PropertyPortfolioController extends Controller
                 continue;
             }
 
+            if ($this->isVariableChargeTemplate($template)) {
+                continue;
+            }
+
             $label = trim((string) ($template['label'] ?? ''));
             $rate = is_numeric($template['rate_per_unit'] ?? null) ? max(0.0, (float) $template['rate_per_unit']) : 0.0;
             $fixed = is_numeric($template['fixed_charge'] ?? null) ? max(0.0, (float) $template['fixed_charge']) : 0.0;
@@ -2903,6 +2980,128 @@ class PropertyPortfolioController extends Controller
                 'is_active' => true,
             ]);
         }
+    }
+
+    /**
+     * Push edited templates onto current leases so directory/statement standing charges match.
+     *
+     * @param  array<int, array{property_unit_id:int|null,charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>  $previous
+     * @param  array<int, array{property_unit_id:int|null,charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>  $templates
+     */
+    private function applyChargeTemplatesToLeases(int $propertyId, array $previous, array $templates): void
+    {
+        $managedTypes = [];
+        foreach (array_merge($previous, $templates) as $row) {
+            $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+            if ($type === '' || $type === 'water') {
+                continue;
+            }
+            $managedTypes[$type] = $type;
+        }
+        if ($managedTypes === []) {
+            return;
+        }
+
+        $defaults = [];
+        $byUnit = [];
+        foreach ($templates as $row) {
+            $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+            if ($type === '' || $type === 'water' || $this->isVariableChargeTemplate($row)) {
+                continue;
+            }
+            $amount = $this->templateStandingAmount($row);
+            if ($amount <= 0.009) {
+                continue;
+            }
+            $payload = [
+                'type' => $type,
+                'amount' => number_format($amount, 2, '.', ''),
+                'fixed_charge' => number_format($amount, 2, '.', ''),
+                'label' => (string) ($row['label'] ?? ''),
+            ];
+            $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
+                ? (int) $row['property_unit_id']
+                : 0;
+            if ($unitId > 0) {
+                $byUnit[$unitId][$type] = $payload;
+            } else {
+                $defaults[$type] = $payload;
+            }
+        }
+
+        $leases = PmLease::query()
+            ->withoutGlobalScopes()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereHas('units', fn ($q) => $q->where('property_units.property_id', $propertyId))
+            ->with(['units' => fn ($q) => $q->where('property_units.property_id', $propertyId)])
+            ->get();
+
+        foreach ($leases as $lease) {
+            $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $applied = $defaults;
+            foreach ($unitIds as $unitId) {
+                foreach ($byUnit[$unitId] ?? [] as $type => $payload) {
+                    $applied[$type] = $payload;
+                }
+            }
+
+            $kept = [];
+            foreach (LeaseStandingCharges::lines($lease) as $line) {
+                $type = $this->normalizeUtilityChargeType((string) ($line['type'] ?? ''));
+                if ($type === '' || isset($managedTypes[$type])) {
+                    continue;
+                }
+                $kept[] = [
+                    'type' => $type,
+                    'amount' => number_format((float) $line['amount'], 2, '.', ''),
+                    'fixed_charge' => number_format((float) $line['amount'], 2, '.', ''),
+                    'label' => (string) ($line['type_label'] ?? ''),
+                ];
+            }
+
+            $merged = array_values(array_merge($kept, array_values($applied)));
+            $primary = $merged[0] ?? null;
+            $payload = [];
+            if (Schema::hasColumn('pm_leases', 'utility_expenses')) {
+                $payload['utility_expenses'] = $merged;
+            }
+            if (Schema::hasColumn('pm_leases', 'utility_expense_type')) {
+                $payload['utility_expense_type'] = $primary['type'] ?? null;
+            }
+            if (Schema::hasColumn('pm_leases', 'utility_expense_amount')) {
+                $payload['utility_expense_amount'] = isset($primary['amount']) ? (float) $primary['amount'] : null;
+            }
+            if ($payload !== []) {
+                $lease->fill($payload);
+                $lease->save();
+            }
+        }
+    }
+
+    private function normalizeUtilityChargeType(string $raw): string
+    {
+        $key = strtolower(trim($raw));
+        $key = (string) preg_replace('/[^a-z0-9]+/', '_', $key);
+        $key = trim($key, '_');
+        if (in_array($key, ['s_charge', 'scharge', 'service'], true)) {
+            return 'service_charge';
+        }
+
+        return $key;
+    }
+
+    /**
+     * @param  array{rate_per_unit?:float|int|string|null,fixed_charge?:float|int|string|null}  $row
+     */
+    private function templateStandingAmount(array $row): float
+    {
+        $fixed = is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0;
+        if ($fixed > 0.009) {
+            return round($fixed, 2);
+        }
+        $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
+
+        return $rate > 0.009 ? round($rate, 2) : 0.0;
     }
 
     /**
@@ -3108,28 +3307,24 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
-     * @param array{charge_type?:string,label?:string,rate_per_unit?:float|int|string|null,fixed_charge?:float|int|string|null} $template
+     * Unique charge types on a property (names only) for the register list.
+     *
+     * @param  array<int, array{charge_type?:string}>  $templates
+     * @return list<string>
      */
-    private function formatChargeTemplateSummary(array $template): string
+    private function uniqueChargeTypeLabels(array $templates): array
     {
-        $chargeType = ucfirst(str_replace('_', ' ', (string) ($template['charge_type'] ?? 'other')));
-        $label = trim((string) ($template['label'] ?? ''));
-        $rate = is_numeric($template['rate_per_unit'] ?? null) ? (float) $template['rate_per_unit'] : 0.0;
-        $fixed = is_numeric($template['fixed_charge'] ?? null) ? (float) $template['fixed_charge'] : 0.0;
-
-        $parts = [];
-        if ($rate > 0) {
-            $parts[] = 'r '.number_format($rate, 2);
+        $types = [];
+        foreach ($templates as $template) {
+            $type = $this->normalizeUtilityChargeType((string) ($template['charge_type'] ?? ''));
+            if ($type === '') {
+                continue;
+            }
+            $types[$type] = ucfirst(str_replace('_', ' ', $type));
         }
-        if ($fixed > 0) {
-            $parts[] = 'f '.number_format($fixed, 2);
-        }
+        ksort($types);
 
-        $prefix = $label !== '' ? $label : $chargeType;
-
-        return $parts === []
-            ? $prefix
-            : $prefix.' ('.implode(' | ', $parts).')';
+        return array_values($types);
     }
 
     private function userCanAccessOffboarding(): bool
