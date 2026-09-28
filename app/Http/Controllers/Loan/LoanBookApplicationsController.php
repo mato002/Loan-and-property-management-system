@@ -475,6 +475,7 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
+        $this->applyCatalogProductTerms($validated);
         $saveAsDraft = $request->boolean('save_as_draft');
         $draftId = (int) ($validated['draft_id'] ?? 0);
         $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
@@ -789,6 +790,7 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
+        $this->applyCatalogProductTerms($validated);
         $validated['form_meta'] = (array) ($loan_book_application->form_meta ?? []);
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
         if (isset($validated['stage'])) {
@@ -1502,6 +1504,42 @@ class LoanBookApplicationsController extends Controller
         }
 
         return $name;
+    }
+
+    /**
+     * Force application schedule fields to follow the selected product catalog.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyCatalogProductTerms(array &$validated): void
+    {
+        $defaults = $this->productMetaByName()[trim((string) ($validated['product_name'] ?? ''))] ?? null;
+        if (! is_array($defaults)) {
+            return;
+        }
+
+        if ($defaults['default_interest_rate'] !== null) {
+            $validated['interest_rate'] = (float) $defaults['default_interest_rate'];
+        }
+
+        $period = strtolower(trim((string) ($defaults['default_interest_rate_period'] ?? '')));
+        if (in_array($period, $this->interestRatePeriodOptions(), true)) {
+            $validated['interest_rate_period'] = $period;
+        }
+
+        if ((int) ($defaults['default_term_months'] ?? 0) > 0) {
+            $validated['term_value'] = (int) $defaults['default_term_months'];
+        }
+
+        $unit = strtolower(trim((string) ($defaults['default_term_unit'] ?? '')));
+        if (in_array($unit, $this->termUnitOptions(), true)) {
+            $validated['term_unit'] = $unit;
+        }
+
+        $validated['term_months'] = $this->scheduleToMonths(
+            (int) ($validated['term_value'] ?? 0),
+            (string) ($validated['term_unit'] ?? 'monthly')
+        );
     }
 
     /**
