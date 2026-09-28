@@ -7,6 +7,7 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\PmFieldOfficer;
+use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPortalProfile;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
@@ -1776,6 +1777,7 @@ class PropertyPortfolioController extends Controller
             $propertyIds,
             Carbon::create($fy, 1, 1)->startOfDay(),
             Carbon::create($fy, 12, 31)->endOfDay(),
+            (int) $landlord->id,
         );
         $monthlyBreakdown = $monthlyPack['months'];
         $monthlyByProperty = $monthlyPack['by_property'];
@@ -1838,7 +1840,7 @@ class PropertyPortfolioController extends Controller
      * @param  list<int>  $propertyIds
      * @return array{months:\Illuminate\Support\Collection<int, array<string, mixed>>, by_property: array<int, list<array<string, mixed>>>}
      */
-    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd): array
+    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd, int $landlordId = 0): array
     {
         $months = collect();
         $cursor = $periodStart->copy()->startOfMonth();
@@ -1856,6 +1858,7 @@ class PropertyPortfolioController extends Controller
             ->mapWithKeys(fn ($link) => [(int) $link->property_id => ((float) $link->ownership_percent) / 100]);
 
         $grossByMonthProperty = [];
+        $invoiceByMonthProperty = [];
         if ($propertyIds !== []) {
             $allocationRows = DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -1872,6 +1875,71 @@ class PropertyPortfolioController extends Controller
                 $pid = (int) $row->property_id;
                 $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
             }
+
+            $invoiceRows = DB::table('pm_invoices as i')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
+                ->whereIn('pu.property_id', $propertyIds)
+                ->whereBetween('i.issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->groupByRaw("pu.property_id, DATE_FORMAT(i.issue_date, '%Y-%m')")
+                ->selectRaw("pu.property_id as property_id, DATE_FORMAT(i.issue_date, '%Y-%m') as ym, COALESCE(SUM(i.amount), 0) as invoiced, COALESCE(SUM(CASE WHEN i.balance_due > 0 THEN i.balance_due ELSE 0 END), 0) as pending")
+                ->get();
+
+            foreach ($invoiceRows as $row) {
+                $ym = (string) $row->ym;
+                $pid = (int) $row->property_id;
+                $invoiced = (float) $row->invoiced;
+                $pending = (float) $row->pending;
+                $invoiceByMonthProperty[$ym][$pid] = [
+                    'invoiced' => $invoiced,
+                    'pending' => $pending,
+                    'paid' => max(0.0, $invoiced - $pending),
+                ];
+            }
+        }
+
+        $remittedByMonthProperty = [];
+        if ($propertyIds !== [] && $landlordId > 0 && Schema::hasTable('pm_landlord_payout_items') && Schema::hasTable('pm_landlord_payouts')) {
+            $payoutRows = DB::table('pm_landlord_payout_items as item')
+                ->join('pm_landlord_payouts as po', 'po.id', '=', 'item.payout_id')
+                ->where('item.landlord_id', $landlordId)
+                ->whereIn('item.property_id', $propertyIds)
+                ->where('item.line_type', LandlordSettlementService::LINE_REMITTANCE)
+                ->where('item.amount', '>', 0)
+                ->select(['item.property_id', 'item.amount', 'item.period_month', 'po.paid_at', 'po.status'])
+                ->get();
+
+            foreach ($payoutRows as $row) {
+                $status = strtolower(trim((string) ($row->status ?? '')));
+                if ($status !== '' && ! in_array($status, ['paid', 'completed', 'approved'], true) && empty($row->paid_at)) {
+                    continue;
+                }
+                $periodMonth = trim((string) ($row->period_month ?? ''));
+                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
+                    ? $periodMonth
+                    : ($row->paid_at ? Carbon::parse((string) $row->paid_at)->format('Y-m') : '');
+                if ($ym === '' || $ym < $periodStart->format('Y-m') || $ym > $periodEnd->format('Y-m')) {
+                    continue;
+                }
+                $pid = (int) $row->property_id;
+                $remittedByMonthProperty[$ym][$pid] = ($remittedByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
+        }
+        if ($remittedByMonthProperty === [] && $propertyIds !== [] && $landlordId > 0 && Schema::hasTable('pm_landlord_ledger_entries')) {
+            $ledgerRows = DB::table('pm_landlord_ledger_entries')
+                ->where('user_id', $landlordId)
+                ->whereIn('property_id', $propertyIds)
+                ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
+                ->whereNull('reversed_at')
+                ->whereBetween('occurred_at', [$periodStart, $periodEnd])
+                ->select(['property_id', 'amount', 'occurred_at'])
+                ->get();
+
+            foreach ($ledgerRows as $row) {
+                $ym = Carbon::parse((string) $row->occurred_at)->format('Y-m');
+                $pid = (int) $row->property_id;
+                $remittedByMonthProperty[$ym][$pid] = ($remittedByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
         }
 
         $byProperty = [];
@@ -1884,10 +1952,14 @@ class PropertyPortfolioController extends Controller
                 $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
                 $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
                 $share = $gross * $pct;
+                $invoice = $invoiceByMonthProperty[$ym][$pid] ?? ['pending' => 0.0];
+                $remitted = (float) ($remittedByMonthProperty[$ym][$pid] ?? 0);
                 $lines[] = [
                     'month' => $ym,
                     'month_label' => $monthStart->format('M Y'),
                     'gross_collected' => $gross,
+                    'paid_share' => $remitted,
+                    'pending_share' => ((float) ($invoice['pending'] ?? 0)) * $pct,
                     'owner_share' => $share,
                     'agent_earning' => $share * ($commissionPct / 100),
                 ];
@@ -1895,9 +1967,11 @@ class PropertyPortfolioController extends Controller
             $byProperty[$pid] = $lines;
         }
 
-        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $ownershipByProperty, $propertyLinks) {
+        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $invoiceByMonthProperty, $remittedByMonthProperty, $ownershipByProperty, $propertyLinks) {
             $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
             $grossCollected = 0.0;
+            $paidShare = 0.0;
+            $pendingShare = 0.0;
             $ownerShare = 0.0;
             $agentEarning = 0.0;
             $activeProperties = 0;
@@ -1905,14 +1979,19 @@ class PropertyPortfolioController extends Controller
             foreach ($propertyLinks as $link) {
                 $pid = (int) $link->property_id;
                 $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
-                if ($gross <= 0) {
+                $invoice = $invoiceByMonthProperty[$ym][$pid] ?? ['pending' => 0.0];
+                $pct = (float) ($ownershipByProperty[$pid] ?? 0);
+                $monthPaid = (float) ($remittedByMonthProperty[$ym][$pid] ?? 0);
+                $monthPending = ((float) ($invoice['pending'] ?? 0)) * $pct;
+                if ($gross <= 0.009 && $monthPaid <= 0.009 && $monthPending <= 0.009) {
                     continue;
                 }
                 $activeProperties++;
-                $pct = (float) ($ownershipByProperty[$pid] ?? 0);
                 $share = $gross * $pct;
                 $commissionPct = $this->propertyCommissionPercent($pid);
                 $grossCollected += $gross;
+                $paidShare += $monthPaid;
+                $pendingShare += $monthPending;
                 $ownerShare += $share;
                 $agentEarning += $share * ($commissionPct / 100);
             }
@@ -1921,10 +2000,12 @@ class PropertyPortfolioController extends Controller
                 'month' => $ym,
                 'month_label' => $monthStart->format('M Y'),
                 'gross_collected' => $grossCollected,
+                'paid_share' => $paidShare,
+                'pending_share' => $pendingShare,
                 'owner_share' => $ownerShare,
                 'agent_earning' => $agentEarning,
                 'active_properties' => $activeProperties,
-                'has_activity' => $grossCollected > 0.009,
+                'has_activity' => $grossCollected > 0.009 || $paidShare > 0.009 || $pendingShare > 0.009,
             ];
         })->values();
 
@@ -1954,7 +2035,7 @@ class PropertyPortfolioController extends Controller
                 return TabularExport::stream(
                     'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
                     [
-                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Owner share', 'Agent earning', 'Properties with collections',
+                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Paid to landlord', 'Pending', 'Owner share', 'Agent earning', 'Properties with collections',
                     ],
                     function () use ($landlord, $snapshot) {
                         return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $snapshot) {
@@ -1965,6 +2046,8 @@ class PropertyPortfolioController extends Controller
                                 (string) ($row['month'] ?? ''),
                                 (string) ($row['month_label'] ?? ''),
                                 (string) number_format((float) ($row['gross_collected'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['paid_share'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['pending_share'] ?? 0), 2, '.', ''),
                                 (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
                                 (string) number_format((float) ($row['agent_earning'] ?? 0), 2, '.', ''),
                                 (string) (int) ($row['active_properties'] ?? 0),

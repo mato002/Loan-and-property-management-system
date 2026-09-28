@@ -2,7 +2,7 @@
 
 <div class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
-        <h3 class="text-sm font-semibold text-slate-900">Linked properties ({{ $periodLabel }})</h3>
+        <h3 class="text-sm font-semibold text-slate-900">Linked properties ({{ $sharePeriodHint }})</h3>
     </div>
 
     @include('property.agent.landlords.partials.responsive-table-section', [

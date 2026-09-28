@@ -1,17 +1,23 @@
 @php
     use App\Support\Property\ResponsiveTableColumns;
+    use App\Support\Property\LandlordMonthlyShareTotals;
     use Illuminate\Support\HtmlString;
 
     $portal = $portalAccess ?? [];
     $hasPortal = (bool) ($portal['has_portal_role'] ?? false);
     $periodQuery = array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? '', 'tab' => $activeTab ?? 'overview']);
     $activeTab = $activeTab ?? 'overview';
+    $shareFy = (int) ($fyValue ?? now()->year);
+    $shareUptoMonth = LandlordMonthlyShareTotals::uptoMonth($shareFy);
+    $shareToDate = LandlordMonthlyShareTotals::toDateForProperties($propertyBreakdown ?? [], $shareUptoMonth);
+    $sharePeriodHint = LandlordMonthlyShareTotals::periodHint($shareFy, $shareUptoMonth);
 
     $portfolioColumns = ['Property', 'Ownership', 'Agreed pay', 'Commission', 'Units', 'Tenants', 'Owner share', 'Pending', 'Your earnings', 'Last collection', 'Actions'];
     $portfolioRows = [];
     $portfolioExpansions = [];
     $currentShareMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
     foreach ($propertyBreakdown as $row) {
+        $ytd = LandlordMonthlyShareTotals::toDate($row['monthly_shares'] ?? [], $shareUptoMonth);
         $propertyUrl = route('property.properties.show', ['property' => $row['property_id']], false);
         $viewAction = new HtmlString(
             '<a href="'.e($propertyUrl).'" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">View</a>'
@@ -34,9 +40,9 @@
             number_format((float) ($row['commission_percent'] ?? 0), 2).'%',
             ($row['units_occupied'] ?? 0).'/'.($row['units_total'] ?? 0).' occ.',
             (string) ($row['active_tenants'] ?? 0),
-            \App\Services\Property\PropertyMoney::kes((float) $row['owner_share']),
-            \App\Services\Property\PropertyMoney::kes((float) $row['pending_share']),
-            new HtmlString('<span class="font-semibold">'.\App\Services\Property\PropertyMoney::kes((float) $row['agent_earning']).'</span>'),
+            \App\Services\Property\PropertyMoney::kes($ytd['owner_share']),
+            \App\Services\Property\PropertyMoney::kes($ytd['pending_share'] > 0.009 ? $ytd['pending_share'] : (float) $row['pending_share']),
+            new HtmlString('<span class="font-semibold">'.\App\Services\Property\PropertyMoney::kes($ytd['agent_earning']).'</span>'),
             ! empty($row['last_paid_at']) ? \Illuminate\Support\Carbon::parse((string) $row['last_paid_at'])->format('Y-m-d') : '—',
             $viewAction,
         ];
@@ -65,14 +71,14 @@
     $hubSummaryStats = [
         ['label' => 'Properties linked', 'value' => (string) ($totals['properties'] ?? 0), 'hint' => 'Current'],
         ['label' => 'Units', 'value' => (string) ($totals['units_total'] ?? 0), 'hint' => ($totals['units_occupied'] ?? 0).' occupied · '.($totals['units_owner_occupied'] ?? 0).' owner'],
-        ['label' => 'Owner share', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totals['owner_share'] ?? 0)), 'hint' => $periodLabel],
-        ['label' => 'Your earnings', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totals['agent_earning'] ?? 0)), 'hint' => 'At '.number_format((float) ($commissionPct ?? 0), 2).'%'],
+        ['label' => 'Owner share', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($shareToDate['owner_share'] ?? 0)), 'hint' => $sharePeriodHint],
+        ['label' => 'Your earnings', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($shareToDate['agent_earning'] ?? 0)), 'hint' => 'At '.number_format((float) ($commissionPct ?? 0), 2).'%'],
     ];
 @endphp
 
 <x-property.workspace :compact-list="true"
     :title="'Landlord: '.$landlord->name"
-    :subtitle="'360° landlord workspace — '.$periodLabel"
+    :subtitle="'360° landlord workspace — '.$sharePeriodHint"
     back-route="property.landlords.index"
     :stats="[]"
     :columns="[]"

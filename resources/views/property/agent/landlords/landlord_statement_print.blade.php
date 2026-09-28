@@ -75,6 +75,8 @@
             <tr>
                 <th>Month</th>
                 <th class="num">Gross collected</th>
+                <th class="num">Paid to landlord</th>
+                <th class="num">Pending</th>
                 <th class="num">Owner share</th>
                 <th class="num">Agent earning</th>
                 <th class="num">Active properties</th>
@@ -85,13 +87,15 @@
                 <tr>
                     <td>{{ $row['month_label'] ?? ($row['month'] ?? '—') }}</td>
                     <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['gross_collected'] ?? 0)) }}</td>
+                    <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['paid_share'] ?? 0)) }}</td>
+                    <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['pending_share'] ?? 0)) }}</td>
                     <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)) }}</td>
                     <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)) }}</td>
                     <td class="num">{{ (int) ($row['active_properties'] ?? 0) }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="5">No monthly collection activity in this financial year.</td>
+                    <td colspan="7">No monthly collection activity in this financial year.</td>
                 </tr>
             @endforelse
         </tbody>
