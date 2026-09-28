@@ -1,11 +1,13 @@
 @php
     use App\Support\Property\ResponsiveTableColumns;
+    use Illuminate\Support\HtmlString;
 
     $isMonthScoped = (bool) ($isMonthScoped ?? false);
     $monthlyBreakdown = collect($monthlyBreakdown ?? []);
     $monthSettlements = collect($monthSettlements ?? []);
     $fy = (int) ($fyValue ?? now()->year);
     $openMonth = $isMonthScoped ? (string) ($monthValue ?? '') : '';
+    $currentShareMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
 
     $fyOverviewUrl = route('property.landlords.show', [
         'landlord' => $landlord->id,
@@ -15,9 +17,23 @@
 
     $breakdownColumns = ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'];
     $breakdownRows = [];
+    $breakdownExpansions = [];
     foreach ($propertyBreakdown as $row) {
+        $pid = (int) ($row['property_id'] ?? 0);
+        $propertyUrl = $pid > 0 ? route('property.properties.show', ['property' => $pid], false) : '#';
+        $breakdownExpansions[] = new HtmlString(
+            view('property.agent.landlords.partials.monthly-share-panel', [
+                'months' => $row['monthly_shares'] ?? [],
+                'currentMonth' => $currentShareMonth,
+            ])->render()
+        );
         $breakdownRows[] = [
-            (string) ($row['property_name'] ?? ''),
+            new HtmlString(
+                view('property.agent.landlords.partials.monthly-share-toggle', [
+                    'propertyUrl' => $propertyUrl,
+                    'propertyName' => (string) ($row['property_name'] ?? ''),
+                ])->render()
+            ),
             number_format((float) ($row['ownership_percent'] ?? 0), 2).'%',
             \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)),
             \App\Services\Property\PropertyMoney::kes((float) ($row['pending_share'] ?? 0)),
@@ -199,6 +215,7 @@
         'title' => 'Property breakdown (full period)',
         'columns' => $breakdownColumns,
         'rows' => $breakdownRows,
+        'rowExpansions' => $breakdownExpansions,
         'columnConfig' => ResponsiveTableColumns::landlordStatementBreakdown(),
         'emptyTitle' => 'No linked properties',
         'emptyHint' => 'Link this landlord to a property to see breakdown rows.',

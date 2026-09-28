@@ -1,6 +1,8 @@
 @php
     $settlementRows = $settlementRows ?? [];
     $periodMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
+    $monthlyByProperty = collect($propertyBreakdown ?? [])->keyBy('property_id');
+    $currentShareMonth = $periodMonth;
 @endphp
 
 <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm overflow-hidden">
@@ -26,10 +28,21 @@
                         <th class="px-4 py-3">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                    @foreach ($settlementRows as $row)
+                @foreach ($settlementRows as $row)
+                    @php
+                        $pid = (int) ($row['property_id'] ?? 0);
+                        $propertyUrl = $pid > 0 ? route('property.properties.show', ['property' => $pid], false) : '#';
+                        $breakdown = $monthlyByProperty->get($pid);
+                        $months = is_array($breakdown) ? ($breakdown['monthly_shares'] ?? []) : [];
+                    @endphp
+                    <tbody x-data="{ open: false }" class="border-t border-slate-100 dark:border-slate-700">
                         <tr>
-                            <td class="px-4 py-3 font-medium">{{ $row['property_name'] ?? '—' }}</td>
+                            <td class="px-4 py-3 font-medium">
+                                @include('property.agent.landlords.partials.monthly-share-toggle', [
+                                    'propertyUrl' => $propertyUrl,
+                                    'propertyName' => (string) ($row['property_name'] ?? '—'),
+                                ])
+                            </td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['collected'] ?? 0)) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['management_fee'] ?? 0)) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['amount_payable'] ?? 0)) }}</td>
@@ -38,8 +51,17 @@
                                 <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month'] ?? $periodMonth], false) }}" data-turbo-frame="property-main" class="text-xs font-medium text-indigo-700 hover:underline">Settlement detail</a>
                             </td>
                         </tr>
-                    @endforeach
-                </tbody>
+                        <tr x-show="open" x-cloak class="bg-slate-50/70 dark:bg-slate-900/40">
+                            <td colspan="6" class="px-4 py-3" data-row-ignore-click>
+                                @include('property.agent.landlords.partials.monthly-share-panel', [
+                                    'months' => $months,
+                                    'currentMonth' => $currentShareMonth,
+                                    'variant' => 'settlement',
+                                ])
+                            </td>
+                        </tr>
+                    </tbody>
+                @endforeach
             </table>
         </div>
     @endif
