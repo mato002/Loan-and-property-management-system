@@ -197,13 +197,27 @@ class PropertyPortfolioController extends Controller
 
         $tableRowTones = [];
         $rows = $portfolio->getCollection()->map(function (Property $p) use ($propertyChargeTemplatesByPropertyId, &$tableRowTones) {
-            $landlordNames = $p->landlords->pluck('name')->filter()->values();
-            $landlordCell = $landlordNames->isEmpty()
+            $landlordCount = $p->landlords->count();
+            $landlordCell = $landlordCount === 0
                 ? '—'
                 : new HtmlString(
-                    '<span class="text-xs font-medium text-slate-700" title="'.e($landlordNames->implode(', ')).'">'.
-                    e((string) $landlordNames->count().' linked').
-                    '</span>'
+                    '<div class="space-y-1 min-w-0">'.
+                    $p->landlords->map(function ($landlord) use ($landlordCount) {
+                        $name = trim((string) ($landlord->name ?? ''));
+                        if ($name === '') {
+                            $name = trim((string) ($landlord->email ?? '')) ?: 'Landlord #'.$landlord->id;
+                        }
+                        $rawPct = $landlord->pivot->ownership_percent ?? null;
+                        $showPct = is_numeric($rawPct) && ($landlordCount > 1 || (float) $rawPct < 100);
+                        $pctLabel = $showPct ? number_format((float) $rawPct, 0).'% owner' : '';
+                        $url = route('property.landlords.show', ['landlord' => $landlord->id], false);
+
+                        return '<div class="min-w-0">'.
+                            '<a href="'.e($url).'" data-turbo-frame="property-main" class="block text-xs font-medium text-slate-800 hover:text-indigo-700 break-words" title="'.e($name).'">'.e($name).'</a>'.
+                            ($pctLabel !== '' ? '<div class="text-[11px] text-slate-500">'.e($pctLabel).'</div>' : '').
+                            '</div>';
+                    })->implode('').
+                    '</div>'
                 );
             $status = $p->units_count === 0
                 ? new HtmlString('<span class="text-xs text-slate-500">No units</span>')
