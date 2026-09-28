@@ -20,6 +20,7 @@ import './property-portal-turbo';
 import './loan-portal-turbo';
 import './staff-module-switch';
 import './property-quick-create-select';
+import './property-searchable-select';
 import './property-listing-publish';
 import './property-invoice-create-sync';
 import './property-payment-reversal';
@@ -28,6 +29,7 @@ import './utility-analytics';
 import './utility-operations';
 import './utility-revenue-page-modals';
 import './amount-input-safety';
+import './form-field-requirements';
 import { registerLoanWorkspaceAlpine } from './loan-workspace';
 
 import Alpine from 'alpinejs';

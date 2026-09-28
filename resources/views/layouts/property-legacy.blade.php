@@ -4,7 +4,7 @@
 
     $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
 @endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full {{ $propertyPortalThemeClass }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full {{ $propertyPortalThemeClass }}" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('portal') !!}>
     <head>
         @include('layouts.partials.property-portal-theme')
         @php
@@ -16,7 +16,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>Property Management System</title>
+        <title>{{ \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot()['company_name'] ?? 'Property Management System' }}</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -188,6 +188,7 @@
 
         @if (($propertyPortal ?? 'agent') === 'agent')
             <x-property.form-modal-host />
+            <x-property.listing-publish-modal-host />
             <a
                 href="{{ route('property.advisor') }}"
                 data-turbo-frame="property-main"
@@ -201,7 +202,25 @@
 
         <script>
             (function () {
-                const SEARCH_DEBOUNCE_MS = 1100;
+                function applyLiveWorkspaceSearch(input) {
+                    const scope = input.closest('.property-ws-wrap')
+                        || input.closest('#property-list-results')
+                        || input.closest('#property-main')
+                        || document;
+                    const needles = Array.from(scope.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"], input[data-live-row-filter], [data-table-filter]'))
+                        .map((el) => (el.value || '').toLowerCase().trim())
+                        .filter(Boolean);
+                    let rows = Array.from(scope.querySelectorAll('tbody tr[data-filter-text], [data-mobile-record-list] article[data-filter-text]'));
+                    if (rows.length === 0) {
+                        rows = Array.from(scope.querySelectorAll('tbody tr')).filter((row) => !row.querySelector('td[colspan]'));
+                    }
+                    rows.forEach((row) => {
+                        const hay = (row.getAttribute('data-filter-text') || row.textContent || '').toLowerCase();
+                        const visible = needles.every((needle) => hay.includes(needle));
+                        row.classList.toggle('hidden', !visible);
+                        row.toggleAttribute('hidden', !visible);
+                    });
+                }
 
                 function wireAutoFilterForms(scopeRoot) {
                     const root = scopeRoot || document;
@@ -216,10 +235,8 @@
                         const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))
                             .filter((input) => !input.matches('[data-auto-submit="off"]'));
                         searchInputs.forEach((input) => {
-                            input.addEventListener('input', () => {
-                                window.clearTimeout(input._autoSearchTimer);
-                                input._autoSearchTimer = window.setTimeout(() => form.requestSubmit(), SEARCH_DEBOUNCE_MS);
-                            });
+                            input.addEventListener('input', () => applyLiveWorkspaceSearch(input));
+                            applyLiveWorkspaceSearch(input);
                         });
 
                         const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))

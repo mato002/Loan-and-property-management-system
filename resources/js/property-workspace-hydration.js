@@ -46,19 +46,20 @@ function focusListingPublishEditor(frame) {
         return false;
     }
 
-    const editor = frame.querySelector('#listing-publish-slot, #listing-publish');
-    if (!(editor instanceof HTMLElement)) {
+    // Photos & listing details now open in #listing-publish-modal — no inline scroll target.
+    const unitId = (() => {
+        try {
+            return new URL(window.location.href).searchParams.get('selected_unit');
+        } catch {
+            return null;
+        }
+    })();
+
+    if (!unitId) {
         return false;
     }
 
-    if (editor.id === 'listing-publish-slot' && editor.childElementCount === 0) {
-        return false;
-    }
-
-    requestAnimationFrame(() => {
-        editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
+    // Handled by property-listing-publish.js initListingPublishFromUrl
     return true;
 }
 

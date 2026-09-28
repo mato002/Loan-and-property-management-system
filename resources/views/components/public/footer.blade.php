@@ -31,9 +31,16 @@
             <div class="col-span-2 lg:col-span-1">
                 <a href="{{ route('public.home') }}" class="inline-flex items-center gap-2 mb-4">
                     @if ($companyLogoUrl)
-                        <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }}" class="h-10 w-auto max-w-[9rem] object-contain bg-white rounded-lg px-1">
+                        <img
+                            src="{{ $companyLogoUrl }}"
+                            alt="{{ $companyName }}"
+                            class="h-10 w-auto max-w-[9rem] object-contain bg-white rounded-lg px-1"
+                            onerror="this.remove(); this.nextElementSibling?.classList.remove('hidden');"
+                        >
+                        <span class="hidden text-lg font-black text-white">{{ $companyName }}</span>
+                    @else
+                        <span class="text-lg font-black text-white">{{ $companyName }}</span>
                     @endif
-                    <span class="text-lg font-black text-white">{{ $companyName }}</span>
                 </a>
                 <p class="text-xs sm:text-sm text-gray-400 leading-relaxed max-w-xs">
                     Kenya's modern property marketplace — discover verified rentals backed by professional management operations.

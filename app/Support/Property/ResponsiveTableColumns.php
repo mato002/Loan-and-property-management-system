@@ -137,6 +137,42 @@ final class ResponsiveTableColumns
         );
     }
 
+    public static function landlordStatementMonthly(): array
+    {
+        return self::build(
+            ['Month', 'Gross collected', 'Owner share', 'Your earnings', 'Active properties', 'Actions'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['is_amount' => true, 'priority' => 3, 'mobile_label' => 'Gross'],
+                2 => ['is_amount' => true, 'priority' => 2, 'mobile_label' => 'Owner share'],
+                3 => ['is_amount' => true, 'priority' => 4, 'mobile_label' => 'Earnings'],
+                4 => ['priority' => 5, 'mobile_label' => 'Properties'],
+                5 => ['is_action' => true],
+            ]
+        );
+    }
+
+    public static function landlordStatementUnits(): array
+    {
+        return self::build(
+            ['Unit', 'Tenant', 'Per month', 'B/F rent', 'B/F garbage', 'B/F water', 'Inv. rent', 'Inv. garbage', 'Inv. water', 'Rec. rent', 'Rec. garbage', 'Rec. water'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 2, 'mobile_label' => 'Tenant'],
+                2 => ['is_amount' => true, 'priority' => 3, 'mobile_label' => 'Rent/mo'],
+                3 => ['priority' => 6, 'mobile_label' => 'B/F rent'],
+                4 => ['priority' => 7, 'mobile_label' => 'B/F garbage'],
+                5 => ['priority' => 8, 'mobile_label' => 'B/F water'],
+                6 => ['priority' => 4, 'mobile_label' => 'Inv. rent'],
+                7 => ['priority' => 9, 'mobile_label' => 'Inv. garbage'],
+                8 => ['priority' => 10, 'mobile_label' => 'Inv. water'],
+                9 => ['is_amount' => true, 'priority' => 5, 'mobile_label' => 'Rec. rent'],
+                10 => ['priority' => 11, 'mobile_label' => 'Rec. garbage'],
+                11 => ['priority' => 12, 'mobile_label' => 'Rec. water'],
+            ]
+        );
+    }
+
     /**
      * @param  list<string>  $labels
      * @param  list<ColumnMeta>  $overrides
@@ -257,18 +293,41 @@ final class ResponsiveTableColumns
     public static function payments(): array
     {
         return self::build(
-            ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
             [
                 0 => ['is_bulk_select' => true],
-                1 => ['is_primary' => true, 'priority' => 1],
-                2 => ['priority' => 8, 'hide_on_mobile' => true],
-                3 => ['priority' => 7, 'hide_on_mobile' => true],
-                4 => ['is_amount' => true, 'priority' => 3],
-                5 => ['priority' => 6, 'mobile_label' => 'Received'],
-                6 => ['priority' => 9, 'hide_on_mobile' => true],
-                7 => ['is_subtitle' => true, 'priority' => 4],
-                8 => ['is_status' => true, 'priority' => 5],
-                9 => ['is_action' => true],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['is_subtitle' => true, 'priority' => 2, 'mobile_label' => 'Property / unit'],
+                3 => ['is_primary' => true, 'priority' => 1, 'mobile_label' => 'Payer phone'],
+                4 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
+                5 => ['priority' => 5, 'mobile_label' => 'Payment method'],
+                6 => ['is_amount' => true, 'priority' => 3],
+                7 => ['priority' => 6, 'mobile_label' => 'Received'],
+                8 => ['priority' => 10, 'hide_on_mobile' => true],
+                9 => ['priority' => 7, 'mobile_label' => 'Invoice'],
+                10 => ['is_status' => true, 'priority' => 9],
+                11 => ['is_action' => true],
+            ]
+        );
+    }
+
+    /** @return list<ColumnMeta> */
+    public static function tenantCompliance(): array
+    {
+        return self::build(
+            ['Tenant', 'Ac/No', 'National ID', 'Phone', 'Email', 'Emergency contact', 'Risk', 'Portal', 'Status', 'Gaps', 'Actions'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['priority' => 4, 'mobile_label' => 'National ID'],
+                3 => ['priority' => 5, 'mobile_label' => 'Phone'],
+                4 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
+                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                6 => ['is_status' => true, 'priority' => 3],
+                7 => ['priority' => 10, 'hide_on_mobile' => true],
+                8 => ['is_status' => true, 'priority' => 6, 'hide_on_mobile' => true],
+                9 => ['priority' => 7, 'mobile_label' => 'Gaps'],
+                10 => ['is_action' => true],
             ]
         );
     }
@@ -277,16 +336,22 @@ final class ResponsiveTableColumns
     public static function tenants(): array
     {
         return self::build(
-            ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
+            ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
-                1 => ['priority' => 4, 'mobile_label' => 'Phone'],
-                2 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
-                3 => ['priority' => 6, 'hide_on_mobile' => true],
-                4 => ['priority' => 5, 'mobile_label' => 'Leases'],
-                5 => ['priority' => 7, 'mobile_label' => 'Lease end'],
-                6 => ['is_status' => true, 'priority' => 3],
-                7 => ['is_action' => true],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['priority' => 4, 'mobile_label' => 'Phone'],
+                3 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
+                4 => ['priority' => 5, 'mobile_label' => 'Unit'],
+                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                6 => ['priority' => 6, 'mobile_label' => 'Rent'],
+                7 => ['priority' => 7, 'mobile_label' => 'Charges', 'hide_on_mobile' => true],
+                8 => ['priority' => 10, 'hide_on_mobile' => true],
+                9 => ['priority' => 11, 'hide_on_mobile' => true],
+                10 => ['priority' => 12, 'hide_on_mobile' => true],
+                11 => ['is_status' => true, 'priority' => 3],
+                12 => ['priority' => 13, 'hide_on_mobile' => true],
+                13 => ['is_action' => true],
             ]
         );
     }
@@ -372,6 +437,26 @@ final class ResponsiveTableColumns
     public static function receipts(): array
     {
         return self::build(
+            ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
+                2 => ['is_subtitle' => true, 'priority' => 2],
+                3 => ['priority' => 3],
+                4 => ['priority' => 5, 'hide_on_mobile' => true],
+                5 => ['priority' => 6, 'mobile_label' => 'Method'],
+                6 => ['is_amount' => true, 'priority' => 7],
+                7 => ['priority' => 8, 'mobile_label' => 'Banked'],
+                8 => ['is_status' => true, 'priority' => 9],
+                9 => ['is_action' => true, 'label' => 'Payment', 'mobile_label' => 'Payment'],
+            ]
+        );
+    }
+
+    /** @return list<ColumnMeta> */
+    public static function receiptStubs(): array
+    {
+        return self::build(
             ['Receipt #', 'Invoice', 'Tenant', 'Amount', 'Tax', 'Submitted', 'eTIMS status', 'Actions'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
@@ -420,6 +505,7 @@ final class ResponsiveTableColumns
             $routeName === 'property.properties.list' => self::propertyList(),
             $routeName === 'property.properties.units' => self::units(),
             $routeName === 'property.tenants.directory' => self::tenants(),
+            $routeName === 'property.tenants.profiles' => self::tenantCompliance(),
             $routeName === 'property.tenants.leases' => self::leases('leases'),
             $routeName === 'property.tenants.expiry' => self::leases('expiry'),
             $routeName === 'property.revenue.invoices' => self::invoices(),

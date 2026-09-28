@@ -19,6 +19,10 @@ use App\Models\PmLandlordPayoutItem;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMessageDelivery;
 use App\Models\PmAccountingEntry;
+use App\Models\PmBankStatement;
+use App\Models\PmBankStatementLine;
+use App\Models\PmEzenBill;
+use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Models\PmPropertyTakeonBalance;
@@ -30,6 +34,10 @@ use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\LandlordAdvanceService;
 use App\Services\Property\LandlordPaymentFeesService;
 use App\Services\Property\LandlordSettlementService;
+use App\Services\Property\EzenPaymentVouchersImportService;
+use App\Services\Property\PropertyB2cPayoutService;
+use App\Services\Property\PropertyCommissionsService;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\FinanceIntegrityService;
 use App\Services\Property\PropertyAccountingPostingService;
@@ -953,7 +961,7 @@ class PropertyAccountingController extends Controller
         $onlyImbalanced = $request->boolean('only_imbalanced');
         $sort = strtolower(trim($request->string('sort')->toString()));
         $dir = strtolower(trim($request->string('dir')->toString()));
-        $perPage = max(10, min(200, (int) $request->query('per_page', 50)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 50);
 
         $entries = PmAccountingEntry::query()
             ->whereDate('entry_date', '<=', $asAt);
@@ -1043,7 +1051,7 @@ class PropertyAccountingController extends Controller
         $from = $request->date('from')?->toDateString() ?? now()->startOfMonth()->toDateString();
         $to = $request->date('to')?->toDateString() ?? now()->endOfMonth()->toDateString();
         $propertyId = (int) $request->integer('property_id');
-        $perPage = max(10, min(200, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $queryBase = PmAccountingEntry::query()
             ->with('property')
@@ -1769,6 +1777,7 @@ class PropertyAccountingController extends Controller
                 'deductions' => (float) $period->total_deductions,
                 'net' => (float) $period->total_net,
             ],
+            'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 
@@ -1984,6 +1993,33 @@ class PropertyAccountingController extends Controller
         ])->save();
 
         return back()->with('success', 'Payslip payment status updated.');
+    }
+
+    public function payrollLinePayViaMpesa(
+        Request $request,
+        AccountingPayrollPeriod $period,
+        AccountingPayrollLine $line,
+        PropertyB2cPayoutService $b2c
+    ): RedirectResponse {
+        $this->ensurePayrollScope($request, $period);
+        abort_unless((int) $line->accounting_payroll_period_id === (int) $period->id, 404);
+
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $line->loadMissing('employee');
+        $phone = trim((string) $data['mpesa_phone']);
+        if ($phone === '' && filled($line->employee?->phone)) {
+            $phone = (string) $line->employee->phone;
+        }
+
+        $result = $b2c->initiatePayrollLine($period, $line, $phone, $request->user());
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['mpesa_phone' => $result['message'] ?? 'B2C failed.'])->withInput();
+        }
+
+        return back()->with('success', 'M-Pesa B2C sent for '.$line->payslip_number.'. Status updates when Safaricom confirms.');
     }
 
     public function payrollEmployeeStore(Request $request): RedirectResponse
@@ -2743,6 +2779,211 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
+    public function propertyCommissions(Request $request, PropertyCommissionsService $commissions): View|StreamedResponse
+    {
+        $year = (int) $request->integer('year', (int) now()->year);
+        $month = $request->has('month') ? (int) $request->integer('month') : (int) now()->month;
+
+        $filters = [
+            'year' => $year,
+            'month' => $month,
+            'property_id' => (int) $request->integer('property_id'),
+            'landlord_id' => (int) $request->integer('landlord_id'),
+            'city' => trim($request->string('city')->toString()),
+            'on' => trim($request->string('on')->toString()),
+            'search' => trim($request->string('search')->toString()),
+            'show_zero' => $request->boolean('show_zero'),
+        ];
+
+        $register = $commissions->buildRegister($filters);
+
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        if ($request->has('export') || $request->has('format')) {
+            return TabularExport::stream(
+                'property-commissions-'.$register['year'].($register['month'] > 0 ? '-'.str_pad((string) $register['month'], 2, '0', STR_PAD_LEFT) : ''),
+                [
+                    'Property',
+                    'Region',
+                    'Landlord',
+                    'On',
+                    'Date prepared',
+                    'Period',
+                    'Collected rent',
+                    'Fee %',
+                    'Commission Amt',
+                    'Commission VAT',
+                    'Total Commission',
+                    'Invoice / payout',
+                    'Invoice date',
+                    'Status',
+                ],
+                fn () => $commissions->exportRows($register['rows']),
+                $format,
+                ['title' => 'Property Commissions — '.$register['period_label']],
+            );
+        }
+
+        $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return property_view('property.agent.accounting.property_commissions', [
+            'rows' => $register['rows'],
+            'stats' => $register['stats'],
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'cities' => $commissions->cities(),
+            'filters' => $filters,
+            'period_label' => $register['period_label'],
+            'vat_percent' => $register['vat_percent'],
+            'years' => range((int) now()->year, (int) now()->year - 4),
+        ]);
+    }
+
+    public function paymentVouchers(Request $request): View|StreamedResponse
+    {
+        if (! Schema::hasTable('pm_ezen_payment_vouchers')) {
+            return property_view('property.agent.accounting.payment_vouchers', [
+                'stats' => [['label' => 'Vouchers', 'value' => '0', 'hint' => 'Run migrations, then import the EZEN listing']],
+                'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status'],
+                'tableRows' => [],
+                'paginator' => null,
+                'filters' => [
+                    'q' => '',
+                    'category' => '',
+                    'status' => '',
+                    'from' => '',
+                    'to' => '',
+                ],
+            ]);
+        }
+
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'category' => strtolower(trim((string) $request->query('category', ''))),
+            'status' => strtolower(trim((string) $request->query('status', ''))),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+        ];
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
+
+        $query = PmEzenPaymentVoucher::query()->with(['property', 'landlord', 'payout']);
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('ezen_voucher_no', 'like', '%'.$q.'%')
+                    ->orWhere('ref_no', 'like', '%'.$q.'%')
+                    ->orWhere('paid_to', 'like', '%'.$q.'%')
+                    ->orWhere('payee_name', 'like', '%'.$q.'%')
+                    ->orWhere('particulars', 'like', '%'.$q.'%')
+                    ->orWhere('property_code', 'like', '%'.$q.'%');
+            });
+        }
+        if (in_array($filters['category'], ['remittance', 'commission', 'tax', 'expense'], true)) {
+            $query->where('category', $filters['category']);
+        }
+        if ($filters['status'] !== '') {
+            $query->where('link_status', $filters['status']);
+        }
+        if ($filters['from'] !== '') {
+            $query->whereDate('txn_date', '>=', $filters['from']);
+        }
+        if ($filters['to'] !== '') {
+            $query->whereDate('txn_date', '<=', $filters['to']);
+        }
+
+        $query->orderByDesc('txn_date')->orderByDesc('ezen_voucher_no');
+
+        if ($request->has('export') || $request->has('format')) {
+            $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+            $items = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'ezen-payment-vouchers-'.now()->format('Ymd_His'),
+                ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid from', 'Paid to', 'Amount', 'Category', 'Status', 'Recorded by'],
+                function () use ($items) {
+                    foreach ($items as $voucher) {
+                        yield [
+                            $voucher->ezen_voucher_no,
+                            $voucher->txn_date?->format('Y-m-d') ?? '',
+                            (string) ($voucher->method ?? ''),
+                            (string) ($voucher->ref_no ?? ''),
+                            (string) ($voucher->particulars ?? ''),
+                            (string) ($voucher->paid_from ?? ''),
+                            $voucher->displayPayee(),
+                            number_format((float) $voucher->amount, 2, '.', ''),
+                            $voucher->displayCategory(),
+                            $voucher->displayLinkStatus(),
+                            (string) ($voucher->recorded_by ?? ''),
+                        ];
+                    }
+                },
+                $format,
+                ['title' => 'EZEN Payment Vouchers'],
+            );
+        }
+
+        $vouchers = (clone $query)->paginate($perPage)->withQueryString();
+        $totalAmount = (clone $query)->sum('amount');
+        $remittanceCount = (clone $query)->where('category', PmEzenPaymentVoucher::CATEGORY_REMITTANCE)->count();
+        $unmatchedCount = (clone $query)->where('link_status', PmEzenPaymentVoucher::LINK_UNMATCHED)->count();
+
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        $stats = [
+            ['label' => 'Vouchers', 'value' => (string) $vouchers->total(), 'hint' => 'Imported payment voucher listing', 'emphasis' => true],
+            ['label' => 'Total amount', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered listing total'],
+            ['label' => 'Remittances', 'value' => (string) $remittanceCount, 'hint' => 'Rent paid out to landlords'],
+            ['label' => 'Unmatched', 'value' => (string) $unmatchedCount, 'hint' => 'Payee not linked yet'],
+        ];
+
+        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($landlords) {
+            $posted = '—';
+            if ($voucher->pm_landlord_payout_id) {
+                $posted = new HtmlString('<a href="'.e(route('property.accounting.payables.landlord_payouts', ['q' => $voucher->pm_landlord_payout_id], false)).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$voucher->pm_landlord_payout_id.'</a>');
+            } elseif ($voucher->pm_accounting_entry_id) {
+                $posted = $voucher->ezen_voucher_no;
+            }
+
+            $actions = new HtmlString(view('property.agent.partials.payment_voucher_row_actions', [
+                'voucher' => $voucher,
+                'landlords' => $landlords,
+            ])->render());
+
+            return [
+                $voucher->ezen_voucher_no,
+                $voucher->txn_date?->format('Y-m-d') ?? '—',
+                $voucher->method !== null && $voucher->method !== '' ? $voucher->method : '—',
+                $voucher->ref_no !== null && $voucher->ref_no !== '' ? $voucher->ref_no : '—',
+                $voucher->particulars !== null && $voucher->particulars !== '' ? $voucher->particulars : '—',
+                $voucher->displayPayee(),
+                number_format((float) $voucher->amount, 2),
+                $voucher->displayCategory(),
+                $voucher->displayLinkStatus(),
+                $posted,
+                $actions,
+            ];
+        })->all();
+
+        return property_view('property.agent.accounting.payment_vouchers', [
+            'stats' => $stats,
+            'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status', 'Posted', 'Actions'],
+            'tableRows' => $rows,
+            'paginator' => $vouchers,
+            'filters' => $filters,
+        ]);
+    }
+
     public function batchLandlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): RedirectResponse
     {
         $validated = $request->validate([
@@ -2871,16 +3112,60 @@ class PropertyAccountingController extends Controller
 
     public function approveLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
     {
-        $settlements->approvePayout($payout, $request->user());
+        try {
+            $settlements->approvePayout($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Payout #'.$payout->id.' approved.');
     }
 
     public function payLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
     {
-        $settlements->markPayoutPaid($payout, $request->user());
+        try {
+            $settlements->markPayoutPaid($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Payout #'.$payout->id.' marked as paid.');
+    }
+
+    public function payLandlordPayoutViaMpesa(
+        Request $request,
+        PmLandlordPayout $payout,
+        PropertyB2cPayoutService $b2c
+    ): RedirectResponse {
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $defaultPhone = '';
+        $payout->loadMissing('items.landlord');
+        $landlord = $payout->items->first()?->landlord;
+        if ($landlord && filled($landlord->phone)) {
+            $defaultPhone = (string) $landlord->phone;
+        }
+
+        $phone = trim((string) $data['mpesa_phone']) !== '' ? (string) $data['mpesa_phone'] : $defaultPhone;
+        $result = $b2c->initiateLandlordPayout($payout, $phone, $request->user());
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['mpesa_phone' => $result['message'] ?? 'B2C initiation failed.'])->withInput();
+        }
+
+        return back()->with('status', 'M-Pesa B2C sent for payout #'.$payout->id.'. Ledger will post when Safaricom confirms.');
+    }
+
+    public function voidLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
+    {
+        try {
+            $settlements->voidDraftPayout($payout, $request->user());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payout' => $e->getMessage()]);
+        }
+
+        return back()->with('status', 'Draft payout #'.$payout->id.' voided.');
     }
 
     /**
@@ -2888,22 +3173,30 @@ class PropertyAccountingController extends Controller
      */
     private function streamLandlordSettlementPdf(array $settlement): StreamedResponse|Response
     {
+        $propertyAgentId = null;
+        $propertyId = (int) ($settlement['property_id'] ?? 0);
+        if ($propertyId > 0) {
+            $propertyAgentId = Property::query()->whereKey($propertyId)->value('agent_user_id');
+            $propertyAgentId = $propertyAgentId ? (int) $propertyAgentId : null;
+        }
+
         $html = view('property.agent.accounting.landlord_settlement_print', [
             'settlement' => $settlement,
-            'branding' => $this->settlementBranding(),
+            'branding' => $this->settlementBranding($propertyAgentId),
             'generatedAt' => now()->format('d M Y H:i'),
         ])->render();
 
         $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
-        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m'))).'.pdf';
+        $filename = 'property-account-statement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m'))).'.pdf';
 
         try {
             $options = new Options;
-            $options->set('isRemoteEnabled', false);
+            $options->set('isRemoteEnabled', true);
+            $options->set('chroot', public_path());
             $options->set('defaultFont', 'DejaVu Sans');
             $dompdf = new Dompdf($options);
             $dompdf->loadHtml($html, 'UTF-8');
-            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->setPaper('A4', 'landscape');
             $dompdf->render();
 
             return response($dompdf->output(), 200, [
@@ -2924,41 +3217,112 @@ class PropertyAccountingController extends Controller
     private function streamLandlordSettlementCsv(array $settlement): StreamedResponse
     {
         $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
-        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m')));
+        $filename = 'property-account-statement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m')));
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
 
         return TabularExport::stream(
             $filename,
-            ['Section', 'Label', 'Value'],
-            function () use ($settlement) {
-                yield ['Summary', 'Property', (string) ($settlement['property_name'] ?? '')];
-                yield ['Summary', 'Landlord', (string) ($settlement['landlord_name'] ?? '')];
-                yield ['Summary', 'Period', (string) ($settlement['period_label'] ?? '')];
-                yield ['Summary', 'Ownership %', (string) ($settlement['ownership_percent'] ?? 0)];
-                yield ['Summary', 'Commission %', (string) ($settlement['commission_percent'] ?? 0)];
-                yield ['Collections', 'Rent (owner share)', number_format((float) ($settlement['owner_collected']['rent'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Garbage (owner share)', number_format((float) ($settlement['owner_collected']['garbage'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Water (owner share)', number_format((float) ($settlement['owner_collected']['water'] ?? 0), 2, '.', '')];
-                yield ['Collections', 'Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Balance b/f', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Period credits', number_format((float) ($settlement['period_credits'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Period debits', number_format((float) ($settlement['period_debits'] ?? 0), 2, '.', '')];
-                yield ['Ledger', 'Net amount due', number_format((float) ($settlement['net_amount_due'] ?? 0), 2, '.', '')];
-
-                foreach ($settlement['deductions'] ?? [] as $deduction) {
-                    yield [
-                        'Deduction',
-                        (string) ($deduction['description'] ?? 'Deduction'),
-                        number_format((float) ($deduction['amount'] ?? 0), 2, '.', ''),
-                    ];
-                }
+            [
+                'Section',
+                'Unit',
+                'Tenant',
+                'Rent / month',
+                'Bal B/F Rent',
+                'Bal B/F Garbage',
+                'Bal B/F Water',
+                'Monthly Rent',
+                'Monthly Garbage',
+                'Monthly Water',
+                'Paid Rent',
+                'Paid Garbage',
+                'Paid Water',
+                'Amount',
+            ],
+            function () use ($settlement, $n) {
+                yield [
+                    'Header',
+                    (string) ($settlement['property_name'] ?? ''),
+                    (string) ($settlement['landlord_name'] ?? ''),
+                    '', '', '', '', '', '', '', '', '', '',
+                    (string) (($settlement['period_label'] ?? '').' '.($settlement['period_range_label'] ?? '')),
+                ];
 
                 foreach ($settlement['unit_lines'] ?? [] as $line) {
                     yield [
                         'Unit',
-                        ((string) ($line['unit_label'] ?? '')).' — '.((string) ($line['tenant_name'] ?? '')),
-                        number_format((float) ($line['total_received'] ?? 0), 2, '.', ''),
+                        (string) ($line['unit_label'] ?? ''),
+                        (string) ($line['tenant_name'] ?? ''),
+                        $n((float) ($line['rent_per_month'] ?? 0)),
+                        $n((float) ($line['rent_bf'] ?? 0)),
+                        $n((float) ($line['garbage_bf'] ?? 0)),
+                        $n((float) ($line['water_bf'] ?? 0)),
+                        $n((float) ($line['rent_billed'] ?? 0)),
+                        $n((float) ($line['garbage_billed'] ?? 0)),
+                        $n((float) ($line['water_billed'] ?? 0)),
+                        $n((float) ($line['rent_received'] ?? 0)),
+                        $n((float) ($line['garbage_received'] ?? 0)),
+                        $n((float) ($line['water_received'] ?? 0)),
+                        $n((float) ($line['total_received'] ?? 0)),
                     ];
                 }
+
+                $totals = $settlement['unit_totals'] ?? [];
+                yield [
+                    'Unit totals',
+                    '',
+                    '',
+                    $n((float) ($totals['rent_per_month'] ?? 0)),
+                    $n((float) ($totals['rent_bf'] ?? 0)),
+                    $n((float) ($totals['garbage_bf'] ?? 0)),
+                    $n((float) ($totals['water_bf'] ?? 0)),
+                    $n((float) ($totals['rent_billed'] ?? 0)),
+                    $n((float) ($totals['garbage_billed'] ?? 0)),
+                    $n((float) ($totals['water_billed'] ?? 0)),
+                    $n((float) ($totals['rent_received'] ?? 0)),
+                    $n((float) ($totals['garbage_received'] ?? 0)),
+                    $n((float) ($totals['water_received'] ?? 0)),
+                    $n((float) ($totals['total_received'] ?? 0)),
+                ];
+
+                yield [
+                    'Occupancy',
+                    'Occupied',
+                    (string) (($settlement['unit_stats']['units_occupied'] ?? 0)),
+                    'Vacant',
+                    (string) (($settlement['unit_stats']['units_vacant'] ?? 0)),
+                    '', '', '', '', '', '', '', '', '',
+                ];
+
+                foreach ($settlement['additions'] ?? [] as $addition) {
+                    yield [
+                        'Addition',
+                        '',
+                        (string) ($addition['description'] ?? 'Addition'),
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($addition['amount'] ?? 0)),
+                    ];
+                }
+                yield ['Addition totals', '', 'TOTAL ADDITIONS', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0))];
+
+                foreach ($settlement['deductions'] ?? [] as $deduction) {
+                    yield [
+                        'Deduction',
+                        '',
+                        (string) ($deduction['description'] ?? 'Deduction'),
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($deduction['amount'] ?? 0)),
+                    ];
+                }
+                yield ['Deduction totals', '', 'TOTAL DEDUCTIONS', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0))];
+
+                yield ['Summary', '', 'Rent received', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['rent_received'] ?? 0))];
+                yield ['Summary', '', 'Total utility', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['utility_received'] ?? 0))];
+                yield ['Summary', '', 'Less management fee', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['management_fee'] ?? 0))];
+                yield ['Summary', '', 'Less other expenses', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['other_expenses'] ?? 0))];
+                yield ['Summary', '', 'Add total additions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0))];
+                yield ['Summary', '', 'Less total deductions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0))];
+                yield ['Summary', '', 'Balance B/F', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['balance_brought_forward'] ?? 0))];
+                yield ['Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0))];
             },
             TabularExport::FORMAT_CSV,
         );
@@ -2967,15 +3331,12 @@ class PropertyAccountingController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function settlementBranding(): array
+    /**
+     * @return array<string, mixed>
+     */
+    private function settlementBranding(?int $agentUserId = null): array
     {
-        $raw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($raw) ? json_decode($raw, true) : (is_array($raw) ? $raw : []);
-
-        return array_merge([
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'colour' => '#0f766e',
-        ], is_array($decoded) ? $decoded : []);
+        return \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($agentUserId);
     }
 
     public function landlordPayouts(Request $request): View
@@ -2983,7 +3344,13 @@ class PropertyAccountingController extends Controller
         $status = strtolower(trim($request->string('status')->toString()));
         $rows = PmLandlordPayout::query()
             ->with(['items.property', 'items.landlord'])
-            ->when(in_array($status, ['draft', 'approved', 'paid'], true), fn ($q) => $q->where('status', $status))
+            ->when(in_array($status, ['draft', 'approved', 'paid', 'pending'], true), function ($q) use ($status) {
+                if ($status === 'pending') {
+                    return $q->where('payout_status', 'pending');
+                }
+
+                return $q->where('status', $status);
+            })
             ->orderByDesc('id')
             ->paginate(50)
             ->withQueryString();
@@ -2991,6 +3358,7 @@ class PropertyAccountingController extends Controller
         return property_view('property.agent.accounting.payables_landlord_payouts', [
             'rows' => $rows,
             'filters' => compact('status'),
+            'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 
@@ -3168,25 +3536,190 @@ class PropertyAccountingController extends Controller
         return back()->with('status', 'Take-on balance removed for '.$label.'. Ledger reversal posted.');
     }
 
-    public function accountsPayable(Request $request): View
+    public function updatePropertyTakeonBalance(Request $request, PmPropertyTakeonBalance $takeon, PropertyTakeonBalanceService $takeons): RedirectResponse
     {
-        $status = strtolower(trim($request->string('status')->toString()));
-        $supplier = trim($request->string('supplier')->toString());
-        $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
-        $rows = Schema::hasTable('pm_supplier_invoices')
-            ? DB::table('pm_supplier_invoices as i')
-                ->leftJoin('pm_suppliers as s', 's.id', '=', 'i.supplier_id')
-                ->selectRaw('i.id, s.name as supplier_name, i.invoice_no, i.amount, i.invoice_date as due_date, i.status')
-                ->when($status !== '', fn ($q) => $q->where('i.status', $status))
-                ->when($supplier !== '', fn ($q) => $q->where('s.name', 'like', '%'.$supplier.'%'))
-                ->when($agentId !== null, fn ($q) => $q->where('i.agent_user_id', $agentId))
-                ->orderByDesc('i.id')
-                ->paginate(50)
-            : new LengthAwarePaginator([], 0, 50, 1, ['path' => $request->url(), 'query' => $request->query()]);
+        $validated = $request->validate([
+            'balance' => ['required', 'numeric', 'not_in:0'],
+            'balance_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'takeon_form' => ['nullable', 'string'],
+            'takeon_id' => ['nullable', 'integer'],
+            'takeon_label' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $updated = $takeons->recordTakeon(
+            (int) $takeon->property_id,
+            (int) $takeon->landlord_id,
+            (float) $validated['balance'],
+            Carbon::parse($validated['balance_date']),
+            $request->user(),
+            $validated['notes'] ?? null,
+            true,
+        );
+
+        return back()->with('status', 'Take-on balance updated for '.($updated->property?->name ?? 'property').' — '.PropertyMoney::kes((float) $updated->balance).'.');
+    }
+
+    public function matchPaymentVoucher(
+        Request $request,
+        PmEzenPaymentVoucher $voucher,
+        EzenPaymentVouchersImportService $importer,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'landlord_id' => ['required', 'integer', 'exists:users,id'],
+            'post_gl' => ['nullable', 'boolean'],
+        ]);
+
+        $result = $importer->assignLandlordAndPost(
+            $voucher,
+            (int) $data['landlord_id'],
+            $request->user(),
+            $request->boolean('post_gl'),
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['landlord_id' => $result['message'] ?? 'Match failed.'])->withInput();
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
+    public function markVendorBillPaid(Request $request, PmEzenBill $bill): RedirectResponse
+    {
+        $total = (float) $bill->total_amount;
+        $bill->update([
+            'payment_status' => PmEzenBill::STATUS_PAID,
+            'listing_status' => 'closed',
+            'total_paid' => $total,
+            'amount_due' => 0,
+        ]);
+
+        return back()->with('status', 'Bill '.$bill->ezen_bill_no.' marked paid / closed.');
+    }
+
+    public function accountsPayable(Request $request): View|StreamedResponse
+    {
+        if (! Schema::hasTable('pm_ezen_bills')) {
+            return property_view('property.agent.accounting.payables_accounts', [
+                'stats' => [['label' => 'Bills', 'value' => '0', 'hint' => 'Run migrations, then import the EZEN Bills Listing']],
+                'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status'],
+                'tableRows' => [],
+                'paginator' => null,
+                'filters' => [
+                    'q' => '',
+                    'vendor' => '',
+                    'status' => '',
+                    'from' => '',
+                    'to' => '',
+                ],
+            ]);
+        }
+
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'vendor' => trim((string) $request->query('vendor', $request->query('supplier', ''))),
+            'status' => strtolower(trim((string) $request->query('status', ''))),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+        ];
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
+
+        $query = PmEzenBill::query();
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('ezen_bill_no', 'like', '%'.$q.'%')
+                    ->orWhere('vendor_invoice_no', 'like', '%'.$q.'%')
+                    ->orWhere('vendor_name', 'like', '%'.$q.'%')
+                    ->orWhere('memo', 'like', '%'.$q.'%');
+            });
+        }
+        if ($filters['vendor'] !== '') {
+            $query->where('vendor_name', 'like', '%'.$filters['vendor'].'%');
+        }
+        if (in_array($filters['status'], ['paid', 'partial', 'unpaid', 'closed', 'open'], true)) {
+            if (in_array($filters['status'], ['closed', 'open'], true)) {
+                $query->where('listing_status', $filters['status']);
+            } else {
+                $query->where('payment_status', $filters['status']);
+            }
+        }
+        if ($filters['from'] !== '') {
+            $query->whereDate('bill_date', '>=', $filters['from']);
+        }
+        if ($filters['to'] !== '') {
+            $query->whereDate('bill_date', '<=', $filters['to']);
+        }
+
+        $query->orderByDesc('bill_date')->orderByDesc('ezen_bill_no');
+
+        if ($request->has('export') || $request->has('format')) {
+            $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+            $items = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'ezen-bills-'.now()->format('Ymd_His'),
+                ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Listing', 'Status'],
+                function () use ($items) {
+                    foreach ($items as $bill) {
+                        yield [
+                            $bill->ezen_bill_no,
+                            (string) ($bill->vendor_invoice_no ?? ''),
+                            $bill->bill_date?->format('Y-m-d') ?? '',
+                            $bill->due_date?->format('Y-m-d') ?? '',
+                            (string) $bill->vendor_name,
+                            (string) ($bill->memo ?? ''),
+                            number_format((float) $bill->total_amount, 2, '.', ''),
+                            number_format((float) $bill->total_paid, 2, '.', ''),
+                            number_format((float) $bill->amount_due, 2, '.', ''),
+                            $bill->displayListingStatus(),
+                            $bill->displayPaymentStatus(),
+                        ];
+                    }
+                },
+                $format,
+                ['title' => 'EZEN Bills Listing'],
+            );
+        }
+
+        $bills = (clone $query)->paginate($perPage)->withQueryString();
+        $totalAmount = (clone $query)->sum('total_amount');
+        $amountDue = (clone $query)->sum('amount_due');
+        $paidCount = (clone $query)->where('payment_status', PmEzenBill::STATUS_PAID)->count();
+
+        $stats = [
+            ['label' => 'Bills', 'value' => (string) $bills->total(), 'hint' => 'Imported vendor bills listing', 'emphasis' => true],
+            ['label' => 'Total billed', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered listing total'],
+            ['label' => 'Amount due', 'value' => PropertyMoney::kes((float) $amountDue), 'hint' => 'Still outstanding'],
+            ['label' => 'Paid / closed', 'value' => (string) $paidCount, 'hint' => 'Fully settled bills'],
+        ];
+
+        $rows = $bills->getCollection()->map(function (PmEzenBill $bill) {
+            $actions = new HtmlString(view('property.agent.partials.vendor_bill_row_actions', [
+                'bill' => $bill,
+            ])->render());
+
+            return [
+                $bill->ezen_bill_no,
+                $bill->vendor_invoice_no !== null && $bill->vendor_invoice_no !== '' ? $bill->vendor_invoice_no : '—',
+                $bill->bill_date?->format('Y-m-d') ?? '—',
+                $bill->due_date?->format('Y-m-d') ?? '—',
+                $bill->vendor_name,
+                $bill->memo !== null && $bill->memo !== '' ? $bill->memo : '—',
+                number_format((float) $bill->total_amount, 2),
+                number_format((float) $bill->total_paid, 2),
+                number_format((float) $bill->amount_due, 2),
+                $bill->displayListingStatus().' / '.$bill->displayPaymentStatus(),
+                $actions,
+            ];
+        })->all();
 
         return property_view('property.agent.accounting.payables_accounts', [
-            'rows' => $rows,
-            'filters' => ['status' => $status, 'supplier' => $supplier],
+            'stats' => $stats,
+            'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status', 'Actions'],
+            'tableRows' => $rows,
+            'paginator' => $bills,
+            'filters' => $filters,
         ]);
     }
 
@@ -3201,13 +3734,30 @@ class PropertyAccountingController extends Controller
             ->limit(100)
             ->get();
 
-        $bankSide = Schema::hasTable('unassigned_payments')
-            ? UnassignedPayment::query()->orderByDesc('id')->limit(100)->get()
-            : collect();
+        $statement = null;
+        $bankSide = collect();
+        if (Schema::hasTable('pm_bank_statements') && Schema::hasTable('pm_bank_statement_lines')) {
+            $statement = PmBankStatement::query()
+                ->orderByDesc('period_to')
+                ->orderByDesc('id')
+                ->first();
+            if ($statement) {
+                $bankSide = PmBankStatementLine::query()
+                    ->where('pm_bank_statement_id', $statement->id)
+                    ->orderBy('txn_date')
+                    ->orderBy('id')
+                    ->get();
+            }
+        }
+
+        if ($bankSide->isEmpty() && Schema::hasTable('unassigned_payments')) {
+            $bankSide = UnassignedPayment::query()->orderByDesc('id')->limit(100)->get();
+        }
 
         return property_view('property.agent.accounting.cash_bank_reconciliation', [
             'cashSide' => $cashSide,
             'bankSide' => $bankSide,
+            'statement' => $statement,
         ]);
     }
 
@@ -3239,6 +3789,15 @@ class PropertyAccountingController extends Controller
 
     public function agedPayables(Request $request): View
     {
+        if (Schema::hasTable('pm_ezen_bills') && PmEzenBill::query()->exists()) {
+            $rows = PmEzenBill::query()
+                ->selectRaw('vendor_name as supplier_name, total_amount as amount, bill_date as invoice_date, payment_status as status')
+                ->orderByDesc('bill_date')
+                ->get();
+
+            return property_view('property.agent.accounting.reports.aged_payables', ['rows' => $rows]);
+        }
+
         $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
         $rows = Schema::hasTable('pm_supplier_invoices')
             ? DB::table('pm_supplier_invoices as i')

@@ -2,6 +2,8 @@
     <x-slot name="header">Property Finance Rules - Utility Charge Rules</x-slot>
 
     <x-property.page title="Property Finance Rules" subtitle="Define utility charge rules for water, electricity, garbage and similar items.">
+        @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.expenses'])
+
         <div class="rounded-xl border border-slate-200 bg-white p-4">
             <form method="POST" action="{{ route('property.settings.expenses.store') }}" class="space-y-3">
                 @csrf

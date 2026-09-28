@@ -24,6 +24,7 @@
     :table-rows="$tableRows"
     :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
+    :legacy-toolbar="false"
     empty-title="No units"
     empty-hint="Add units per property; vacant units can be attached when creating a lease."
 >
@@ -70,17 +71,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Only properties without units are shown to prevent duplicate allocation.</p>
@@ -203,7 +194,7 @@
         <div
             x-data="{
                 rows: [
-                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: '', bedrooms: '', rent_amount: '', status: 'vacant', public_listing_description: '' }
+                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: '', bedrooms: '', rent_amount: '', market_rent: '', floor: '', legacy_area: '', available_from: '', furnished: '0', status: 'vacant', public_listing_description: '' }
                 ],
                 addRow() {
                     const last = this.rows[this.rows.length - 1] || { label_prefix: '', label_start: 1, unit_count: 1 };
@@ -215,6 +206,11 @@
                         unit_type: '',
                         bedrooms: '',
                         rent_amount: '',
+                        market_rent: '',
+                        floor: '',
+                        legacy_area: '',
+                        available_from: '',
+                        furnished: '0',
                         status: 'vacant',
                         public_listing_description: ''
                     });
@@ -254,17 +250,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                 </div>
 
@@ -312,6 +298,29 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) <span class="text-red-600">*</span></label>
                                 <input x-model="row.rent_amount" :name="'unit_groups['+idx+'][rent_amount]'" type="number" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Market rent (KES)</label>
+                                <input x-model="row.market_rent" :name="'unit_groups['+idx+'][market_rent]'" type="number" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Floor</label>
+                                <input x-model="row.floor" :name="'unit_groups['+idx+'][floor]'" type="text" maxlength="32" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Ground, 1, 2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Area (sq ft)</label>
+                                <input x-model="row.legacy_area" :name="'unit_groups['+idx+'][legacy_area]'" type="number" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Available from</label>
+                                <input x-model="row.available_from" :name="'unit_groups['+idx+'][available_from]'" type="date" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Furnished</label>
+                                <select x-model="row.furnished" :name="'unit_groups['+idx+'][furnished]'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status <span class="text-red-600">*</span></label>
@@ -373,49 +382,7 @@
     </x-slot>
 
 <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.units') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-9">
-            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit, property, type..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
-            <select name="property_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">All properties</option>
-                @foreach (($allProperties ?? []) as $p)
-                    <option value="{{ $p->id }}" @selected((string) ($filters['property_id'] ?? '') === (string) $p->id)>{{ $p->name }}</option>
-                @endforeach
-            </select>
-            <select name="status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Status: All</option>
-                @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
-                    <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
-                @endforeach
-            </select>
-            <select name="unit_type" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Type: All</option>
-                @foreach (($unitTypes ?? []) as $tv => $tl)
-                    <option value="{{ $tv }}" @selected(($filters['unit_type'] ?? '') === $tv)>{{ $tl }}</option>
-                @endforeach
-            </select>
-            <input type="number" name="rent_min" value="{{ $filters['rent_min'] ?? '' }}" min="0" step="0.01" placeholder="Min rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <input type="number" name="rent_max" value="{{ $filters['rent_max'] ?? '' }}" min="0" step="0.01" placeholder="Max rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <div>
-                <select name="per_page" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                    @foreach ([10, 30, 50, 100, 200] as $size)
-                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 30)) === $size)>{{ $size }} / page</option>
-                    @endforeach
-                </select>
-            </div>
-            <label class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-                <input type="checkbox" name="include_archived" value="1" class="rounded border-slate-300" @checked(($filters['include_archived'] ?? '0') === '1') />
-                Include archived
-            </label>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-                @include('property.agent.partials.export_dropdown', [
-                    'csvUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'csv']), false),
-                    'pdfUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'pdf']), false),
-                    'wordUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'word']), false),
-                ])
-            </div>
-        </form>
+        @include('property.agent.partials.filter_toolbars.units', get_defined_vars())
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

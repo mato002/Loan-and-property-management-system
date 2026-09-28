@@ -35,6 +35,21 @@
             'selected' => false,
         ];
     });
+    $isPageSize = is_string($name) && preg_match('/(?:^|_)per_page$/', $name) === 1;
+    if ($isPageSize && $type === 'select') {
+        $queryRaw = request()->query($name);
+        if (is_scalar($queryRaw) && strtolower(trim((string) $queryRaw)) === \App\Support\ListPageSize::ALL) {
+            $resolvedValue = \App\Support\ListPageSize::ALL;
+        }
+        $normalizedOptions = collect(\App\Support\ListPageSize::options(null, $resolvedValue))->map(function ($opt) {
+            return [
+                'value' => (string) ($opt['value'] ?? ''),
+                'label' => (string) ($opt['label'] ?? ''),
+                'selected' => false,
+            ];
+        });
+        $wrapClass = 'property-filter-field min-w-0 shrink-0 w-full md:w-auto md:min-w-[14rem] md:max-w-[18rem]';
+    }
 @endphp
 
 @if ($type === 'hidden' && $name)
@@ -53,9 +68,11 @@
         @endif
 
         @if ($type === 'select')
+            @if ($isPageSize)<div class="flex items-center gap-1">@endif
             <select
                 @if ($fieldId) id="{{ $fieldId }}" @endif
                 @if ($name) name="{{ $name }}" @endif
+                @if ($isPageSize) data-page-size-select="1" data-property-searchable="false" @endif
                 {!! $formAttr !!}
                 class="{{ $inputClass }}"
             >
@@ -69,6 +86,20 @@
                     >{{ $opt['label'] }}</option>
                 @endforeach
             </select>
+            @if ($isPageSize)
+                <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputmode="numeric"
+                    placeholder="No."
+                    data-page-size-custom="1"
+                    aria-label="Custom rows per page"
+                    title="Type how many rows to show, then click Apply"
+                    class="property-filter-field__control min-h-[44px] md:min-h-[38px] w-[4.25rem] shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-2 text-sm text-slate-900 dark:text-slate-100"
+                />
+            @endif
+            @if ($isPageSize)</div>@endif
         @elseif ($type === 'date-range')
             <div class="grid gap-2 sm:grid-cols-2">
                 {{ $slot }}

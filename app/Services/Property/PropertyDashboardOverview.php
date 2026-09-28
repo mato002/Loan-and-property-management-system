@@ -92,6 +92,8 @@ final class PropertyDashboardOverview
         $unitsTotal = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->count();
         $unitsOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
         $unitsVacant = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_VACANT)->count();
+        $unitsOwnerOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OWNER_OCCUPIED)->count();
+        $unitsNotice = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_NOTICE)->count();
         $tenants = PmTenant::query()->count();
         $leasesActive = PmLease::query()
             ->where('status', PmLease::STATUS_ACTIVE)
@@ -137,6 +139,7 @@ final class PropertyDashboardOverview
                 'icon' => 'fa-door-open',
                 'route' => 'property.properties.units',
                 'bar' => 'bg-cyan-500',
+                'hint' => 'Occupied '.$unitsOccupied.' · Vacant '.$unitsVacant.' · Owner '.$unitsOwnerOccupied.($unitsNotice > 0 ? ' · Notice '.$unitsNotice : ''),
             ],
             [
                 'label' => 'Occupied units',
@@ -151,6 +154,13 @@ final class PropertyDashboardOverview
                 'icon' => 'fa-house-circle-exclamation',
                 'route' => 'property.properties.occupancy',
                 'bar' => 'bg-amber-500',
+            ],
+            [
+                'label' => 'Owner occupied',
+                'value' => (string) $unitsOwnerOccupied,
+                'icon' => 'fa-house-user',
+                'route' => 'property.properties.occupancy',
+                'bar' => 'bg-lime-600',
             ],
             [
                 'label' => 'Tenants',

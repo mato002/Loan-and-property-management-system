@@ -16,9 +16,9 @@
         <div>
             <label class="block text-xs font-medium text-slate-600">Quick range</label>
             <select name="range_months" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                <option value="0" @selected((int) ($filters['range_months'] ?? 1) === 0)>All dates</option>
+                <option value="0" @selected((int) ($filters['range_months'] ?? 0) === 0)>All dates</option>
                 @foreach ([1 => '1 month', 2 => '2 months', 3 => '3 months', 6 => '6 months', 12 => '12 months'] as $n => $label)
-                    <option value="{{ $n }}" @selected((int) ($filters['range_months'] ?? 1) === $n)>{{ $label }}</option>
+                    <option value="{{ $n }}" @selected((int) ($filters['range_months'] ?? 0) === $n)>{{ $label }}</option>
                 @endforeach
             </select>
         </div>

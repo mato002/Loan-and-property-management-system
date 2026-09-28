@@ -80,13 +80,14 @@
     $printableFilters = collect(request()->query())
         ->except(['export', 'page'])
         ->filter(static fn ($value) => ! is_null($value) && $value !== '');
-    $printBrandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Management System');
-    $printBrandLogo = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', ''));
+    $documentBranding = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $printBrandName = $documentBranding['company_name'];
+    $printBrandLogo = $documentBranding['logo_url'];
     $printContactParts = collect([
-        \App\Models\PropertyPortalSetting::getValue('contact_phone', ''),
-        \App\Models\PropertyPortalSetting::getValue('contact_email_primary', ''),
-        \App\Models\PropertyPortalSetting::getValue('contact_address', ''),
-        \App\Models\PropertyPortalSetting::getValue('contact_reg_no', ''),
+        $documentBranding['contact_phone'],
+        $documentBranding['contact_email_primary'],
+        $documentBranding['contact_address'],
+        $documentBranding['contact_reg_no'] !== '' ? 'Reg: '.$documentBranding['contact_reg_no'] : '',
     ])->filter(static fn ($value) => ! is_null($value) && trim((string) $value) !== '');
     $compactList = (bool) ($compactList ?? true);
     $hasBanner = isset($banner) && ! $banner->isEmpty();
@@ -114,30 +115,19 @@
         @if ($compactList && $hasPageActions)
             <x-slot name="actions">{{ $actions }}</x-slot>
         @endif
-        <div class="property-print-only mb-4 border-b border-slate-300 pb-3" style="display: none" aria-hidden="true">
-            <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                    <div class="text-lg font-semibold text-slate-900">{{ $printBrandName }}</div>
-                    @if ($printContactParts->isNotEmpty())
-                        <div class="mt-1 text-xs text-slate-600">{{ $printContactParts->implode(' | ') }}</div>
-                    @endif
-                </div>
-                @if ($printBrandLogo !== '')
-                    <img src="{{ $printBrandLogo }}" alt="{{ $printBrandName }} logo" class="max-h-12 w-auto object-contain" />
-                @endif
-            </div>
-            <div class="mt-3 text-xl font-semibold text-slate-900">{{ $title }}</div>
-            @if (! empty($subtitle))
-                <div class="mt-1 text-sm text-slate-700">{{ $subtitle }}</div>
-            @endif
-            <div class="mt-2 text-xs text-slate-600">
-                Generated on {{ now()->format('d M Y, h:i A') }}
-                @if ($printableFilters->isNotEmpty())
-                    <span class="mx-1">|</span>
-                    Filters:
-                    {{ $printableFilters->map(static fn ($value, $key) => \Illuminate\Support\Str::headline((string) $key).': '.(is_scalar($value) ? (string) $value : json_encode($value)))->implode(' ; ') }}
-                @endif
-            </div>
+        <div class="property-print-only mb-4 pb-3" style="display: none" aria-hidden="true">
+            @include('property.partials.document_letterhead', [
+                'branding' => $documentBranding,
+                'title' => $title,
+                'subtitle' => $subtitle,
+                'meta' => trim(
+                    'Generated on '.now()->format('d M Y, h:i A')
+                    .($printableFilters->isNotEmpty()
+                        ? ' | Filters: '.$printableFilters->map(static fn ($value, $key) => \Illuminate\Support\Str::headline((string) $key).': '.(is_scalar($value) ? (string) $value : json_encode($value)))->implode(' ; ')
+                        : '')
+                ),
+                'variant' => 'screen',
+            ])
         </div>
 
         @if ($compactList && $hasBanner)

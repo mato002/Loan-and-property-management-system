@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Landlord payment & fees"
-    subtitle="Period landlord remittances, management fees, and payout status — like EZEN landlord payment workspace."
+    subtitle="Period landlord remittances, management fees, and payout status."
     back-route="property.accounting.index"
     :stats="$stats"
     :columns="[]"
@@ -13,6 +13,10 @@
             'route' => 'property.accounting.payables.landlord_payment_fees',
             'query' => request()->except(['export', 'format', 'page']),
         ])
+        <a
+            href="{{ route('property.accounting.payables.property_commissions', request()->only(['property_id', 'landlord_id'])) }}"
+            class="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+        >Property commissions</a>
         <a
             href="{{ route('property.accounting.payables.landlord_advances') }}"
             class="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800 hover:bg-indigo-100"
@@ -182,13 +186,7 @@
                                 @endif
                             </td>
                             <td class="px-3 py-3 whitespace-nowrap">
-                                <div class="flex flex-wrap gap-2 text-xs">
-                                    <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month']]) }}" class="text-indigo-700 hover:text-indigo-800">Detail</a>
-                                    <a href="{{ route('property.accounting.payables.landlord_settlements', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'month' => $row['period_month'], 'export' => 'pdf']) }}" data-turbo="false" target="_blank" class="text-slate-700 hover:text-slate-900">PDF</a>
-                                    @if (! empty($row['payout_id']))
-                                        <a href="{{ route('property.accounting.payables.landlord_payouts', ['status' => $row['payout_status'] ?? '']) }}" class="text-emerald-700 hover:text-emerald-800">Payout #{{ $row['payout_id'] }}</a>
-                                    @endif
-                                </div>
+                                @include('property.agent.partials.landlord_fee_row_actions', ['row' => $row])
                             </td>
                         </tr>
                     @empty

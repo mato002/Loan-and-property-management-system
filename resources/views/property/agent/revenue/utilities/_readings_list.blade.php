@@ -19,6 +19,7 @@
                 @endforeach
             </select>
             <input type="hidden" name="q" value="{{ $filters['q'] ?? '' }}" />
+            <input type="hidden" name="ops_tab" value="readings" />
             <input type="hidden" name="charge_type" value="{{ $filters['charge_type'] ?? '' }}" />
             <input type="hidden" name="month" value="{{ $filters['month'] ?? '' }}" />
             <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white min-h-[44px]">Filter</button>

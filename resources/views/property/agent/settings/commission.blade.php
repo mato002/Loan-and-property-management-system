@@ -27,6 +27,12 @@
                 <input type="text" name="commission_default_percent" value="{{ old('commission_default_percent', $defaultPercent) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. 8.5" />
                 @error('commission_default_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">VAT on commission (%)</label>
+                <input type="number" step="0.01" min="0" max="100" name="commission_vat_percent" value="{{ old('commission_vat_percent', $vatPercent ?? '0') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="0" />
+                @error('commission_vat_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                <p class="mt-1 text-xs text-slate-500">Shown on Property commissions. Leave 0 if management fees are not vatable.</p>
+            </div>
 
             <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Per-property commission override (%)</p>

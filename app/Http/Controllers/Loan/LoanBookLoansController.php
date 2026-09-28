@@ -75,7 +75,7 @@ class LoanBookLoansController extends Controller
         $disbursedTo = trim((string) $request->query('disbursed_to', ''));
         $maturityFrom = trim((string) $request->query('maturity_from', ''));
         $maturityTo = trim((string) $request->query('maturity_to', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 15);
 
         $query
             ->when(
@@ -333,7 +333,7 @@ class LoanBookLoansController extends Controller
             $dpdMax = $dpdMaxRaw !== '' ? max($dpdMin, (int) $dpdMaxRaw) : null;
             $from = trim((string) $request->query('from', ''));
             $to = trim((string) $request->query('to', ''));
-            $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+            $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
             $query = $query
                 ->when($status !== '', fn (Builder $builder) => $builder->where('status', $status))
                 ->where('dpd', '>=', $dpdMin)
@@ -616,7 +616,7 @@ class LoanBookLoansController extends Controller
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
         $branch = trim((string) $request->query('branch', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $query = $query
             ->where('is_checkoff', true)

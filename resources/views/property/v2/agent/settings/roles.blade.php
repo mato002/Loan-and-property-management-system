@@ -21,6 +21,8 @@
                 </ul>
             </div>
         @endif
+
+        @include('property.agent.settings.partials.custom_roles')
     </x-slot>
 
     <x-slot name="actions">
@@ -38,7 +40,7 @@
 
     <x-slot name="footer">
         <p class="text-sm text-slate-600 dark:text-slate-300">
-            {{ __('Use “Add team member” to create logins for office staff. This table shows everyone with a property portal role; refine RBAC under System setup → Access control.') }}
+            {{ __('Create a custom role in the form above, then open Set permissions to choose what that role can do. Add team member creates an office login.') }}
         </p>
     </x-slot>
 </x-property.workspace>

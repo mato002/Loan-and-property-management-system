@@ -18,7 +18,7 @@
         : 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal-guest" data-turbo="false" class="h-dvh overflow-hidden {{ $propertyPortalThemeClass }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal-guest" data-turbo="false" class="h-dvh overflow-hidden {{ $propertyPortalThemeClass }}" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('guest') !!}>
     <head>
         @include('layouts.partials.property-portal-theme')
         <meta charset="utf-8">
@@ -42,7 +42,7 @@
         <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
         <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
         <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
-        <meta name="theme-color" content="#059669" />
+        <meta name="theme-color" content="{{ \App\Support\Property\PropertyBrandPalette::color(\App\Support\Property\PropertyBrandPalette::resolve('guest'), 'primary') }}" />
         <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
     </head>
     <body class="h-dvh overflow-hidden font-sans antialiased text-slate-900 bg-[#eef5f3]">

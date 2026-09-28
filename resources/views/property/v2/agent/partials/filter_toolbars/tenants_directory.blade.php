@@ -10,12 +10,20 @@
     :drawer-label="$drawerLabel"
     :chip-labels="[
         'q' => 'Search',
+        'status' => 'Status',
         'risk' => 'Risk',
         'portal' => 'Portal login',
     ]"
 >
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search name, phone, email, ID…" :value="$filters['q'] ?? ''" wide />
+        <x-property.filter-field type="select"
+            name="status"
+            label="Status"
+            empty-option="All statuses"
+            :options="\App\Support\Property\TenantProfileStatus::filterOptions()"
+            :value="$filters['status'] ?? ''"
+        />
         <x-property.filter-field type="select"
             name="risk"
             label="Risk"

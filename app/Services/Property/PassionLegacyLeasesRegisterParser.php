@@ -142,11 +142,15 @@ final class PassionLegacyLeasesRegisterParser
             return false;
         }
 
-        if (preg_match('/\b0\d{9}\b/', $line)) {
-            return true;
+        // Need balance + rent amounts (not just phone). Fragmented PDF extracts put
+        // phone on one line and amounts on the next — wait for both.
+        if (! preg_match('/TNT\d+\S*.+\s+-?[\d,]+\s+-?[\d,]+/i', $line)) {
+            return false;
         }
 
-        return (bool) preg_match('/TNT\d+.+\s+-?[\d,]+\s+-?[\d,]+/i', $line);
+        return (bool) preg_match('/\b0\d{9}\b/', $line)
+            || (bool) preg_match('/\d{2}\/\d{2}\/\d{4}/', $line)
+            || (bool) preg_match('/\b(Revision|Renewal|New Lease|New)\b/i', $line);
     }
 
     /**
@@ -154,6 +158,11 @@ final class PassionLegacyLeasesRegisterParser
      */
     private function parseLeaseLine(string $line, string $propertyCode): ?array
     {
+        // Newer Ezen PDFs glue unit/TNT/name: "A7 TNT001162BONFACE" or "A10 TNT001314OCCP LIVINE".
+        $line = preg_replace('/\b(TNT\d{5,})(?=[A-Za-z])/i', '$1 ', $line) ?? $line;
+        // Also glue when unit and TNT lose the space: "A7TNT001162"
+        $line = preg_replace('/\b((?:HSE\s+[A-Z0-9 ()-]+|SHOP\s+[A-Z0-9]+|[A-Z]\d+|\d+))(TNT\d+)/i', '$1 $2', $line) ?? $line;
+
         if ($propertyCode === '' || ! preg_match('/\bTNT\d+/i', $line)) {
             return null;
         }

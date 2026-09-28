@@ -10,7 +10,9 @@ use App\Models\LoanBookPayment;
 use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Services\ClientWalletService;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBook\LoanStkRepaymentService;
 use App\Services\LoanBookGlPostingService;
 use App\Support\TabularExport;
 use Carbon\Carbon;
@@ -604,7 +606,7 @@ class LoanPaymentsController extends Controller
         }
 
         $query = $this->reportQuery($request);
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $payments = (clone $query)
             ->with(['loan.loanClient', 'postedByUser'])
@@ -900,6 +902,56 @@ class LoanPaymentsController extends Controller
         return redirect()
             ->route('loan.payments.unposted')
             ->with('status', 'Payment '.$payment->reference.' created (unposted).');
+    }
+
+    public function stkCreate(Request $request): View
+    {
+        $query = LoanBookLoan::query()
+            ->with('loanClient')
+            ->assignableForRepayment()
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $loans = $query->get();
+        $selectedLoanId = $request->integer('loan_book_loan_id');
+        if (! $loans->contains(fn (LoanBookLoan $loan): bool => (int) $loan->id === $selectedLoanId)) {
+            $selectedLoanId = 0;
+        }
+
+        return view('loan.payments.stk', [
+            'loans' => $loans,
+            'selectedLoanId' => $selectedLoanId,
+            'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),
+            'stkMissing' => app(MpesaDarajaService::class)->missingConfigKeys(),
+        ]);
+    }
+
+    public function stkStore(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+            'amount' => ['required', 'numeric', 'min:1'],
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+
+        $result = app(LoanStkRepaymentService::class)->initiate(
+            $loan,
+            (float) $validated['amount'],
+            (string) $validated['mpesa_phone'],
+            $request->user()?->id
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return back()
+                ->withInput()
+                ->withErrors(['mpesa_phone' => $result['message'] ?? 'STK push failed.']);
+        }
+
+        return redirect()
+            ->route('loan.payments.unposted')
+            ->with('status', $result['message'] ?? 'STK push sent. Payment will appear here after the borrower confirms.');
     }
 
     public function reversalCreate(Request $request): View
@@ -1246,7 +1298,7 @@ class LoanPaymentsController extends Controller
         $channel = trim((string) $request->input('channel', ''));
         $from = trim((string) $request->input('from', ''));
         $to = trim((string) $request->input('to', ''));
-        $perPage = min(200, max(10, (int) $request->input('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 20);
 
         $paymentsQuery = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -1358,7 +1410,7 @@ class LoanPaymentsController extends Controller
         $status = $allowStatus ? trim((string) $request->query('status', '')) : '';
         $from = trim((string) $request->query('from', ''));
         $to = trim((string) $request->query('to', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
 
         $query
             ->when($q !== '', function (Builder $builder) use ($q): void {

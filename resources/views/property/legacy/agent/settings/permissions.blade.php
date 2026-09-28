@@ -5,11 +5,7 @@
         title="Permissions"
         subtitle="Edit, remove, and review all property permission keys."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property users</a>
-            <a href="{{ route('property.settings.permissions') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Permissions</a>
-            <a href="{{ route('property.settings.system_setup.access') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Access control</a>
-        </div>
+        @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.permissions'])
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
             @foreach ($stats as $stat)

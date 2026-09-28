@@ -9,6 +9,9 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
+use App\Models\PmTenantDeposit;
+use App\Models\PmTenantNotice;
+use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Support\TabularExport;
@@ -31,6 +34,12 @@ use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
+use App\Services\Property\TenantStatementLedgerService;
+use App\Support\Property\PropertyEntityHub;
+use App\Support\Property\LeaseStandingCharges;
+use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\TenantCompliancePresentation;
+use App\Support\Property\TenantProfileStatus;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 
 class PmTenantDirectoryController extends Controller
@@ -46,36 +55,45 @@ class PmTenantDirectoryController extends Controller
         ));
     }
 
-    public function profiles(): RedirectResponse
+    public function profiles(): View
     {
-        return redirect()->route('property.tenants.directory');
+        return property_view('property.agent.tenants.profiles', $this->tenantCompliancePayload());
     }
 
     public function exportDirectoryCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $tenants = $this->buildTenantDirectoryQuery($request)
-            ->orderBy('name')
+            ->with(['leases' => function ($query): void {
+                $query->where('status', PmLease::STATUS_ACTIVE)
+                    ->orderByDesc('start_date');
+            }])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get();
         $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
         return TabularExport::stream(
             'tenant_directory_'.now()->format('Ymd_His'),
-            ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end'],
+            ['name', 'phone', 'email', 'national_id', 'profile_status', 'risk_level', 'portal_login', 'leases_count', 'lease_end', 'charges'],
             function () use ($tenants): \Generator {
                 foreach ($tenants as $tenant) {
                     $leaseEnd = $tenant->leases_max_end_date
                         ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
                         : '';
+                    $status = TenantProfileStatus::forTenant($tenant);
+                    $activeLease = $tenant->leases->first();
 
                     yield [
                         (string) $tenant->name,
                         (string) ($tenant->phone ?? ''),
                         (string) ($tenant->email ?? ''),
                         (string) ($tenant->national_id ?? ''),
+                        (string) $status['label'],
                         (string) ($tenant->risk_level ?? 'normal'),
                         $tenant->user_id ? 'yes' : 'no',
                         (string) ($tenant->leases_count ?? 0),
                         $leaseEnd,
+                        LeaseStandingCharges::exportText($activeLease),
                     ];
                 }
             },
@@ -314,7 +332,8 @@ class PmTenantDirectoryController extends Controller
                     ->with(['units.property'])
                     ->orderByDesc('start_date');
             }])
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
 
@@ -360,13 +379,19 @@ class PmTenantDirectoryController extends Controller
                 $activeLease?->monthly_rent !== null
                     ? number_format((float) $activeLease->monthly_rent, 2)
                     : '—',
+                LeaseStandingCharges::directoryCell($activeLease),
                 $activeLease?->start_date?->format('Y-m-d') ?? '—',
                 $leaseEnd,
                 (string) $t->leases_count,
+                TenantProfileStatus::badge($t),
                 ucfirst($t->risk_level),
                 $actions,
             ];
         })->all();
+
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $request->integer('property_id');
+        $unitId = (int) $request->integer('unit_id');
 
         return [
             'pageTitle' => $pageTitle,
@@ -379,16 +404,403 @@ class PmTenantDirectoryController extends Controller
             'tenantFields' => $this->tenantFieldConfig(),
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
             'stats' => $stats,
+            'duplicateGroups' => $this->tenantDuplicateGroups(),
             'filters' => [
                 'q' => (string) request()->string('q'),
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '0',
+                'unit_id' => $unitId > 0 ? (string) $unitId : '0',
                 'risk' => (string) request()->string('risk'),
+                'status' => (string) request()->string('status'),
                 'portal' => (string) request()->string('portal'),
                 'per_page' => $perPage,
             ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'filterCascadeCatalog' => $cascade->fromLeases(),
             'tenantPager' => $tenants,
-            'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Lease start', 'Lease end', 'Leases', 'Risk', 'Actions'],
+            'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,
         ];
+    }
+
+    /**
+     * Groups of tenants that look like true duplicates (not multi-unit same person).
+     *
+     * Same name on different units is normal in Ezen (one person booked as two residents)
+     * and is excluded from merge warnings.
+     *
+     * @return list<array{type: string, label: string, key: string, count: int, severity: string, note: string|null, tenants: list<array<string, mixed>>}>
+     */
+    private function tenantDuplicateGroups(): array
+    {
+        $groups = [];
+        $placeholderNames = [
+            'OCCP', 'OCCUPIED', 'VACANT', 'OWNER', 'OWNER (LLD)', 'LLD', 'N/A', 'NA', 'NONE', '—', '-',
+        ];
+
+        $nameKeys = PmTenant::query()
+            ->select('name', DB::raw('COUNT(*) as c'))
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->groupBy('name')
+            ->having('c', '>', 1)
+            ->orderByDesc('c')
+            ->limit(40)
+            ->get();
+
+        foreach ($nameKeys as $row) {
+            $key = trim((string) $row->name);
+            if ($key === '' || in_array(mb_strtoupper($key), $placeholderNames, true)) {
+                continue;
+            }
+
+            $tenants = PmTenant::query()
+                ->where('name', $key)
+                ->with(['leases' => function ($query): void {
+                    $query->where('status', PmLease::STATUS_ACTIVE)
+                        ->with(['units.property'])
+                        ->orderByDesc('start_date');
+                }])
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit(20)
+                ->get();
+
+            if ($tenants->count() < 2) {
+                continue;
+            }
+
+            $unitKeys = $tenants
+                ->map(fn (PmTenant $t) => $this->activeUnitKey($t))
+                ->filter()
+                ->values();
+            $uniqueUnits = $unitKeys->unique()->count();
+            $hasDistinctUnits = $unitKeys->count() >= 2 && $uniqueUnits === $unitKeys->count();
+
+            // One person booked on two units → two TNT rows in Ezen; not a merge candidate.
+            if ($hasDistinctUnits) {
+                continue;
+            }
+
+            $groups[] = [
+                'type' => 'name',
+                'label' => 'Same name',
+                'key' => $key,
+                'count' => (int) $row->c,
+                'severity' => 'warning',
+                'note' => 'Same name without distinct units — compare before merging.',
+                'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+            ];
+        }
+
+        if (Schema::hasColumn('pm_tenants', 'phone')) {
+            $phoneKeys = PmTenant::query()
+                ->select('phone', DB::raw('COUNT(*) as c'))
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '')
+                ->groupBy('phone')
+                ->having('c', '>', 1)
+                ->orderByDesc('c')
+                ->limit(40)
+                ->get();
+
+            foreach ($phoneKeys as $row) {
+                $key = trim((string) $row->phone);
+                if ($key === '') {
+                    continue;
+                }
+
+                $tenants = PmTenant::query()
+                    ->where('phone', $key)
+                    ->with(['leases' => function ($query): void {
+                        $query->where('status', PmLease::STATUS_ACTIVE)
+                            ->with(['units.property'])
+                            ->orderByDesc('start_date');
+                    }])
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->limit(20)
+                    ->get();
+
+                if ($tenants->count() < 2) {
+                    continue;
+                }
+
+                $groups[] = [
+                    'type' => 'phone',
+                    'label' => 'Same phone',
+                    'key' => $key,
+                    'count' => (int) $row->c,
+                    'severity' => 'warning',
+                    'note' => 'Shared phone across tenant profiles.',
+                    'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+                ];
+            }
+        }
+
+        if (Schema::hasColumn('pm_tenants', 'account_number')) {
+            $accountKeys = PmTenant::query()
+                ->select('account_number', DB::raw('COUNT(*) as c'))
+                ->whereNotNull('account_number')
+                ->where('account_number', '!=', '')
+                ->groupBy('account_number')
+                ->having('c', '>', 1)
+                ->orderByDesc('c')
+                ->limit(20)
+                ->get();
+
+            foreach ($accountKeys as $row) {
+                $key = strtoupper(trim((string) $row->account_number));
+                if ($key === '') {
+                    continue;
+                }
+
+                $tenants = PmTenant::query()
+                    ->where('account_number', $key)
+                    ->with(['leases' => function ($query): void {
+                        $query->where('status', PmLease::STATUS_ACTIVE)
+                            ->with(['units.property'])
+                            ->orderByDesc('start_date');
+                    }])
+                    ->orderByDesc('id')
+                    ->limit(20)
+                    ->get();
+
+                if ($tenants->count() < 2) {
+                    continue;
+                }
+
+                $groups[] = [
+                    'type' => 'account_number',
+                    'label' => 'Same account number',
+                    'key' => $key,
+                    'count' => (int) $row->c,
+                    'severity' => 'danger',
+                    'note' => 'Identical Ac/No — almost certainly a true duplicate.',
+                    'tenants' => $tenants->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+                ];
+            }
+        }
+
+        // Placeholder names from legacy registers inflate the tenant count vs Ezen.
+        $placeholders = PmTenant::query()
+            ->where(function ($query) use ($placeholderNames): void {
+                foreach ($placeholderNames as $placeholder) {
+                    $query->orWhereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper($placeholder)]);
+                }
+            })
+            ->with(['leases' => function ($query): void {
+                $query->where('status', PmLease::STATUS_ACTIVE)
+                    ->with(['units.property'])
+                    ->orderByDesc('start_date');
+            }])
+            ->orderBy('name')
+            ->orderBy('id')
+            ->limit(40)
+            ->get();
+
+        if ($placeholders->isNotEmpty()) {
+            $groups[] = [
+                'type' => 'placeholder',
+                'label' => 'Placeholder names (legacy)',
+                'key' => 'OCCP / OCCUPIED / VACANT…',
+                'count' => $placeholders->count(),
+                'severity' => 'info',
+                'note' => 'Imported when the old register had no real resident name. These often explain a higher tenant count than Ezen. Rename to the real tenant or remove if the unit should be vacant.',
+                'tenants' => $placeholders->map(fn (PmTenant $t) => $this->duplicateTenantCard($t))->all(),
+            ];
+        }
+
+        return $groups;
+    }
+
+    private function activeUnitKey(PmTenant $tenant): ?string
+    {
+        $unit = $tenant->leases->first()?->units->first();
+        if (! $unit) {
+            return null;
+        }
+
+        return (int) $unit->property_id.'|'.mb_strtoupper(trim((string) $unit->label));
+    }
+
+    /**
+     * @return array{id: int, name: string, account_number: string, phone: string, email: string, unit: string, created_at: string, show_url: string}
+     */
+    private function duplicateTenantCard(PmTenant $tenant): array
+    {
+        $unit = $tenant->relationLoaded('leases')
+            ? $tenant->leases->first()?->units->first()
+            : null;
+        $unitLabel = $unit
+            ? trim(($unit->property->name ?? '').' / '.$unit->label, ' /')
+            : '—';
+
+        return [
+            'id' => (int) $tenant->id,
+            'name' => (string) $tenant->name,
+            'account_number' => (string) ($tenant->account_number ?: '—'),
+            'phone' => (string) ($tenant->phone ?: '—'),
+            'email' => (string) ($tenant->email ?: '—'),
+            'unit' => $unitLabel !== '' ? $unitLabel : '—',
+            'created_at' => $tenant->created_at?->format('Y-m-d H:i') ?? '—',
+            'show_url' => route('property.tenants.show', $tenant, false),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tenantCompliancePayload(): array
+    {
+        $request = request();
+        $tenantQuery = $this->buildTenantComplianceQuery($request);
+        $stats = $this->tenantComplianceStatsFromQuery($request);
+        $perPage = $this->directoryPerPage($request);
+        $tenants = $tenantQuery
+            ->orderBy('name')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) {
+            $actions = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.tenants.show', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'.
+                '<a href="'.route('property.tenants.edit', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit profile</a>'.
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
+
+            return [
+                new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
+                $t->account_number ?? '—',
+                $t->national_id ?: '—',
+                $t->phone ?? '—',
+                $t->email ?? '—',
+                $t->emergency_contact ?: '—',
+                TenantCompliancePresentation::riskCell($t),
+                TenantCompliancePresentation::portalCell($t),
+                TenantProfileStatus::badge($t),
+                TenantCompliancePresentation::gapsCell($t),
+                $actions,
+            ];
+        })->all();
+
+        return [
+            'pageTitle' => 'Tenant compliance',
+            'pageSubtitle' => 'Profile completeness — ID, contacts, risk flags, and portal access.',
+            'stats' => $stats,
+            'filters' => [
+                'q' => (string) request()->string('q'),
+                'risk' => (string) request()->string('risk'),
+                'status' => (string) request()->string('status'),
+                'portal' => (string) request()->string('portal'),
+                'compliance' => (string) request()->string('compliance'),
+                'per_page' => $perPage,
+            ],
+            'tenantPager' => $tenants,
+            'columns' => ['Tenant', 'Ac/No', 'National ID', 'Phone', 'Email', 'Emergency contact', 'Risk', 'Portal', 'Status', 'Gaps', 'Actions'],
+            'tableRows' => $rows,
+        ];
+    }
+
+    private function buildTenantComplianceQuery(Request $request): Builder
+    {
+        $query = PmTenant::query();
+        TenantProfileStatus::addCounts($query);
+        $this->applyTenantDirectoryFilters($query, $request);
+        $this->applyTenantComplianceFilters($query, $request);
+
+        return $query;
+    }
+
+    /**
+     * @return array<int, array{label: string, value: string, hint: string}>
+     */
+    private function tenantComplianceStatsFromQuery(Request $request): array
+    {
+        $filteredTenants = PmTenant::query();
+        $this->applyTenantDirectoryFilters($filteredTenants, $request);
+        $this->applyTenantComplianceFilters($filteredTenants, $request);
+
+        $aggregates = (clone $filteredTenants)
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw("COALESCE(SUM(CASE WHEN TRIM(COALESCE(national_id, '')) = '' THEN 1 ELSE 0 END), 0) as missing_id_count")
+            ->selectRaw("COALESCE(SUM(CASE WHEN TRIM(COALESCE(phone, '')) = '' THEN 1 ELSE 0 END), 0) as missing_phone_count")
+            ->selectRaw("COALESCE(SUM(CASE WHEN pm_tenants.risk_level = 'high' THEN 1 ELSE 0 END), 0) as high_risk_count")
+            ->selectRaw('COALESCE(SUM(CASE WHEN pm_tenants.user_id IS NOT NULL THEN 1 ELSE 0 END), 0) as portal_count')
+            ->first();
+
+        $totalTenants = (int) ($aggregates->total_count ?? 0);
+        $missingId = (int) ($aggregates->missing_id_count ?? 0);
+        $missingPhone = (int) ($aggregates->missing_phone_count ?? 0);
+        $highRisk = (int) ($aggregates->high_risk_count ?? 0);
+        $withPortal = (int) ($aggregates->portal_count ?? 0);
+
+        return [
+            ['label' => 'Profiles', 'value' => (string) $totalTenants, 'hint' => 'Matching filters'],
+            ['label' => 'Missing ID', 'value' => (string) $missingId, 'hint' => 'Needs KYC update'],
+            ['label' => 'Missing phone', 'value' => (string) $missingPhone, 'hint' => 'Contact gap'],
+            ['label' => 'High risk', 'value' => (string) $highRisk, 'hint' => 'Manual flag'],
+            ['label' => 'Portal login', 'value' => (string) $withPortal, 'hint' => 'With access'],
+        ];
+    }
+
+    private function applyTenantComplianceFilters(Builder $query, Request $request): void
+    {
+        $compliance = trim((string) $request->string('compliance'));
+        if ($compliance === '') {
+            return;
+        }
+
+        match ($compliance) {
+            'missing_id' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('national_id')->orWhere('national_id', '');
+            }),
+            'missing_phone' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('phone')->orWhere('phone', '');
+            }),
+            'missing_email' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('email')->orWhere('email', '');
+            }),
+            'missing_emergency' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('emergency_contact')->orWhere('emergency_contact', '');
+            }),
+            'high_risk' => $query->where('risk_level', 'high'),
+            'no_portal' => $query->whereNull('user_id'),
+            'complete' => $query
+                ->whereNotNull('national_id')
+                ->where('national_id', '!=', '')
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '')
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->whereNotNull('emergency_contact')
+                ->where('emergency_contact', '!=', '')
+                ->where('risk_level', '!=', 'high'),
+            'any' => $query->where(function (Builder $builder): void {
+                $builder
+                    ->where(function (Builder $inner): void {
+                        $inner->whereNull('national_id')->orWhere('national_id', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('phone')->orWhere('phone', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('email')->orWhere('email', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('emergency_contact')->orWhere('emergency_contact', '');
+                    })
+                    ->orWhere('risk_level', 'high')
+                    ->orWhereNull('user_id');
+            }),
+            default => null,
+        };
     }
 
     /**
@@ -421,9 +833,7 @@ class PmTenantDirectoryController extends Controller
 
     private function directoryPerPage(Request $request): int
     {
-        $value = (int) $request->integer('per_page', 20);
-
-        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
+        return \App\Support\ListPageSize::resolve($request->input('per_page'), 20);
     }
 
     private function buildTenantDirectoryQuery(Request $request): Builder
@@ -431,6 +841,7 @@ class PmTenantDirectoryController extends Controller
         $query = PmTenant::query()
             ->withCount(['leases', 'invoices'])
             ->withMax('leases', 'end_date');
+        TenantProfileStatus::addCounts($query);
 
         $this->applyTenantDirectoryFilters($query, $request);
 
@@ -451,15 +862,16 @@ class PmTenantDirectoryController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN pm_tenants.risk_level = 'high' THEN 1 ELSE 0 END), 0) as high_risk_count")
             ->first();
 
-        $totalLeases = PmLease::query()
-            ->whereIn('pm_tenant_id', (clone $filteredTenants)->select('pm_tenants.id'))
+        $activeTenants = (clone $filteredTenants)
+            ->whereHas('leases', fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE))
             ->count();
+        $totalTenants = (int) ($aggregates->total_count ?? 0);
 
         return [
-            ['label' => 'Tenants', 'value' => (string) (int) ($aggregates->total_count ?? 0), 'hint' => 'Filtered records'],
-            ['label' => 'With portal login', 'value' => (string) (int) ($aggregates->portal_count ?? 0), 'hint' => 'Linked user'],
+            ['label' => 'Tenants', 'value' => (string) $totalTenants, 'hint' => 'Filtered records'],
+            ['label' => 'Active', 'value' => (string) $activeTenants, 'hint' => 'Occupying a unit'],
+            ['label' => 'Not active', 'value' => (string) max(0, $totalTenants - $activeTenants), 'hint' => 'Expired, former, draft, or no lease'],
             ['label' => 'High risk flagged', 'value' => (string) (int) ($aggregates->high_risk_count ?? 0), 'hint' => 'Manual'],
-            ['label' => 'Total leases', 'value' => (string) $totalLeases, 'hint' => 'Linked'],
         ];
     }
 
@@ -473,6 +885,10 @@ class PmTenantDirectoryController extends Controller
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('national_id', 'like', "%{$search}%");
+
+                if (Schema::hasColumn('pm_tenants', 'account_number')) {
+                    $builder->orWhere('account_number', 'like', "%{$search}%");
+                }
             });
         }
 
@@ -486,6 +902,16 @@ class PmTenantDirectoryController extends Controller
             $query->whereNotNull('user_id');
         } elseif ($portal === 'without') {
             $query->whereNull('user_id');
+        }
+
+        TenantProfileStatus::applyFilter($query, trim((string) $request->string('status')));
+
+        $propertyId = (int) $request->integer('property_id');
+        $unitId = (int) $request->integer('unit_id');
+        if ($unitId > 0) {
+            $query->whereHas('leases.units', fn (Builder $unitQuery) => $unitQuery->where('property_units.id', $unitId));
+        } elseif ($propertyId > 0) {
+            $query->whereHas('leases.units', fn (Builder $unitQuery) => $unitQuery->where('property_units.property_id', $propertyId));
         }
     }
 
@@ -748,16 +1174,26 @@ class PmTenantDirectoryController extends Controller
         ]);
     }
 
-    public function show(PmTenant $tenant): View
+    public function show(Request $request, PmTenant $tenant): View
     {
+        $activeTab = PropertyEntityHub::activeTabFromRequest($request, 'tenant');
+
+        $leaseRelations = ['units.property'];
+        if (Schema::hasTable('lease_deposit_lines')) {
+            $leaseRelations[] = 'depositLines';
+        }
+
         $tenant->load([
-            'leases' => fn ($q) => $q->with(['units.property'])->orderByDesc('start_date'),
+            'leases' => fn ($q) => $q->with($leaseRelations)->orderByDesc('start_date'),
         ])->loadCount(['leases', 'invoices']);
 
-        $billing = app(FinancialReportingFormulaService::class)->tenantBillingSnapshot($tenant);
+        $formulas = app(FinancialReportingFormulaService::class);
+        $billing = $formulas->tenantBillingSnapshot($tenant);
+        $profileStatus = TenantProfileStatus::forTenant($tenant);
 
         $leaseRows = $tenant->leases->map(function ($lease) {
             $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
+            $extras = $this->leaseStandingChargeLines($lease);
 
             return [
                 'id' => $lease->id,
@@ -765,30 +1201,146 @@ class PmTenantDirectoryController extends Controller
                 'start' => $lease->start_date?->format('Y-m-d') ?? '—',
                 'end' => $lease->end_date?->format('Y-m-d') ?? '—',
                 'rent' => (float) $lease->monthly_rent,
+                'rent_due_day' => $lease->rent_due_day,
                 'units' => $units !== '' ? $units : '—',
+                'deposit' => (float) ($lease->deposit_amount ?? 0),
+                'standing_total' => (float) collect($extras)->sum('amount'),
+                'standing_lines' => $extras,
             ];
         });
 
-        $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
-        $lastPayment = $tenant->payments()
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->with('allocations')
-            ->orderByDesc('paid_at')
-            ->orderByDesc('id')
-            ->first();
-        $lastPaymentAmount = $lastPayment
-            ? app(FinancialReportingFormulaService::class)->collectionsFromPayments([$lastPayment])
-            : 0.0;
+        $activeLeases = $tenant->leases->filter(fn ($lease) => $lease->status === PmLease::STATUS_ACTIVE);
+        $occupancyUnits = $activeLeases
+            ->flatMap(fn ($lease) => $lease->units)
+            ->unique('id')
+            ->values();
+        $occupancyLabel = $occupancyUnits->isEmpty()
+            ? '—'
+            : $occupancyUnits->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
 
-        return view('property.agent.tenants.show', [
+        $creditService = app(TenantCreditService::class);
+        $creditBalance = $creditService->balanceForTenant((int) $tenant->id);
+        $creditTransactions = $creditService->isEnabled()
+            ? $creditService->ledgerForTenant((int) $tenant->id, 20)
+            : collect();
+
+        $hubOpenInvoices = $tenant->invoices()
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->whereNotIn('status', [PmInvoice::STATUS_CANCELLED, PmInvoice::STATUS_DRAFT])
+            ->orderBy('due_date')
+            ->limit(40)
+            ->get();
+
+        $hubLeases = $tenant->leases;
+        $hubUnits = $tenant->leases
+            ->flatMap(fn ($lease) => $lease->units)
+            ->unique('id')
+            ->values();
+        $unitIds = $hubUnits->pluck('id')->filter()->values();
+
+        $maintenanceRequests = collect();
+        if (Schema::hasTable('pm_maintenance_requests') && $unitIds->isNotEmpty()) {
+            $maintenanceRequests = \App\Models\PmMaintenanceRequest::query()
+                ->with('unit.property')
+                ->where(function ($q) use ($tenant, $unitIds) {
+                    $q->whereIn('property_unit_id', $unitIds);
+                    if (Schema::hasColumn('pm_maintenance_requests', 'pm_tenant_id')) {
+                        $q->orWhere('pm_tenant_id', $tenant->id);
+                    }
+                })
+                ->orderByDesc('id')
+                ->limit(25)
+                ->get();
+        }
+
+        $recentLedger = app(TenantStatementLedgerService::class)->build($tenant, null, null);
+        $recentInvoices = $recentLedger['invoices']
+            ->sortByDesc(fn ($invoice) => $invoice->issue_date?->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $recentPayments = $recentLedger['payments']
+            ->sortByDesc(fn ($payment) => $payment->paid_at?->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $recentRegisterReceipts = $recentLedger['registerReceipts']
+            ->sortByDesc(fn ($receipt) => optional($receipt->txn_date ?? $receipt->banking_date)->timestamp ?? 0)
+            ->take(25)
+            ->values();
+        $lastPayment = $recentPayments->first(
+            fn ($payment) => (string) $payment->status === PmPayment::STATUS_COMPLETED
+        );
+        if (! $lastPayment) {
+            $lastPayment = $tenant->payments()
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->with('allocations')
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->first();
+        }
+        $lastPaymentAmount = $lastPayment
+            ? (float) $lastPayment->amount
+            : (float) ($recentRegisterReceipts->first()?->amount ?? 0);
+        $recentNotices = PmTenantNotice::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->orderByDesc('created_at')
+            ->limit(25)
+            ->get();
+
+        $utilityReadings = $unitIds->isEmpty() || ! Schema::hasTable('pm_water_readings')
+            ? collect()
+            : PmWaterReading::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->orderByDesc('billing_month')
+                ->orderByDesc('id')
+                ->limit(25)
+                ->get();
+
+        $standingExtras = $this->tenantStandingExtras($tenant);
+        $depositSnapshot = $this->tenantDepositSnapshot($tenant);
+        $activityFeed = $this->tenantActivityFeed($tenant, $lastPayment, $lastPaymentAmount, $recentInvoices, $recentNotices);
+        $alerts = $this->tenantHubAlerts($tenant, $billing['total_due'] ?? [], $profileStatus);
+        $quickActions = [
+            ['label' => 'Create invoice', 'modal' => 'showHubInvoiceForm', 'icon' => 'fa-file-invoice', 'tone' => 'primary'],
+            ['label' => 'Record payment', 'modal' => 'showHubPaymentForm', 'icon' => 'fa-money-bill'],
+            ['label' => 'Record advance', 'modal' => 'showHubAdvanceForm', 'icon' => 'fa-piggy-bank'],
+            ['label' => 'New lease', 'modal' => 'showLeaseCreateForm', 'icon' => 'fa-file-signature'],
+            ['label' => 'Create notice', 'modal' => 'showHubNoticeForm', 'icon' => 'fa-file-circle-plus'],
+            ['label' => 'Maintenance', 'modal' => 'showHubMaintenanceForm', 'icon' => 'fa-wrench'],
+            ['label' => 'Edit tenant', 'route' => 'property.tenants.edit', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-pen-to-square', 'tone' => 'muted'],
+            ['label' => 'Full statement', 'route' => 'property.tenants.statement', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-file-lines'],
+        ];
+
+        return property_view('property.agent.tenants.show', [
             'tenant' => $tenant,
+            'activeTab' => $activeTab,
+            'profileStatus' => $profileStatus,
+            'occupancyLabel' => $occupancyLabel,
+            'activeLeaseCount' => $activeLeases->count(),
+            'monthlyRentTotal' => (float) $activeLeases->sum('monthly_rent'),
             'leaseRows' => $leaseRows,
             'invoiceTotals' => $billing['invoice_totals'],
             'leaseCarryForward' => $billing['lease_carry_forward'],
             'totalDue' => $billing['total_due'],
             'creditBalance' => $creditBalance,
+            'creditTransactions' => $creditTransactions,
+            'advanceCreditsEnabled' => $creditService->isEnabled(),
+            'hubOpenInvoices' => $hubOpenInvoices,
+            'hubLeases' => $hubLeases,
+            'hubUnits' => $hubUnits,
+            'maintenanceRequests' => $maintenanceRequests,
+            'noticeTemplate' => (string) PropertyPortalSetting::getValue('template_notice_text', ''),
             'lastPayment' => $lastPayment,
             'lastPaymentAmount' => $lastPaymentAmount,
+            'recentInvoices' => $recentInvoices,
+            'recentPayments' => $recentPayments,
+            'recentRegisterReceipts' => $recentRegisterReceipts,
+            'recentNotices' => $recentNotices,
+            'utilityReadings' => $utilityReadings,
+            'standingExtras' => $standingExtras,
+            'depositSnapshot' => $depositSnapshot,
+            'activityFeed' => $activityFeed,
+            'alerts' => $alerts,
+            'quickActions' => $quickActions,
         ]);
     }
 
@@ -807,132 +1359,13 @@ class PmTenantDirectoryController extends Controller
         $fromDate = $from !== '' ? Carbon::parse($from)->startOfDay() : null;
         $toDate = $to !== '' ? Carbon::parse($to)->endOfDay() : null;
 
-        $invoiceQuery = PmInvoice::query()
-            ->billableAr()
-            ->with(['unit.property'])
-            ->where('pm_tenant_id', $tenant->id)
-            ->when($fromDate, fn ($q) => $q->whereDate('issue_date', '>=', $fromDate->toDateString()))
-            ->when($toDate, fn ($q) => $q->whereDate('issue_date', '<=', $toDate->toDateString()));
-
-        $paymentQuery = PmPayment::query()
-            ->with(['allocations.invoice'])
-            ->where('pm_tenant_id', $tenant->id)
-            ->when($fromDate, fn ($q) => $q->whereDate('paid_at', '>=', $fromDate->toDateString()))
-            ->when($toDate, fn ($q) => $q->whereDate('paid_at', '<=', $toDate->toDateString()));
-
-        $invoices = $invoiceQuery->orderBy('issue_date')->orderBy('id')->get();
-        $payments = $paymentQuery->orderBy('paid_at')->orderBy('id')->get();
-
-        $openingInvoices = 0.0;
-        $openingPayments = 0.0;
-        $openingArrears = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
-        $openingArrearsAsOf = $tenant->opening_arrears_as_of
-            ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
-            : null;
-        if ($fromDate) {
-            $openingInvoices = (float) PmInvoice::query()
-                ->billableAr()
-                ->where('pm_tenant_id', $tenant->id)
-                ->whereDate('issue_date', '<', $fromDate->toDateString())
-                ->sum('amount');
-
-            $openingPayments = (float) DB::table('pm_payment_allocations as a')
-                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-                ->where('pay.pm_tenant_id', $tenant->id)
-                ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->whereDate('pay.paid_at', '<', $fromDate->toDateString())
-                ->sum('a.amount');
-
-            if ($openingArrears > 0 && ($openingArrearsAsOf === null || $openingArrearsAsOf->lt($fromDate))) {
-                $openingInvoices += $openingArrears;
-            }
-        }
-
-        $openingBalance = $openingInvoices - $openingPayments;
-
-        $entries = collect();
-
-        foreach ($invoices as $invoice) {
-            $label = $invoice->invoice_no ?: 'INV-'.$invoice->id;
-            $unitLabel = trim(($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—'));
-
-            $entries->push([
-                'date' => $invoice->issue_date?->toDateString(),
-                'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
-                'type' => 'Invoice',
-                'ref' => $label,
-                'description' => ($invoice->invoice_type ? strtoupper((string) $invoice->invoice_type) : 'CHARGE').($unitLabel !== '— / —' ? ' · '.$unitLabel : ''),
-                'debit' => (float) $invoice->amount,
-                'credit' => 0.0,
-                'payment_id' => null,
-            ]);
-        }
-
-        if ($openingArrears > 0) {
-            $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
-            $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
-            $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
-            if ($inRange) {
-                $items = collect((array) ($tenant->opening_arrears_items ?? []))
-                    ->filter(fn ($item): bool => is_array($item) && (float) ($item['amount'] ?? 0) > 0)
-                    ->map(function (array $item): string {
-                        $customLabel = trim((string) ($item['label'] ?? ''));
-                        $label = $customLabel !== ''
-                            ? $customLabel
-                            : ($this->openingArrearsTypeOptions()[(string) ($item['type'] ?? '')] ?? ucfirst(str_replace('_', ' ', (string) ($item['type'] ?? 'Other'))));
-                        $period = (string) ($item['period'] ?? '');
-                        $ref = trim((string) ($item['reference'] ?? ''));
-                        $bits = [$label, $period !== '' ? "({$period})" : null, PropertyMoney::kes((float) ($item['amount'] ?? 0))];
-                        if ($ref !== '') {
-                            $bits[] = '['.$ref.']';
-                        }
-
-                        return implode(' ', array_values(array_filter($bits, fn ($v): bool => (string) $v !== '')));
-                    });
-                $partsText = $items->isEmpty() ? '' : ' Breakdown: '.$items->implode(' · ');
-                $entries->push([
-                    'date' => $entryDate,
-                    'timestamp' => $entryTs,
-                    'type' => 'Opening arrears',
-                    'ref' => 'B/F-'.$tenant->id,
-                    'description' => trim((string) (($tenant->opening_arrears_notes ?: 'Brought-forward debt captured at tenant onboarding.').$partsText)),
-                    'debit' => $openingArrears,
-                    'credit' => 0.0,
-                    'payment_id' => null,
-                ]);
-            }
-        }
-
-        foreach ($payments as $payment) {
-            $label = $payment->external_ref ?: 'PAY-'.$payment->id;
-            $allocTo = $payment->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
-            $desc = strtoupper((string) $payment->channel);
-            if ($allocTo !== '') {
-                $desc .= ' · Alloc: '.$allocTo;
-            }
-            $desc .= ' · '.ucfirst((string) $payment->status);
-
-            $isCompleted = $payment->status === PmPayment::STATUS_COMPLETED;
-
-            $entries->push([
-                'date' => $payment->paid_at?->toDateString(),
-                'timestamp' => $payment->paid_at?->timestamp ?? 0,
-                'type' => 'Payment',
-                'ref' => $label,
-                'description' => $desc,
-                'debit' => 0.0,
-                'credit' => $isCompleted ? (float) $payment->allocations->sum('amount') : 0.0,
-                'payment_id' => $isCompleted ? $payment->id : null,
-                'status' => ucfirst((string) $payment->status),
-            ]);
-        }
-
-        $entries = $entries
-            ->sortBy([
-                ['timestamp', 'asc'],
-                ['type', 'asc'],
-            ])
-            ->values();
+        $ledger = app(TenantStatementLedgerService::class)->build($tenant, $fromDate, $toDate);
+        $invoices = $ledger['invoices'];
+        $payments = $ledger['payments'];
+        $openingArrears = $ledger['openingArrears'];
+        $openingBalance = $ledger['openingBalance'];
+        $entries = $ledger['entries'];
+        $unpostedReceiptTotal = $ledger['unpostedReceiptTotal'];
 
         $running = $openingBalance;
         $totalDebit = 0.0;
@@ -983,17 +1416,18 @@ class PmTenantDirectoryController extends Controller
         }
 
         $billingSnapshot = $formulas->tenantBillingSnapshot($tenant);
-        $canonicalOutstanding = $formulas->tenantStatementClosingBalance((int) $tenant->id);
-        $closingBalance = $canonicalOutstanding;
-        $ledgerRunningBalance = max(0.0, $running);
+        $canonicalOutstanding = $formulas->tenantTotalDue($tenant);
+        $ledgerRunningBalance = $running;
+        // Statement closing follows the ledger the user sees (avoids AR=0 while unpaid lines remain visible).
+        $closingBalance = round($ledgerRunningBalance, 2);
 
         $stats = [
             ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => 'Statement owner'],
-            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices + payments (informational)'],
-            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Ledger charges'],
-            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Allocation credits in ledger'],
-            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Canonical billable invoice AR'],
-            ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Informational debit − credit'],
+            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices, payments, and imported receipts'],
+            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Charges and opening arrears'],
+            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Payments and imported receipts'],
+            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Running balance on this statement (matches ledger)'],
+            ['label' => 'Amount due', 'value' => PropertyMoney::kes(round($canonicalOutstanding - $unpostedReceiptTotal, 2)), 'hint' => 'Canonical AR + opening arrears − credits'],
         ];
 
         $tenant->loadMissing([
@@ -1029,11 +1463,14 @@ class PmTenantDirectoryController extends Controller
         ];
 
         $paymentSummary = [
-            'count' => $payments->count(),
-            'completedCount' => $payments->where('status', PmPayment::STATUS_COMPLETED)->count(),
+            'count' => $payments->count() + $ledger['registerReceipts']->count(),
+            'completedCount' => $payments->where('status', PmPayment::STATUS_COMPLETED)->count() + $ledger['registerReceipts']->count(),
             'pendingCount' => $payments->where('status', PmPayment::STATUS_PENDING)->count(),
             'failedCount' => $payments->where('status', PmPayment::STATUS_FAILED)->count(),
-            'completedAmount' => $formulas->collectionsFromPayments($payments),
+            'completedAmount' => round(
+                (float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount') + $unpostedReceiptTotal,
+                2
+            ),
             'pendingAmount' => (float) $payments->where('status', PmPayment::STATUS_PENDING)->sum('amount'),
         ];
 
@@ -1084,10 +1521,18 @@ class PmTenantDirectoryController extends Controller
 
     public function edit(Request $request, PmTenant $tenant): View
     {
-        $tenant->loadCount('leases');
+        $tenant->loadCount([
+            'leases',
+            'leases as active_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE),
+            'leases as expired_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_EXPIRED),
+            'leases as terminated_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_TERMINATED),
+            'leases as draft_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_DRAFT),
+        ]);
 
         return view('property.agent.tenants.edit', array_merge([
             'tenant' => $tenant,
+            'profileStatus' => TenantProfileStatus::forTenant($tenant),
+            'tenantFields' => $this->tenantFieldConfig(),
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
         ], $this->propertyFormModalViewData($request)));
     }
@@ -1348,5 +1793,217 @@ class PmTenantDirectoryController extends Controller
             'other' => 'Other charge',
             'custom_charge' => 'Custom charge',
         ];
+    }
+
+    /**
+     * @return list<array{lease_id: int, type: string, type_label: string, amount: float, property_name: string, unit_label: string}>
+     */
+    private function tenantStandingExtras(PmTenant $tenant): array
+    {
+        $rows = [];
+        foreach ($tenant->leases as $lease) {
+            if ((string) $lease->status !== PmLease::STATUS_ACTIVE) {
+                continue;
+            }
+            $unit = $lease->units->first();
+            foreach ($this->leaseStandingChargeLines($lease) as $line) {
+                $rows[] = [
+                    'lease_id' => (int) $lease->id,
+                    'type' => $line['type'],
+                    'type_label' => ucwords(str_replace('_', ' ', $line['type'])),
+                    'amount' => $line['amount'],
+                    'property_name' => (string) ($unit?->property?->name ?? '—'),
+                    'unit_label' => (string) ($unit?->label ?? '—'),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array{type: string, amount: float}>
+     */
+    private function leaseStandingChargeLines(PmLease $lease): array
+    {
+        return array_map(
+            static fn (array $line): array => [
+                'type' => $line['type'],
+                'amount' => $line['amount'],
+            ],
+            LeaseStandingCharges::lines($lease),
+        );
+    }
+
+    /**
+     * @return array{held: float, expected: float, lines: list<array{label: string, amount: float, source: string, status: string}>}
+     */
+    private function tenantDepositSnapshot(PmTenant $tenant): array
+    {
+        $lines = [];
+        $expected = 0.0;
+
+        foreach ($tenant->leases as $lease) {
+            $rentDeposit = (float) ($lease->deposit_amount ?? 0);
+            if ($rentDeposit > 0) {
+                $expected += $rentDeposit;
+                $lines[] = [
+                    'label' => 'Rent deposit · lease #'.$lease->id,
+                    'amount' => $rentDeposit,
+                    'source' => 'lease',
+                    'status' => (string) $lease->status,
+                ];
+            }
+            foreach (is_array($lease->additional_deposits) ? $lease->additional_deposits : [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $amount = (float) ($row['amount'] ?? 0);
+                if ($amount <= 0) {
+                    continue;
+                }
+                $expected += $amount;
+                $label = trim((string) ($row['label'] ?? ''));
+                $lines[] = [
+                    'label' => ($label !== '' ? $label : 'Additional deposit').' · lease #'.$lease->id,
+                    'amount' => $amount,
+                    'source' => 'lease',
+                    'status' => (string) $lease->status,
+                ];
+            }
+            if ($lease->relationLoaded('depositLines')) {
+                foreach ($lease->depositLines as $depositLine) {
+                    $amount = (float) ($depositLine->expected_amount ?? $depositLine->paid_amount ?? 0);
+                    if ($amount <= 0) {
+                        continue;
+                    }
+                    $lines[] = [
+                        'label' => (string) ($depositLine->label ?: $depositLine->deposit_key ?: 'Deposit line'),
+                        'amount' => $amount,
+                        'source' => 'register',
+                        'status' => (string) ($depositLine->refund_status ?? 'held'),
+                    ];
+                }
+            }
+        }
+
+        $held = 0.0;
+        if (Schema::hasTable('pm_tenant_deposits')) {
+            $held = (float) PmTenantDeposit::query()
+                ->where('tenant_id', $tenant->id)
+                ->sum('amount');
+            foreach (PmTenantDeposit::query()->where('tenant_id', $tenant->id)->orderByDesc('id')->get() as $row) {
+                $lines[] = [
+                    'label' => 'Trust deposit',
+                    'amount' => (float) $row->amount,
+                    'source' => 'trust',
+                    'status' => (string) ($row->status ?? 'held'),
+                ];
+            }
+        }
+
+        return [
+            'held' => $held,
+            'expected' => $expected,
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, PmInvoice>  $recentInvoices
+     * @param  \Illuminate\Support\Collection<int, PmTenantNotice>  $recentNotices
+     * @return list<array{title: string, subtitle: string, at: string, href?: string, tone?: string}>
+     */
+    private function tenantActivityFeed(
+        PmTenant $tenant,
+        ?PmPayment $lastPayment,
+        float $lastPaymentAmount,
+        $recentInvoices,
+        $recentNotices,
+    ): array {
+        $items = [];
+
+        if ($lastPayment) {
+            $items[] = [
+                'title' => 'Payment received',
+                'subtitle' => PropertyMoney::kes($lastPaymentAmount).' · '.strtoupper((string) ($lastPayment->channel ?? 'cash')),
+                'at' => $lastPayment->paid_at?->format('Y-m-d') ?? '',
+                'href' => route('property.payments.receipt.show', $lastPayment, false),
+                'tone' => 'emerald',
+            ];
+        }
+
+        $latestInvoice = $recentInvoices->first();
+        if ($latestInvoice) {
+            $items[] = [
+                'title' => 'Invoice '.($latestInvoice->invoice_no ?: '#'.$latestInvoice->id),
+                'subtitle' => PropertyMoney::kes((float) $latestInvoice->amount).' · '.str_replace('_', ' ', (string) ($latestInvoice->invoice_type ?? 'charge')),
+                'at' => $latestInvoice->issue_date?->format('Y-m-d') ?? '',
+                'href' => route('property.revenue.invoices.show', $latestInvoice, false),
+                'tone' => 'cyan',
+            ];
+        }
+
+        $latestNotice = $recentNotices->first();
+        if ($latestNotice) {
+            $items[] = [
+                'title' => 'Notice: '.str_replace('_', ' ', (string) ($latestNotice->notice_type ?? 'notice')),
+                'subtitle' => ucfirst((string) ($latestNotice->status ?? 'open')),
+                'at' => $latestNotice->created_at?->format('Y-m-d') ?? '',
+                'href' => route('property.tenants.notices', ['tenant_id' => $tenant->id], false),
+                'tone' => 'amber',
+            ];
+        }
+
+        $latestLease = $tenant->leases->first();
+        if ($latestLease) {
+            $items[] = [
+                'title' => 'Lease #'.$latestLease->id.' · '.ucfirst((string) $latestLease->status),
+                'subtitle' => ($latestLease->start_date?->format('Y-m-d') ?? '—').' → '.($latestLease->end_date?->format('Y-m-d') ?? 'open'),
+                'at' => $latestLease->start_date?->format('Y-m-d') ?? '',
+                'href' => route('property.leases.show', ['lease' => $latestLease->id], false),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $totalDue
+     * @param  array{label?: string, key?: string}  $profileStatus
+     * @return list<array{label: string, tone: string, href?: string}>
+     */
+    private function tenantHubAlerts(PmTenant $tenant, array $totalDue, array $profileStatus): array
+    {
+        $alerts = [];
+        $due = (float) ($totalDue['total_due'] ?? 0);
+        if ($due > 0.009) {
+            $alerts[] = [
+                'label' => 'Total due '.PropertyMoney::kes($due),
+                'tone' => 'rose',
+                'href' => route('property.tenants.show', ['tenant' => $tenant->id, 'tab' => 'invoices'], false),
+            ];
+        }
+        $cf = (float) ($totalDue['uninvoiced_cf'] ?? 0);
+        if ($cf > 0.009) {
+            $alerts[] = [
+                'label' => 'Uninvoiced carry-forward '.PropertyMoney::kes($cf),
+                'tone' => 'amber',
+            ];
+        }
+        if (($profileStatus['key'] ?? '') === TenantProfileStatus::EXPIRED) {
+            $alerts[] = ['label' => 'Lease expired', 'tone' => 'amber'];
+        }
+        if (in_array($profileStatus['key'] ?? '', [TenantProfileStatus::FORMER, TenantProfileStatus::INACTIVE], true)) {
+            $alerts[] = [
+                'label' => ($profileStatus['label'] ?? 'Inactive').' tenant',
+                'tone' => 'slate',
+            ];
+        }
+        if (! $tenant->user_id) {
+            $alerts[] = ['label' => 'No portal login', 'tone' => 'slate'];
+        }
+
+        return $alerts;
     }
 }

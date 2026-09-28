@@ -64,4 +64,70 @@ final class UnitListPresentation
 
         return '—';
     }
+
+    public static function hasActiveLease(PropertyUnit $unit): bool
+    {
+        if (! $unit->relationLoaded('leases')) {
+            return false;
+        }
+
+        return $unit->leases->isNotEmpty();
+    }
+
+    public static function canAssignLease(PropertyUnit $unit, bool $hasActiveLease): bool
+    {
+        if ($hasActiveLease || $unit->status === PropertyUnit::STATUS_OWNER_OCCUPIED) {
+            return false;
+        }
+
+        // Occupied units should always have an active lease; link/fix via Open lease, not Add lease.
+        if ($unit->status === PropertyUnit::STATUS_OCCUPIED) {
+            return false;
+        }
+
+        return in_array($unit->status, [
+            PropertyUnit::STATUS_VACANT,
+            PropertyUnit::STATUS_NOTICE,
+        ], true);
+    }
+
+    public static function canOpenLease(bool $hasActiveLease): bool
+    {
+        return $hasActiveLease;
+    }
+
+    public static function canPublishListing(PropertyUnit $unit, bool $hasActiveLease): bool
+    {
+        return $unit->status === PropertyUnit::STATUS_VACANT && ! $hasActiveLease;
+    }
+
+    public static function shouldShowMissingLeaseWarning(PropertyUnit $unit, bool $hasActiveLease): bool
+    {
+        return $unit->status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease;
+    }
+
+    public static function canDeleteUnit(PropertyUnit $unit, bool $hasActiveLease): bool
+    {
+        return ! $hasActiveLease && $unit->status === PropertyUnit::STATUS_VACANT;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function allowedStatusTransitions(PropertyUnit $unit, bool $hasActiveLease): array
+    {
+        return match ((string) $unit->status) {
+            PropertyUnit::STATUS_VACANT => $hasActiveLease
+                ? [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE]
+                : [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_OWNER_OCCUPIED],
+            PropertyUnit::STATUS_OCCUPIED => $hasActiveLease
+                ? [PropertyUnit::STATUS_NOTICE, PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OWNER_OCCUPIED]
+                : [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE, PropertyUnit::STATUS_OWNER_OCCUPIED],
+            PropertyUnit::STATUS_NOTICE => $hasActiveLease
+                ? [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED]
+                : [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED],
+            PropertyUnit::STATUS_OWNER_OCCUPIED => [PropertyUnit::STATUS_VACANT],
+            default => [],
+        };
+    }
 }

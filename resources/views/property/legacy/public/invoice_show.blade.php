@@ -10,6 +10,9 @@
         'draft' => 'bg-slate-100 text-slate-700',
         default => 'bg-blue-100 text-blue-700',
     };
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $logoUrl = (string) (($branding['logo_url'] ?? '') ?: ($branding['company_logo_url'] ?? ''));
+    $contactLine = (string) ($branding['contact_line'] ?? '');
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -24,13 +27,17 @@
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200">
         <div class="flex flex-wrap items-start justify-between gap-3 p-6 border-b border-slate-100">
             <div>
-                @if (!empty($branding['logo_url']))
-                    <img src="{{ $branding['logo_url'] }}" class="h-10 mb-2" alt="">
+                @if ($logoUrl !== '')
+                    <img src="{{ $logoUrl }}" class="h-10 mb-2 object-contain" alt="{{ $branding['company_name'] ?? 'Company' }} logo">
                 @endif
                 <h1 class="text-2xl font-bold" style="color: {{ $branding['colour'] ?? '#1e40af' }}">{{ $branding['company_name'] ?? 'Property Manager' }}</h1>
-                <p class="text-xs text-slate-500">{{ $branding['address'] ?? '' }}</p>
-                @if (!empty($branding['phone']) || !empty($branding['email']))
-                    <p class="text-xs text-slate-500">{{ $branding['phone'] ?? '' }} @if(!empty($branding['email']))  -  {{ $branding['email'] }}@endif</p>
+                @if ($contactLine !== '')
+                    <p class="text-xs text-slate-500">{{ $contactLine }}</p>
+                @else
+                    <p class="text-xs text-slate-500">{{ $branding['address'] ?? '' }}</p>
+                    @if (!empty($branding['phone']) || !empty($branding['email']))
+                        <p class="text-xs text-slate-500">{{ $branding['phone'] ?? '' }} @if(!empty($branding['email']))  -  {{ $branding['email'] }}@endif</p>
+                    @endif
                 @endif
             </div>
             <div class="text-right">

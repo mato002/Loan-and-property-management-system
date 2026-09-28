@@ -23,7 +23,7 @@ final class PassionLegacyLeasesImportService
      */
     public function importFromPath(string $path, int $agentUserId, bool $dryRun = false, bool $updateExisting = true): array
     {
-        $records = $this->parser->parse($this->extractor->extract($path));
+        $records = $this->parseBestRecords($path);
 
         $summary = [
             'dry_run' => $dryRun,
@@ -69,6 +69,35 @@ final class PassionLegacyLeasesImportService
     }
 
     /**
+     * Try every PDF text extract and keep the parse with the most lease rows.
+     * Longer extracts are sometimes more fragmented and parse worse.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function parseBestRecords(string $path): array
+    {
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $candidates = in_array($extension, ['txt', 'text', 'log', 'csv'], true)
+            ? [$this->extractor->extract($path)]
+            : $this->extractor->extractCandidates($path);
+
+        if ($candidates === []) {
+            // Fall back to the normal extractor error path.
+            $candidates = [$this->extractor->extract($path)];
+        }
+
+        $best = [];
+        foreach ($candidates as $text) {
+            $parsed = $this->parser->parse($text);
+            if (count($parsed) > count($best)) {
+                $best = $parsed;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * @param  array<string, mixed>  $record
      * @param  array<string, mixed>  $summary
      */
@@ -85,6 +114,15 @@ final class PassionLegacyLeasesImportService
         if (! $unit) {
             return;
         }
+
+        $tenantName = PassionLegacyTextNormalizer::cleanTenantName($record['tenant_name'] ?? '');
+        if (PassionLegacyTextNormalizer::isPlaceholderTenantName($tenantName)) {
+            $summary['warnings'][] = "Row {$rowNum} ({$record['account_number']}): skipped placeholder tenant name '".trim((string) ($record['tenant_name'] ?? ''))."'.";
+
+            return;
+        }
+
+        $record['tenant_name'] = $tenantName;
 
         $tenant = $this->resolveTenant($record, $agentUserId, $updateExisting, $summary, $rowNum);
 
@@ -212,6 +250,18 @@ final class PassionLegacyLeasesImportService
 
         if ($existing) {
             if ($updateExisting) {
+                if (! empty($payload['phone']) && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                    $phoneTaken = PmTenant::query()
+                        ->withoutGlobalScopes()
+                        ->where('agent_user_id', $agentUserId)
+                        ->where('phone', $payload['phone'])
+                        ->where('id', '!=', $existing->id)
+                        ->exists();
+                    if ($phoneTaken) {
+                        unset($payload['phone']);
+                        $summary['warnings'][] = "Row {$rowNum} ({$accountNumber}): phone already used by another tenant — left existing phone unchanged.";
+                    }
+                }
                 $existing->update($payload);
                 $summary['tenants_updated']++;
             }

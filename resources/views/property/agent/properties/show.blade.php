@@ -1,8 +1,8 @@
-<x-property.workspace :compact-list="false"
+<x-property.workspace :compact-list="true"
     :title="'Property: '.$property->name"
-    :subtitle="'360° property workspace — units, occupancy, utilities, revenue, and offboarding. Period: '.$periodLabel"
+    :subtitle="'360° property workspace — '.$periodLabel"
     back-route="property.properties.list"
-    :stats="$stats"
+    :stats="[]"
     :columns="[]"
 >
     @php
@@ -18,79 +18,114 @@
             'collection_q' => $filters['collection_q'] ?? null,
             'export_report' => $filters['export_report'] ?? null,
         ], static fn ($value) => $value !== null && $value !== '');
+        $hubModalDefaults = [
+            'addUnitOpen' => $errors->hasAny(['label', 'unit_type', 'bedrooms', 'rent_amount', 'status', 'unit_count'])
+                && (string) old('property_id') === (string) $property->id,
+            'showHubLinkLandlord' => $errors->hasAny(['user_id', 'ownership_percent'])
+                && old('return_to') === 'property_show',
+            'showHubMaintenanceForm' => $errors->hasAny(['property_unit_id', 'category', 'urgency', 'description'])
+                && old('return_to') === 'property_show',
+            'showLeaseCreateForm' => false,
+        ];
+        $hubSummaryStats = $stats ?? [];
     @endphp
+
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($hubModalDefaults) !!}"></x-slot>
+
+    <x-slot name="actions">
+        @include('property.agent.partials.hub_quick_actions', ['actions' => $quickActions ?? []])
+    </x-slot>
+
+    <x-slot name="modals">
+        @include('property.agent.properties.partials.hub_modals')
+        @include('property.agent.partials.lease_create_shell', [
+            'openLeaseCreateModal' => false,
+            'leaseCreateFormUrl' => route('property.leases.create_form', array_filter([
+                'property_id' => $property->id,
+                'unit_id' => $firstVacantUnit->id ?? null,
+                'return_to' => 'property_show',
+                'return_property_id' => $property->id,
+                'return_tab' => 'occupancy',
+            ]), false),
+        ])
+    </x-slot>
 
     @if ($property->isManagementReadOnly())
         <div class="mb-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
             <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span>
             — This property is read-only. Operational actions are disabled; history, statements, and accounting remain available.
             @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
-                <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">View offboarding</a>
+                <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding'], false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">Open Offboarding tab</a>
             @endif
         </div>
     @elseif ($property->isOffboarding())
         <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <span class="font-semibold">Offboarding in progress</span>
             — New leases, tenants, and utility setup are blocked. Settle balances then archive when ready.
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue offboarding</a>
-        </div>
-    @elseif ($property->isManagementActive() && auth()->user()?->hasPmPermission('properties.manage'))
-        <div class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 flex flex-wrap items-center justify-between gap-2">
-            <span>Landlord quit or stopping management? Use offboarding to wind down without deleting financial history.</span>
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Start offboarding</a>
+            <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding'], false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue in Offboarding tab</a>
         </div>
     @endif
 
     <x-slot name="above">
-        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3 sm:p-4 shadow-sm flex flex-wrap items-end gap-2 w-full min-w-0">
-            <input type="hidden" name="tab" value="{{ $activeTab }}" />
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Month</label>
-                <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">FY</label>
-                <input type="number" name="fy" value="{{ $fyValue ?? now()->year }}" min="2000" max="2100" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 w-28" />
-            </div>
-            @if ($activeTab !== 'units')
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Unit status</label>
-                <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="">All</option>
-                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
-                        <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Collection channel</label>
-                <select name="collection_channel" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="">All</option>
-                    @foreach(($availableCollectionChannels ?? []) as $channel)
-                        <option value="{{ $channel }}" @selected(($filters['collection_channel'] ?? '') === $channel)>{{ strtoupper($channel) }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Collection search</label>
-                <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
-            </div>
+        <div class="grid gap-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-stretch">
+            <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 px-2.5 py-2 shadow-sm w-full min-w-0">
+                <input type="hidden" name="tab" value="{{ $activeTab }}" />
+                <div class="w-[8.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Month</label>
+                    <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                <div class="w-[5.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">FY</label>
+                    <input type="number" name="fy" value="{{ $fyValue ?? now()->year }}" min="2000" max="2100" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                @if ($activeTab !== 'units')
+                <div class="w-[8rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Unit status</label>
+                    <select name="unit_status" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="">All</option>
+                        @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="w-[8.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Channel</label>
+                    <select name="collection_channel" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="">All</option>
+                        @foreach(($availableCollectionChannels ?? []) as $channel)
+                            <option value="{{ $channel }}" @selected(($filters['collection_channel'] ?? '') === $channel)>{{ strtoupper($channel) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="w-[10rem] min-w-0 grow sm:grow-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Collection search</label>
+                    <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
+                </div>
+                @endif
+                <div class="w-[9.5rem] min-w-0">
+                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Export type</label>
+                    <select name="export_report" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                        <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
+                        <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
+                        <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
+                        <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
+                    </select>
+                </div>
+                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Apply</button>
+                <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">CSV</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">PDF</a>
+                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Word</a>
+            </form>
+
+            @if (count($hubSummaryStats) > 0)
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 px-2.5 py-2 shadow-sm min-w-0">
+                    <x-property.collapsible-stats storage-key="property.hub.propertySummaryVisible">
+                        <x-property.compact-stat-strip :stats="$hubSummaryStats" />
+                    </x-property.collapsible-stats>
+                </div>
             @endif
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Export report</label>
-                <select name="export_report" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
-                    <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
-                    <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
-                    <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
-                </select>
-            </div>
-            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply period</button>
-            <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export PDF</a>
-            <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export Word</a>
-        </form>
+        </div>
     </x-slot>
 
     <x-property.entity-hub
@@ -99,11 +134,10 @@
         :route-params="['property' => $property->id]"
         :active-tab="$activeTab"
         :preserve-query="$preserveQuery"
-        :quick-actions="$quickActions ?? []"
         :alerts="$alerts ?? []"
     />
 
-    <div x-data="{ addUnitOpen: false }">
+    <div>
     @if (in_array($activeTab, ['overview', 'landlords'], true))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         @if ($activeTab === 'overview')
@@ -117,7 +151,13 @@
                 <p>
                     <span class="text-slate-500">Linked landlord{{ count($ownerRows) === 1 ? '' : 's' }}:</span>
                     @if (count($ownerRows) > 0)
-                        {{ collect($ownerRows)->pluck('name')->filter()->implode(', ') }}
+                        @foreach ($ownerRows as $linkedOwner)
+                            @if (! empty($linkedOwner['id']))
+                                <a href="{{ route('property.landlords.show', $linkedOwner['id'], false) }}" class="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">{{ $linkedOwner['name'] }}</a>@if (! $loop->last), @endif
+                            @else
+                                {{ $linkedOwner['name'] }}@if (! $loop->last), @endif
+                            @endif
+                        @endforeach
                     @else
                         <span class="text-amber-700">None linked</span>
                     @endif
@@ -128,7 +168,9 @@
         @endif
         @if ($activeTab === 'landlords')
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
-            <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
+            </div>
             <div class="mt-3 overflow-x-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                     <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -138,22 +180,35 @@
                             <th class="px-3 py-2">Collected share</th>
                             <th class="px-3 py-2">Arrears share</th>
                             <th class="px-3 py-2">Your earnings</th>
+                            <th class="px-3 py-2">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($ownerRows as $o)
+                            @php $ownerArrears = (float) ($o['share_arrears'] ?? 0); @endphp
                             <tr class="border-t border-slate-100">
                                 <td class="px-3 py-2">
-                                    <div class="font-medium text-slate-900">{{ $o['name'] }}</div>
+                                    @if (! empty($o['id']))
+                                        <a href="{{ route('property.landlords.show', $o['id'], false) }}" class="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">{{ $o['name'] }}</a>
+                                    @else
+                                        <div class="font-medium text-slate-900">{{ $o['name'] }}</div>
+                                    @endif
                                     <div class="text-xs text-slate-500">{{ $o['email'] }}</div>
                                 </td>
                                 <td class="px-3 py-2 tabular-nums">{{ number_format((float) $o['ownership_percent'], 2) }}%</td>
                                 <td class="px-3 py-2 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $o['share_collected']) }}</td>
-                                <td class="px-3 py-2 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $o['share_arrears']) }}</td>
+                                <td class="px-3 py-2 tabular-nums {{ $ownerArrears > 0.009 ? 'bg-rose-100 font-semibold text-rose-800' : '' }}">{{ \App\Services\Property\PropertyMoney::kes($ownerArrears) }}</td>
                                 <td class="px-3 py-2 tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) $o['agent_earning_portion']) }}</td>
+                                <td class="px-3 py-2">
+                                    @if (! empty($o['id']))
+                                        <a href="{{ route('property.landlords.show', $o['id'], false) }}" class="inline-flex rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">View profile</a>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No landlords linked.</td></tr>
+                            <tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No landlords linked.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -556,9 +611,14 @@
 
     @if ($activeTab === 'maintenance')
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Maintenance requests</h3>
-            <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline">Open maintenance workspace</a>
+            <div class="flex flex-wrap gap-2">
+                @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly())
+                    <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubMaintenanceForm" @click="showHubMaintenanceForm = true">New request</button>
+                @endif
+                <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline self-center">Open maintenance workspace</a>
+            </div>
         </div>
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -597,15 +657,6 @@
                     <h3 class="text-sm font-semibold text-slate-900">Unit status &amp; arrears</h3>
                     <p class="text-xs text-slate-500 mt-0.5">{{ count($unitSnapshots ?? []) }} of {{ count($units ?? []) }} units shown</p>
                 </div>
-                @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
-                    <button
-                        type="button"
-                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                        @click="addUnitOpen = true"
-                    >
-                        + Add unit
-                    </button>
-                @endif
             </div>
             <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="tab" value="units" />
@@ -658,6 +709,15 @@
                     <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="space-y-4" data-turbo="false">
                         @csrf
                         <input type="hidden" name="property_id" value="{{ $property->id }}" />
+                        <input type="hidden" name="return_to" value="property_show" />
+                        <input type="hidden" name="return_property_id" value="{{ $property->id }}" />
+                        <input type="hidden" name="return_tab" value="units" />
+                        @if (! empty($monthValue))
+                            <input type="hidden" name="return_month" value="{{ $monthValue }}" />
+                        @endif
+                        @if (! empty($fyValue))
+                            <input type="hidden" name="return_fy" value="{{ $fyValue }}" />
+                        @endif
                         <input type="hidden" name="unit_count" value="1" />
                         <input type="hidden" name="status_mode" value="single" />
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1011,5 +1071,6 @@
     </div>
     @endif
     </div>
+
 </x-property.workspace>
 

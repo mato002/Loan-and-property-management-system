@@ -140,7 +140,18 @@
                             To correct the amount, reverse journal #{{ $disbursement->accounting_journal_entry_id }} first — then you can remove and re-record this disbursement.
                         </p>
                     @endif
-                    @if ($method === 'mpesa' && $payoutStatus === 'failed' && ($b2cPayoutConfigured ?? false))
+                    @if ($method === 'mpesa' && $payoutStatus === 'awaiting_approval' && ($b2cPayoutConfigured ?? false) && auth()->user()?->hasLoanPermission('disbursements.approve'))
+                        <form method="post" action="{{ route('loan.book.disbursements.approve_payout', $disbursement) }}" data-swal-confirm="Approve and send this B2C payout via M-Pesa?">
+                            @csrf
+                            <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-[#2f4f4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#264040]">Approve B2C payout</button>
+                        </form>
+                        <form method="post" action="{{ route('loan.book.disbursements.reject_payout', $disbursement) }}" class="space-y-2" data-swal-confirm="Reject this B2C payout request?">
+                            @csrf
+                            <input type="text" name="payout_reject_reason" maxlength="500" placeholder="Rejection reason (optional)" class="w-full rounded-lg border-slate-200 text-sm" />
+                            <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100">Reject</button>
+                        </form>
+                    @endif
+                    @if ($method === 'mpesa' && in_array($payoutStatus, ['failed', 'queued'], true) && ($b2cPayoutConfigured ?? false))
                         <form method="post" action="{{ route('loan.book.disbursements.retry_payout', $disbursement) }}" data-swal-confirm="Retry this M-Pesa payout request?">
                             @csrf
                             <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">Retry M-Pesa payout</button>

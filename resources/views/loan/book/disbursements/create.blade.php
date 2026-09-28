@@ -63,13 +63,26 @@
                             <option value="{{ $v }}" @selected(old('method') === $v)>{{ $lab }}</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-slate-500">M-Pesa means you already sent funds (e.g. from your till or agent). This form only records the payout and posts to the ledger immediately — it does not call Safaricom B2C.</p>
-                    @if ($b2cPayoutConfigured ?? false)
-                        <p class="mt-1 text-xs text-slate-500">Daraja B2C is configured: if an API-initiated payout fails, you can retry from the disbursement detail page.</p>
-                    @endif
                     @error('method')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div id="payout_transaction_wrap" class="space-y-1 @if (! in_array((string) old('method', ''), ['mpesa', 'bank', 'cheque'], true)) hidden @endif">
+                <div id="payout_mode_wrap" class="space-y-1 @if ((string) old('method', '') !== 'mpesa') hidden @endif">
+                    <label for="payout_mode" class="block text-xs font-semibold text-slate-600 mb-1">M-Pesa payout mode</label>
+                    <select id="payout_mode" name="payout_mode" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="manual" @selected(old('payout_mode', 'manual') === 'manual')>Manual record (already paid — post ledger now)</option>
+                        <option value="b2c" @selected(old('payout_mode') === 'b2c') @disabled(! ($b2cPayoutConfigured ?? false))>
+                            M-Pesa B2C API (send via Daraja{{ ($b2cPayoutConfigured ?? false) ? '' : ' — not configured' }})
+                        </option>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-500">
+                        @if ($b2cPayoutConfigured ?? false)
+                            B2C sends cash to the borrower's phone. Ledger posts only after Safaricom confirms. Approvers with <span class="font-semibold">disbursements.approve</span> can approve from the disbursement page or B2C approvals queue.
+                        @else
+                            Set <code class="font-mono text-[10px]">MPESA_B2C_*</code> in <code class="font-mono text-[10px]">.env</code> to enable API payouts. Manual mode still works.
+                        @endif
+                    </p>
+                    @error('payout_mode')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div id="payout_transaction_wrap" class="space-y-1 @if (! in_array((string) old('method', ''), ['mpesa', 'bank', 'cheque'], true) || (string) old('payout_mode', 'manual') === 'b2c') hidden @endif">
                     <label for="payout_transaction_id" class="block text-xs font-semibold text-slate-600 mb-1">
                         <span id="payout_transaction_label">Transaction reference / ID</span>
                     </label>
@@ -127,6 +140,8 @@
         const notesInput = form.querySelector('#notes');
         const dateInput = form.querySelector('#disbursed_at');
         const methodSelect = form.querySelector('#method');
+        const payoutModeWrap = form.querySelector('#payout_mode_wrap');
+        const payoutModeSelect = form.querySelector('#payout_mode');
         const payoutWrap = form.querySelector('#payout_transaction_wrap');
         const payoutInput = form.querySelector('#payout_transaction_id');
         const payoutLabel = form.querySelector('#payout_transaction_label');
@@ -153,7 +168,11 @@
 
         const syncPayoutTransactionField = () => {
             const m = methodSelect?.value ?? '';
-            const show = methodsNeedTxnRef.has(m);
+            const mode = payoutModeSelect?.value ?? 'manual';
+            if (payoutModeWrap) {
+                payoutModeWrap.classList.toggle('hidden', m !== 'mpesa');
+            }
+            const show = methodsNeedTxnRef.has(m) && !(m === 'mpesa' && mode === 'b2c');
             if (payoutWrap) {
                 payoutWrap.classList.toggle('hidden', !show);
             }
@@ -234,6 +253,9 @@
         if (methodSelect) {
             methodSelect.addEventListener('change', syncPayoutTransactionField);
             syncPayoutTransactionField();
+        }
+        if (payoutModeSelect) {
+            payoutModeSelect.addEventListener('change', syncPayoutTransactionField);
         }
     })();
 </script>

@@ -5,12 +5,7 @@
         title="Property onboarding fields"
         subtitle="Choose the exact fields used when onboarding a property. Add new fields, disable old ones, or mark fields as required."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup hub</a>
-            <a href="{{ route('property.settings.system_setup.property_onboarding_fields') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Property onboarding fields</a>
-            <a href="{{ route('property.settings.system_setup.unit_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Unit fields</a>
-            <a href="{{ route('property.settings.system_setup.forms') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">General form switches</a>
-        </div>
+        @include('property.agent.settings.system_setup.partials.field_nav', ['active' => 'property.settings.system_setup.property_onboarding_fields'])
         <form method="post" action="{{ route('property.settings.system_setup.property_onboarding_fields.store') }}" class="space-y-4" x-data="{
             rows: @js(old('fields', $fields)),
             addRow() {

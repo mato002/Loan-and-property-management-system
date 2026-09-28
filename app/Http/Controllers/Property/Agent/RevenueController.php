@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\PmEzenReceiptRegister;
 use App\Models\PmInvoice;
 use App\Models\PmMessageLog;
 use App\Models\PmPayment;
@@ -28,6 +29,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -90,7 +92,7 @@ class RevenueController extends Controller
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
             'sort' => strtolower(trim((string) $request->query('sort', 'unit'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
-            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+            'per_page' => (string) \App\Support\ListPageSize::resolve($request->query('per_page'), 30),
         ];
         $sort = (string) $filters['sort'];
         $dir = (string) $filters['dir'];
@@ -184,7 +186,7 @@ class RevenueController extends Controller
             'property_id' => max(0, (int) $request->query('property_id', 0)),
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
-            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+            'per_page' => (string) \App\Support\ListPageSize::resolve($request->query('per_page'), 30),
         ];
         $q = (string) $filters['q'];
         $perPage = (int) $filters['per_page'];
@@ -553,7 +555,7 @@ class RevenueController extends Controller
             $filters['from'] = $rangeFrom->toDateString();
             $filters['to'] = $rangeTo->toDateString();
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $today = now()->startOfDay();
         $todayStr = $today->toDateString();
@@ -807,16 +809,14 @@ class RevenueController extends Controller
             $lastContact = $r['last_contact']?->format('Y-m-d') ?? '—';
 
             $detailUrl = route('property.revenue.arrears.tenant', ['tenant' => $r['tenant_id']], false);
-            $noticesUrl = route('property.tenants.notices', ['tenant_id' => $r['tenant_id'], 'view' => 1], false);
             $tenantCell = new HtmlString(
                 '<a href="'.e($detailUrl).'" class="font-medium text-slate-800 hover:text-indigo-700">'.$tenantLabel.'</a>'
             );
-            $actions = new HtmlString(
-                '<div class="flex flex-wrap items-center gap-2 text-xs">'.
-                '<a href="'.e($detailUrl).'" class="rounded-md bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">View invoices</a>'.
-                '<a href="'.e($noticesUrl).'" class="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">Open notices</a>'.
-                '</div>'
-            );
+            $actions = new HtmlString(view('property.agent.partials.arrears_row_actions', [
+                'tenantId' => (int) $r['tenant_id'],
+                'invoiceIds' => $r['invoice_ids'] ?? [],
+                'primaryInvoiceId' => (int) (($r['invoice_ids'][0] ?? 0)),
+            ])->render());
 
             return [
                 $selector,
@@ -950,6 +950,9 @@ class RevenueController extends Controller
             $invoiceLink = new HtmlString(
                 '<a href="'.e(route('property.revenue.invoices.show', ['invoice' => $i->id], false)).'" class="text-indigo-600 hover:text-indigo-700 font-medium">'.e((string) ($i->invoice_no ?? '—')).'</a>'
             );
+            $actions = new HtmlString(view('property.agent.partials.arrears_invoice_row_actions', [
+                'invoice' => $i,
+            ])->render());
 
             return [
                 $selector,
@@ -964,6 +967,7 @@ class RevenueController extends Controller
                 PropertyMoney::kes($bal),
                 $i->updated_at?->format('Y-m-d') ?? '—',
                 $workflow,
+                $actions,
             ];
         })->all();
 
@@ -1018,6 +1022,7 @@ class RevenueController extends Controller
             new HtmlString('<span class="font-semibold text-rose-700 dark:text-rose-400">'.PropertyMoney::kes($totalBalance).'</span>'),
             '',
             '',
+            '',
         ];
 
         $reminderTargets = $invoices
@@ -1032,7 +1037,7 @@ class RevenueController extends Controller
             'tenant' => $tenant,
             'tableRows' => $rows,
             'tableFooterRow' => $tableFooterRow,
-            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
+            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow', 'Actions'],
             'reminderTargets' => $reminderTargets,
             'summary' => [
                 'invoice_count' => $invoices->count(),
@@ -1527,7 +1532,7 @@ class RevenueController extends Controller
             'sort' => strtolower(trim((string) $request->query('sort', 'name'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmPenaltyRule::query();
         if ($filters['q'] !== '') {
@@ -1556,25 +1561,17 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'penalty-rules-'.now()->format('Ymd_His'),
-                ['Rule name', 'Scope', 'Trigger', 'Formula', 'Cap', 'Effective', 'Status'],
+                ['Rule name', 'How it is calculated', 'When it is charged', 'Wait after due date', 'Maximum charge', 'Starts', 'Status'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $r) {
-                        $parts = [$r->formula];
-                        if ($r->percent !== null) {
-                            $parts[] = (string) $r->percent.'%';
-                        }
-                        if ($r->amount !== null) {
-                            $parts[] = PropertyMoney::kes((float) $r->amount);
-                        }
-
                         yield [
                             (string) $r->name,
-                            (string) $r->scope,
-                            (string) $r->trigger_event.' (grace '.$r->grace_days.'d)',
-                            implode(' · ', array_filter($parts)),
+                            PmPenaltyRule::formulaLabel((string) $r->formula),
+                            PmPenaltyRule::compoundingLabel((string) $r->compounding_mode),
+                            (string) ((int) $r->grace_days).' day(s)',
                             $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—',
                             $r->effective_from?->format('Y-m-d') ?? '—',
-                            $r->is_active ? 'Active' : 'Off',
+                            $r->is_active ? 'On' : 'Off',
                         ];
                     }
                 },
@@ -1586,23 +1583,26 @@ class RevenueController extends Controller
         $active = $rules->getCollection()->where('is_active', true);
 
         $rows = $rules->getCollection()->map(function (PmPenaltyRule $r) {
-            $parts = [$r->formula, str_replace('_', ' ', (string) ($r->compounding_mode ?? 'simple'))];
-            if ($r->percent !== null) {
-                $parts[] = (string) $r->percent.'%';
+            $how = PmPenaltyRule::formulaLabel((string) $r->formula);
+            if ($r->percent !== null && (float) $r->percent > 0) {
+                $how .= ' · '.(string) $r->percent.'%';
             }
-            if ($r->amount !== null) {
-                $parts[] = PropertyMoney::kes((float) $r->amount);
+            if ($r->amount !== null && (float) $r->amount > 0) {
+                $how .= ' · '.PropertyMoney::kes((float) $r->amount);
+            }
+
+            $maximum = $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : 'No limit';
+            if ($r->cumulative_cap !== null && (float) $r->cumulative_cap > 0) {
+                $maximum .= ' (total '.PropertyMoney::kes((float) $r->cumulative_cap).')';
             }
 
             return [
                 $r->name,
-                $r->scope,
-                $r->trigger_event.' (grace '.$r->grace_days.'d)',
-                implode(' · ', array_filter($parts)),
-                ($r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—')
-                    .($r->cumulative_cap !== null ? ' / cum '.PropertyMoney::kes((float) $r->cumulative_cap) : ''),
-                $r->effective_from?->format('Y-m-d') ?? '—',
-                $r->is_active ? 'Active' : 'Off',
+                $how,
+                PmPenaltyRule::compoundingLabel((string) $r->compounding_mode).' · wait '.(int) $r->grace_days.' day(s)',
+                $maximum,
+                $r->effective_from?->format('Y-m-d') ?? 'Immediately',
+                $r->is_active ? 'On' : 'Off',
             ];
         })->all();
 
@@ -1610,10 +1610,10 @@ class RevenueController extends Controller
             'stats' => [
                 ['label' => 'Rules', 'value' => (string) $rules->total(), 'hint' => 'Filtered total'],
                 ['label' => 'Active', 'value' => (string) $active->count(), 'hint' => ''],
-                ['label' => 'Applied (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => 'Posting not automated'],
-                ['label' => 'Waived (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => ''],
+                ['label' => 'Charged this month', 'value' => PropertyMoney::kes(0), 'hint' => 'Charges posted this month'],
+                ['label' => 'Waived this month', 'value' => PropertyMoney::kes(0), 'hint' => ''],
             ],
-            'columns' => ['Rule name', 'Scope', 'Trigger', 'Formula', 'Cap', 'Effective', 'Status'],
+            'columns' => ['Rule name', 'How it is calculated', 'When it is charged', 'Maximum charge', 'Starts', 'Status'],
             'tableRows' => $rows,
             'penaltyRules' => $rules->getCollection(),
             'paginator' => $rules,
@@ -1631,10 +1631,10 @@ class RevenueController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:128'],
-            'scope' => ['required', 'string', 'max:64'],
-            'trigger_event' => ['required', 'string', 'max:64'],
+            'scope' => ['required', 'in:global'],
+            'trigger_event' => ['required', 'in:days_after_due'],
             'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
-            'formula' => ['required', 'string', 'max:64'],
+            'formula' => ['required', 'in:percent_of_rent,flat,percent_plus_flat'],
             'compounding_mode' => ['required', 'in:simple,daily_compound,one_shot'],
             'amount' => ['nullable', 'numeric', 'min:0'],
             'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -1667,6 +1667,204 @@ class RevenueController extends Controller
 
     public function receipts(Request $request): View|StreamedResponse
     {
+        if (Schema::hasTable('pm_ezen_receipt_register') && PmEzenReceiptRegister::query()->exists()) {
+            return $this->ezenReceiptRegisterIndex($request);
+        }
+
+        return $this->paidInvoiceReceiptStubs($request);
+    }
+
+    public function ezenReceiptRegisterIndex(Request $request): View|StreamedResponse
+    {
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+            'match' => strtolower(trim((string) $request->query('match', ''))),
+            'sort' => strtolower(trim((string) $request->query('sort', 'banking_date'))),
+            'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
+        ];
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
+
+        $query = PmEzenReceiptRegister::query()->with(['tenant', 'payment']);
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('ezen_receipt_no', 'like', '%'.$q.'%')
+                    ->orWhere('ref_no', 'like', '%'.$q.'%')
+                    ->orWhere('register_tenant_name', 'like', '%'.$q.'%')
+                    ->orWhere('tnt_account', 'like', '%'.$q.'%')
+                    ->orWhere('phone', 'like', '%'.$q.'%')
+                    ->orWhere('unit_label', 'like', '%'.$q.'%')
+                    ->orWhere('property_code', 'like', '%'.$q.'%');
+            });
+        }
+        if ($filters['tenant_id'] > 0) {
+            $query->where('pm_tenant_id', $filters['tenant_id']);
+        }
+        if ($filters['from'] !== '') {
+            $query->whereDate('banking_date', '>=', $filters['from']);
+        }
+        if ($filters['to'] !== '') {
+            $query->whereDate('banking_date', '<=', $filters['to']);
+        }
+        if ($filters['property_id'] > 0) {
+            $propertyCode = \App\Models\Property::query()->whereKey($filters['property_id'])->value('code');
+            if (is_string($propertyCode) && trim($propertyCode) !== '') {
+                $query->where('property_code', strtoupper(trim($propertyCode)));
+            }
+        }
+        if ($filters['unit_id'] > 0) {
+            $unitLabel = \App\Models\PropertyUnit::query()->whereKey($filters['unit_id'])->value('label');
+            if (is_string($unitLabel) && trim($unitLabel) !== '') {
+                $query->where('unit_label', trim($unitLabel));
+            }
+        }
+
+        match ($filters['match']) {
+            'linked' => $query->whereNotNull('pm_payment_id'),
+            'unmatched' => $query->whereNull('pm_payment_id'),
+            'tenant_missing' => $query->where('link_status', PmEzenReceiptRegister::LINK_NO_TENANT),
+            'in_system' => $query->whereNotNull('pm_tenant_id'),
+            'tenant_unlinked' => $query->whereNotNull('pm_tenant_id')->whereNull('pm_payment_id'),
+            default => null,
+        };
+
+        $sortMap = [
+            'banking_date' => 'banking_date',
+            'amount' => 'amount',
+            'ezen_receipt_no' => 'ezen_receipt_no',
+            'ref_no' => 'ref_no',
+            'link_status' => 'link_status',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$filters['sort']] ?? 'banking_date';
+        $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
+
+        // In-system / linked receipts first; tenant-not-imported rows sink to the bottom.
+        $query->orderByRaw(
+            'CASE pm_ezen_receipt_register.link_status
+                WHEN ? THEN 0
+                WHEN ? THEN 1
+                WHEN ? THEN 2
+                WHEN ? THEN 3
+                ELSE 4
+            END ASC',
+            [
+                PmEzenReceiptRegister::LINK_PAYMENT,
+                PmEzenReceiptRegister::LINK_TENANT,
+                PmEzenReceiptRegister::LINK_IMPORTED,
+                PmEzenReceiptRegister::LINK_NO_TENANT,
+            ]
+        );
+
+        if ($sortBy === 'link_status') {
+            $query->orderBy('link_status', $dir);
+        } else {
+            $query->orderBy($sortBy, $dir);
+        }
+        $query->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
+            $items = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'ezen-receipt-register-'.now()->format('Ymd_His'),
+                ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status'],
+                function () use ($items) {
+                    foreach ($items as $receipt) {
+                        yield [
+                            $receipt->ezen_receipt_no,
+                            (string) ($receipt->ref_no ?? ''),
+                            trim(($receipt->property_code ?? '').' '.($receipt->unit_label ?? '')),
+                            $receipt->displayTenantName(),
+                            (string) ($receipt->phone ?? ''),
+                            $receipt->displayPaymentMethod(),
+                            number_format((float) $receipt->amount, 2, '.', ''),
+                            $receipt->banking_date?->format('Y-m-d') ?? '',
+                            $receipt->link_status,
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $receipts = (clone $query)->paginate($perPage)->withQueryString();
+        $totalAmount = (clone $query)->sum('amount');
+        $linkedCount = (clone $query)->whereNotNull('pm_payment_id')->count();
+        $missingTenantCount = (clone $query)->where('link_status', PmEzenReceiptRegister::LINK_NO_TENANT)->count();
+        $unmatchedPaymentCount = (clone $query)->whereNull('pm_payment_id')->count();
+
+        $stats = [
+            ['label' => 'EZEN receipts', 'value' => (string) $receipts->total(), 'hint' => 'Imported from legacy receipt listing', 'emphasis' => true],
+            ['label' => 'Total amount', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered register total'],
+            ['label' => 'Linked to payment', 'value' => (string) $linkedCount, 'hint' => 'Matched in Collections → Payments'],
+            ['label' => 'Unmatched payment', 'value' => (string) $unmatchedPaymentCount, 'hint' => 'Receipt with no PAY- row yet — use Match filter'],
+            ['label' => 'Tenant missing', 'value' => (string) $missingTenantCount, 'hint' => 'Receipt kept — link when tenant is added'],
+        ];
+
+        $rows = $receipts->getCollection()->map(function (PmEzenReceiptRegister $receipt) {
+            $propertyUnit = trim(($receipt->property_code ?? '').' · '.($receipt->unit_label ?? ''), ' ·');
+            $linkLabel = match ($receipt->link_status) {
+                PmEzenReceiptRegister::LINK_PAYMENT => 'Linked',
+                PmEzenReceiptRegister::LINK_TENANT => 'Tenant only',
+                PmEzenReceiptRegister::LINK_NO_TENANT => 'Tenant missing',
+                default => 'Imported',
+            };
+            $paymentLink = $receipt->pm_payment_id
+                ? new HtmlString('<a href="'.route('property.revenue.payments', ['q' => 'PAY-'.$receipt->pm_payment_id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$receipt->pm_payment_id.'</a>')
+                : '—';
+
+            $actions = new HtmlString(view('property.agent.partials.receipt_register_row_actions', [
+                'receipt' => $receipt,
+            ])->render());
+
+            return [
+                $receipt->ezen_receipt_no,
+                $receipt->ref_no !== null && $receipt->ref_no !== '' ? $receipt->ref_no : '—',
+                $propertyUnit !== '' ? $propertyUnit : '—',
+                $receipt->displayTenantName() !== '' ? $receipt->displayTenantName() : ($receipt->tnt_account ?? '—'),
+                $receipt->phone !== null && $receipt->phone !== '' ? $receipt->phone : '—',
+                $receipt->displayPaymentMethod(),
+                number_format((float) $receipt->amount, 2),
+                $receipt->banking_date?->format('Y-m-d') ?? '—',
+                $linkLabel,
+                $paymentLink,
+                $actions,
+            ];
+        })->all();
+
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
+        return property_view('property.agent.revenue.receipts', [
+            'stats' => $stats,
+            'columns' => ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment', 'Actions'],
+            'tableRows' => $rows,
+            'paginator' => $receipts,
+            'filters' => [
+                ...$filters,
+                'sort' => $sortBy,
+                'dir' => $dir,
+                'per_page' => (string) $perPage,
+            ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromPayments(),
+            'ezenReceiptRegister' => true,
+        ]);
+    }
+
+    private function paidInvoiceReceiptStubs(Request $request): View|StreamedResponse
+    {
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'property_id' => max(0, (int) $request->query('property_id', 0)),
@@ -1677,7 +1875,7 @@ class RevenueController extends Controller
             'sort' => strtolower(trim((string) $request->query('sort', 'updated_at'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $query = PmInvoice::query()
             ->with(['tenant', 'unit.property'])

@@ -16,6 +16,7 @@ final class PmTenantQuickCreateFields
             'phone' => ['enabled' => true, 'required' => true],
             'email' => ['enabled' => true, 'required' => false],
             'id_number' => ['enabled' => true, 'required' => false],
+            'account_number' => ['enabled' => true, 'required' => false],
             'emergency_contact' => ['enabled' => true, 'required' => false],
         ];
 
@@ -93,6 +94,26 @@ final class PmTenantQuickCreateFields
             ];
         }
 
+        if ($cfg['account_number']['enabled']) {
+            $fields[] = [
+                'name' => 'account_number',
+                'label' => 'Account number (TNT)',
+                'required' => $cfg['account_number']['required'],
+                'span' => '2',
+                'placeholder' => 'Auto-generated if blank',
+            ];
+        }
+
+        if ($cfg['emergency_contact']['enabled']) {
+            $fields[] = [
+                'name' => 'emergency_contact',
+                'label' => 'Emergency contact',
+                'required' => $cfg['emergency_contact']['required'],
+                'span' => '2',
+                'placeholder' => 'Next of kin name & phone',
+            ];
+        }
+
         $fields[] = [
             'name' => 'risk_level',
             'label' => 'Risk level',
@@ -136,7 +157,7 @@ final class PmTenantQuickCreateFields
         return [
             'mode' => 'ajax',
             'title' => 'Create tenant',
-            'subtitle' => 'Fields match your tenant setup. Portal login requires a unique email.',
+            'subtitle' => 'Fields match the tenant register, including TNT account number. Portal login requires a unique email.',
             'endpoint' => route('property.tenants.store_json'),
             'fields' => self::modalFields(),
             'modalMaxWidth' => '2xl',

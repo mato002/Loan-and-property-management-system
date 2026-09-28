@@ -563,6 +563,16 @@ class PropertyTenantsOpsWebController extends Controller
         );
         $this->dispatchNoticeIfRequired($notice, $request);
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $notice->pm_tenant_id,
+            'notices',
+            __('Notice saved.')
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return back()->with('success', __('Notice saved.'));
     }
 

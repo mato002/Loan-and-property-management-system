@@ -23,6 +23,15 @@
             class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 w-full max-w-3xl"
         >
             @csrf
+            @if (request('return_to') === 'tenant_show' || old('return_to') === 'tenant_show')
+                <input type="hidden" name="return_to" value="tenant_show" />
+                <input type="hidden" name="return_tenant_id" value="{{ old('return_tenant_id', request('return_tenant_id', $leaseFormSelectedTenantId ?? '')) }}" />
+                <input type="hidden" name="return_tab" value="{{ old('return_tab', request('return_tab', 'leases')) }}" />
+            @elseif (request('return_to') === 'property_show' || old('return_to') === 'property_show')
+                <input type="hidden" name="return_to" value="property_show" />
+                <input type="hidden" name="return_property_id" value="{{ old('return_property_id', request('return_property_id', request('property_id'))) }}" />
+                <input type="hidden" name="return_tab" value="{{ old('return_tab', request('return_tab', 'occupancy')) }}" />
+            @endif
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New lease</h3>
             <p class="text-xs text-slate-600 dark:text-slate-400">Allocate one vacant unit to a tenant to activate tenancy and unlock monthly billing.</p>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -93,6 +102,12 @@
                     <p id="rent-deposit-meta" class="mt-1 text-xs text-slate-500">—</p>
                     @error('deposit_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day override</label>
+                    <input type="number" name="rent_due_day" value="{{ old('rent_due_day') }}" min="1" max="31" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = property / system default" />
+                    @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                @include('property.agent.tenants.partials.lease_register_fields')
             </div>
             <div class="rounded-xl border border-amber-200 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-900/10 p-3 space-y-2">
                 <button type="button" id="toggle-opening-arrears-create" class="inline-flex items-center gap-2 rounded-lg border border-amber-300 dark:border-amber-700 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-800/20">

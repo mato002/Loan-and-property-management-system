@@ -10,6 +10,10 @@
     $linkLandlordFormHasErrors = $errors->has('property_id')
         || $errors->has('user_id')
         || $errors->has('ownership_percent');
+    $registerImportFormHasErrors = $errors->has('file')
+        || session()->has('property_register_import_stats')
+        || (is_array(session('property_register_import_errors')) && count(session('property_register_import_errors')) > 0)
+        || (is_array(session('property_register_import_warnings')) && count(session('property_register_import_warnings')) > 0);
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
@@ -27,8 +31,12 @@
         x-data="{!! \Illuminate\Support\Js::from([
             'showPropertyForm' => $propertyFormHasErrors,
             'showLinkLandlordForm' => $linkLandlordFormHasErrors,
+            'showRegisterImportForm' => $registerImportFormHasErrors,
         ]) !!}"
-        x-init="if (window.location.hash === '#link-landlord-form') { showLinkLandlordForm = true }"
+        x-init="
+            if (window.location.hash === '#link-landlord-form') { showLinkLandlordForm = true }
+            if (window.location.hash === '#import-register') { showRegisterImportForm = true }
+        "
     ></x-slot>
 
     <x-slot name="actions">
@@ -48,14 +56,14 @@
             <i class="fa-solid fa-link" aria-hidden="true"></i>
             <span>Link landlord</span>
         </button>
-        <a
-            href="{{ route('property.properties.register_import') }}"
-            data-turbo-frame="property-main"
+        <button
+            type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+            data-property-modal-open="showRegisterImportForm" @click="showRegisterImportForm = true"
         >
             <i class="fa-solid fa-file-import" aria-hidden="true"></i>
             <span>Import register</span>
-        </a>
+        </button>
     </x-slot>
 
     <x-slot name="modals">
@@ -332,18 +340,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($linkableProperties ?? [])->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                                ['name' => 'commission_percent', 'label' => 'Commission % (optional)', 'required' => false, 'type' => 'number', 'step' => '0.01', 'min' => '0', 'max' => '100', 'span' => '2', 'placeholder' => 'Uses default if blank'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     @if (collect($linkableProperties ?? [])->isEmpty())
@@ -357,16 +354,7 @@
                         :required="true"
                         select-id="landlord-user-select"
                         :options="collect($landlordUsers)->map(fn($u) => ['value' => $u->id, 'label' => $u->name.' ('.($u->email ?: ($u->phone ?: 'no contact')).')', 'selected' => (string) old('user_id') === (string) $u->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create landlord',
-                            'endpoint' => route('property.landlords.onboard_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Jane Landlord'],
-                                ['name' => 'email', 'label' => 'Email (optional if phone provided)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
-                                ['name' => 'phone', 'label' => 'Phone (optional if email provided)', 'required' => false, 'span' => '2', 'placeholder' => 'e.g. 0712345678'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmLandlordQuickCreateFields::config()"
                     />
                     @error('user_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
@@ -380,6 +368,21 @@
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach</button>
 
             </form>
+        </x-property.modal>
+
+        <x-property.modal
+            show="showRegisterImportForm"
+            close="showRegisterImportForm = false"
+            name="property-register-import"
+            title="Import property register"
+            max-width="2xl"
+        >
+            @include('property.agent.properties.partials.register_import_form', [
+                'expectedColumns' => $expectedColumns ?? [],
+                'lastImportStats' => $lastImportStats ?? null,
+                'lastImportWarnings' => $lastImportWarnings ?? [],
+                'lastImportErrors' => $lastImportErrors ?? [],
+            ])
         </x-property.modal>
         </div>
     </x-slot>

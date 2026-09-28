@@ -20,6 +20,86 @@
             :workflow-url="route('property.tenants.leases', absolute: false)"
             storage-key="property.tenants.getting_started.dismissed"
         />
+
+        @php
+            $duplicateGroups = $duplicateGroups ?? [];
+        @endphp
+        @if (count($duplicateGroups) > 0)
+            <div
+                id="tenant-duplicates"
+                class="mt-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                x-data="{ open: true }"
+            >
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm font-semibold">Tenant data checks ({{ count($duplicateGroups) }} group{{ count($duplicateGroups) === 1 ? '' : 's' }})</p>
+                        <p class="mt-0.5 text-xs text-amber-800/90 dark:text-amber-200/90">
+                            True duplicates (same phone/Ac/No) and legacy placeholder names. Same person on two units is kept as two profiles — matching Ezen — and is not listed here.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex self-start rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100"
+                        @click="open = !open"
+                        x-text="open ? 'Hide list' : 'Show list'"
+                    ></button>
+                </div>
+
+                <div x-show="open" x-cloak class="mt-3 space-y-3">
+                    @foreach ($duplicateGroups as $group)
+                        @php
+                            $severity = (string) ($group['severity'] ?? 'warning');
+                            $boxClass = match ($severity) {
+                                'danger' => 'border-rose-200/80 bg-white/80 dark:border-rose-800 dark:bg-slate-900/50',
+                                'info' => 'border-sky-200/80 bg-white/80 dark:border-sky-800 dark:bg-slate-900/50',
+                                default => 'border-amber-200/80 bg-white/80 dark:border-amber-800 dark:bg-slate-900/50',
+                            };
+                            $titleClass = match ($severity) {
+                                'danger' => 'text-rose-800 dark:text-rose-200',
+                                'info' => 'text-sky-800 dark:text-sky-200',
+                                default => 'text-amber-800 dark:text-amber-200',
+                            };
+                        @endphp
+                        <div class="rounded-xl border px-3 py-2.5 {{ $boxClass }}">
+                            <p class="text-xs font-semibold uppercase tracking-wide {{ $titleClass }}">
+                                {{ $group['label'] }} · {{ $group['key'] }}
+                                <span class="ml-1 font-normal normal-case">({{ $group['count'] }} records)</span>
+                            </p>
+                            @if (! empty($group['note']))
+                                <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">{{ $group['note'] }}</p>
+                            @endif
+                            @if (($group['type'] ?? '') !== 'placeholder')
+                                <a
+                                    href="{{ route('property.tenants.directory', ['q' => $group['key']], false) }}"
+                                    data-turbo-frame="property-main"
+                                    class="mt-1 inline-flex text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
+                                >Show in table</a>
+                            @endif
+                            <ul class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+                                @foreach ($group['tenants'] as $dup)
+                                    <li class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                                        <div class="min-w-0 text-sm">
+                                            <a href="{{ $dup['show_url'] }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline dark:text-indigo-300">{{ $dup['name'] }}</a>
+                                            <p class="text-xs text-slate-600 dark:text-slate-300 break-all">
+                                                Ac/No {{ $dup['account_number'] }}
+                                                · {{ $dup['phone'] }}
+                                                · {{ $dup['unit'] ?? '—' }}
+                                                · added {{ $dup['created_at'] }}
+                                            </p>
+                                        </div>
+                                        <a
+                                            href="{{ $dup['show_url'] }}"
+                                            data-turbo-frame="property-main"
+                                            class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                        >Open</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </x-slot>
 
     <x-slot name="actions">
@@ -295,7 +375,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.tenants_directory', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.tenants_directory', get_defined_vars())
     </x-slot>
 
     @if (isset($tenantPager))

@@ -3,7 +3,7 @@
 
     <x-property.page
         title="Unmatched Payments"
-        subtitle="Transactions from Equity API and SMS ingest (M-Pesa/Equity) that could not be auto-matched and require manual assignment."
+        subtitle="Credits that could not be auto-linked to a tenant — bank statement, M-Pesa SMS, paybill API, or manual ingest. Assign a tenant here."
     >
         <div
             x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}' }"
@@ -25,9 +25,14 @@
             <div>
                 <label class="text-xs text-slate-500">Source</label>
                 <select name="source" class="block rounded-xl border-slate-300 shadow-sm">
-                    <option value="">All</option>
-                    <option value="equity" @selected(($filters['source'] ?? '') === 'equity')>Equity API</option>
-                    <option value="sms_forwarder" @selected(($filters['source'] ?? '') === 'sms_forwarder')>SMS Ingest (M-Pesa/Equity)</option>
+                    <option value="">All sources</option>
+                    @forelse (($sourceOptions ?? []) as $value => $label)
+                        <option value="{{ $value }}" @selected(($filters['source'] ?? '') === (string) $value)>{{ $label }}</option>
+                    @empty
+                        <option value="equity" @selected(($filters['source'] ?? '') === 'equity')>Equity</option>
+                        <option value="sms_forwarder" @selected(($filters['source'] ?? '') === 'sms_forwarder')>SMS ingest</option>
+                        <option value="statement_import" @selected(($filters['source'] ?? '') === 'statement_import')>Bank statement</option>
+                    @endforelse
                 </select>
             </div>
             <div>

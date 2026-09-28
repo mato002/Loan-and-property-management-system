@@ -15,6 +15,7 @@
         <select
             name="invoice_type"
             data-invoice-type-select
+            data-property-searchable="true"
             class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
         >
             @foreach ($options as $typeValue => $typeLabel)

@@ -20,6 +20,7 @@
         'status' => 'Status',
         'reversal_status' => 'Reversal',
         'channel' => 'Channel',
+        'ref' => 'Reference',
         'range_months' => 'Range',
         'range_end' => 'Ending month',
         'from' => 'From',
@@ -72,6 +73,16 @@
             empty-option="Channel: All"
             :options="collect(['mpesa' => 'M-Pesa', 'equity_paybill' => 'Equity Paybill API', 'mpesa_sms_ingest' => 'SMS Forwarder', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque', 'mpesa_stk' => 'M-Pesa STK'])->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values()->all()"
             :value="$filters['channel'] ?? ''"
+        />
+        <x-property.filter-field type="select"
+            name="ref"
+            label="Reference"
+            empty-option="Ref: All"
+            :options="[
+                ['value' => 'missing', 'label' => 'Missing M-Pesa ref'],
+                ['value' => 'has_ref', 'label' => 'Has M-Pesa ref'],
+            ]"
+            :value="$filters['ref'] ?? ''"
         />
         <x-property.filter-field type="select"
             name="sort"

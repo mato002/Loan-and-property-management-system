@@ -81,18 +81,24 @@ class PropertyUnit extends Model
 
     /**
      * Vacant units eligible for the public directory (Discover, home, details).
-     * Agents can still refine copy and photos under Listings; publish only affects ordering on the home page.
+     * Default placeholder images are used until the agent uploads photos.
+     * The featured flag only affects homepage ordering / highlighting.
      *
      * @param  Builder<PropertyUnit>  $query
      * @return Builder<PropertyUnit>
      */
     public function scopePubliclyListed(Builder $query): Builder
     {
-        return $query->where('status', self::STATUS_VACANT);
+        return $query
+            ->where('status', self::STATUS_VACANT)
+            ->where(function (Builder $inner) {
+                $inner->where('market_rent', '>', 0)
+                    ->orWhere('rent_amount', '>', 0);
+            });
     }
 
     /**
-     * Vacant units the agent has explicitly marked live (photos + publish toggle satisfied).
+     * Vacant units marked Featured (homepage priority). Photos are optional.
      *
      * @param  Builder<PropertyUnit>  $query
      * @return Builder<PropertyUnit>
@@ -138,6 +144,11 @@ class PropertyUnit extends Model
         }
 
         return max($current, $market);
+    }
+
+    public function hasPublicAskingRent(): bool
+    {
+        return $this->listedRentAmount() > 0;
     }
 
     public function leases(): BelongsToMany
@@ -251,7 +262,7 @@ class PropertyUnit extends Model
                 self::TYPE_SINGLE_ROOM => 'Single room',
                 self::TYPE_BEDSITTER => 'Bedsitter',
                 self::TYPE_STUDIO => 'Studio',
-                default => 'No separate bedroom',
+                default => 'Studio / bedsitter',
             };
         }
 

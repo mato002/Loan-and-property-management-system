@@ -11,6 +11,12 @@
         @if ($isSuperAdmin && ! empty($brandingEditorAgentUserId ?? null))
             <p class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
                 {{ __('You are editing the branding used on the login page and agent workspace for this deployment.') }}
+                <a href="{{ route('superadmin.agent_branding') }}" class="mt-1 block font-semibold underline">{{ __('To set branding for a specific agent without impersonating, use Super Admin → Agent branding.') }}</a>
+            </p>
+        @elseif ($isSuperAdmin)
+            <p class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                {{ __('This screen edits platform/login branding only.') }}
+                <a href="{{ route('superadmin.agent_branding') }}" class="mt-1 block font-semibold underline">{{ __('Select an agent under Super Admin → Agent branding to set their workspace logo and details.') }}</a>
             </p>
         @endif
         <div class="grid gap-6 lg:grid-cols-2">
@@ -22,6 +28,8 @@
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Shown on the public website, login page, invoices, and portal.</p>
                     @error('company_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+
+                @include('property.agent.settings.partials.brand_palette_field')
 
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Portal color theme</label>

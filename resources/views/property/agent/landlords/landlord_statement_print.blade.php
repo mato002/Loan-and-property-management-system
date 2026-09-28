@@ -1,4 +1,5 @@
 @php
+    $branding = $branding ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
     $accent = $branding['colour'] ?? '#0f766e';
 @endphp
 <!DOCTYPE html>
@@ -9,9 +10,6 @@
     <style>
         @page { size: A4 portrait; margin: 14mm; }
         body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #0f172a; margin: 0; }
-        .header { border-bottom: 3px solid {{ $accent }}; padding-bottom: 12px; margin-bottom: 16px; }
-        .company { font-size: 16pt; font-weight: bold; color: {{ $accent }}; }
-        .meta { margin-top: 8px; font-size: 9pt; color: #475569; line-height: 1.5; }
         .summary { margin: 16px 0; display: table; width: 100%; table-layout: fixed; }
         .summary-box { display: table-cell; width: 20%; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; vertical-align: top; }
         .summary-label { font-size: 8pt; color: #64748b; text-transform: uppercase; }
@@ -35,22 +33,18 @@
         </div>
     @endif
 
-    <div class="header">
-        <div class="company">{{ $branding['company_name'] ?? 'Property Manager' }}</div>
-        <div class="meta">
-            <strong>Landlord statement</strong> — {{ $landlord->name }}
-            @if ($landlord->email)
-                · {{ $landlord->email }}
-            @elseif ($landlord->phone)
-                · {{ $landlord->phone }}
-            @endif
-            <br>
-            Period: {{ $periodLabel }} · Generated {{ $generatedAt }}
-            @if (($commissionPct ?? null) !== null)
-                · Commission basis: {{ number_format((float) $commissionPct, 2) }}%
-            @endif
-        </div>
-    </div>
+    @include('property.partials.document_letterhead', [
+        'branding' => $branding,
+        'title' => 'Landlord statement — '.$landlord->name,
+        'subtitle' => collect([
+            $landlord->email ?: null,
+            $landlord->phone ?: null,
+            'Period: '.$periodLabel,
+            'Generated '.$generatedAt,
+            (($commissionPct ?? null) !== null ? 'Commission basis: '.number_format((float) $commissionPct, 2).'%' : null),
+        ])->filter()->implode(' · '),
+        'variant' => 'pdf',
+    ])
 
     <div class="summary">
         <div class="summary-box">
@@ -74,6 +68,34 @@
             <div class="summary-value">{{ \App\Services\Property\PropertyMoney::kes((float) ($totals['agent_earning'] ?? 0)) }}</div>
         </div>
     </div>
+
+    <div class="section-title">Month-by-month (FY {{ $fyValue ?? now()->year }})</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Month</th>
+                <th class="num">Gross collected</th>
+                <th class="num">Owner share</th>
+                <th class="num">Agent earning</th>
+                <th class="num">Active properties</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse (($monthlyBreakdown ?? []) as $row)
+                <tr>
+                    <td>{{ $row['month_label'] ?? ($row['month'] ?? '—') }}</td>
+                    <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['gross_collected'] ?? 0)) }}</td>
+                    <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['owner_share'] ?? 0)) }}</td>
+                    <td class="num">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)) }}</td>
+                    <td class="num">{{ (int) ($row['active_properties'] ?? 0) }}</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="5">No monthly collection activity in this financial year.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
 
     <div class="section-title">Property breakdown</div>
     <table>

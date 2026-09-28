@@ -1,6 +1,8 @@
 /**
- * Listings create — load publish editor inline without full Turbo navigation.
+ * Listings — open Photos & listing details in a modal (not full-page).
  */
+
+let listingPublishLoadToken = 0;
 
 function activateListingPublishScripts(root) {
     if (!(root instanceof Element)) {
@@ -15,6 +17,14 @@ function activateListingPublishScripts(root) {
         script.textContent = oldScript.textContent;
         oldScript.replaceWith(script);
     });
+}
+
+function getListingPublishModal() {
+    return document.getElementById('listing-publish-modal');
+}
+
+function getListingPublishSlot() {
+    return document.getElementById('listing-publish-slot');
 }
 
 function highlightListingPublishRow(unitId) {
@@ -35,8 +45,13 @@ function highlightListingPublishRow(unitId) {
 }
 
 function listingPublishBaseUrl() {
-    const slot = document.getElementById('listing-publish-slot');
-    return slot?.getAttribute('data-listings-create-url') || '/property/listings/create';
+    const modal = getListingPublishModal();
+
+    return modal?.getAttribute('data-listings-create-url') || '/property/listings/create';
+}
+
+function listingPublishPanelUrl(unitId) {
+    return `/property/listings/vacant/${encodeURIComponent(String(unitId))}/publish-panel`;
 }
 
 function updateListingPublishUrl(unitId) {
@@ -48,21 +63,51 @@ function updateListingPublishUrl(unitId) {
         } else {
             url.searchParams.delete('selected_unit');
         }
-        window.history.replaceState({}, '', url.toString());
+
+        const onCreatePage = window.location.pathname.includes('/listings/create');
+        if (onCreatePage) {
+            window.history.replaceState({}, '', url.toString());
+        }
     } catch {
         // ignore malformed URLs
     }
 }
 
+function showListingPublishModal() {
+    const modal = getListingPublishModal();
+    if (!(modal instanceof HTMLElement)) {
+        return;
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    document.documentElement.classList.add('overflow-hidden');
+}
+
+function hideListingPublishModal() {
+    const modal = getListingPublishModal();
+    if (!(modal instanceof HTMLElement)) {
+        return;
+    }
+
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('overflow-hidden');
+}
+
 export async function openListingPublishPanel(url, unitId = null) {
-    const slot = document.getElementById('listing-publish-slot');
+    const slot = getListingPublishSlot();
     if (!(slot instanceof HTMLElement)) {
         window.visitPropertyMain?.(url);
 
         return;
     }
 
-    slot.innerHTML = '<p class="rounded-xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-400">Loading publish editor…</p>';
+    const token = ++listingPublishLoadToken;
+    showListingPublishModal();
+    slot.innerHTML = '<p class="rounded-xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-400">Loading photos &amp; listing details…</p>';
 
     try {
         const response = await fetch(url, {
@@ -78,6 +123,10 @@ export async function openListingPublishPanel(url, unitId = null) {
         }
 
         const html = await response.text();
+        if (token !== listingPublishLoadToken) {
+            return;
+        }
+
         slot.innerHTML = html;
         activateListingPublishScripts(slot);
 
@@ -89,22 +138,23 @@ export async function openListingPublishPanel(url, unitId = null) {
             highlightListingPublishRow(unitId);
             updateListingPublishUrl(unitId);
         }
-
-        requestAnimationFrame(() => {
-            slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
     } catch (error) {
+        if (token !== listingPublishLoadToken) {
+            return;
+        }
         console.error('[ListingPublish] load failed', error);
         slot.innerHTML = '<p class="rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">Could not load the publish editor. Please try again.</p>';
     }
 }
 
 export function closeListingPublishPanel() {
-    const slot = document.getElementById('listing-publish-slot');
+    listingPublishLoadToken += 1;
+    const slot = getListingPublishSlot();
     if (slot instanceof HTMLElement) {
         slot.innerHTML = '';
     }
 
+    hideListingPublishModal();
     highlightListingPublishRow(null);
     updateListingPublishUrl(null);
 }
@@ -143,6 +193,20 @@ document.addEventListener('click', (event) => {
     void openListingPublishPanel(link.href, unitId);
 });
 
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+        return;
+    }
+
+    const modal = getListingPublishModal();
+    if (!(modal instanceof HTMLElement) || modal.classList.contains('hidden')) {
+        return;
+    }
+
+    event.preventDefault();
+    closeListingPublishPanel();
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     bindListingPublishInteractions(document);
     initListingPublishFromUrl();
@@ -152,25 +216,56 @@ document.addEventListener('turbo:load', () => {
     initListingPublishFromUrl();
 });
 document.addEventListener('turbo:frame-load', (event) => {
-    bindListingPublishInteractions(event.target);
-    initListingPublishFromUrl(event.target);
+    const frame = event.target;
+    if (frame instanceof HTMLElement && frame.id === 'property-main') {
+        const unitId = (() => {
+            try {
+                return new URL(window.location.href).searchParams.get('selected_unit');
+            } catch {
+                return null;
+            }
+        })();
+        const onCreate = Boolean(frame.querySelector('#vacant-roster'));
+        if (!unitId || !onCreate) {
+            closeListingPublishPanel();
+        }
+    }
+
+    bindListingPublishInteractions(frame);
+    initListingPublishFromUrl(frame);
 });
 
 function initListingPublishFromUrl(root = document) {
     const scope = root instanceof Document ? document : root;
-    const slot = scope.querySelector?.('#listing-publish-slot') ?? document.getElementById('listing-publish-slot');
-    if (!(slot instanceof HTMLElement) || slot.childElementCount === 0) {
+    const onCreatePage =
+        Boolean(scope.querySelector?.('#vacant-roster')) ||
+        Boolean(document.getElementById('vacant-roster')) ||
+        window.location.pathname.includes('/listings/create');
+
+    if (!onCreatePage) {
         return;
     }
 
     try {
         const unitId = new URL(window.location.href).searchParams.get('selected_unit');
-        if (unitId) {
-            highlightListingPublishRow(unitId);
+        if (!unitId) {
+            return;
         }
-        requestAnimationFrame(() => {
-            slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+
+        const modal = getListingPublishModal();
+        const slot = getListingPublishSlot();
+        if (!(modal instanceof HTMLElement) || !(slot instanceof HTMLElement)) {
+            return;
+        }
+
+        const openForUnit = slot.querySelector?.(`[data-listing-unit-id="${CSS.escape(String(unitId))}"]`);
+        if (!modal.classList.contains('hidden') && openForUnit) {
+            highlightListingPublishRow(unitId);
+
+            return;
+        }
+
+        void openListingPublishPanel(listingPublishPanelUrl(unitId), unitId);
     } catch {
         // ignore malformed URLs
     }

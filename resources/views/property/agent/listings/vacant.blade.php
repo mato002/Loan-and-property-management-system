@@ -98,11 +98,17 @@
                             @if ($u->public_listing_published)
                                 <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Featured</span>
                             @else
-                                <span class="inline-flex rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-xs font-semibold">On Discover</span>
+                                <span class="inline-flex rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-xs font-semibold">On website</span>
                             @endif
                         </td>
                         <td class="px-3 sm:px-4 py-3" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>
-                            <a href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" data-property-nav="property.listings.create" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
+                            <a
+                                href="{{ route('property.listings.publish-panel', $u, absolute: false) }}"
+                                data-listing-publish
+                                data-listing-unit-id="{{ $u->id }}"
+                                data-property-form-modal="off"
+                                class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
+                            >Add photos</a>
                         </td>
                     </tr>
                 @empty

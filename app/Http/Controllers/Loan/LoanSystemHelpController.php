@@ -2046,7 +2046,7 @@ class LoanSystemHelpController extends Controller
             );
         }
 
-        $perPage = min(200, max(20, (int) $request->query('per_page', 40)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 40);
         $logs = $logsQuery->paginate($perPage)->withQueryString();
         /** @var LengthAwarePaginator $logs */
         $users = User::query()->orderBy('name')->get(['id', 'name']);

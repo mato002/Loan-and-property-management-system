@@ -102,6 +102,24 @@ return [
         'b2c_security_credential' => env('MPESA_B2C_SECURITY_CREDENTIAL'),
         'b2c_result_url' => env('MPESA_B2C_RESULT_URL'),
         'b2c_timeout_url' => env('MPESA_B2C_TIMEOUT_URL'),
+        // When true, M-Pesa API disbursements require disbursements.approve before Daraja B2C is sent.
+        'b2c_require_approval' => filter_var(env('MPESA_B2C_REQUIRE_APPROVAL', true), FILTER_VALIDATE_BOOL),
+
+        // --- Optional: C2B Register URL / Validation / Confirmation ---
+        'c2b_shortcode' => env('MPESA_C2B_SHORTCODE', env('MPESA_SHORTCODE')),
+        'c2b_response_type' => env('MPESA_C2B_RESPONSE_TYPE', 'Completed'), // Completed|Cancelled
+        'c2b_validation_url' => env('MPESA_C2B_VALIDATION_URL'),
+        'c2b_confirmation_url' => env('MPESA_C2B_CONFIRMATION_URL'),
+        // accept = always ResultCode 0; reject = always ResultCode C2B00011 (testing)
+        'c2b_validation_mode' => env('MPESA_C2B_VALIDATION_MODE', 'accept'),
+
+        // --- Optional: Transaction Status Query (verify a receipt code) ---
+        // Uses the same initiator as B2C unless overridden.
+        'status_initiator_name' => env('MPESA_STATUS_INITIATOR_NAME', env('MPESA_B2C_INITIATOR_NAME')),
+        'status_security_credential' => env('MPESA_STATUS_SECURITY_CREDENTIAL', env('MPESA_B2C_SECURITY_CREDENTIAL')),
+        'status_shortcode' => env('MPESA_STATUS_SHORTCODE', env('MPESA_SHORTCODE')),
+        'status_result_url' => env('MPESA_STATUS_RESULT_URL'),
+        'status_timeout_url' => env('MPESA_STATUS_TIMEOUT_URL', env('MPESA_STATUS_RESULT_URL')),
     ],
 
 ];

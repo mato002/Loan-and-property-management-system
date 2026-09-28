@@ -15,7 +15,7 @@
     $propertyName = (string) ($unit->property?->name ?? 'Property');
     $title = $propertyName.' — Unit '.$unit->label;
     $addr = trim(collect([$unit->property?->address_line, $unit->property?->city])->filter()->implode(', '));
-    $rentLabel = 'KES '.number_format((float) $unit->rent_amount, 0);
+    $rentLabel = 'KES '.number_format($unit->listedRentAmount(), 0);
     $unitTypeLabel = $unit->unitTypeLabel();
     $bedroomsLabel = $unit->bedroomsLabel();
     $isVerified = (bool) $unit->public_listing_published;

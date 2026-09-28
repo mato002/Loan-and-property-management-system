@@ -8,11 +8,15 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\PmPaymentPresentation;
+use App\Support\Property\ResponsiveTableColumns;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentReversalApprovalService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Integrations\MpesaDarajaService;
+use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +30,81 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmPaymentController extends Controller
 {
+    public function mpesaInbox(Request $request): View
+    {
+        $channel = strtolower(trim((string) $request->query('channel', '')));
+        $status = strtolower(trim((string) $request->query('status', '')));
+        $allowedChannels = ['mpesa_stk', 'mpesa_sms_ingest', 'mpesa_c2b', 'mpesa'];
+
+        $query = PmPayment::query()
+            ->with(['tenant'])
+            ->whereIn('channel', $allowedChannels)
+            ->when($channel !== '' && in_array($channel, $allowedChannels, true), fn ($q) => $q->where('channel', $channel))
+            ->when(in_array($status, ['pending', 'completed', 'failed'], true), fn ($q) => $q->where('status', $status))
+            ->orderByDesc('id');
+
+        $rows = $query->paginate(40)->withQueryString();
+
+        $todaySum = (float) PmPayment::query()
+            ->whereIn('channel', $allowedChannels)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->whereDate('paid_at', today())
+            ->sum('amount');
+        $pendingCount = (int) PmPayment::query()
+            ->whereIn('channel', ['mpesa_stk'])
+            ->where('status', PmPayment::STATUS_PENDING)
+            ->count();
+
+        return property_view('property.agent.revenue.mpesa_inbox', [
+            'rows' => $rows,
+            'filters' => compact('channel', 'status'),
+            'todaySum' => $todaySum,
+            'pendingCount' => $pendingCount,
+            'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),
+            'c2bConfigured' => app(MpesaDarajaService::class)->isC2bConfigured(),
+            'statusQueryConfigured' => app(MpesaDarajaService::class)->isStatusQueryConfigured(),
+            'statusQueryMissing' => app(MpesaDarajaService::class)->missingStatusQueryConfigKeys(),
+        ]);
+    }
+
+    public function verifyMpesaReceipt(Request $request, MpesaReceiptVerificationService $verifier): RedirectResponse
+    {
+        $data = $request->validate([
+            'receipt' => ['required', 'string', 'max:20'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
+            'bill_ref' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $result = $verifier->requestReceiptVerification(
+            (string) $data['receipt'],
+            'property',
+            $request->user()?->id,
+            $data['mpesa_phone'] ?? null,
+            $data['bill_ref'] ?? null,
+        );
+
+        if (! ($result['ok'] ?? false)) {
+            return redirect()
+                ->route('property.revenue.mpesa_inbox', ['tab' => 'verify'])
+                ->withErrors(['receipt' => $result['message'] ?? 'Verification failed.'])
+                ->withInput();
+        }
+
+        return redirect()
+            ->route('property.revenue.mpesa_inbox', ['tab' => 'verify'])
+            ->with('status', $result['message']);
+    }
+
+    public function verifyPendingStk(Request $request, PmPayment $payment, MpesaReceiptVerificationService $verifier): RedirectResponse
+    {
+        $result = $verifier->verifyPendingStkPayment($payment);
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['payment' => $result['message'] ?? 'STK query failed.']);
+        }
+
+        return back()->with('status', $result['message']);
+    }
+
     public function payments(Request $request): View|StreamedResponse
     {
         [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $receivedRangeLabel] = $this->resolvePaymentReceivedRange($request);
@@ -35,6 +114,7 @@ class PmPaymentController extends Controller
             'status' => strtolower(trim((string) $request->query('status', ''))),
             'reversal_status' => strtolower(trim((string) $request->query('reversal_status', ''))),
             'channel' => strtolower(trim((string) $request->query('channel', ''))),
+            'ref' => strtolower(trim((string) $request->query('ref', ''))),
             'property_id' => max(0, (int) $request->query('property_id', 0)),
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
@@ -49,10 +129,14 @@ class PmPaymentController extends Controller
             $filters['from'] = $rangeFrom->toDateString();
             $filters['to'] = $rangeTo->toDateString();
         }
-        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
 
         $baseQuery = $this->applyPaymentListFilters(
-            PmPayment::query()->with(['tenant.user', 'allocations.invoice.tenant.user']),
+            PmPayment::query()->with([
+                'tenant.user',
+                'allocations.invoice.tenant.user',
+                'allocations.invoice.unit.property',
+            ]),
             $filters
         );
         if ($filters['q'] !== '') {
@@ -83,7 +167,7 @@ class PmPaymentController extends Controller
             $rows = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
-                ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status'],
+                ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status'],
                 function () use ($rows) {
                     foreach ($rows as $p) {
                         $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
@@ -99,11 +183,13 @@ class PmPaymentController extends Controller
                         };
                         yield [
                             'PAY-'.$p->id,
-                            $sourceLabel,
-                            $this->channelLabel($p->channel),
+                            strip_tags((string) PmPaymentPresentation::propertyUnit($p, '')),
+                            PmPaymentPresentation::payerPhone($p, ''),
+                            PmPaymentPresentation::transactionRef($p, ''),
+                            PmPaymentPresentation::paymentMethod($p, ''),
                             number_format((float) $p->amount, 2, '.', ''),
                             $p->paid_at?->format('Y-m-d H:i:s') ?? '',
-                            $this->payerPhoneOrRef($p, ''),
+                            $sourceLabel,
                             $allocatedTo,
                             ucfirst((string) $p->status),
                         ];
@@ -229,11 +315,13 @@ class PmPaymentController extends Controller
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
                 'PAY-'.$p->id,
-                $source,
-                $this->channelLabel($p->channel),
+                PmPaymentPresentation::propertyUnit($p),
+                PmPaymentPresentation::payerPhone($p),
+                PmPaymentPresentation::transactionRef($p),
+                PmPaymentPresentation::paymentMethod($p),
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
-                $this->payerPhoneOrRef($p),
+                $source,
                 $allocatedTo !== '' ? $allocatedTo : '—',
                 $statusLabel,
                 $actions,
@@ -251,7 +339,9 @@ class PmPaymentController extends Controller
             'statsPrimary' => $statsPrimary,
             'statsTable' => $statsTable,
             'receivedRangeLabel' => $receivedRangeLabel,
-            'columns' => ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
+            'columnConfig' => ResponsiveTableColumns::payments(),
+            'tableMinWidth' => '1280px',
             'tableRows' => $rows,
             'paginator' => $payments,
             'perPage' => $perPage,
@@ -351,6 +441,16 @@ class PmPaymentController extends Controller
             $agentUserId > 0 ? $agentUserId : null,
         );
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $data['pm_tenant_id'],
+            'payments',
+            'Payment recorded and allocated.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return back()->with('success', 'Payment recorded and allocated.');
     }
 
@@ -425,6 +525,16 @@ class PmPaymentController extends Controller
             return redirect()
                 ->route('property.revenue.tenant_credits')
                 ->with('success', $message);
+        }
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $data['pm_tenant_id'],
+            'credit',
+            $message
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
         }
 
         return back()->with('success', $message);
@@ -509,17 +619,21 @@ class PmPaymentController extends Controller
     {
         abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
 
-        $payment->loadMissing(['tenant', 'allocations.invoice']);
+        $payment->loadMissing(['tenant', 'allocations.invoice.unit.property']);
         $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
         $creditCreated = round((float) data_get($payment->meta, 'tenant_credit_created', 0), 2);
         if ($creditCreated <= 0) {
             $creditCreated = max(0.0, round((float) $payment->amount - $allocatedTotal, 2));
         }
 
+        $brandingAgentUserId = $this->brandingAgentUserIdForPayment($payment);
+
         return property_view('property.agent.revenue.payment_receipt', [
             'payment' => $payment,
             'allocatedTotal' => $allocatedTotal,
             'creditCreated' => $creditCreated,
+            'brandingAgentUserId' => $brandingAgentUserId,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId),
         ]);
     }
 
@@ -527,19 +641,39 @@ class PmPaymentController extends Controller
     {
         abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
 
-        $payment->loadMissing(['tenant', 'allocations.invoice']);
+        $payment->loadMissing(['tenant', 'allocations.invoice.unit.property']);
+        $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
+        $creditCreated = round((float) data_get($payment->meta, 'tenant_credit_created', 0), 2);
+        if ($creditCreated <= 0) {
+            $creditCreated = max(0.0, round((float) $payment->amount - $allocatedTotal, 2));
+        }
 
-        $html = view('property.agent.revenue.payment_receipt_download', [
+        $brandingAgentUserId = $this->brandingAgentUserIdForPayment($payment);
+        $data = [
             'payment' => $payment,
-        ])->render();
+            'allocatedTotal' => $allocatedTotal,
+            'creditCreated' => $creditCreated,
+            'brandingAgentUserId' => $brandingAgentUserId,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($brandingAgentUserId),
+            'autoPrint' => $request->boolean('print'),
+        ];
 
-        $fileName = 'receipt-RCP-PAY-'.$payment->id.'.html';
+        // Open as a branded printable document (same letterhead as invoice PDF), not a forced .html download.
+        return response()
+            ->view('property.agent.revenue.payment_receipt_download', $data)
+            ->header('Content-Type', 'text/html; charset=UTF-8');
+    }
 
-        return response()->streamDownload(function () use ($html) {
-            echo $html;
-        }, $fileName, [
-            'Content-Type' => 'text/html; charset=UTF-8',
-        ]);
+    private function brandingAgentUserIdForPayment(PmPayment $payment): ?int
+    {
+        foreach ($payment->allocations as $allocation) {
+            $agentUserId = $allocation->invoice?->unit?->property?->agent_user_id;
+            if ($agentUserId) {
+                return (int) $agentUserId;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -548,9 +682,9 @@ class PmPaymentController extends Controller
     private function resolvePaymentReceivedRange(Request $request): array
     {
         $allowed = [0, 1, 2, 3, 6, 12];
-        $rangeMonths = (int) $request->query('range_months', 1);
+        $rangeMonths = (int) $request->query('range_months', 0);
         if (! in_array($rangeMonths, $allowed, true)) {
-            $rangeMonths = 1;
+            $rangeMonths = 0;
         }
 
         $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
@@ -568,34 +702,6 @@ class PmPaymentController extends Controller
         };
 
         return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $receivedRangeLabel];
-    }
-
-    /**
-     * Payer phone from ingest/meta, else payment reference, else allocated tenant phone.
-     */
-    private function payerPhoneOrRef(PmPayment $payment, string $empty = '—'): string
-    {
-        $metaPhone = trim((string) (data_get($payment->meta, 'payer_phone') ?? data_get($payment->meta, 'phone') ?? ''));
-        if ($metaPhone !== '') {
-            return $metaPhone;
-        }
-
-        $externalRef = trim((string) ($payment->external_ref ?? ''));
-        if ($externalRef !== '') {
-            return $externalRef;
-        }
-
-        $tenant = $payment->tenant;
-        if (! $tenant && $payment->relationLoaded('allocations')) {
-            $tenant = $payment->allocations->first()?->invoice?->tenant;
-        }
-
-        $tenantPhone = trim((string) ($tenant?->phone ?? $tenant?->user?->phone ?? ''));
-        if ($tenantPhone !== '') {
-            return $tenantPhone;
-        }
-
-        return $empty;
     }
 
     /**
@@ -620,6 +726,16 @@ class PmPaymentController extends Controller
         }
         if (($filters['channel'] ?? '') !== '') {
             $query->where('channel', $filters['channel']);
+        }
+        if (($filters['ref'] ?? '') === 'missing') {
+            $query->where('channel', 'ezen_import')
+                ->where(function (\Illuminate\Database\Eloquent\Builder $inner): void {
+                    $inner->whereNull('meta->mpesa_ref')
+                        ->orWhere('meta->mpesa_ref', '');
+                });
+        } elseif (($filters['ref'] ?? '') === 'has_ref') {
+            $query->whereNotNull('meta->mpesa_ref')
+                ->where('meta->mpesa_ref', '!=', '');
         }
 
         $from = (string) ($filters['from'] ?? '');

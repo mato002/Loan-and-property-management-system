@@ -58,13 +58,19 @@
                             >View live ↗</a>
                         </td>
                         <td class="px-3 sm:px-4 py-3">
-                            <a href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" data-property-nav="property.listings.create" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Edit listing</a>
+                            <a
+                                href="{{ route('property.listings.publish-panel', $u, absolute: false) }}"
+                                data-listing-publish
+                                data-listing-unit-id="{{ $u->id }}"
+                                data-property-form-modal="off"
+                                class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
+                            >Edit listing</a>
                         </td>
                     </tr>
                 @empty
                     <tr>
                         <td colspan="6" class="px-4 py-14 text-center align-middle">
-                            <p class="font-medium text-slate-700 dark:text-slate-200">No published listings yet</p>
+                            <p class="font-medium text-slate-700 dark:text-slate-200">No vacant units on the website yet</p>
                             <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" data-property-nav="property.listings.vacant" class="mt-4 inline-flex text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">Open vacant units</a>
                         </td>
                     </tr>

@@ -1006,7 +1006,14 @@ class PmInvoice extends Model
 
     public static function nextInvoiceNumber(): string
     {
-        $next = (int) (static::query()->withoutGlobalScopes()->withTrashed()->max('id') ?? 0) + 1;
+        $maxNum = (int) (static::query()
+            ->withoutGlobalScopes()
+            ->withTrashed()
+            ->where('invoice_no', 'like', 'INV-%')
+            ->selectRaw('MAX(CAST(SUBSTRING(invoice_no, 5) AS UNSIGNED)) as max_num')
+            ->value('max_num') ?? 0);
+
+        $next = max(1, $maxNum + 1);
 
         while (true) {
             $candidate = 'INV-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);

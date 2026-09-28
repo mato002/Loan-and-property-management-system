@@ -9,6 +9,7 @@ use App\Models\LeaseDepositLine;
 use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmUnitMovement;
@@ -17,6 +18,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use Illuminate\Database\Eloquent\Builder;
 use App\Services\Property\CarryForwardConsolidationService;
+use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\PropertyActivityLogger;
 use App\Services\Property\PropertyDashboardCache;
@@ -1202,6 +1204,65 @@ SQL;
             : \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $raw);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function leaseRegisterFieldRules(): array
+    {
+        return [
+            'lease_variation_type' => ['nullable', 'string', 'max:64'],
+            'lease_period_days' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'days_to_expire' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'escalation_review_start' => ['nullable', 'date'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $data
+     */
+    private function applyLeaseRegisterFieldsToPayload(array &$payload, array $data): void
+    {
+        if (Schema::hasColumn('pm_leases', 'lease_variation_type')) {
+            $variation = trim((string) ($data['lease_variation_type'] ?? ''));
+            $payload['lease_variation_type'] = $variation !== '' ? $variation : null;
+        }
+
+        if (Schema::hasColumn('pm_leases', 'lease_period_days')) {
+            $period = $data['lease_period_days'] ?? null;
+            $payload['lease_period_days'] = ($period === null || $period === '') ? null : (int) $period;
+        }
+
+        if (Schema::hasColumn('pm_leases', 'escalation_review_start')) {
+            $review = $data['escalation_review_start'] ?? null;
+            $payload['escalation_review_start'] = ($review === null || $review === '') ? null : $review;
+        }
+
+        if (! Schema::hasColumn('pm_leases', 'days_to_expire')) {
+            return;
+        }
+
+        $days = $data['days_to_expire'] ?? null;
+        if ($days !== null && $days !== '') {
+            $payload['days_to_expire'] = (int) $days;
+
+            return;
+        }
+
+        $endDate = $data['end_date'] ?? ($payload['end_date'] ?? null);
+        if ($endDate === null || $endDate === '') {
+            $payload['days_to_expire'] = null;
+
+            return;
+        }
+
+        try {
+            $payload['days_to_expire'] = max(0, (int) now()->startOfDay()->diffInDays(\Illuminate\Support\Carbon::parse((string) $endDate), false));
+        } catch (\Throwable) {
+            $payload['days_to_expire'] = null;
+        }
+    }
+
     private function applyOpeningArrearsToPayload(array &$payload, Request $request, array $data, ?PmLease $lease, array $unitIds): void
     {
         if (! Schema::hasColumn('pm_leases', 'opening_arrears')) {
@@ -1585,8 +1646,26 @@ SQL;
 
     private function renderLeaseCreateSuccessResponse(): Response
     {
+        $returnTo = (string) request()->input('return_to', '');
+        $tenantId = (int) request()->input('return_tenant_id', request()->input('pm_tenant_id', 0));
+        $propertyId = (int) request()->input('return_property_id', request()->input('property_id', 0));
+        $tab = (string) request()->input('return_tab', 'leases');
+
+        $leasesUrl = route('property.tenants.leases', absolute: false);
+        if ($returnTo === 'tenant_show' && $tenantId > 0) {
+            $leasesUrl = route('property.tenants.show', [
+                'tenant' => $tenantId,
+                'tab' => \App\Support\Property\PropertyEntityHub::normalizeTab('tenant', $tab),
+            ], false);
+        } elseif ($returnTo === 'property_show' && $propertyId > 0) {
+            $leasesUrl = route('property.properties.show', [
+                'property' => $propertyId,
+                'tab' => \App\Support\Property\PropertyEntityHub::normalizeTab('property', $tab !== '' ? $tab : 'occupancy'),
+            ], false);
+        }
+
         return response(property_view('property.agent.tenants.lease_create_success', [
-            'leasesUrl' => route('property.tenants.leases', absolute: false),
+            'leasesUrl' => $leasesUrl,
             'message' => 'Lease saved.',
         ]));
     }
@@ -1625,6 +1704,7 @@ SQL;
             'utility_expenses.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'status' => [Rule::requiredIf($this->isFieldRequired($cfg, 'status')), 'nullable', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
+            ...$this->leaseRegisterFieldRules(),
             'property_unit_ids' => [Rule::requiredIf($this->isFieldRequired($cfg, 'property_unit_id')), 'nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
             'additional_deposits' => ['nullable', 'array', 'max:20'],
@@ -1685,6 +1765,7 @@ SQL;
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
             $this->applyRentDueDayToPayload($payload, $data);
+            $this->applyLeaseRegisterFieldsToPayload($payload, $data);
 
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
@@ -1717,6 +1798,26 @@ SQL;
 
         if ($fromCreateModal) {
             return $this->renderLeaseCreateSuccessResponse();
+        }
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) ($data['pm_tenant_id'] ?? 0),
+            'leases',
+            'Lease saved.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
+        $propertyHubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $request->input('return_property_id', $request->input('property_id', 0)),
+            'occupancy',
+            'Lease saved.'
+        );
+        if ($propertyHubRedirect) {
+            return $propertyHubRedirect;
         }
 
         return redirect()
@@ -1849,10 +1950,17 @@ SQL;
 
     public function show(PmLease $lease): View
     {
-        $lease->load([
-            'pmTenant',
-            'units.property',
-        ]);
+        $relations = ['pmTenant', 'units.property'];
+        if (Schema::hasTable('lease_deposit_lines')) {
+            $relations[] = 'depositLines';
+        }
+        $lease->load($relations);
+
+        if ($lease->status === PmLease::STATUS_ACTIVE) {
+            foreach ($lease->units as $unit) {
+                $unit->setRelation('leases', collect([$lease]));
+            }
+        }
 
         $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
         $daysLeft = $lease->end_date
@@ -1863,6 +1971,60 @@ SQL;
             && $lease->end_date->lte(now()->addDays(60));
 
         $carryForwardTotal = $this->leaseCarryForwardTotal($lease);
+        $tenantId = (int) ($lease->pm_tenant_id ?? 0);
+        $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->filter()->values();
+
+        $outstanding = 0.0;
+        if ($tenantId > 0) {
+            $outstanding = app(FinanceBalanceSnapshotService::class)->tenantOutstanding($tenantId);
+        }
+
+        $recentInvoices = collect();
+        if (Schema::hasTable('pm_invoices')) {
+            $recentInvoices = PmInvoice::query()
+                ->where(function ($query) use ($lease, $tenantId, $unitIds) {
+                    $query->where('pm_lease_id', $lease->id);
+                    if ($tenantId > 0) {
+                        $query->orWhere(function ($inner) use ($tenantId, $unitIds) {
+                            $inner->where('pm_tenant_id', $tenantId);
+                            if ($unitIds->isNotEmpty()) {
+                                $inner->whereIn('property_unit_id', $unitIds->all());
+                            }
+                        });
+                    }
+                })
+                ->orderByDesc('issue_date')
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $recentPayments = collect();
+        if ($tenantId > 0 && Schema::hasTable('pm_payments')) {
+            $recentPayments = PmPayment::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $primaryUnit = $lease->units->first();
+        $quickActions = [
+            ['label' => 'Edit lease', 'route' => 'property.leases.edit', 'params' => ['lease' => $lease->id], 'icon' => 'fa-pen-to-square', 'tone' => 'primary'],
+        ];
+        if ($tenantId > 0) {
+            $quickActions[] = ['label' => 'Tenant', 'route' => 'property.tenants.show', 'params' => ['tenant' => $tenantId], 'icon' => 'fa-user'];
+            $quickActions[] = ['label' => 'Statement', 'route' => 'property.tenants.statement', 'params' => ['tenant' => $tenantId], 'icon' => 'fa-file-invoice'];
+            $quickActions[] = ['label' => 'Notices', 'route' => 'property.tenants.notices', 'params' => ['tenant_id' => $tenantId], 'icon' => 'fa-bell'];
+        }
+        $quickActions[] = ['label' => 'Invoices', 'route' => 'property.revenue.invoices', 'params' => array_filter(['unit_id' => $primaryUnit?->id, 'tenant_id' => $tenantId ?: null]), 'icon' => 'fa-file-lines'];
+        $quickActions[] = ['label' => 'Payments', 'route' => 'property.revenue.payments', 'params' => array_filter(['unit_id' => $primaryUnit?->id, 'tenant_id' => $tenantId ?: null]), 'icon' => 'fa-money-bill'];
+        if ($primaryUnit) {
+            $quickActions[] = ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'params' => ['unit_id' => $primaryUnit->id], 'icon' => 'fa-screwdriver-wrench'];
+            $quickActions[] = ['label' => 'Utilities', 'route' => 'property.revenue.utilities', 'params' => ['unit_id' => $primaryUnit->id], 'icon' => 'fa-droplet'];
+            $quickActions[] = ['label' => 'Property', 'route' => 'property.properties.show', 'params' => ['property' => $primaryUnit->property_id, 'tab' => 'units'], 'icon' => 'fa-building'];
+        }
 
         return property_view('property.agent.tenants.lease_show', [
             'lease' => $lease,
@@ -1870,6 +2032,10 @@ SQL;
             'daysLeft' => $daysLeft,
             'isEndingSoon' => $isEndingSoon,
             'carryForwardTotal' => $carryForwardTotal,
+            'outstanding' => $outstanding,
+            'recentInvoices' => $recentInvoices,
+            'recentPayments' => $recentPayments,
+            'quickActions' => $quickActions,
         ]);
     }
 
@@ -1918,6 +2084,7 @@ SQL;
             'utility_expenses.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'status' => ['required', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
+            ...$this->leaseRegisterFieldRules(),
             'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
             'additional_deposits' => ['nullable', 'array', 'max:20'],
@@ -1985,6 +2152,7 @@ SQL;
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
             $this->applyRentDueDayToPayload($payload, $data);
+            $this->applyLeaseRegisterFieldsToPayload($payload, $data);
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
             }

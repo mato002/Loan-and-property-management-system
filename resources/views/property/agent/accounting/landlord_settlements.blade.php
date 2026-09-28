@@ -2,35 +2,53 @@
     $s = $settlement ?? null;
     $stats = $s ? [
         ['label' => 'Net amount due', 'value' => \App\Services\Property\PropertyMoney::kes((float) $s['net_amount_due']), 'hint' => 'After fees & deductions'],
-        ['label' => 'Collected (owner share)', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['owner_collected']['total'] ?? 0)), 'hint' => ($s['ownership_percent'] ?? 0).'% ownership'],
+        ['label' => 'Rent received', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['rent_received'] ?? 0)), 'hint' => 'Period collections'],
         ['label' => 'Management fee', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['management_fee'] ?? 0)), 'hint' => ($s['commission_percent'] ?? 0).'% commission'],
-        ['label' => 'Balance b/f', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['balance_brought_forward'] ?? 0)), 'hint' => 'Landlord ledger'],
+        ['label' => 'Balance B/F', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['balance_brought_forward'] ?? 0)), 'hint' => 'Landlord ledger'],
     ] : [
         ['label' => 'Settlements', 'value' => '—', 'hint' => 'Select property, landlord & month'],
     ];
 
-    $unitLines = $s['unit_lines'] ?? [];
     $unitStats = $s['unit_stats'] ?? [];
-    $tableRows = collect($unitLines)->map(fn ($line) => [
+    $unitTotals = $s['unit_totals'] ?? [];
+    $tableRows = collect($s['unit_lines'] ?? [])->map(fn ($line) => [
         (string) ($line['unit_label'] ?? '—'),
         (string) ($line['tenant_name'] ?? '—'),
-        ucfirst(str_replace('_', ' ', (string) ($line['unit_status'] ?? '—'))),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['rent_per_month'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['rent_bf'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_bf'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['water_bf'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['rent_billed'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_billed'] ?? 0)),
+        \App\Services\Property\PropertyMoney::kes((float) ($line['water_billed'] ?? 0)),
         \App\Services\Property\PropertyMoney::kes((float) ($line['rent_received'] ?? 0)),
         \App\Services\Property\PropertyMoney::kes((float) ($line['garbage_received'] ?? 0)),
         \App\Services\Property\PropertyMoney::kes((float) ($line['water_received'] ?? 0)),
-        \App\Services\Property\PropertyMoney::kes((float) ($line['total_received'] ?? 0)),
     ])->all();
 @endphp
 
 <x-property.workspace
     title="Landlord settlements"
-    subtitle="Monthly property close: collections by charge type, commission, ledger balance, and net remittance."
+    subtitle="Property account statement: unit Bal B/F, monthly charges, paid, additions, deductions, and net remittance."
     back-route="property.accounting.index"
     :stats="$stats"
-    :columns="['Unit', 'Tenant', 'Status', 'Rent received', 'Garbage received', 'Water received', 'Total received']"
+    :columns="[
+        'Unit',
+        'Tenant names',
+        'Rent / month',
+        'B/F Rent',
+        'B/F Garbage',
+        'B/F Water',
+        'Exp Rent',
+        'Exp Garbage',
+        'Exp Water',
+        'Paid Rent',
+        'Paid Garbage',
+        'Paid Water',
+    ]"
     :table-rows="$tableRows"
-    :empty-title="$s ? 'No unit collections in this period' : 'Choose filters to preview settlement'"
-    :empty-hint="$s ? 'Units with no payments still appear when owner-occupied.' : 'Property + landlord + month.'"
+    :empty-title="$s ? 'No units on this property' : 'Choose filters to preview settlement'"
+    :empty-hint="$s ? 'Add units to the property to build the statement matrix.' : 'Property + landlord + month.'"
 >
     <x-slot name="actions">
         @if ($s)
@@ -86,73 +104,90 @@
     @endif
 
     @if ($s)
-        <div class="grid gap-4 md:grid-cols-2">
-            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                <h3 class="font-semibold text-slate-900">{{ $s['property_name'] }} — {{ $s['period_label'] }}</h3>
-                <p class="mt-1 text-slate-600">Landlord: {{ $s['landlord_name'] }} · {{ $s['ownership_percent'] }}% ownership · {{ $s['commission_percent'] }}% management fee</p>
-                @if (! empty($s['agreed_pay_day']))
-                    <p class="mt-1 text-xs text-indigo-700">Agreed pay day: {{ $s['agreed_pay_day'] }}@if (! empty($s['next_agreed_pay_date'])) · Next: {{ \Carbon\Carbon::parse($s['next_agreed_pay_date'])->format('d M Y') }}@endif</p>
-                @endif
-                <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2">
-                    <dt class="text-slate-500">Occupied</dt><dd class="font-medium">{{ $unitStats['units_occupied'] ?? 0 }}</dd>
-                    <dt class="text-slate-500">Vacant</dt><dd class="font-medium">{{ $unitStats['units_vacant'] ?? 0 }}</dd>
-                    <dt class="text-slate-500">Owner occupied</dt><dd class="font-medium">{{ $unitStats['units_owner_occupied'] ?? 0 }}</dd>
-                    <dt class="text-slate-500">On notice</dt><dd class="font-medium">{{ $unitStats['units_notice'] ?? 0 }}</dd>
-                </dl>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                <h3 class="font-semibold text-slate-900">Collections summary (owner share)</h3>
-                <dl class="mt-3 space-y-2">
-                    <div class="flex justify-between"><dt>Rent</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['owner_collected']['rent'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between"><dt>Garbage</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['owner_collected']['garbage'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between"><dt>Water</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['owner_collected']['water'] ?? 0)) }}</dd></div>
-                    @if ((float) ($s['owner_collected']['other'] ?? 0) > 0)
-                        <div class="flex justify-between"><dt>Other</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['owner_collected']['other'] ?? 0)) }}</dd></div>
-                    @endif
-                    <div class="flex justify-between border-t border-slate-100 pt-2"><dt>Management fee</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['management_fee'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between"><dt>Net collected</dt><dd class="font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['net_collected'] ?? 0)) }}</dd></div>
-                </dl>
-            </div>
-        </div>
-
         <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-            <h3 class="font-semibold text-slate-900">Landlord ledger</h3>
-            <dl class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <div><dt class="text-slate-500">Balance brought forward</dt><dd class="text-lg font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['balance_brought_forward'] ?? 0)) }}</dd></div>
-                <div><dt class="text-slate-500">Period credits</dt><dd class="text-lg font-semibold text-emerald-700">+ {{ \App\Services\Property\PropertyMoney::kes((float) ($s['period_credits'] ?? 0)) }}</dd></div>
-                <div><dt class="text-slate-500">Period debits</dt><dd class="text-lg font-semibold text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['period_debits'] ?? 0)) }}</dd></div>
-                <div><dt class="text-slate-500">Closing / net due</dt><dd class="text-lg font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['net_amount_due'] ?? 0)) }}</dd></div>
-            </dl>
-
-            @if (! empty($s['deductions']))
-                <div class="mt-4">
-                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Period deductions</p>
-                    <ul class="mt-2 space-y-1">
-                        @foreach ($s['deductions'] as $deduction)
-                            <li class="flex justify-between gap-4">
-                                <span>{{ $deduction['description'] ?? 'Deduction' }}</span>
-                                <span class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($deduction['amount'] ?? 0)) }}</span>
-                            </li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-            @if (! empty($s['open_advances']))
-                <div class="mt-4">
-                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Open advance payments</p>
-                    <ul class="mt-2 space-y-1">
-                        @foreach ($s['open_advances'] as $advance)
-                            <li class="flex justify-between gap-4">
-                                <span>{{ $advance['description'] ?? 'Advance' }}@if (! empty($advance['agreed_pay_date'])) · due {{ \Carbon\Carbon::parse($advance['agreed_pay_date'])->format('d M Y') }}@endif</span>
-                                <span class="font-medium text-amber-800">{{ \App\Services\Property\PropertyMoney::kes((float) ($advance['amount'] ?? 0)) }}</span>
-                            </li>
-                        @endforeach
-                    </ul>
-                    <p class="mt-2 text-xs text-slate-500">Total open advances: {{ \App\Services\Property\PropertyMoney::kes((float) ($s['open_advances_total'] ?? 0)) }} · <a href="{{ route('property.accounting.payables.landlord_advances', ['property_id' => $s['property_id'], 'landlord_id' => $s['landlord_id'], 'status' => 'open']) }}" class="text-indigo-700 hover:text-indigo-800">Manage advances</a></p>
-                </div>
+            <h3 class="font-semibold text-slate-900">{{ $s['property_name'] }} — {{ $s['period_label'] }}</h3>
+            <p class="mt-1 text-slate-600">
+                Landlord: {{ $s['landlord_name'] }}
+                · {{ $s['period_range_label'] ?? '' }}
+                · {{ $s['ownership_percent'] }}% ownership
+                · {{ $s['commission_percent'] }}% management fee
+            </p>
+            <p class="mt-2 text-xs font-semibold text-slate-700">
+                OCCUPIED UNITS: {{ (int) ($unitStats['units_occupied'] ?? 0) }}
+                &nbsp;|&nbsp;
+                VACANT UNITS: {{ (int) ($unitStats['units_vacant'] ?? 0) }}
+            </p>
+            @if (! empty($s['agreed_pay_day']))
+                <p class="mt-1 text-xs text-indigo-700">Agreed pay day: {{ $s['agreed_pay_day'] }}@if (! empty($s['next_agreed_pay_date'])) · Next: {{ \Carbon\Carbon::parse($s['next_agreed_pay_date'])->format('d M Y') }}@endif</p>
             @endif
         </div>
+
+        <div class="grid gap-4 lg:grid-cols-3">
+            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <h3 class="font-semibold text-slate-900">Additions</h3>
+                <ul class="mt-3 space-y-1">
+                    @forelse ($s['additions'] ?? [] as $addition)
+                        <li class="flex justify-between gap-4">
+                            <span>{{ $addition['description'] ?? 'Addition' }}</span>
+                            <span class="font-medium text-emerald-700">{{ \App\Services\Property\PropertyMoney::kes((float) ($addition['amount'] ?? 0)) }}</span>
+                        </li>
+                    @empty
+                        <li class="text-slate-500">No additions in this period.</li>
+                    @endforelse
+                </ul>
+                <div class="mt-3 flex justify-between border-t border-slate-100 pt-2 font-semibold">
+                    <span>Total additions</span>
+                    <span>{{ \App\Services\Property\PropertyMoney::kes((float) ($s['additions_total'] ?? 0)) }}</span>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <h3 class="font-semibold text-slate-900">Deductions</h3>
+                <ul class="mt-3 space-y-1">
+                    @forelse ($s['deductions'] ?? [] as $deduction)
+                        <li class="flex justify-between gap-4">
+                            <span>{{ $deduction['description'] ?? 'Deduction' }}</span>
+                            <span class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($deduction['amount'] ?? 0)) }}</span>
+                        </li>
+                    @empty
+                        <li class="text-slate-500">No deductions in this period.</li>
+                    @endforelse
+                </ul>
+                <div class="mt-3 flex justify-between border-t border-slate-100 pt-2 font-semibold">
+                    <span>Total deductions</span>
+                    <span>{{ \App\Services\Property\PropertyMoney::kes((float) ($s['deductions_total'] ?? 0)) }}</span>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <h3 class="font-semibold text-slate-900">Statement summary</h3>
+                <dl class="mt-3 space-y-2">
+                    <div class="flex justify-between"><dt>Rent received</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['rent_received'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Total utility</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['utility_received'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Less management fee ({{ $s['commission_percent'] ?? 0 }}%)</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['management_fee'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Less other expenses</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['other_expenses'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Add total additions</dt><dd class="font-medium text-emerald-700">+ {{ \App\Services\Property\PropertyMoney::kes((float) ($s['additions_total'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Less total deductions</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['deductions_total'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Balance B/F</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['balance_brought_forward'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between border-t border-slate-100 pt-2"><dt class="font-semibold">Net amount due</dt><dd class="font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['net_amount_due'] ?? 0)) }}</dd></div>
+                </dl>
+            </div>
+        </div>
+
+        @if (! empty($s['open_advances']))
+            <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Open advance payments</p>
+                <ul class="mt-2 space-y-1">
+                    @foreach ($s['open_advances'] as $advance)
+                        <li class="flex justify-between gap-4">
+                            <span>{{ $advance['description'] ?? 'Advance' }}@if (! empty($advance['agreed_pay_date'])) · due {{ \Carbon\Carbon::parse($advance['agreed_pay_date'])->format('d M Y') }}@endif</span>
+                            <span class="font-medium text-amber-800">{{ \App\Services\Property\PropertyMoney::kes((float) ($advance['amount'] ?? 0)) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="mt-2 text-xs text-slate-500">Total open advances: {{ \App\Services\Property\PropertyMoney::kes((float) ($s['open_advances_total'] ?? 0)) }} · <a href="{{ route('property.accounting.payables.landlord_advances', ['property_id' => $s['property_id'], 'landlord_id' => $s['landlord_id'], 'status' => 'open']) }}" class="text-indigo-700 hover:text-indigo-800">Manage advances</a></p>
+            </div>
+        @endif
 
         @if ((float) ($s['net_amount_due'] ?? 0) > 0)
             <form method="post" action="{{ route('property.accounting.payables.landlord_settlements.payout') }}" class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex flex-wrap items-center justify-between gap-3">

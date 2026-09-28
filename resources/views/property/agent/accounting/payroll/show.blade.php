@@ -41,7 +41,7 @@
                 <table class="min-w-full text-sm">
                     <thead>
                         <tr class="text-left border-b border-slate-200 dark:border-slate-700">
-                            <th class="py-2 pr-2">Employee</th><th class="py-2 pr-2">Basic</th><th class="py-2 pr-2">Allowances</th><th class="py-2 pr-2">Deductions</th><th class="py-2 pr-2">Net</th><th class="py-2 pr-2">Payslip</th><th class="py-2">Actions</th>
+                            <th class="py-2 pr-2">Employee</th><th class="py-2 pr-2">Basic</th><th class="py-2 pr-2">Allowances</th><th class="py-2 pr-2">Deductions</th><th class="py-2 pr-2">Net</th><th class="py-2 pr-2">Payslip</th><th class="py-2 pr-2">Pay status</th><th class="py-2">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -53,6 +53,15 @@
                             <td class="py-2 pr-2">{{ \App\Services\Property\PropertyMoney::kes((float)$line->deductions) }}</td>
                             <td class="py-2 pr-2">{{ \App\Services\Property\PropertyMoney::kes((float)$line->net_pay) }}</td>
                             <td class="py-2 pr-2">#{{ $line->payslip_number ?: $line->id }}</td>
+                            <td class="py-2 pr-2 text-xs">
+                                {{ ucfirst((string) ($line->payment_status ?: 'unpaid')) }}
+                                @if ($line->payout_status)
+                                    <span class="block text-amber-700">M-Pesa: {{ $line->payout_status }}</span>
+                                @endif
+                                @if ($line->payment_reference)
+                                    <span class="block font-mono text-slate-500">{{ $line->payment_reference }}</span>
+                                @endif
+                            </td>
                             <td class="py-2">
                                 <div class="flex flex-wrap gap-2 text-xs">
                                     <a class="text-indigo-600 hover:text-indigo-700 font-medium" href="{{ route('property.accounting.payroll.lines.payslip.show', ['period' => $period->id, 'line' => $line->id]) }}">Preview</a>
@@ -61,6 +70,13 @@
                                         @csrf
                                         <button type="submit" class="text-emerald-700 hover:text-emerald-800 font-medium">Send email</button>
                                     </form>
+                                    @if (($b2cConfigured ?? false) && (string) $period->status === 'posted' && (string) ($line->payment_status ?? '') !== 'paid' && (string) ($line->payout_status ?? '') !== 'pending')
+                                        <form method="post" action="{{ route('property.accounting.payroll.lines.pay_mpesa', ['period' => $period->id, 'line' => $line->id]) }}" class="inline-flex items-center gap-1" onsubmit="return confirm('Send net pay via M-Pesa B2C?')">
+                                            @csrf
+                                            <input type="text" name="mpesa_phone" value="{{ $line->employee?->phone }}" placeholder="Phone" required class="rounded border border-slate-300 px-1.5 py-0.5 text-xs w-28" />
+                                            <button type="submit" class="text-teal-700 hover:text-teal-800 font-semibold">Pay M-Pesa</button>
+                                        </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>

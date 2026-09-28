@@ -9,7 +9,7 @@
     $contactWhatsapp = $publicBrand['contact_whatsapp'];
     $contactAddress = $publicBrand['contact_address'];
     $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
-    $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
+    $whatsAppDigits = PropertyWorkspaceBranding::whatsappDigitsForWeb($contactWhatsapp, $contactPhone);
     $intent = $contactIntent ?? 'general';
     $intentLabel = match ($intent) {
         'viewing' => 'Schedule a viewing',

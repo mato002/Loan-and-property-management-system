@@ -5,15 +5,7 @@
         title="Template adjustments"
         subtitle="Set default text templates that can be used by lease and notice-related forms."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup hub</a>
-            <a href="{{ route('property.settings.system_setup.forms') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Form adjustments</a>
-            <a href="{{ route('property.settings.system_setup.workflows') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Workflow adjustments</a>
-            <a href="{{ route('property.settings.system_setup.templates') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Template adjustments</a>
-            @if (auth()->user()->hasPmPermission('settings.access.manage'))
-                <a href="{{ route('property.settings.system_setup.access') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Access control</a>
-            @endif
-        </div>
+        @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.templates'])
         <form method="post" action="{{ route('property.settings.system_setup.templates.store') }}" class="max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             @csrf
             <div>

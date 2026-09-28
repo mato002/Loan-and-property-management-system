@@ -32,7 +32,15 @@
                             <td class="px-4 py-3 tabular-nums">{{ $row['monthly_rent'] !== null ? \App\Services\Property\PropertyMoney::kes((float) $row['monthly_rent']) : '—' }}</td>
                             <td class="px-4 py-3">{{ ! empty($row['lease_end']) ? \Illuminate\Support\Carbon::parse($row['lease_end'])->format('Y-m-d') : '—' }}</td>
                             <td class="px-4 py-3">
-                                <a href="{{ route('property.units.edit', ['unit' => $row['unit_id']], false) }}" data-turbo-frame="property-main" class="text-xs font-medium text-indigo-700">Open</a>
+                                @if (! empty($row['unit']))
+                                    @include('property.agent.partials.unit_actions_menu', [
+                                        'unit' => $row['unit'],
+                                        'propertyId' => $row['property_id'],
+                                        'showViewProperty' => true,
+                                    ])
+                                @else
+                                    <a href="{{ route('property.units.edit', ['unit' => $row['unit_id']], false) }}" data-turbo-frame="property-main" class="text-xs font-medium text-indigo-700">Open</a>
+                                @endif
                             </td>
                         </tr>
                     @endforeach

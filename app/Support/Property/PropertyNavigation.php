@@ -117,6 +117,10 @@ final class PropertyNavigation
                 unset($workspace['route_query']);
             }
 
+            if ($key === 'settings') {
+                $workspace['flyout'] = PropertyWorkspaceTabs::flyoutFor('settings');
+            }
+
             return $workspace;
         }, $workspaces);
     }
@@ -335,6 +339,9 @@ final class PropertyNavigation
                 'flyout' => [
                     ['label' => 'Dashboard', 'route' => 'property.accounting.index', 'active' => ['property.accounting.index']],
                     ['label' => 'Landlord payment & fees', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.landlord_payment_fees', 'property.accounting.payables.landlord_payment_fees.*']],
+                    ['label' => 'Property commissions', 'route' => 'property.accounting.payables.property_commissions', 'active' => ['property.accounting.payables.property_commissions']],
+                    ['label' => 'Payment vouchers', 'route' => 'property.accounting.payables.payment_vouchers', 'active' => ['property.accounting.payables.payment_vouchers']],
+                    ['label' => 'Bills listing', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
                     ['label' => 'Journal entries', 'route' => 'property.accounting.entries', 'active' => ['property.accounting.entries', 'property.accounting.entries.*']],
                     ['label' => 'Chart of accounts', 'route' => 'property.accounting.gl.chart_accounts', 'active' => ['property.accounting.gl.chart_accounts', 'property.accounting.gl.chart_accounts.*']],
                     ['label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],
@@ -351,16 +358,7 @@ final class PropertyNavigation
                     'property.settings.*',
                 ],
                 'requires_pm_permission' => null,
-                'flyout' => [
-                    ['label' => 'Settings hub', 'route' => 'property.settings.index', 'active' => ['property.settings.index']],
-                    ['label' => 'Users & roles', 'route' => 'property.settings.roles', 'active' => ['property.settings.roles']],
-                    ['label' => 'Permissions', 'route' => 'property.settings.permissions', 'active' => ['property.settings.permissions']],
-                    ['label' => 'Commission', 'route' => 'property.settings.commission', 'active' => ['property.settings.commission', 'property.settings.commission.*']],
-                    ['label' => 'Payment config', 'route' => 'property.settings.payments', 'active' => ['property.settings.payments', 'property.settings.payments.*']],
-                    ['label' => 'Branding', 'route' => 'property.settings.branding', 'active' => ['property.settings.branding', 'property.settings.branding.*']],
-                    ['label' => 'Automation rules', 'route' => 'property.settings.rules', 'active' => ['property.settings.rules', 'property.settings.rules.*']],
-                    ['label' => 'System setup', 'route' => 'property.settings.system_setup', 'active' => ['property.settings.system_setup', 'property.settings.system_setup.*']],
-                ],
+                'flyout' => [],
             ],
             'vendors' => [
                 'key' => 'vendors',

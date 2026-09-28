@@ -29,6 +29,12 @@ class LoanBookDisbursement extends Model
         'payout_requested_at',
         'payout_completed_at',
         'payout_meta',
+        'payout_requested_by',
+        'payout_approved_by',
+        'payout_approved_at',
+        'payout_rejected_by',
+        'payout_rejected_at',
+        'payout_reject_reason',
     ];
 
     protected function casts(): array
@@ -38,6 +44,8 @@ class LoanBookDisbursement extends Model
             'disbursed_at' => 'date',
             'payout_requested_at' => 'datetime',
             'payout_completed_at' => 'datetime',
+            'payout_approved_at' => 'datetime',
+            'payout_rejected_at' => 'datetime',
             'payout_meta' => 'array',
         ];
     }
@@ -79,6 +87,8 @@ class LoanBookDisbursement extends Model
         return match ($this->effectivePayoutStatus()) {
             'reversed' => ['label' => 'Reversed', 'class' => 'bg-violet-100 text-violet-800'],
             'failed' => ['label' => 'Failed', 'class' => 'bg-red-100 text-red-700'],
+            'rejected' => ['label' => 'Rejected', 'class' => 'bg-red-100 text-red-700'],
+            'awaiting_approval' => ['label' => 'Awaiting approval', 'class' => 'bg-sky-100 text-sky-800'],
             'pending', 'queued', 'processing' => ['label' => 'Pending', 'class' => 'bg-amber-100 text-amber-700'],
             'completed' => ['label' => 'Completed', 'class' => 'bg-emerald-100 text-emerald-700'],
             default => ['label' => ucfirst($this->effectivePayoutStatus()), 'class' => 'bg-slate-100 text-slate-700'],
@@ -90,6 +100,10 @@ class LoanBookDisbursement extends Model
      */
     public function blocksNewDisbursement(): bool
     {
+        if (in_array($this->effectivePayoutStatus(), ['rejected'], true) && ! $this->accounting_journal_entry_id) {
+            return false;
+        }
+
         if (! $this->accounting_journal_entry_id) {
             return true;
         }
@@ -99,6 +113,15 @@ class LoanBookDisbursement extends Model
 
     public function canBeRemoved(): bool
     {
+        $status = $this->effectivePayoutStatus();
+        if (in_array($status, ['pending', 'queued', 'processing'], true)) {
+            return false;
+        }
+
+        if (in_array($status, ['awaiting_approval', 'rejected', 'failed'], true) && ! $this->accounting_journal_entry_id) {
+            return true;
+        }
+
         if (! $this->accounting_journal_entry_id) {
             return true;
         }
@@ -115,10 +138,24 @@ class LoanBookDisbursement extends Model
             return null;
         }
 
+        if (in_array($this->effectivePayoutStatus(), ['pending', 'queued', 'processing'], true)) {
+            return 'An M-Pesa B2C payout is in progress. Wait for the Safaricom callback (or a failure) before removing this line.';
+        }
+
         if ($this->accounting_journal_entry_id) {
             return 'This disbursement is linked to a posted journal entry. Open the journal under Accounting and reverse it first, then remove this line and record the correct amount again.';
         }
 
         return 'This disbursement cannot be removed.';
+    }
+
+    public function payoutRequestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'payout_requested_by');
+    }
+
+    public function payoutApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'payout_approved_by');
     }
 }

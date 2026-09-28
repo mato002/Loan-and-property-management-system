@@ -1,12 +1,12 @@
 <x-property.workspace
     :title="'Tenant Statement: '.$tenant->name"
-    subtitle="Full tenant ledger — invoices, payments, and running balance (informational). Closing balance uses canonical billable AR."
+        subtitle="Full tenant ledger — invoices, payments, imported receipts, and running balance."
     back-route="property.tenants.directory"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No statement entries"
-    empty-hint="This tenant will have a statement once invoices or payments exist."
+    empty-hint="This tenant will have a statement once invoices, payments, or imported receipts exist."
 >
     <x-slot name="actions">
         <button
@@ -128,7 +128,7 @@
                 <hr class="my-3 border-slate-200">
                 <div class="text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Payments:</span> {{ $paymentSummary['count'] }}</p>
-                    <p><span class="text-slate-500">Collections (allocations):</span> {{ $paymentSummary['completedCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['completedAmount']) }})</p>
+                    <p><span class="text-slate-500">Collections:</span> {{ $paymentSummary['completedCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['completedAmount']) }})</p>
                     <p><span class="text-slate-500">Pending:</span> {{ $paymentSummary['pendingCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['pendingAmount']) }})</p>
                     <p><span class="text-slate-500">Failed:</span> {{ $paymentSummary['failedCount'] }}</p>
                 </div>

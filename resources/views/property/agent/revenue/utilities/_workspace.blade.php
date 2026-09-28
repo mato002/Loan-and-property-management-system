@@ -244,6 +244,8 @@
             x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); const hasStanding = @json(((int) ($standingLeaseCount ?? 0) > 0) || ((float) ($standingMonthlyTotal ?? 0) > 0)); if (q && allowed.includes(q)) activeTab = q; else if (hasStanding) activeTab = 'standing'; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="utility-ops-shell space-y-4"
         >
+            @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+
             @if (! empty($opsKpis))
                 <x-property.utility.compact-kpi-strip :items="$opsKpis" />
             @endif
@@ -256,287 +258,38 @@
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'charges' ? 'is-active' : ''" @click="setTab('charges')"><i class="fa-solid fa-list" aria-hidden="true"></i> Charge lines</button>
             </nav>
             <div x-show="activeTab === 'overview'" x-cloak class="space-y-4">
-                @include('property.agent.revenue.utilities._standing_register')
                 @include('property.agent.revenue.utilities._tab_overview')
                 <x-property.responsive.quick-action-grid>
                     <a href="{{ route('property.revenue.utilities.ledger', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Ledger</a>
                     <a href="{{ route('property.revenue.utilities.reconciliation', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-teal-200 bg-teal-50 text-teal-900 hover:bg-teal-100">Reconcile</a>
                     <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Periods</a>
-                    <button type="button" @click="setTab('readings')" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
                     <button type="button" @click="setTab('standing')" class="quick-action-btn bg-slate-800 text-white hover:bg-slate-900">Standing register</button>
+                    <button type="button" data-property-modal-open="showWaterReadingForm" @click="showWaterReadingForm = true" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
                 </x-property.responsive.quick-action-grid>
             </div>
             <div x-show="activeTab === 'readings'" x-cloak class="space-y-4">
-        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm space-y-3 md:space-y-4">
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Water meter reading</h3>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (water-enabled)</label>
-                <select x-model.number="selectedWaterPropertyId" @change="syncUnitSelection('reading')" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select property...</option>
-                    <template x-for="property in waterProperties" :key="'water-property-' + property.id">
-                        <option :value="property.id" x-text="property.name"></option>
-                    </template>
-                </select>
-                @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                <p x-show="!hasSelectedWaterProperty()" x-cloak class="mt-1 text-xs text-amber-600">Select a water-enabled property to load units.</p>
-                <p x-show="hasSelectedWaterProperty() && filteredWaterUnits().length === 0" x-cloak class="mt-1 text-xs text-amber-600">No units found for this property.</p>
-            </div>
-            <div class="grid gap-4 lg:grid-cols-2 items-start">
-            <form method="post" action="{{ route('property.revenue.utilities.water_readings.store') }}" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                @csrf
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                    <select name="property_unit_id" x-model.number="selectedReadingUnitId" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select unit...</option>
-                        <template x-for="unit in filteredWaterUnits()" :key="'reading-unit-' + unit.id">
-                            <option :value="unit.id" :disabled="isReadingRecorded(unit.id)" x-text="isReadingRecorded(unit.id) ? `${unit.label} (already recorded)` : unit.label"></option>
-                        </template>
-                    </select>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Recorded readings</h3>
+                    <button type="button" data-property-modal-open="showWaterReadingForm" @click="showWaterReadingForm = true" class="inline-flex items-center justify-center rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700 min-h-[44px]">Capture reading</button>
                 </div>
-                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label><input type="month" x-model="selectedWaterMonth" name="billing_month" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Previous reading <span class="font-normal text-slate-400">(optional)</span></label>
-                        <input type="number" step="0.001" min="0" name="previous_reading" x-ref="singlePreviousReadingInput" value="{{ old('previous_reading') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Loads from last reading when you pick unit & month" />
-                        @error('previous_reading')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Auto-fills from the last saved <span class="font-medium">current</span> reading for this unit (before the billing month). Edit if you need a different baseline (new meter, correction).</p>
-                    </div>
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" value="{{ old('current_reading') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input x-ref="singleRatePerUnit" type="number" step="0.01" min="0" name="rate_per_unit" value="{{ old('rate_per_unit') }}" required :readonly="hasSelectedWaterTemplate()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white read-only:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
-                    <input x-ref="singleFixedCharge" type="number" step="0.01" min="0" name="fixed_charge" :disabled="selectedWaterTemplateMode() === 'rate_only'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white disabled:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" />
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-text="waterFixedChargeHelpText()"></p>
-                </div>
-                <button type="submit" :disabled="!hasSelectedWaterProperty()" class="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-400">Save reading</button>
-            </form>
-                <form
-                    method="post"
-                    action="{{ route('property.revenue.utilities.water_readings.bulk') }}"
-                    class="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                    @csrf
-                    <h4 class="text-sm font-semibold text-slate-900 dark:text-white">Bulk water readings</h4>
-                    <p class="text-xs text-slate-600 dark:text-slate-400">Uses the same property selected above. Fill many units and save once.</p>
-                <input type="hidden" name="property_id" :value="selectedWaterPropertyId || ''" />
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label>
-                        <input type="month" name="billing_month" x-model="selectedWaterMonth" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label>
-                            <input x-ref="bulkRatePerUnit" type="number" name="rate_per_unit" value="{{ old('rate_per_unit') }}" step="0.01" min="0" required :readonly="hasSelectedWaterTemplate()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white read-only:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
-                        <input x-ref="bulkFixedCharge" type="number" name="fixed_charge" value="{{ old('fixed_charge') }}" step="0.01" min="0" :disabled="selectedWaterTemplateMode() === 'rate_only'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white disabled:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" />
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Shared notes (optional)</label>
-                    <input type="text" name="notes" value="{{ old('notes') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('current_readings')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2">
-                    <input type="search" x-model="bulkFilter" placeholder="Filter units…" class="flex-1 min-w-[140px] rounded-lg border border-slate-200 text-sm px-3 py-2 min-h-[44px]" />
-                    <span class="text-xs font-semibold text-teal-800 tabular-nums" x-text="`${bulkFilledCount} filled`"></span>
-                </div>
-                <div x-ref="bulkReadingsRoot" class="utility-bulk-grid" x-init="$nextTick(() => updateBulkFilledCount())">
-                    @foreach ($waterUnitOptions as $unit)
-                        <div
-                            x-show="Number(selectedWaterPropertyId) === {{ (int) $unit['property_id'] }} && bulkRowVisible(@js($unit['label']))"
-                            x-cloak
-                            class="utility-bulk-card"
-                            :class="{ 'is-recorded': isReadingRecorded({{ (int) $unit['id'] }}) }"
-                        >
-                            <p class="text-sm font-semibold text-slate-900">{{ $unit['label'] }}</p>
-                            <label class="block text-[10px] font-semibold uppercase text-slate-500">Previous</label>
-                            <input type="number" step="0.001" min="0" name="previous_readings[{{ (int) $unit['id'] }}]" data-water-bulk-prev="{{ (int) $unit['id'] }}" value="{{ old('previous_readings.'.(int) $unit['id']) }}" class="w-full rounded-lg border border-slate-200 text-sm px-2 py-2 min-h-[44px]" />
-                            <label class="block text-[10px] font-semibold uppercase text-slate-500 mt-1">Current</label>
-                            <input type="number" step="0.001" min="0" name="current_readings[{{ (int) $unit['id'] }}]" data-bulk-current value="{{ old('current_readings.'.(int) $unit['id']) }}" @input="updateBulkFilledCount()" class="w-full rounded-lg border border-slate-200 text-sm px-2 py-2 min-h-[44px]" placeholder="Reading" />
-                        </div>
-                    @endforeach
-                </div>
-                <div class="utility-bulk-table-wrap">
-                    <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                        <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            <tr>
-                                <th class="px-3 py-2">Unit</th>
-                                <th class="px-3 py-2">Previous <span class="font-normal normal-case text-slate-400">(opt.)</span></th>
-                                <th class="px-3 py-2">Current reading</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($waterUnitOptions as $unit)
-                                <tr x-show="Number(selectedWaterPropertyId) === {{ (int) $unit['property_id'] }}" x-cloak>
-                                    <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ $unit['label'] }}</td>
-                                    <td class="px-3 py-2">
-                                        <input
-                                            type="number"
-                                            step="0.001"
-                                            min="0"
-                                            name="previous_readings[{{ (int) $unit['id'] }}]"
-                                            data-water-bulk-prev="{{ (int) $unit['id'] }}"
-                                            value="{{ old('previous_readings.'.(int) $unit['id']) }}"
-                                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                                            placeholder="Loads when month/property set"
-                                        />
-                                        @error('previous_readings.'.(int) $unit['id'])<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </td>
-                                    <td class="px-3 py-2">
-                                        <input
-                                            type="number"
-                                            step="0.001"
-                                            min="0"
-                                            name="current_readings[{{ (int) $unit['id'] }}]" data-bulk-current @input="updateBulkFilledCount()"
-                                            value="{{ old('current_readings.'.(int) $unit['id']) }}"
-                                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                                            placeholder="Leave blank to skip"
-                                        />
-                                        @error('current_readings.'.(int) $unit['id'])<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-                <button type="submit" :disabled="!hasSelectedWaterProperty()" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400 min-h-[44px]">Save bulk readings</button>
-                </form>
-            </div>
-        </div>
                 @include('property.agent.revenue.utilities._readings_list')
             </div>
-            <div x-show="activeTab === 'billing'" x-cloak>
-    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Billing actions</h3>
-        <p class="text-xs text-slate-500">Garbage, service charge, and other fixed property expenses are billed via charge lines, then invoiced. Water uses meter readings separately.</p>
-        <div class="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
-            <form method="post" action="{{ route('property.revenue.utilities.attached.materialize') }}" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3">
-                @csrf
-                <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">Create charge lines</button>
-            </form>
-            <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3">
-                @csrf
-                <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <div><label class="block text-xs text-slate-500">Due date</label><input type="date" name="due_date" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Generate water invoices</button>
-            </form>
-            <form method="post" action="{{ route('property.revenue.utilities.invoices.generate') }}" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3">
-                @csrf
-                <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <div><label class="block text-xs text-slate-500">Due date</label><input type="date" name="due_date" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700">Generate other utility invoices</button>
-            </form>
-            <form method="post" action="{{ route('property.revenue.utilities.water_penalties.apply') }}" class="flex items-end rounded-xl border border-slate-200 p-3">
-                @csrf
-                <button type="button" @click="openPenaltyPreview()" class="rounded-lg bg-amber-100 border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-200 min-h-[44px]">Preview penalties</button>
-                <button type="submit" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700 min-h-[44px]" data-swal-confirm="Apply overdue water penalties now?">Apply penalties</button>
-            </form>
-        </div>
-    </div>
+            <div x-show="activeTab === 'billing'" x-cloak class="space-y-4">
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-900">Billing</h3>
+                    <p class="text-sm text-slate-600">Create charge lines and generate invoices from a modal. This tab stays a workspace, not a long form.</p>
+                    <button type="button" data-property-modal-open="showBillingActionsForm" @click="showBillingActionsForm = true" class="inline-flex items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 min-h-[44px]">Open billing actions</button>
+                </div>
+            </div>
+            <div x-show="activeTab === 'charges'" x-cloak class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Posted charge lines</h3>
+                    <button type="button" data-property-modal-open="showAddChargeForm" @click="showAddChargeForm = true" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 min-h-[44px]">Add charge line</button>
+                </div>
+                @include('property.agent.revenue.utilities._charges_list')
             </div>
             <div x-show="activeTab === 'standing'" x-cloak class="space-y-4">
                 @include('property.agent.revenue.utilities._standing_register')
             </div>
-            <div x-show="activeTab === 'charges'" x-cloak class="space-y-4">
-                <form method="post" action="{{ route('property.revenue.utilities.store') }}" x-ref="addChargeForm" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
-            @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add monthly charge line</h3>
-            <div class="grid gap-3 sm:grid-cols-2">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
-                    <select name="charge_type" @change="syncChargeDefaults()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="other" @selected(old('charge_type') === 'other')>Other</option>
-                        <option value="water" @selected(old('charge_type') === 'water')>Water</option>
-                        <option value="electricity" @selected(old('charge_type') === 'electricity')>Electricity</option>
-                        <option value="service" @selected(old('charge_type') === 'service')>Service</option>
-                        <option value="garbage" @selected(old('charge_type') === 'garbage')>Garbage</option>
-                    </select>
-                    @error('charge_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Billing month</label>
-                    <input type="month" name="billing_month" value="{{ old('billing_month') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
-                <select x-model.number="selectedChargePropertyId" @change="syncUnitSelection('charge')" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select property...</option>
-                    <template x-for="property in properties" :key="'charge-property-' + property.id">
-                        <option :value="property.id" x-text="property.name"></option>
-                    </template>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                <select name="property_unit_id" x-model.number="selectedChargeUnitId" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select unit...</option>
-                    <template x-for="unit in filteredUnits(selectedChargePropertyId)" :key="'charge-unit-' + unit.id">
-                        <option :value="unit.id" x-text="unit.label"></option>
-                    </template>
-                </select>
-                @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Label</label>
-                <input type="text" name="label" value="{{ old('label') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. Water / Service charge" />
-                @error('label')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div class="grid gap-3 sm:grid-cols-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Units consumed</label>
-                    <input type="number" name="units_consumed" value="{{ old('units_consumed') }}" step="0.001" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Usage units" />
-                    @error('units_consumed')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label>
-                    <input type="number" name="rate_per_unit" value="{{ old('rate_per_unit') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('rate_per_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
-                    <input
-                        type="number"
-                        name="fixed_charge"
-                        value="{{ old('fixed_charge') }}"
-                        step="0.01"
-                        min="0"
-                        :disabled="selectedChargeTemplateMode() === 'rate_only'"
-                        class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white disabled:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2"
-                    />
-                    @error('fixed_charge')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-text="fixedChargeHelpText()"></p>
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
-                <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">If usage/rate is entered, amount is calculated as (units × rate) + fixed.</p>
-                @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                <input type="text" name="notes" value="{{ old('notes') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save charge</button>
-        </form>
-                @include('property.agent.revenue.utilities._charges_list')
-            </div>
-            <div class="utility-sticky-bar md:hidden">
-                <div class="utility-sticky-bar-inner">
-                    <button type="button" @click="setTab('readings')" class="utility-sticky-btn bg-cyan-600 text-white">Readings</button>
-                    <button type="button" @click="setTab('billing')" class="utility-sticky-btn bg-emerald-600 text-white">Bill</button>
-                    <button type="button" @click="openPenaltyPreview()" class="utility-sticky-btn bg-amber-600 text-white">Penalties</button>
-                    <button type="button" @click="setTab('standing')" class="utility-sticky-btn bg-slate-800 text-white">Register</button>
-                    <button type="button" @click="setTab('charges')" class="utility-sticky-btn bg-slate-700 text-white">Lines</button>
-                </div>
-            </div>
-
             <x-property.utility.penalty-preview-modal />
         </div>

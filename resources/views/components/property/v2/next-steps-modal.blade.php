@@ -95,7 +95,11 @@
                             href="{{ $href }}"
                             class="{{ $classes }}"
                             @click="open = false"
-                            @if (!empty($action['turbo_frame']))
+                            @if (!empty($action['listing_publish']))
+                                data-listing-publish
+                                data-listing-unit-id="{{ $action['listing_unit_id'] ?? '' }}"
+                                data-property-form-modal="off"
+                            @elseif (!empty($action['turbo_frame']))
                                 data-turbo-frame="{{ $action['turbo_frame'] }}"
                             @endif
                         >

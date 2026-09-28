@@ -16,7 +16,11 @@ final class LandlordPortalInvoicePdfService
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
         $html = view('property.agent.revenue.invoice_print', [
             'invoice' => $invoice,
-            'branding' => $this->branding(),
+            'branding' => $this->branding(
+                $invoice->unit?->property?->agent_user_id
+                    ? (int) $invoice->unit->property->agent_user_id
+                    : null
+            ),
             'payments' => $this->paymentInstructions(),
         ])->render();
 
@@ -46,15 +50,12 @@ final class LandlordPortalInvoicePdfService
     }
 
     /** @return array<string, mixed> */
-    private function branding(): array
+    private function branding(?int $agentUserId = null): array
     {
-        return [
-            'company_name' => PropertyPortalSetting::getValue('company_name', config('app.name')),
-            'logo_url' => PropertyPortalSetting::getValue('company_logo_url', ''),
-            'address' => PropertyPortalSetting::getValue('contact_address', ''),
-            'phone' => PropertyPortalSetting::getValue('contact_phone', ''),
-            'email' => PropertyPortalSetting::getValue('contact_email_primary', ''),
-        ];
+        return array_merge(
+            \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot($agentUserId),
+            ['footer_note' => 'Thank you for your business.']
+        );
     }
 
     /** @return array<string, string> */

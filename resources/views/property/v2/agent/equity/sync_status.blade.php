@@ -5,6 +5,20 @@
         title="Equity Sync Status"
         subtitle="Monitor automatic bank sync runs and trigger manual sync from the agent workspace."
     >
+        @if (empty($bankConfigured))
+            <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Collection bank sync is not configured yet.
+                <a href="{{ $bankSettingsUrl ?? route('property.settings.bank', [], false) }}" class="font-semibold text-amber-950 underline hover:no-underline">Open bank sync settings</a>
+                to link your paybill account.
+            </div>
+        @elseif (empty($bankSyncEnabled))
+            <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Bank credentials are saved but automatic sync is paused.
+                <a href="{{ $bankSettingsUrl ?? route('property.settings.bank', [], false) }}" class="font-semibold text-slate-900 underline hover:no-underline">Enable sync in settings</a>
+                or use Run Sync Now for a manual pull.
+            </div>
+        @endif
+
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <x-property.module-status label="Revenue / Equity" />
             <form method="post" action="{{ route('property.equity.sync_status.sync') }}">

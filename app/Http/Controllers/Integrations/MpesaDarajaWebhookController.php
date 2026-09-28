@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\MpesaPlatformTransaction;
 use App\Models\PmPayment;
 use App\Services\BulkSmsService;
-use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Integrations\MpesaC2bConfirmationService;
+use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\LoanBook\LoanDisbursementPayoutService;
+use App\Services\LoanBook\LoanStkRepaymentService;
+use App\Services\Property\PropertyPaymentSettlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +59,23 @@ class MpesaDarajaWebhookController extends Controller
         $paidAmount = isset($metaMap['Amount']) ? (float) $metaMap['Amount'] : null;
 
         if (! $payment) {
+            $loanHandled = app(LoanStkRepaymentService::class)->applyStkCallback(
+                $checkoutRequestId,
+                $merchantRequestId,
+                $resultCode,
+                $resultDesc,
+                $metaMap,
+                $receipt,
+                $paidAmount
+            );
+            if ($loanHandled) {
+                return response()->json([
+                    'ok' => true,
+                    'status' => $resultCode === 0 ? 'success' : 'failed',
+                    'target' => 'loan_repayment',
+                ]);
+            }
+
             return $this->handleSmsWalletTopupCallback(
                 $checkoutRequestId,
                 $merchantRequestId,
@@ -161,6 +181,7 @@ class MpesaDarajaWebhookController extends Controller
                     'transaction_id' => $receipt ?: $lockedTx->transaction_id,
                     'meta' => $meta,
                 ]);
+
                 return;
             }
 
@@ -189,6 +210,50 @@ class MpesaDarajaWebhookController extends Controller
             'ok' => true,
             'status' => $resultCode === 0 ? 'success' : 'failed',
             'target' => 'sms_wallet_topup',
+        ]);
+    }
+
+    /**
+     * Safaricom Daraja C2B Validation URL.
+     * Respond with ResultCode 0 to accept, or non-zero to reject.
+     */
+    public function c2bValidation(Request $request): JsonResponse
+    {
+        $mode = strtolower((string) config('services.mpesa.c2b_validation_mode', 'accept'));
+        if ($mode === 'reject') {
+            return response()->json([
+                'ResultCode' => 'C2B00011',
+                'ResultDesc' => 'Rejected',
+            ]);
+        }
+
+        $amount = (float) ($request->input('TransAmount') ?? $request->input('Amount') ?? 0);
+        if ($amount <= 0) {
+            return response()->json([
+                'ResultCode' => 'C2B00013',
+                'ResultDesc' => 'Invalid Amount',
+            ]);
+        }
+
+        return response()->json([
+            'ResultCode' => '0',
+            'ResultDesc' => 'Accepted',
+        ]);
+    }
+
+    /**
+     * Safaricom Daraja C2B Confirmation URL.
+     */
+    public function c2bConfirmation(Request $request): JsonResponse
+    {
+        $result = app(MpesaC2bConfirmationService::class)->handleConfirmation($request->all());
+
+        // Always acknowledge so Daraja does not retry endlessly.
+        return response()->json([
+            'ResultCode' => 0,
+            'ResultDesc' => 'Success',
+            'ok' => (bool) ($result['ok'] ?? false),
+            'message' => (string) ($result['message'] ?? ''),
         ]);
     }
 
@@ -237,9 +302,24 @@ class MpesaDarajaWebhookController extends Controller
 
         $tx = MpesaPlatformTransaction::query()
             ->where('channel', 'b2c')
-            ->when($conversationId !== '', fn ($q) => $q->orWhere('conversation_id', $conversationId))
-            ->when($originatorConversationId !== '', fn ($q) => $q->orWhere('originator_conversation_id', $originatorConversationId))
-            ->when($transactionId !== '', fn ($q) => $q->orWhere('transaction_id', $transactionId))
+            ->where(function ($q) use ($conversationId, $originatorConversationId, $transactionId) {
+                $matched = false;
+                if ($conversationId !== '') {
+                    $q->orWhere('conversation_id', $conversationId);
+                    $matched = true;
+                }
+                if ($originatorConversationId !== '') {
+                    $q->orWhere('originator_conversation_id', $originatorConversationId);
+                    $matched = true;
+                }
+                if ($transactionId !== '') {
+                    $q->orWhere('transaction_id', $transactionId);
+                    $matched = true;
+                }
+                if (! $matched) {
+                    $q->whereRaw('1 = 0');
+                }
+            })
             ->orderByDesc('id')
             ->first();
 
@@ -271,8 +351,19 @@ class MpesaDarajaWebhookController extends Controller
 
         // If this B2C callback belongs to a loan disbursement initiation, update that row too.
         app(LoanDisbursementPayoutService::class)->applyB2cCallbackToDisbursement($payload, $map, $status);
+        // Property landlord / vendor / payroll B2C payouts.
+        app(\App\Services\Property\PropertyB2cPayoutService::class)->applyB2cCallback($payload, $map, $status);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Safaricom Transaction Status Query Result URL.
+     */
+    public function transactionStatusCallback(Request $request): JsonResponse
+    {
+        app(MpesaReceiptVerificationService::class)->applyStatusCallback($request->all());
 
         return response()->json(['ok' => true]);
     }
 }
-

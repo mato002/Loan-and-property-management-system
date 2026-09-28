@@ -6,19 +6,7 @@
         title="Commission settings"
         subtitle="Default percentage and internal notes. Detailed fee schedules can live in your contracts until you model them in the database."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            @if ($isSuperAdmin)
-                <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property users</a>
-            @endif
-            <a href="{{ route('property.settings.commission') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Commission</a>
-            <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
-            <a href="{{ route('property.settings.forwarder') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">My SMS Forwarder</a>
-            <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
-            <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
-            @if ($isSuperAdmin)
-                <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup</a>
-            @endif
-        </div>
+        @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.commission'])
 
         <div class="mb-4 grid gap-3 sm:grid-cols-2">
             <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
@@ -38,6 +26,12 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default commission (%)</label>
                 <input type="text" name="commission_default_percent" value="{{ old('commission_default_percent', $defaultPercent) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. 8.5" />
                 @error('commission_default_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">VAT on commission (%)</label>
+                <input type="number" step="0.01" min="0" max="100" name="commission_vat_percent" value="{{ old('commission_vat_percent', $vatPercent ?? '0') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="0" />
+                @error('commission_vat_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                <p class="mt-1 text-xs text-slate-500">Shown on Property commissions. Leave 0 if management fees are not vatable.</p>
             </div>
 
             <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">

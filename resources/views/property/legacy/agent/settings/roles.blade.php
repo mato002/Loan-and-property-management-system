@@ -8,15 +8,9 @@
     empty-title="No role assignments"
     empty-hint="No users with a property portal role were found."
 >
-    <x-slot name="toolbar">
-        <a href="{{ route('property.settings.roles') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Property users</a>
-        <a href="{{ route('property.settings.permissions') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Permissions</a>
-        <a href="{{ route('property.settings.commission') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Commission</a>
-        <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
-        <a href="{{ route('property.settings.forwarder') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">My SMS Forwarder</a>
-        <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
-        <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
-        <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup</a>
+    <x-slot name="above">
+        @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.roles'])
+        @include('property.agent.settings.partials.custom_roles')
     </x-slot>
 
     <x-slot name="actions">
@@ -28,7 +22,7 @@
 
     <x-slot name="footer">
         <p class="text-sm text-slate-600 dark:text-slate-300">
-            Role changes are managed from user profile/administration workflows in this build. This page gives a live assignment overview for agent, landlord, and tenant access.
+            Create a custom role in the form above, then open Set permissions to choose what that role can do. The table below is who currently has a portal login.
         </p>
     </x-slot>
 </x-property.workspace>

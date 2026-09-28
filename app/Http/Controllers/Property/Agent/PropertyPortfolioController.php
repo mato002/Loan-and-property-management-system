@@ -27,9 +27,12 @@ use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\LandlordPortalOnboardingService;
+use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyRegisterImportService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
@@ -173,7 +176,7 @@ class PropertyPortfolioController extends Controller
         }
         $q->orderBy($sort, $dir)->orderBy('name');
 
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
         $portfolio = $q->paginate($perPage)->withQueryString();
 
         $stats = [
@@ -337,6 +340,10 @@ class PropertyPortfolioController extends Controller
             'perPage' => $perPage,
             'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
             'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $request->user()->id),
+            'expectedColumns' => app(PropertyRegisterImportService::class)->templateColumns(),
+            'lastImportStats' => session('property_register_import_stats'),
+            'lastImportErrors' => session('property_register_import_errors', []),
+            'lastImportWarnings' => session('property_register_import_warnings', []),
         ]);
     }
 
@@ -756,34 +763,35 @@ class PropertyPortfolioController extends Controller
         $quickActions = [];
         if ($request->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly()) {
             $quickActions[] = [
+                'label' => 'Add unit',
+                'modal' => 'addUnitOpen',
+                'icon' => 'fa-plus',
+                'tone' => 'primary',
+            ];
+            $quickActions[] = [
+                'label' => 'Assign lease',
+                'modal' => 'showLeaseCreateForm',
+                'icon' => 'fa-key',
+            ];
+            $quickActions[] = [
+                'label' => 'Log maintenance',
+                'modal' => 'showHubMaintenanceForm',
+                'icon' => 'fa-wrench',
+            ];
+            if (($property->landlords?->count() ?? 0) === 0) {
+                $quickActions[] = [
+                    'label' => 'Link landlord',
+                    'modal' => 'showHubLinkLandlord',
+                    'icon' => 'fa-user-tie',
+                ];
+            }
+            $quickActions[] = [
                 'label' => 'Edit property',
                 'route' => 'property.properties.edit',
                 'params' => ['property' => $property->id],
                 'icon' => 'fa-pen-to-square',
+                'tone' => 'muted',
             ];
-            $quickActions[] = [
-                'label' => 'Manage units',
-                'route' => 'property.properties.units',
-                'params' => ['property_id' => $property->id],
-                'icon' => 'fa-building',
-            ];
-            if ($firstVacantUnit) {
-                $quickActions[] = [
-                    'label' => 'Assign tenant',
-                    'route' => 'property.tenants.leases',
-                    'params' => ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id],
-                    'icon' => 'fa-key',
-                    'tone' => 'primary',
-                ];
-            }
-            if (($property->landlords?->count() ?? 0) === 0) {
-                $quickActions[] = [
-                    'label' => 'Link landlord',
-                    'route' => 'property.properties.list',
-                    'params' => ['property_id' => $property->id],
-                    'icon' => 'fa-user-tie',
-                ];
-            }
         }
 
         $alerts = [];
@@ -791,7 +799,15 @@ class PropertyPortfolioController extends Controller
             $alerts[] = [
                 'label' => 'No landlord linked',
                 'tone' => 'amber',
-                'href' => route('property.properties.list', ['property_id' => $property->id], false).'#link-landlord-form',
+                'href' => PropertyEntityHub::tabUrl(
+                    'property.properties.show',
+                    ['property' => $property->id],
+                    'landlords',
+                    array_filter([
+                        'month' => $month !== '' ? $month : null,
+                        'fy' => $request->has('fy') && $month === '' ? $fy : null,
+                    ])
+                ),
             ];
         }
         if ($vacantUnits > 0) {
@@ -810,7 +826,7 @@ class PropertyPortfolioController extends Controller
             ];
         }
 
-        return view('property.agent.properties.show', [
+        return property_view('property.agent.properties.show', [
             'property' => $property,
             'units' => $units,
             'unitSnapshots' => $unitSnapshots,
@@ -857,6 +873,7 @@ class PropertyPortfolioController extends Controller
             'propertyExpenseDefinitions' => $this->propertyExpenseDefinitions((int) $property->id),
             'propertyDepositDefinitions' => $this->propertyDepositDefinitions((int) $property->id),
             'unitFields' => $this->unitFieldConfig(),
+            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(['id', 'name', 'email', 'phone']),
             'isManagementReadOnly' => $property->isManagementReadOnly(),
             'managementStatusLabel' => $property->managementStatusLabel(),
         ]);
@@ -1188,7 +1205,7 @@ class PropertyPortfolioController extends Controller
             ];
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.publish-panel', $u, absolute: false).'" data-listing-publish data-listing-unit-id="'.$u->id.'" data-property-form-modal="off" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($lease) {
                 $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
                 if ($tenant?->name) {
@@ -1730,6 +1747,13 @@ class PropertyPortfolioController extends Controller
                 ->get();
         }
 
+        $monthlyBreakdown = $this->buildLandlordMonthlyBreakdown(
+            $propertyLinks,
+            $propertyIds,
+            Carbon::create($fy, 1, 1)->startOfDay(),
+            Carbon::create($fy, 12, 31)->endOfDay(),
+        );
+
         $totals = [
             'properties' => (int) $propertyBreakdown->count(),
             'ownership_sum' => (float) $propertyBreakdown->sum('ownership_percent'),
@@ -1761,6 +1785,7 @@ class PropertyPortfolioController extends Controller
             'periodEnd' => $periodEnd,
             'monthValue' => $month,
             'fyValue' => $fy,
+            'isMonthScoped' => preg_match('/^\d{4}-\d{2}$/', $month) === 1,
             'commissionPct' => $this->displayCommissionPercent(
                 $propertyBreakdown,
                 (float) $totals['owner_share'],
@@ -1769,12 +1794,90 @@ class PropertyPortfolioController extends Controller
             ),
             'totals' => $totals,
             'propertyBreakdown' => $propertyBreakdown,
+            'monthlyBreakdown' => $monthlyBreakdown,
             'recentCollections' => $recentCollections,
             'portalAccess' => $portalAccess,
         ];
     }
 
-    public function landlordsShow(Request $request, User $landlord): View|StreamedResponse
+    /**
+     * Month-by-month owner share / earnings inside the selected period (usually a full FY).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $propertyLinks
+     * @param  list<int>  $propertyIds
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildLandlordMonthlyBreakdown($propertyLinks, array $propertyIds, Carbon $periodStart, Carbon $periodEnd)
+    {
+        $months = collect();
+        $cursor = $periodStart->copy()->startOfMonth();
+        $endMonth = $periodEnd->copy()->startOfMonth();
+        while ($cursor->lte($endMonth)) {
+            $months->push($cursor->format('Y-m'));
+            $cursor->addMonth();
+        }
+
+        if ($months->isEmpty()) {
+            return collect();
+        }
+
+        $ownershipByProperty = $propertyLinks
+            ->mapWithKeys(fn ($link) => [(int) $link->property_id => ((float) $link->ownership_percent) / 100]);
+
+        $grossByMonthProperty = [];
+        if ($propertyIds !== []) {
+            $allocationRows = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->select(['pu.property_id', 'pay.paid_at', 'a.amount'])
+                ->get();
+
+            foreach ($allocationRows as $row) {
+                $ym = Carbon::parse((string) $row->paid_at)->format('Y-m');
+                $pid = (int) $row->property_id;
+                $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
+        }
+
+        return $months->map(function (string $ym) use ($grossByMonthProperty, $ownershipByProperty, $propertyLinks) {
+            $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
+            $grossCollected = 0.0;
+            $ownerShare = 0.0;
+            $agentEarning = 0.0;
+            $activeProperties = 0;
+
+            foreach ($propertyLinks as $link) {
+                $pid = (int) $link->property_id;
+                $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
+                if ($gross <= 0) {
+                    continue;
+                }
+                $activeProperties++;
+                $pct = (float) ($ownershipByProperty[$pid] ?? 0);
+                $share = $gross * $pct;
+                $commissionPct = $this->propertyCommissionPercent($pid);
+                $grossCollected += $gross;
+                $ownerShare += $share;
+                $agentEarning += $share * ($commissionPct / 100);
+            }
+
+            return [
+                'month' => $ym,
+                'month_label' => $monthStart->format('M Y'),
+                'gross_collected' => $grossCollected,
+                'owner_share' => $ownerShare,
+                'agent_earning' => $agentEarning,
+                'active_properties' => $activeProperties,
+                'has_activity' => $grossCollected > 0.009,
+            ];
+        })->values();
+    }
+
+    public function landlordsShow(Request $request, User $landlord): View|StreamedResponse|Response
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
@@ -1784,8 +1887,42 @@ class PropertyPortfolioController extends Controller
 
         $export = $request->string('export')->toString();
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            $exportScope = strtolower((string) $request->query('export_scope', ''));
+            $isMonthScoped = preg_match('/^\d{4}-\d{2}$/', $month) === 1;
+
+            // Single-month export = full property account statement (units / B/F / invoiced / received), not FY summaries.
+            if ($isMonthScoped && $exportScope !== 'monthly') {
+                return $this->streamLandlordMonthAccountStatements($landlord, $month, $export);
+            }
+
+            $wantMonthly = $exportScope === 'monthly' || ! $isMonthScoped;
+            if ($wantMonthly) {
+                return TabularExport::stream(
+                    'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
+                    [
+                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Owner share', 'Agent earning', 'Properties with collections',
+                    ],
+                    function () use ($landlord, $snapshot) {
+                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $snapshot) {
+                            return [
+                                (string) $landlord->name,
+                                (string) $landlord->email,
+                                (string) ($snapshot['fyValue'] ?? ''),
+                                (string) ($row['month'] ?? ''),
+                                (string) ($row['month_label'] ?? ''),
+                                (string) number_format((float) ($row['gross_collected'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
+                                (string) number_format((float) ($row['agent_earning'] ?? 0), 2, '.', ''),
+                                (string) (int) ($row['active_properties'] ?? 0),
+                            ];
+                        });
+                    },
+                    $export
+                );
+            }
+
             return TabularExport::stream(
-                'landlord-'.$landlord->id.'-snapshot',
+                'landlord-'.$landlord->id.'-snapshot'.($month !== '' ? '-'.$month : ''),
                 [
                     'Landlord Name', 'Landlord Email', 'Period', 'Property', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection',
                 ],
@@ -1823,10 +1960,23 @@ class PropertyPortfolioController extends Controller
             $periodMonth,
         );
 
-        return view('property.agent.landlords.show', [
+        $monthSettlements = [];
+        if (! empty($snapshot['isMonthScoped'])) {
+            $monthSettlements = $this->buildLandlordMonthSettlements($landlord, (string) $snapshot['monthValue']);
+        }
+
+        $linkableProperties = Property::query()
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', (int) $request->user()->id))
+            ->whereDoesntHave('landlords')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return property_view('property.agent.landlords.show', [
             'landlord' => $landlord,
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             'activeTab' => $activeTab,
+            'linkableProperties' => $linkableProperties,
+            'monthSettlements' => $monthSettlements,
             ...$tabData,
             ...$snapshot,
         ]);
@@ -1844,12 +1994,28 @@ class PropertyPortfolioController extends Controller
         ]));
     }
 
-    public function landlordsStatementPrint(Request $request, User $landlord): View
+    public function landlordsStatementPrint(Request $request, User $landlord): View|Response
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
+
+        // Month print = Ezen-style property account statement(s) for that month only.
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $settlements = $this->buildLandlordMonthSettlements($landlord, $month);
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+
+            return view('property.agent.landlords.landlord_monthly_account_statements_print', [
+                'landlord' => $landlord,
+                'settlements' => $settlements,
+                'periodLabel' => $periodStart->format('F').' - '.$periodStart->format('Y'),
+                'branding' => $this->landlordStatementBranding(),
+                'generatedAt' => now()->format('d M Y H:i'),
+                'autoPrint' => $request->boolean('print'),
+            ]);
+        }
+
         $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
 
         return view('property.agent.landlords.landlord_statement_print', [
@@ -1859,6 +2025,216 @@ class PropertyPortfolioController extends Controller
             'autoPrint' => $request->boolean('print'),
             ...$snapshot,
         ]);
+    }
+
+    /**
+     * Full property-account statements for every property linked to the landlord in one calendar month.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildLandlordMonthSettlements(User $landlord, string $monthYm): array
+    {
+        $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
+        $propertyIdsQuery = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->orderBy('p.name')
+            ->select('pl.property_id');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
+        }
+
+        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+        $service = app(LandlordSettlementService::class);
+        $settlements = [];
+        foreach ($propertyIds as $propertyId) {
+            $settlements[] = $service->buildSettlement($propertyId, (int) $landlord->id, $periodStart, $periodEnd);
+        }
+
+        return $settlements;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export): StreamedResponse|Response
+    {
+        $settlements = $this->buildLandlordMonthSettlements($landlord, $monthYm);
+        $slug = Str::slug((string) $landlord->name).'-'.$monthYm;
+
+        if (in_array($export, ['pdf', 'word'], true)) {
+            $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
+                'landlord' => $landlord,
+                'settlements' => $settlements,
+                'periodLabel' => Carbon::createFromFormat('Y-m', $monthYm)->format('F').' - '.Carbon::createFromFormat('Y-m', $monthYm)->format('Y'),
+                'branding' => $this->landlordStatementBranding(),
+                'generatedAt' => now()->format('d M Y H:i'),
+                'autoPrint' => false,
+            ])->render();
+
+            if ($export === 'word') {
+                return response($html, 200, [
+                    'Content-Type' => 'application/msword; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
+                ]);
+            }
+
+            try {
+                $options = new Options;
+                $options->set('isRemoteEnabled', true);
+                $options->set('chroot', public_path());
+                $options->set('defaultFont', 'DejaVu Sans');
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'landscape');
+                $dompdf->render();
+
+                return response($dompdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="property-account-statement-'.$slug.'.pdf"',
+                ]);
+            } catch (Throwable) {
+                return response($html, 200, [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.html"',
+                ]);
+            }
+        }
+
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+
+        return TabularExport::stream(
+            'property-account-statement-'.$slug,
+            [
+                'Property',
+                'Section',
+                'Unit',
+                'Tenant',
+                'Rent / month',
+                'Bal B/F Rent',
+                'Bal B/F Garbage',
+                'Bal B/F Water',
+                'Invoiced Rent',
+                'Invoiced Garbage',
+                'Invoiced Water',
+                'Received Rent',
+                'Received Garbage',
+                'Received Water',
+                'Amount',
+                'Notes',
+            ],
+            function () use ($settlements, $n, $monthYm) {
+                foreach ($settlements as $settlement) {
+                    $propertyName = (string) ($settlement['property_name'] ?? '');
+                    yield [
+                        $propertyName,
+                        'Header',
+                        '',
+                        (string) ($settlement['landlord_name'] ?? ''),
+                        '', '', '', '', '', '', '', '', '', '',
+                        '',
+                        (string) (($settlement['period_label'] ?? $monthYm).' '.($settlement['period_range_label'] ?? '')),
+                    ];
+
+                    foreach ($settlement['unit_lines'] ?? [] as $line) {
+                        yield [
+                            $propertyName,
+                            'Unit',
+                            (string) ($line['unit_label'] ?? ''),
+                            (string) ($line['tenant_name'] ?? ''),
+                            $n((float) ($line['rent_per_month'] ?? 0)),
+                            $n((float) ($line['rent_bf'] ?? 0)),
+                            $n((float) ($line['garbage_bf'] ?? 0)),
+                            $n((float) ($line['water_bf'] ?? 0)),
+                            $n((float) ($line['rent_billed'] ?? 0)),
+                            $n((float) ($line['garbage_billed'] ?? 0)),
+                            $n((float) ($line['water_billed'] ?? 0)),
+                            $n((float) ($line['rent_received'] ?? 0)),
+                            $n((float) ($line['garbage_received'] ?? 0)),
+                            $n((float) ($line['water_received'] ?? 0)),
+                            $n((float) ($line['total_received'] ?? 0)),
+                            '',
+                        ];
+                    }
+
+                    $totals = $settlement['unit_totals'] ?? [];
+                    yield [
+                        $propertyName,
+                        'Unit totals',
+                        '',
+                        '',
+                        $n((float) ($totals['rent_per_month'] ?? 0)),
+                        $n((float) ($totals['rent_bf'] ?? 0)),
+                        $n((float) ($totals['garbage_bf'] ?? 0)),
+                        $n((float) ($totals['water_bf'] ?? 0)),
+                        $n((float) ($totals['rent_billed'] ?? 0)),
+                        $n((float) ($totals['garbage_billed'] ?? 0)),
+                        $n((float) ($totals['water_billed'] ?? 0)),
+                        $n((float) ($totals['rent_received'] ?? 0)),
+                        $n((float) ($totals['garbage_received'] ?? 0)),
+                        $n((float) ($totals['water_received'] ?? 0)),
+                        $n((float) ($totals['total_received'] ?? 0)),
+                        '',
+                    ];
+
+                    yield [
+                        $propertyName,
+                        'Occupancy',
+                        'Occupied',
+                        (string) (($settlement['unit_stats']['units_occupied'] ?? 0)),
+                        'Vacant',
+                        (string) (($settlement['unit_stats']['units_vacant'] ?? 0)),
+                        '', '', '', '', '', '', '', '', '', '',
+                    ];
+
+                    foreach ($settlement['additions'] ?? [] as $addition) {
+                        yield [
+                            $propertyName,
+                            'Addition',
+                            '',
+                            (string) ($addition['description'] ?? 'Addition'),
+                            '', '', '', '', '', '', '', '', '', '',
+                            $n((float) ($addition['amount'] ?? 0)),
+                            '',
+                        ];
+                    }
+                    yield [
+                        $propertyName, 'Addition totals', '', 'TOTAL ADDITIONS',
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($settlement['additions_total'] ?? 0)), '',
+                    ];
+
+                    foreach ($settlement['deductions'] ?? [] as $deduction) {
+                        yield [
+                            $propertyName,
+                            'Deduction',
+                            '',
+                            (string) ($deduction['description'] ?? 'Deduction'),
+                            '', '', '', '', '', '', '', '', '', '',
+                            $n((float) ($deduction['amount'] ?? 0)),
+                            '',
+                        ];
+                    }
+                    yield [
+                        $propertyName, 'Deduction totals', '', 'TOTAL DEDUCTIONS',
+                        '', '', '', '', '', '', '', '', '', '',
+                        $n((float) ($settlement['deductions_total'] ?? 0)), '',
+                    ];
+
+                    yield [$propertyName, 'Summary', '', 'Rent received', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['rent_received'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Total utility', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['utility_received'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less management fee', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['management_fee'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less other expenses', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['other_expenses'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Add total additions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Less total deductions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Balance B/F', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['balance_brought_forward'] ?? 0)), ''];
+                    yield [$propertyName, 'Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0)), ''];
+                }
+            },
+            TabularExport::FORMAT_CSV,
+        );
     }
 
     /**
@@ -2082,6 +2458,8 @@ class PropertyPortfolioController extends Controller
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
         $landlord = $onboarding->createLandlordUser($data, $agentUserId);
+        $profile = $request->validate($this->landlordProfileFieldRules($landlordFields));
+        $onboarding->syncLandlordProfile($landlord, $profile);
         $delivery = $onboarding->deliverCredentials($landlord, $plainPassword, $agentUserId);
 
         $contactLabel = $landlord->email
@@ -2315,7 +2693,7 @@ class PropertyPortfolioController extends Controller
             ->pluck('c', 'status');
         $avgRent = (float) ((clone $query)->setEagerLoads([])->reorder()->avg('rent_amount') ?? 0);
 
-        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
         $units = $query->paginate($perPage)->withQueryString();
         $unitCollection = $units->getCollection();
 
@@ -3146,16 +3524,35 @@ class PropertyPortfolioController extends Controller
         if ($unit->status === PropertyUnit::STATUS_VACANT) {
             array_unshift($actions, [
                 'label' => 'Edit listing (vacant unit)',
-                'href' => route('property.listings.create', ['selected_unit' => $unit->id], absolute: false).'#listing-publish',
+                'href' => route('property.listings.publish-panel', $unit, absolute: false),
                 'kind' => 'primary',
                 'icon' => 'fa-solid fa-pen-to-square',
-                'turbo_frame' => 'property-main',
+                'listing_publish' => true,
+                'listing_unit_id' => $unit->id,
             ]);
         }
 
         $savedMessage = $unitCount > 1
             ? 'Units saved: '.$unitCount.'.'
             : 'Unit saved.';
+
+        $hubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $unit->property_id,
+            'units',
+            $savedMessage
+        );
+        if ($hubRedirect) {
+            return $hubRedirect->with('next_steps', [
+                'title' => 'Unit saved',
+                'message' => $unit->status === PropertyUnit::STATUS_VACANT
+                    ? ($unitCount > 1
+                        ? 'These units are vacant. You can now add photos and publish selected ones under Listings.'
+                        : 'This unit is vacant. You can now add photos and publish it under Listings.')
+                    : 'Next, add more units, link the landlord, or manage listings for vacant units.',
+                'actions' => $actions,
+            ]);
+        }
 
         return back()
             ->with('success', $savedMessage)
@@ -3538,8 +3935,9 @@ class PropertyPortfolioController extends Controller
             $attrs['available_from'] = ($availableFrom === null || $availableFrom === '') ? null : $availableFrom;
         }
 
-        if ($request->has('furnished')) {
-            $attrs['furnished'] = $request->boolean('furnished');
+        if (array_key_exists('furnished', $data) || $request->has('furnished')) {
+            $raw = $data['furnished'] ?? $request->input('furnished');
+            $attrs['furnished'] = in_array($raw, [true, 1, '1', 'true', 'on', 'yes'], true);
         }
 
         return $attrs;
@@ -3613,6 +4011,11 @@ class PropertyPortfolioController extends Controller
             'unit_groups.*.unit_type' => ['required', 'string', 'max:64'],
             'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
+            'unit_groups.*.market_rent' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.legacy_area' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.floor' => ['nullable', 'string', 'max:32'],
+            'unit_groups.*.available_from' => ['nullable', 'date'],
+            'unit_groups.*.furnished' => ['nullable', 'boolean'],
             'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
             'unit_groups.*.public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
@@ -3635,6 +4038,11 @@ class PropertyPortfolioController extends Controller
             $unitType = $this->normalizeUnitTypeValue((string) ($group['unit_type'] ?? ''));
             $status = (string) ($group['status'] ?? '');
             $rentAmount = (float) ($group['rent_amount'] ?? 0);
+            $floor = trim((string) ($group['floor'] ?? ''));
+            $availableFrom = $group['available_from'] ?? null;
+            $marketRent = $group['market_rent'] ?? null;
+            $legacyArea = $group['legacy_area'] ?? null;
+            $furnished = ! empty($group['furnished']);
             $desc = isset($group['public_listing_description']) && trim((string) $group['public_listing_description']) !== ''
                 ? (string) $group['public_listing_description']
                 : null;
@@ -3670,6 +4078,11 @@ class PropertyPortfolioController extends Controller
                     'unit_type' => $unitType,
                     'bedrooms' => (int) $bedrooms,
                     'rent_amount' => $rentAmount,
+                    'market_rent' => ($marketRent === null || $marketRent === '') ? null : $marketRent,
+                    'legacy_area' => ($legacyArea === null || $legacyArea === '') ? null : $legacyArea,
+                    'floor' => $floor !== '' ? $floor : null,
+                    'available_from' => ($availableFrom === null || $availableFrom === '') ? null : $availableFrom,
+                    'furnished' => $furnished,
                     'status' => $status,
                     'public_listing_description' => $desc,
                     'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
@@ -3854,6 +4267,26 @@ class PropertyPortfolioController extends Controller
             ),
         ]);
 
+        $hubPropertyRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $property->id,
+            'landlords',
+            'Landlord linked to property.'
+        );
+        if ($hubPropertyRedirect) {
+            return $hubPropertyRedirect;
+        }
+
+        $hubLandlordRedirect = \App\Support\Property\LandlordHubRedirect::toShow(
+            $request,
+            (int) $data['user_id'],
+            'properties',
+            'Property linked to landlord.'
+        );
+        if ($hubLandlordRedirect) {
+            return $hubLandlordRedirect;
+        }
+
         return redirect()
             ->route('property.properties.edit', $property->id)
             ->with('success', 'Landlord linked to property.')
@@ -4013,7 +4446,7 @@ class PropertyPortfolioController extends Controller
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.publish-panel', $u, absolute: false).'" data-listing-publish data-listing-unit-id="'.$u->id.'" data-property-form-modal="off" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
                 if ($lease) {
                     $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
@@ -4187,16 +4620,11 @@ class PropertyPortfolioController extends Controller
         return redirect()->route('property.properties.show', ['property' => $target->property_id]);
     }
 
-    public function propertyRegisterImportForm(): View
+    public function propertyRegisterImportForm(): RedirectResponse
     {
-        $importer = app(PropertyRegisterImportService::class);
-
-        return view('property.agent.properties.register_import', [
-            'expectedColumns' => $importer->templateColumns(),
-            'lastImportStats' => session('property_register_import_stats'),
-            'lastImportErrors' => session('property_register_import_errors', []),
-            'lastImportWarnings' => session('property_register_import_warnings', []),
-        ]);
+        return redirect()
+            ->route('property.properties.list')
+            ->withFragment('import-register');
     }
 
     public function propertyRegisterImportTemplate(): Response
@@ -4217,7 +4645,10 @@ class PropertyPortfolioController extends Controller
 
         $path = $data['file']->getRealPath();
         if (! is_string($path) || $path === '') {
-            return back()->with('error', 'Upload failed. Please try again.');
+            return redirect()
+                ->route('property.properties.list')
+                ->withFragment('import-register')
+                ->with('error', 'Upload failed. Please try again.');
         }
 
         $agentUserId = (int) $request->user()->id;
@@ -4227,7 +4658,8 @@ class PropertyPortfolioController extends Controller
         $warnings = $result['warnings'];
 
         return redirect()
-            ->route('property.properties.register_import')
+            ->route('property.properties.list')
+            ->withFragment('import-register')
             ->with('property_register_import_stats', [
                 'properties_created' => $result['properties_created'],
                 'properties_updated' => $result['properties_updated'],

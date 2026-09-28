@@ -98,7 +98,13 @@
                             @endif
                         </td>
                         <td class="px-3 sm:px-4 py-3" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>
-                            <a href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" data-property-nav="property.listings.create" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
+                            <a
+                                href="{{ route('property.listings.publish-panel', $u, absolute: false) }}"
+                                data-listing-publish
+                                data-listing-unit-id="{{ $u->id }}"
+                                data-property-form-modal="off"
+                                class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
+                            >Photos &amp; publish</a>
                         </td>
                     </tr>
                 @empty

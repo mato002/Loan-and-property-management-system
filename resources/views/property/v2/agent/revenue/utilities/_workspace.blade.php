@@ -256,7 +256,6 @@
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'charges' ? 'is-active' : ''" @click="setTab('charges')"><i class="fa-solid fa-list" aria-hidden="true"></i> Charge lines</button>
             </nav>
             <div x-show="activeTab === 'overview'" x-cloak class="space-y-4">
-                @include('property.agent.revenue.utilities._standing_register')
                 @include('property.agent.revenue.utilities._tab_overview')
                 <x-property.responsive.quick-action-grid>
                     <a href="{{ route('property.revenue.utilities.ledger', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Ledger</a>
@@ -523,15 +522,5 @@
         </form>
                 @include('property.agent.revenue.utilities._charges_list')
             </div>
-            <div class="utility-sticky-bar md:hidden">
-                <div class="utility-sticky-bar-inner">
-                    <button type="button" @click="setTab('readings')" class="utility-sticky-btn bg-cyan-600 text-white">Readings</button>
-                    <button type="button" @click="setTab('billing')" class="utility-sticky-btn bg-emerald-600 text-white">Bill</button>
-                    <button type="button" @click="openPenaltyPreview()" class="utility-sticky-btn bg-amber-600 text-white">Penalties</button>
-                    <button type="button" @click="setTab('standing')" class="utility-sticky-btn bg-slate-800 text-white">Register</button>
-                    <button type="button" @click="setTab('charges')" class="utility-sticky-btn bg-slate-700 text-white">Lines</button>
-                </div>
-            </div>
-
             <x-property.utility.penalty-preview-modal />
         </div>

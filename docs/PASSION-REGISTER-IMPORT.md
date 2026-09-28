@@ -21,6 +21,46 @@ php artisan property:wipe-passion-portfolio --agent-user-id=2 --force
 
 Then run phases **1 → 5** below using `.txt` register files (most reliable on production). **Do not skip phase 3 or 4.** **Do not** run cleanup or reconcile on a fresh import.
 
+---
+
+## Financial re-import (Mode B — keep structure, wipe money only)
+
+Use this when properties / units / tenants / leases are fine but invoices, payments, credits, and take-on balances are mixed or wrong. **Keeps** portfolio structure. **Deletes** money history for one agent.
+
+```bash
+# 1) Preview (use the agent that owns the portfolio — local is often #1; production Passion Homes is usually #2)
+php artisan property:wipe-passion-financials --agent-user-id=1 --dry-run
+
+# 2) Wipe finances only (local first, then production)
+php artisan property:wipe-passion-financials --agent-user-id=1 --force
+```
+
+**Removed:** invoices, payments, allocations, tenant credits, deposits held, lease carry-forward lines, landlord ledger/payouts/take-on, EZEN receipt/voucher/bill registers, bank statement imports, accounting journals (chart of accounts kept), opening arrears on tenants/leases.
+
+**Kept:** properties, units, landlords, tenants, leases, amenities/config.
+
+### Mode B re-import order (after financial wipe)
+
+**Do not** run Phase 6c (tenant statement B/F) — that fights full history.
+
+```bash
+# Phase 7 — rental invoices as CHARGES only (do not post the PAID column)
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.txt \
+  --charges-only --dry-run --agent-user-id=1
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.txt \
+  --charges-only --agent-user-id=1
+
+# Phase 8 — every EZEN receipt as a real payment (NOT --register-only)
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt \
+  --include-already-paid --dry-run --agent-user-id=1
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt \
+  --include-already-paid --agent-user-id=1
+```
+
+Spot-check 5–10 tenants against EZEN statements. Closing should come from invoice charges + receipt payments. Late-fee **DBN** rows are still not in the invoice/receipt listings — export EZEN **Debit Notes / late payment charges** and we will import those next. Do not mix Phase 6c B/F with this mode.
+
+**Mode A alternative:** if you only want closing balances (no line history), skip Phase 7/8 payments and use Phase 6c B/F + Phase 8 `--register-only` instead. Do not mix Mode A and Mode B.
+
 Expected dashboard after a clean run:
 
 | Card | Target |
@@ -42,8 +82,12 @@ Expected dashboard after a clean run:
 | **4** | Property register (spaces) | `property:fill-passion-register-spaces` | Generic spaces to match register totals (~442) |
 | **5** | Active tenants & leases PDF | `property:import-passion-leases` | Tenants (TNT account, balance) + active leases |
 | **6** | Property take-on balances CSV | `property:import-takeon-balances` | Landlord ledger opening balances (Balance b/f) |
+| **8** | EZEN rent receipt listing | `property:import-ezen-rent-receipts` | Tenant receipts (incoming) |
+| **9** | EZEN payment voucher listing | `property:import-ezen-payment-vouchers` | Outgoing payments: remittances, commissions, expenses |
+| **10** | EZEN bills listing | `property:import-ezen-bills` | Vendor bills (garbage, cleaning, etc.) into Accounts payable |
+| **11** | Co-op bank statement | `property:import-coop-bank-statement` | Bank credits/debits into Cash & Bank reconciliation |
 
-Run phases **in order**. Phase 5 matches units by property code + unit label.
+Run phases **in order**. Phase 5 matches units by property code + unit label. Phase 8 and 9 are money movements from EZEN and are not interchangeable. Phase 10 is the **Bills & Vendors** register, not payment vouchers. Phase 11 is the **bank** statement (Co-op), not the EZEN property B/F statement.
 
 ---
 
@@ -321,12 +365,210 @@ Expected: ~222 extras, ~213 leases updated, ~KES 49,654 applied. Unmatched OCCP 
 
 ---
 
+## Phase 7 — EZEN rental invoice history (full)
+
+Source: EZEN **Rental Invoicing → Billing Schedule / Print List** export PDF.
+
+Project files (committed in repo):
+- `storage/passion-legacy/rent_invoices_listing.pdf` (full portfolio, ~6k invoice lines)
+- `storage/passion-legacy/rent_invoices_listing.txt` (extracted text — faster on servers without PDF tools)
+
+Creates tenant invoices in **Collections → Invoices** with EZEN reference `[EZEN INVxxxxx]`, and posts **PAID** amounts as `ezen_import` receipts. Deposits are skipped by default (use `property:import-ezen-rent-deposits` for deposit register).
+
+```bash
+# Dry run — one property (use .txt on server if PDF extract is slow)
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --property=A00039A --dry-run --agent-user-id=2
+
+# Import Pazuri full history
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --property=A00039A --agent-user-id=2
+
+# Import all parsed properties (omit --property)
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--property=A00039A` | Limit to one property code |
+| `--limit=100` | Test first N parsed rows |
+| `--include-deposits` | Also import RENT/WATER/ELECTRICITY DEPOSIT rows |
+| `--post-gl` | Post trust GL on invoice issue (off by default for bulk history) |
+
+Safe to re-run: existing `[EZEN INV…]` rows are skipped.
+
+**Note:** Spot-check tenant balances against EZEN after import.
+
+---
+
+## Phase 8 — EZEN rent receipt listing (payments)
+
+Source: EZEN **Tenant/Resident Receipt Batch → Rent Receipt Listing** export PDF.
+
+Place file at `storage/passion-legacy/rent_receipts_listing.pdf` (or extracted `.txt`).
+
+Creates **Collections → Payments** for tenants matched by **TNT account** (`pm_tenants.account_number`). Allocates to **open invoices** oldest-first; remainder becomes tenant credit.
+
+```bash
+# Dry run — all receipts
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt --dry-run --agent-user-id=2
+
+# Import all receipts
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--property=A00039A` | Limit to one property code |
+| `--limit=100` | Test first N parsed rows |
+| `--include-already-paid` | Import even when tenant has no open invoice balance |
+| `--register-only` | Save receipts to the register without creating payments (correct when tenant B/F snapshot is live) |
+
+**Important:** If you already imported invoice **PAID** amounts in Phase 7, leave the default behaviour (skip tenants with no open balance) to avoid **double-counting** receipts. Use `--include-already-paid` only when invoices were imported without payments.
+
+**Snapshot B/F vs receipts (mutually exclusive):** When a tenant still has active `opening_arrears_amount` (Phase 5 / 6c take-on), that balance already nets historical EZEN receipts. Passion will **not** credit those receipts again on the statement, and Phase 8 will keep them **register-only** (no payment posted). After a mistaken post-against-B/F import — or after B/F was retired by an incomplete Phase 7 invoice import — clean up with:
+
+```bash
+php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2 --dry-run
+php artisan property:cleanup-ezen-receipt-bf-double-count --agent-user-id=2
+```
+
+The cleanup is mode-aware:
+
+- **Full EZEN invoice history** → keep receipt payments; **retire** leftover snapshot B/F
+- **Snapshot B/F only** (thin/no invoice history) → **reverse** receipt payments that double-count against B/F
+- **Premature B/F retirement** → restore B/F when invoice history is incomplete
+
+**Do not run the live cleanup** on an old dry-run that only says “Would reverse: 477” — redeploy the mode-aware build first and re-check dry-run.
+
+If the first (over-aggressive) cleanup already ran and reversed Mode B receipt payments, restore them with:
+
+```bash
+php artisan property:restore-ezen-receipt-bf-cleanup-mistakes --dry-run
+php artisan property:restore-ezen-receipt-bf-cleanup-mistakes
+```
+
+That **reactivates** the same payment rows (avoids `external_ref` unique errors); snapshot-B/F reversals stay reversed.
+
+Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6 invoices **or** billed total ≥ B/F). A single lease-fee invoice will not wipe take-on debt.
+
+Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
+
+---
+
+## Phase 9 — EZEN payment voucher listing (outgoing payments)
+
+Source: EZEN **Receipts & Payments → Payment Voucher Listing** (the “Payment Vouchers Grouped & Summarized” grid).
+
+These are **not** tenant rent receipts (Phase 8). They are money the agency **paid out**:
+
+| Particulars | Imported as |
+|-------------|-------------|
+| Rent remittance / rental remittance | Paid landlord payout + landlord ledger debit (voucher date) |
+| COMMISSION … | Expense entry (`Commission Expense`) |
+| KRA / MRI / tax | Expense entry (`Tax / statutory`) |
+| Airtime, water, garbage, other | Operating expense entry |
+
+Export the listing from EZEN as **CSV** (preferred) or PDF. Place it at `storage/passion-legacy/payment_vouchers_listing.csv` (or `.txt` / `.pdf`).
+
+A sample file is at `storage/passion-legacy/payment_vouchers_listing.sample.csv`.
+
+```bash
+# Dry run — parse and match only
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.txt --dry-run --agent-user-id=2
+
+# Register only — store every voucher for review, no payouts/expenses
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --register-only --agent-user-id=2
+
+# Import remittances + expenses
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --agent-user-id=2
+
+# Remittances only (skip airtime / KRA / commission)
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --remittances-only --agent-user-id=2
+
+# Expenses only (if landlord remittances were already posted from an EZEN ledger)
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --expenses-only --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--register-only` | Save the voucher register without posting |
+| `--remittances-only` | Landlord rent remittances only |
+| `--expenses-only` | Operating expenses, commissions, and tax only |
+| `--property=M00044B` | Limit to one property code on **Paid to** |
+| `--category=remittance` | `remittance`, `commission`, `tax`, or `expense` |
+| `--limit=50` | Test first N parsed rows |
+| `--post-gl` | Also post trust GL for remittance payouts (off by default) |
+
+Payee matching:
+
+- `[M00044B] SUNRISE KIAMUNYI` → property code, then that property’s landlord
+- A person name (`DAVID NJOROGE MUNIU`) → landlord by name
+
+Unmatched remittances stay on **Accounting → Payables → Payment vouchers** with status **Unmatched payee**. Re-run the import after linking the landlord.
+
+Safe to re-run: unique on voucher number (`PM04789`). Existing `[EZEN PMxxxxx]` ledger lines are skipped so Phase 6 landlord-ledger imports are not double-counted.
+
+**Do not** use Phase 8 (`property:import-ezen-rent-receipts`) for this file.
+
+After import, review **Accounting → Payables → Payment vouchers**.
+
+---
+
+## Phase 10 — EZEN bills listing (vendor bills / accounts payable)
+
+Source: EZEN **Bills & Vendors → Bills Listing** (`bills_list.pdf`).
+
+These are **not** tenant invoices and **not** payment vouchers. They are supplier bills (TOSHIA, ZURI WORLD, SCOVITECH, garbage collection, …) with bill #, vendor invoice #, dates, total / paid / due.
+
+Place the export at `storage/passion-legacy/bills_list.txt` (preferred) or `storage/passion-legacy/bills_list.pdf`.
+
+```bash
+php artisan property:import-ezen-bills storage/passion-legacy/bills_list.txt --dry-run --agent-user-id=2
+php artisan property:import-ezen-bills storage/passion-legacy/bills_list.txt --agent-user-id=2
+```
+
+Safe to re-run: unique per bill + vendor invoice + date + vendor + amount.
+
+After import, review **Accounting → Payables → Bills listing**.
+
+Expected from the Passion Sep 2026 listing: **60 bills**, total **250,400**, all closed/paid.
+
+---
+
+## Phase 11 — Co-operative Bank statement of account
+
+Source: Co-op **Statement of Account** PDF (`AccountStatement01100943461001_….pdf`). This is **not** an EZEN tenant/landlord statement.
+
+It is the operating bank account (example: **PASSION SHELTAZ**, account **01100943461001**): M-Pesa C2B credits, cheque out, ledger/excise charges, opening/closing balances.
+
+Place the export at `storage/passion-legacy/coop_account_statement.txt` (preferred) or the original PDF.
+
+```bash
+php artisan property:import-coop-bank-statement storage/passion-legacy/coop_account_statement.txt --dry-run --agent-user-id=2
+php artisan property:import-coop-bank-statement storage/passion-legacy/coop_account_statement.txt --agent-user-id=2
+```
+
+M-Pesa references (`UI10X4MPLS`, …) are matched to Phase 8 receipt `ref_no` / payment `external_ref`. Cheques and bank charges stay **Bank only**.
+
+Safe to re-run: unique per account + period + opening/closing, and per line reference + date + amount.
+
+After import, review **Accounting → Cash & Bank → Reconciliation**.
+
+Expected from the 01/09/2026 Co-op extract: **16 credits** totalling **86,450.00**, **3 debits** totalling **20,476.00**, opening **1,130,048.45**, closing **1,196,022.45**.
+
+---
+
 ## UI columns (after import)
 
 The agent portal now shows legacy fields in:
 
 - **Tenants → Tenant list** — Ac/No, unit, A/c balance, rent, lease dates
 - **Tenants → Lease agreements** — Ac/No, phone, email, balance, lease variation
+- **Accounting → Payables → Payment vouchers** — EZEN outgoing payments (remittances, commissions, expenses)
+- **Accounting → Payables → Bills listing** — EZEN vendor bills (garbage collection and other AP)
+- **Accounting → Cash & Bank → Reconciliation** — Co-op bank statement lines vs receipts
 
 Additional unit fields (floor, market rent, available from) are stored on `property_units` and visible on unit records.
 

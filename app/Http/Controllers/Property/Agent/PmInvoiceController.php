@@ -546,6 +546,16 @@ class PmInvoiceController extends Controller
             )
         );
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) ($invoice->pm_tenant_id ?? 0),
+            'invoices',
+            'Invoice '.$invoice->invoice_no.' created.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return redirect()
             ->route('property.revenue.invoices.show', $invoice)
             ->with('success', 'Invoice '.$invoice->invoice_no.' created.');
@@ -573,10 +583,12 @@ class PmInvoiceController extends Controller
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
         if ($filters['from'] === '' || $filters['to'] === '') {
-            $filters['from'] = $rangeFrom->toDateString();
-            $filters['to'] = $rangeTo->toDateString();
+            if ($rangeMonths > 0) {
+                $filters['from'] = $rangeFrom->toDateString();
+                $filters['to'] = $rangeTo->toDateString();
+            }
         }
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $baseQuery = $this->applyInvoiceListFilters(
             PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id', 'items', 'events']),
@@ -1030,7 +1042,11 @@ class PmInvoiceController extends Controller
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
         return property_view('property.public.invoice_show', [
             'invoice' => $invoice,
-            'branding' => $this->branding(),
+            'branding' => app(InvoicePdfService::class)->branding(
+                $invoice->unit?->property?->agent_user_id
+                    ? (int) $invoice->unit->property->agent_user_id
+                    : null
+            ),
         ]);
     }
 
@@ -1117,10 +1133,10 @@ class PmInvoiceController extends Controller
      */
     private function resolveInvoiceBillingRange(Request $request): array
     {
-        $allowed = [1, 2, 3, 6, 12];
-        $rangeMonths = (int) $request->query('range_months', 1);
+        $allowed = [0, 1, 2, 3, 6, 12];
+        $rangeMonths = (int) $request->query('range_months', 0);
         if (! in_array($rangeMonths, $allowed, true)) {
-            $rangeMonths = 1;
+            $rangeMonths = 0;
         }
 
         $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
@@ -1129,11 +1145,13 @@ class PmInvoiceController extends Controller
         }
 
         $rangeTo = Carbon::createFromFormat('Y-m', $rangeEndYm)->endOfMonth()->startOfDay();
-        $rangeFrom = $rangeTo->copy()->subMonths($rangeMonths - 1)->startOfMonth()->startOfDay();
+        $rangeFrom = $rangeTo->copy()->subMonths(max(0, $rangeMonths - 1))->startOfMonth()->startOfDay();
 
-        $billingRangeLabel = $rangeMonths === 1
-            ? $rangeFrom->format('M Y')
-            : $rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)';
+        $billingRangeLabel = match ($rangeMonths) {
+            0 => 'All dates',
+            1 => $rangeFrom->format('M Y'),
+            default => $rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)',
+        };
 
         return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $billingRangeLabel];
     }

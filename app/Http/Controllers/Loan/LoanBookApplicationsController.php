@@ -102,7 +102,7 @@ class LoanBookApplicationsController extends Controller
         $q = trim((string) $request->query('q', ''));
         $stage = trim((string) $request->query('stage', ''));
         $branch = trim((string) $request->query('branch', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 15);
 
         $query
             ->when($q !== '', function (Builder $builder) use ($q): void {
@@ -290,7 +290,7 @@ class LoanBookApplicationsController extends Controller
         $q = trim((string) $request->query('q', ''));
         $stage = trim((string) $request->query('stage', ''));
         $branch = trim((string) $request->query('branch', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
 
         $query
             ->when($q !== '', function (Builder $builder) use ($q): void {

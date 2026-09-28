@@ -86,7 +86,7 @@
             </div>
         @endisset
         <p class="font-medium text-slate-700 dark:text-slate-300">Tip</p>
-        <p class="mt-1">Each row rolls up all overdue invoices for that tenant. Click <span class="font-medium">View invoices</span> to see line-level detail and pick specific invoices for targeted reminders.</p>
+        <p class="mt-1">Each row rolls up all overdue invoices for that tenant. Use <span class="font-medium">Actions</span> to view invoices, record a payment, send a reminder, or open notices.</p>
     </x-slot>
     <script>
         (function () {

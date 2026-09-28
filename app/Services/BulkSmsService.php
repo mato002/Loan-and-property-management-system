@@ -362,7 +362,7 @@ class BulkSmsService
         $cfg = (array) config('bulksms.provider', []);
         $path = ltrim((string) ($cfg['history_path'] ?? 'sms/history'), '/');
         $page = max(1, (int) ($filters['page'] ?? 1));
-        $perPage = min(100, max(1, (int) ($filters['per_page'] ?? 20)));
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
         $query = ['page' => $page, 'per_page' => $perPage];
 
         $status = strtolower(trim((string) ($filters['status'] ?? '')));

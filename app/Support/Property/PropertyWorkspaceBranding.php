@@ -23,6 +23,7 @@ final class PropertyWorkspaceBranding
         'contact_reg_no',
         'contact_map_embed_url',
         'portal_color_theme',
+        'brand_palette',
         'branding',
     ];
 
@@ -162,6 +163,27 @@ final class PropertyWorkspaceBranding
         return $default;
     }
 
+    /**
+     * Read branding for a specific agent workspace (Super Admin editing without impersonation).
+     */
+    public static function getForAgent(string $key, int $agentUserId, ?string $default = ''): ?string
+    {
+        if ($agentUserId <= 0) {
+            return $default;
+        }
+
+        if (! self::isBrandingKey($key)) {
+            return PropertyPortalSetting::getGlobalValue($key, $default);
+        }
+
+        $scoped = self::readScopedValue($key, $agentUserId);
+        if ($scoped !== null && $scoped !== '') {
+            return $scoped;
+        }
+
+        return $default;
+    }
+
     public static function setForSettings(string $key, ?string $value, ?User $user = null): void
     {
         if (! self::isBrandingKey($key)) {
@@ -293,8 +315,8 @@ final class PropertyWorkspaceBranding
 
         return [
             'company_name' => (string) (self::forPublicSite('company_name', config('app.name', 'Property Platform')) ?? config('app.name', 'Property Platform')),
-            'company_logo_url' => (string) (self::forPublicSite('company_logo_url', '') ?? ''),
-            'site_favicon_url' => (string) (self::forPublicSite('site_favicon_url', '') ?? ''),
+            'company_logo_url' => self::resolveAssetUrl((string) (self::forPublicSite('company_logo_url', '') ?? '')),
+            'site_favicon_url' => self::resolveAssetUrl((string) (self::forPublicSite('site_favicon_url', '') ?? '')),
             'contact_email_primary' => (string) (self::forPublicSite('contact_email_primary', '') ?? ''),
             'contact_email_support' => (string) (self::forPublicSite('contact_email_support', '') ?? ''),
             'contact_phone' => (string) (self::forPublicSite('contact_phone', '') ?? ''),
@@ -304,6 +326,307 @@ final class PropertyWorkspaceBranding
             'contact_map_embed_url' => (string) (self::forPublicSite('contact_map_embed_url', '') ?? ''),
             'public_site_agent_user_id' => $agentUserId,
         ];
+    }
+
+    /**
+     * WhatsApp wa.me digits. Falls back to the public phone when WhatsApp is empty.
+     */
+    public static function whatsappDigitsForWeb(?string $whatsapp = null, ?string $phone = null): string
+    {
+        $raw = trim((string) $whatsapp);
+        if ($raw === '') {
+            $raw = trim((string) $phone);
+        }
+
+        return self::normalizeKenyanMobileDigits($raw);
+    }
+
+    public static function normalizeKenyanMobileDigits(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        if ($digits === '') {
+            return '';
+        }
+
+        if (str_starts_with($digits, '254') && strlen($digits) >= 12) {
+            return $digits;
+        }
+
+        if (str_starts_with($digits, '0') && strlen($digits) === 10) {
+            return '254'.substr($digits, 1);
+        }
+
+        if (strlen($digits) === 9 && str_starts_with($digits, '7')) {
+            return '254'.$digits;
+        }
+
+        return $digits;
+    }
+
+    /**
+     * Branding for receipts, prints, PDF exports, and browser print letterheads.
+     * Prefers the viewing agent's workspace, then Settings branding / login tenant, then global.
+     *
+     * @param  int|null  $agentUserId  Optional property/agent owner to brand the document for.
+     * @return array{
+     *     company_name: string,
+     *     company_logo_url: string,
+     *     logo_url: string,
+     *     logo_src: string,
+     *     logo_embed: string,
+     *     contact_email_primary: string,
+     *     contact_phone: string,
+     *     contact_address: string,
+     *     contact_reg_no: string,
+     *     colour: string,
+     *     address: string,
+     *     phone: string,
+     *     email: string,
+     *     contact_line: string
+     * }
+     */
+    public static function documentSnapshot(?int $agentUserId = null): array
+    {
+        $companyName = self::documentValue('company_name', $agentUserId, config('app.name', 'Property Manager'));
+        $logoRaw = self::documentValue('company_logo_url', $agentUserId, '');
+        $logoUrl = self::resolveAssetUrl($logoRaw);
+        $logoSrc = self::resolveLocalFileSrc($logoRaw) ?: $logoUrl;
+        $phone = self::documentValue('contact_phone', $agentUserId, '');
+        $email = self::documentValue('contact_email_primary', $agentUserId, '');
+        $address = self::documentValue('contact_address', $agentUserId, '');
+        $regNo = self::documentValue('contact_reg_no', $agentUserId, '');
+        $paletteKey = PropertyBrandPalette::normalize(self::documentValue('brand_palette', $agentUserId, PropertyBrandPalette::PLATFORM));
+        $colour = PropertyBrandPalette::color($paletteKey, 'primary');
+
+        $brandingRaw = self::documentValue('branding', $agentUserId, '');
+        if ($brandingRaw !== '') {
+            $decoded = json_decode($brandingRaw, true);
+            if (is_array($decoded)) {
+                if (! empty($decoded['colour']) && self::documentValue('brand_palette', $agentUserId, '') === '') {
+                    $colour = (string) $decoded['colour'];
+                }
+                if ($companyName === '' && ! empty($decoded['company_name'])) {
+                    $companyName = (string) $decoded['company_name'];
+                }
+                if ($logoUrl === '' && ! empty($decoded['logo_url'])) {
+                    $logoUrl = self::resolveAssetUrl((string) $decoded['logo_url']);
+                    $logoSrc = self::resolveLocalFileSrc((string) $decoded['logo_url']) ?: $logoUrl;
+                }
+                if ($address === '' && ! empty($decoded['address'])) {
+                    $address = (string) $decoded['address'];
+                }
+                if ($phone === '' && ! empty($decoded['phone'])) {
+                    $phone = (string) $decoded['phone'];
+                }
+                if ($email === '' && ! empty($decoded['email'])) {
+                    $email = (string) $decoded['email'];
+                }
+            }
+        }
+
+        $companyName = trim($companyName) !== '' ? trim($companyName) : (string) config('app.name', 'Property Manager');
+        if (strtolower($companyName) === 'laravel') {
+            $companyName = 'Property Manager';
+        }
+
+        $contactLine = collect([$phone, $email, $address, $regNo !== '' ? 'Reg: '.$regNo : ''])
+            ->filter(static fn ($part) => trim((string) $part) !== '')
+            ->implode(' · ');
+
+        $doc = [
+            'company_name' => $companyName,
+            'company_logo_url' => $logoUrl,
+            'logo_url' => $logoUrl,
+            'logo_src' => $logoSrc,
+            'contact_email_primary' => $email,
+            'contact_phone' => $phone,
+            'contact_address' => $address,
+            'contact_reg_no' => $regNo,
+            'colour' => $colour,
+            'address' => $address,
+            'phone' => $phone,
+            'email' => $email,
+            'contact_line' => $contactLine,
+        ];
+        $doc['logo_embed'] = self::embeddableLogoSrc($doc);
+
+        return $doc;
+    }
+
+    /**
+     * Logo src safe for browser print and Dompdf: data-URI when a local file exists,
+     * otherwise the public URL. Windows file paths (C:\…) never work in <img> tags.
+     *
+     * @param  array<string, mixed>|null  $doc
+     */
+    public static function embeddableLogoSrc(?array $doc = null, ?int $agentUserId = null): string
+    {
+        $doc ??= self::documentSnapshot($agentUserId);
+        $src = trim((string) ($doc['logo_src'] ?? ''));
+        $url = trim((string) (($doc['logo_url'] ?? '') ?: ($doc['company_logo_url'] ?? '')));
+
+        if ($src !== '' && is_file($src)) {
+            $dataUri = self::fileToDataUri($src);
+            if ($dataUri !== '') {
+                return $dataUri;
+            }
+        }
+
+        if ($url !== '' && (str_starts_with($url, 'http://') || str_starts_with($url, 'https://') || str_starts_with($url, 'data:'))) {
+            return $url;
+        }
+
+        if ($src !== '' && (str_starts_with($src, 'http://') || str_starts_with($src, 'https://') || str_starts_with($src, 'data:'))) {
+            return $src;
+        }
+
+        return $url !== '' ? $url : '';
+    }
+
+    public static function fileToDataUri(string $path): string
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            return '';
+        }
+
+        $content = @file_get_contents($path);
+        if ($content === false || $content === '') {
+            return '';
+        }
+
+        $mime = @mime_content_type($path) ?: 'image/png';
+
+        return 'data:'.$mime.';base64,'.base64_encode($content);
+    }
+
+    public static function resolveAssetUrl(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return '';
+        }
+
+        // Branding uploads: serve via app route so logos work without public/storage symlink.
+        $brandingPath = self::extractBrandingDiskPath($raw);
+        if ($brandingPath !== null) {
+            return url('/media/branding/'.$brandingPath);
+        }
+
+        if (str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
+            return $raw;
+        }
+
+        if (str_starts_with($raw, '/')) {
+            return url($raw);
+        }
+
+        if (str_starts_with($raw, 'storage/')) {
+            return url('/'.$raw);
+        }
+
+        return url('/storage/'.ltrim($raw, '/'));
+    }
+
+    /**
+     * Normalize stored branding logo/favicon values to a public-disk relative path
+     * under property/branding/… (without that prefix), or null if not a branding asset.
+     */
+    public static function extractBrandingDiskPath(?string $raw): ?string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '' || str_starts_with($raw, 'data:')) {
+            return null;
+        }
+
+        $path = $raw;
+        if (preg_match('#^https?://[^/]+(/.*)$#i', $raw, $matches) === 1) {
+            $path = (string) $matches[1];
+        }
+
+        $path = str_replace('\\', '/', $path);
+        $path = '/'.ltrim($path, '/');
+
+        foreach (['/storage/property/branding/', '/media/branding/', '/property/branding/'] as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                $relative = ltrim(substr($path, strlen($prefix)), '/');
+
+                return $relative !== '' ? $relative : null;
+            }
+        }
+
+        if (str_starts_with(ltrim($path, '/'), 'property/branding/')) {
+            $relative = substr(ltrim($path, '/'), strlen('property/branding/'));
+
+            return $relative !== '' ? $relative : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Prefer a local filesystem path for DomPDF / data-URI embeds.
+     */
+    public static function resolveLocalFileSrc(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '' || str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
+            return '';
+        }
+
+        $brandingRelative = self::extractBrandingDiskPath($raw);
+        if ($brandingRelative !== null) {
+            foreach ([
+                storage_path('app/public/property/branding/'.$brandingRelative),
+                public_path('storage/property/branding/'.$brandingRelative),
+            ] as $candidate) {
+                if (is_file($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        $relative = $raw;
+        if (str_starts_with($relative, '/storage/')) {
+            $relative = substr($relative, strlen('/storage/'));
+        } elseif (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+
+        $path = public_path('storage/'.ltrim($relative, '/'));
+        if (is_file($path)) {
+            return $path;
+        }
+
+        $storagePublic = storage_path('app/public/'.ltrim($relative, '/'));
+        if (is_file($storagePublic)) {
+            return $storagePublic;
+        }
+
+        return '';
+    }
+
+    private static function documentValue(string $key, ?int $preferredAgentUserId, ?string $default = null): string
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $preferredAgentUserId,
+            self::resolveViewerAgentUserId(),
+            self::settingsEditorAgentUserId(),
+            self::loginBrandingAgentUserId(),
+        ], static fn ($id) => $id !== null && (int) $id > 0)));
+
+        foreach ($candidates as $agentUserId) {
+            $scoped = self::readScopedValue($key, (int) $agentUserId);
+            if ($scoped !== null && trim($scoped) !== '') {
+                return trim($scoped);
+            }
+        }
+
+        $global = PropertyPortalSetting::getGlobalValue($key);
+        if ($global !== null && trim((string) $global) !== '') {
+            return trim((string) $global);
+        }
+
+        return trim((string) ($default ?? ''));
     }
 
     public static function resolvePublicSiteAgentUserId(?string $host = null): ?int

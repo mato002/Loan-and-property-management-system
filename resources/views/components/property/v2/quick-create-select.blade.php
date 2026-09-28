@@ -8,14 +8,15 @@
     'error' => null,
     'create' => ['mode' => 'none'],
     'selectId' => null,
-    'searchable' => false,
-    'searchMinOptions' => 8,
+    'searchable' => true,
+    'searchMinOptions' => 1,
+    'searchPlaceholder' => 'Search…',
 ])
 
 @php
     $id = $selectId ?: ('qcs-'.preg_replace('/[^a-zA-Z0-9\-_]/', '-', (string) $name).'-'.substr(md5((string) $name), 0, 6));
     $createMode = (string) ($create['mode'] ?? 'none');
-    $useSearch = $searchable || count($options) >= $searchMinOptions;
+    $useSearch = $searchable === true || ($searchable !== false && count($options) >= $searchMinOptions);
     $createModalMaxWidth = (string) ($create['modalMaxWidth'] ?? 'lg');
     $qcsConfig = [
         'selectId' => $id,
@@ -25,6 +26,7 @@
         'createMode' => $createMode,
         'createEndpoint' => (string) ($create['endpoint'] ?? ''),
         'createFields' => (array) ($create['fields'] ?? []),
+        'searchPlaceholder' => $searchPlaceholder,
     ];
 @endphp
 
@@ -41,6 +43,7 @@
             'required' => $required,
             'placeholder' => $placeholder,
             'options' => $options,
+            'searchPlaceholder' => $searchPlaceholder,
         ])
 
         @if ($createMode === 'ajax')
@@ -80,6 +83,7 @@
                                 id="{{ $id }}-f-{{ $f['name'] }}"
                                 @if(!empty($f['required'])) x-bind:required="open" @endif
                                 x-bind:disabled="!open"
+                                data-property-searchable="true"
                                 class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-950 text-sm px-3 py-2"
                             >
                                 <option value="">{{ $f['placeholder'] ?? 'Select…' }}</option>

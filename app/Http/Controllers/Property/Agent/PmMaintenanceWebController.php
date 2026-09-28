@@ -178,12 +178,31 @@ class PmMaintenanceWebController extends Controller
             'urgency' => (string) $data['urgency'],
         ]);
 
-        return back()->with(
-            'success',
-            $workflowAutoAssignTickets
-                ? 'Maintenance request logged and auto-routed to triage.'
-                : 'Maintenance request logged.'
+        $success = $workflowAutoAssignTickets
+            ? 'Maintenance request logged and auto-routed to triage.'
+            : 'Maintenance request logged.';
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            $pmTenantId ?: (int) $request->input('return_tenant_id'),
+            'maintenance',
+            $success
         );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
+        $propertyHubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) ($data['property_id'] ?? 0),
+            'maintenance',
+            $success
+        );
+        if ($propertyHubRedirect) {
+            return $propertyHubRedirect;
+        }
+
+        return back()->with('success', $success);
     }
 
     public function updateRequestStatus(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse
@@ -681,9 +700,7 @@ class PmMaintenanceWebController extends Controller
      */
     private function listPerPage(array $filters): int
     {
-        $value = (int) ($filters['per_page'] ?? 20);
-
-        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
+        return \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
     }
 
     public function frequency(): View

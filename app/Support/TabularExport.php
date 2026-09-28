@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\PropertyPortalSetting;
+use App\Support\Property\PropertyWorkspaceBranding;
 use Closure;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -136,22 +137,27 @@ class TabularExport
         $columnCount = max(1, (int) ($options['__column_count'] ?? count($headers)));
         $isCompact = $columnCount >= 8;
         $isVeryWide = $columnCount >= 12;
-        $settingsReady = Schema::hasTable('property_portal_settings');
-        $brandName = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_name', '')) : '';
+
+        $agentUserId = isset($options['agent_user_id']) && (int) $options['agent_user_id'] > 0
+            ? (int) $options['agent_user_id']
+            : null;
+        $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
+        $brandName = trim((string) ($doc['company_name'] ?? ''));
         if ($brandName === '') {
             $brandName = (string) config('app.name', 'Property Management System');
         }
-        $brandTagline = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_tagline', '')) : '';
-        $brandLogo = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_logo_url', '')) : '';
+        $brandTagline = Schema::hasTable('property_portal_settings')
+            ? trim((string) (PropertyPortalSetting::getValue('company_tagline', '') ?? ''))
+            : '';
         $omitImages = (bool) ($options['omit_images'] ?? false);
-        $logoSrc = $omitImages ? '' : self::resolveLogoSrc($brandLogo);
-        $contactParts = $settingsReady
-            ? array_values(array_filter([
-                trim((string) PropertyPortalSetting::getValue('contact_phone', '')),
-                trim((string) PropertyPortalSetting::getValue('contact_email_primary', '')),
-                trim((string) PropertyPortalSetting::getValue('contact_address', '')),
-            ], static fn ($v) => $v !== ''))
-            : [];
+        $logoSrc = $omitImages ? '' : (string) (($doc['logo_embed'] ?? '') ?: PropertyWorkspaceBranding::embeddableLogoSrc($doc, $agentUserId));
+        $contactParts = array_values(array_filter([
+            trim((string) ($doc['contact_phone'] ?? '')),
+            trim((string) ($doc['contact_email_primary'] ?? '')),
+            trim((string) ($doc['contact_address'] ?? '')),
+            trim((string) ($doc['contact_reg_no'] ?? '')) !== '' ? 'Reg: '.trim((string) $doc['contact_reg_no']) : '',
+        ], static fn ($v) => $v !== ''));
+        $accent = trim((string) ($doc['colour'] ?? '#0f766e')) ?: '#0f766e';
         $generatedAt = now()->format('d M Y, h:i A');
         $copyright = 'Copyright © '.now()->format('Y').' '.$brandName.'. All rights reserved.';
         $reportTitle = trim((string) ($options['title'] ?? Str::headline(str_replace('-', ' ', pathinfo((string) ($options['filename_base'] ?? ''), PATHINFO_FILENAME)))));
@@ -186,12 +192,12 @@ class TabularExport
             @page{margin:14px 16px 30px 16px;}
             body{font-family:DejaVu Sans, Arial, sans-serif;font-size:12px;color:#111;margin:0;}
             .report-shell{padding-bottom:22px;}
-            .letterhead{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;}
+            .letterhead{border-bottom:3px solid '.$esc($accent).';padding-bottom:8px;margin-bottom:12px;}
             .brand{display:table;width:100%;}
             .brand-logo,.brand-copy{display:table-cell;vertical-align:top;}
             .brand-logo{width:98px;}
             .brand-logo img{max-width:86px;max-height:86px;display:block;}
-            .brand-name{font-size:16px;font-weight:700;line-height:1.25;}
+            .brand-name{font-size:16px;font-weight:700;line-height:1.25;color:'.$esc($accent).';}
             .brand-tagline{font-size:11px;color:#333;margin-top:2px;}
             .brand-contact{font-size:10px;color:#333;margin-top:4px;line-height:1.5;}
             .report-title{font-size:15px;font-weight:700;margin:8px 0 2px;}

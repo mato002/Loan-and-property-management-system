@@ -10,7 +10,7 @@
     :chip-labels="[
         'q' => 'Search',
         'status' => 'Status',
-        'scope' => 'Scope',
+        'scope' => 'Applies to',
     ]"
 >
     <x-slot name="primary">
@@ -27,9 +27,9 @@
         />
         <x-property.filter-field type="select"
             name="scope"
-            label="Scope"
-            empty-option="Scope: All"
-            :options="collect($scopes ?? [])->map(fn ($scope) => ['value' => (string) $scope, 'label' => (string) $scope])->all()"
+            label="Applies to"
+            empty-option="Applies to: All"
+            :options="collect($scopes ?? [])->map(fn ($scope) => ['value' => (string) $scope, 'label' => $scope === 'global' ? 'All properties' : (string) $scope])->all()"
             :value="$filters['scope'] ?? ''"
         />
         <x-property.filter-field type="select"
@@ -37,10 +37,7 @@
             label="Sort"
             :options="[
                 ['value' => 'name', 'label' => 'Sort: Name'],
-                ['value' => 'scope', 'label' => 'Sort: Scope'],
-                ['value' => 'trigger_event', 'label' => 'Sort: Trigger'],
-                ['value' => 'effective_from', 'label' => 'Sort: Effective'],
-                ['value' => 'id', 'label' => 'Sort: ID'],
+                ['value' => 'effective_from', 'label' => 'Sort: Start date'],
             ]"
             :value="$filters['sort'] ?? 'name'"
         />
