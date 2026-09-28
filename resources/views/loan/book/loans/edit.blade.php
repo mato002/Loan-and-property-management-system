@@ -56,19 +56,20 @@
                 </div>
                 <div id="section-charges" data-inherit-wrap="application">
                     <label for="principal" class="block text-xs font-semibold text-slate-600 mb-1">Principal</label>
-                    <input id="principal" name="principal" type="number" step="0.01" min="0" value="{{ old('principal', $loan->principal) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <input id="principal" name="principal" type="text" inputmode="decimal" autocomplete="off" value="{{ old('principal', $loan->principal) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                     @error('principal')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div id="product-terms-fields" class="space-y-4">
                 <div>
                     <label for="balance" class="block text-xs font-semibold text-slate-600 mb-1">Balance (amount to repay)</label>
-                    <input id="balance" name="balance" type="number" step="0.01" min="0" value="{{ old('balance', $loan->balance) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <input id="balance" name="balance" type="text" inputmode="decimal" autocomplete="off" value="{{ old('balance', $loan->balance) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <p class="mt-1 text-[11px] text-slate-500">Fills from the principal and the interest rate. Type over it only when the amount to repay is different.</p>
                     @error('balance')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate %</label>
-                        <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="100" value="{{ old('interest_rate', $loan->interest_rate) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="interest_rate" name="interest_rate" type="text" inputmode="decimal" autocomplete="off" value="{{ old('interest_rate', $loan->interest_rate) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
@@ -84,7 +85,7 @@
                 <div id="section-schedule" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length (number)</label>
-                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $loan->term_value ?? 12) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="term_value" name="term_value" type="text" inputmode="numeric" autocomplete="off" value="{{ old('term_value', $loan->term_value ?? 12) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
@@ -101,7 +102,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="dpd" class="block text-xs font-semibold text-slate-600 mb-1">Days past due (DPD)</label>
-                        <input id="dpd" name="dpd" type="number" min="0" value="{{ old('dpd', $loan->dpd) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="dpd" name="dpd" type="text" inputmode="numeric" autocomplete="off" value="{{ old('dpd', $loan->dpd) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('dpd')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
@@ -411,12 +412,23 @@
             lockTextField(principalInput, applicationLinked);
         };
 
+        const interestPeriodCount = () => {
+            const ratePeriod = String(interestRatePeriodSelect?.value || 'term').toLowerCase();
+            const unit = String(termUnitSelect?.value || 'monthly').toLowerCase();
+            const value = Number(termValueInput?.value || 0);
+            const periods = value > 0 ? value : 1;
+            if (ratePeriod === 'term') return 1;
+            if (ratePeriod === 'daily') return unit === 'daily' ? periods : (unit === 'weekly' ? periods * 7 : periods * 30);
+            if (ratePeriod === 'weekly') return unit === 'daily' ? periods / 7 : (unit === 'weekly' ? periods : (periods * 30) / 7);
+            if (ratePeriod === 'monthly') return unit === 'daily' ? periods / 30 : (unit === 'weekly' ? periods / 4 : periods);
+            return unit === 'daily' ? periods / 365 : (unit === 'weekly' ? periods / 52 : periods / 12);
+        };
+
         const recalculateBalanceFromInputs = () => {
             if (!balanceInput || (balanceTouched && !selectedProductRule())) return;
-            const principal = Number(principalInput?.value || 0);
-            const rate = Number(interestRateInput?.value || 0);
+            const principal = Number(String(principalInput?.value || '').replace(/,/g, ''));
+            const rate = Number(String(interestRateInput?.value || '').replace(/,/g, ''));
             if (!Number.isFinite(principal) || principal <= 0) {
-                balanceInput.value = '';
                 return;
             }
 
@@ -424,9 +436,10 @@
             const rateType = String(rule?.default_interest_rate_type || 'percent').toLowerCase();
             const interest = rateType === 'fixed'
                 ? Math.max(0, rate)
-                : (principal * (Math.max(0, rate) / 100));
+                : (principal * (Math.max(0, rate) / 100) * interestPeriodCount());
 
             balanceInput.value = roundMoney(principal + interest).toFixed(2);
+            syncInheritedPresentation();
         };
 
         const calculateMaturityDate = (months) => {
@@ -565,15 +578,26 @@
         productInput?.addEventListener('change', () => {
             applyProductDefaults();
         });
-        principalInput?.addEventListener('input', recalculateBalanceFromInputs);
-        interestRateInput?.addEventListener('input', recalculateBalanceFromInputs);
+        const refillBalance = () => {
+            balanceTouched = false;
+            recalculateBalanceFromInputs();
+        };
+        principalInput?.addEventListener('input', refillBalance);
+        interestRateInput?.addEventListener('input', refillBalance);
+        termValueInput?.addEventListener('input', () => {
+            calculateMaturityFromSchedule();
+            refillBalance();
+        });
+        termUnitSelect?.addEventListener('change', () => {
+            calculateMaturityFromSchedule();
+            refillBalance();
+        });
+        interestRatePeriodSelect?.addEventListener('change', refillBalance);
         balanceInput?.addEventListener('input', () => {
             balanceTouched = true;
         });
         clientSelect?.addEventListener('change', applyClientBranchDefaults);
 
-        termValueInput?.addEventListener('input', calculateMaturityFromSchedule);
-        termUnitSelect?.addEventListener('change', calculateMaturityFromSchedule);
         disbursedInput?.addEventListener('change', calculateMaturityFromSchedule);
         maturityInput?.addEventListener('change', calculateTermFromMaturity);
         loanBranchSelect?.addEventListener('change', () => {
