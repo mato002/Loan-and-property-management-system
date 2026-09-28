@@ -5,7 +5,8 @@
 
 <div {{ $attributes->merge(['class' => 'mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400']) }}>
     @if ($phoneE164 !== '')
-        <a href="tel:{{ $phoneE164 }}" class="text-indigo-600 hover:text-indigo-700">
+        <a href="tel:{{ $phoneE164 }}" data-turbo="false" class="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700">
+            <i class="fa-solid fa-phone text-[11px]" aria-hidden="true"></i>
             <span class="font-medium text-slate-500">Phone:</span> {{ $tenant->phone }}
         </a>
     @else

@@ -34,7 +34,7 @@
             <div class="mt-2 grid gap-2 sm:grid-cols-2 text-sm text-slate-700">
                 <p><span class="text-slate-500">Category:</span> {{ $vendor->category ?: '—' }}</p>
                 <p><span class="text-slate-500">Status:</span> {{ ucfirst((string) $vendor->status) }}</p>
-                <p><span class="text-slate-500">Phone:</span> {{ $vendor->phone ?: '—' }}</p>
+                <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$vendor->phone" /></p>
                 <p><span class="text-slate-500">Email:</span> {{ $vendor->email ?: '—' }}</p>
             </div>
         </div>

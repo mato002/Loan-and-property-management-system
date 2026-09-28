@@ -343,7 +343,7 @@ final class ResponsiveTableColumns
                 2 => ['priority' => 4, 'mobile_label' => 'Phone'],
                 3 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
                 4 => ['priority' => 5, 'mobile_label' => 'Unit'],
-                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                5 => ['priority' => 3, 'mobile_label' => 'A/c balance', 'is_amount' => true],
                 6 => ['priority' => 6, 'mobile_label' => 'Rent'],
                 7 => ['priority' => 7, 'mobile_label' => 'Charges', 'hide_on_mobile' => true],
                 8 => ['priority' => 10, 'hide_on_mobile' => true],

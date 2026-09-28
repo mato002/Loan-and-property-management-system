@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
@@ -29,6 +30,12 @@ final class LandlordSettlementService
     public const LINE_OTHER = 'other';
 
     public const LINE_ADVANCE = 'advance';
+
+    /** @var array<string, array{properties: array<int, int>}>|null */
+    private ?array $landlordNameIndex = null;
+
+    /** @var array<string, array<int, float>> */
+    private array $collectionWeightCache = [];
 
     public function __construct(
         private readonly AgentCommissionService $commission,
@@ -74,9 +81,10 @@ final class LandlordSettlementService
         $managementFee = round($grossOwnerShare * ($commissionPct / 100), 2);
         $netCollected = round($grossOwnerShare - $managementFee, 2);
 
+        $periodRemitted = $this->remittedTotal([$propertyId], $landlordId, $periodStart, $periodEnd);
         $balanceBf = $this->ledgerNetBalance($landlordId, $propertyId, $periodStart);
         $periodCredits = $this->ledgerSum($landlordId, $propertyId, PmLandlordLedgerEntry::DIRECTION_CREDIT, $periodStart, $periodEnd);
-        $periodDebits = $this->ledgerSum($landlordId, $propertyId, PmLandlordLedgerEntry::DIRECTION_DEBIT, $periodStart, $periodEnd);
+        $periodDebits = round($this->ledgerSum($landlordId, $propertyId, PmLandlordLedgerEntry::DIRECTION_DEBIT, $periodStart, $periodEnd) + $periodRemitted, 2);
         $closingBalance = round($balanceBf + $periodCredits - $periodDebits, 2);
         $netAmountDue = max(0.0, $closingBalance);
 
@@ -554,11 +562,584 @@ final class LandlordSettlementService
     }
 
     /**
+     * Imported landlord payouts from the voucher listing, excluding any remittance already posted as a ledger debit.
+     *
+     * @param  list<int>  $propertyIds
+     * @return list<array{landlord_id: int, property_id: int, amount: float, description: string, occurred_at: string|null, period_month: string, marker: string, source_id: string}>
+     */
+    public function landlordRemittances(array $propertyIds, int $landlordId, ?Carbon $from, ?Carbon $until): array
+    {
+        $propertyIds = array_values(array_unique(array_filter(array_map('intval', $propertyIds), fn (int $id) => $id > 0)));
+        if ($landlordId <= 0 && $propertyIds === []) {
+            return [];
+        }
+        $rows = [];
+        $coveredMarkers = [];
+
+        if (Schema::hasTable('pm_landlord_payout_items') && Schema::hasTable('pm_landlord_payouts')) {
+            $payoutRows = DB::table('pm_landlord_payout_items as item')
+                ->join('pm_landlord_payouts as po', 'po.id', '=', 'item.payout_id')
+                ->when($landlordId > 0, fn ($query) => $query->where('item.landlord_id', $landlordId))
+                ->when($propertyIds !== [], fn ($query) => $query->whereIn('item.property_id', $propertyIds))
+                ->where('item.line_type', self::LINE_REMITTANCE)
+                ->where('item.amount', '>', 0)
+                ->get([
+                    'item.landlord_id',
+                    'item.property_id',
+                    'item.amount',
+                    'item.description',
+                    'item.period_month',
+                    'item.payout_id',
+                    'po.paid_at',
+                    'po.status',
+                ]);
+
+            foreach ($payoutRows as $row) {
+                $status = strtolower(trim((string) ($row->status ?? '')));
+                if ($status !== '' && ! in_array($status, ['paid', 'completed', 'approved'], true) && empty($row->paid_at)) {
+                    continue;
+                }
+                if (! $this->remittanceFallsInRange($row->period_month ?? null, $row->paid_at ?? null, $from, $until)) {
+                    continue;
+                }
+
+                $marker = $this->ezenVoucherMarker((string) ($row->description ?? ''));
+                if ($marker !== '') {
+                    $coveredMarkers[$marker] = true;
+                }
+
+                $rows[] = $this->remittanceRow(
+                    (int) $row->landlord_id,
+                    (int) $row->property_id,
+                    (float) $row->amount,
+                    (string) ($row->description ?: 'Landlord remittance'),
+                    $row->paid_at ?? null,
+                    (string) ($row->period_month ?? ''),
+                    $marker,
+                    'PAY-'.(int) $row->payout_id,
+                );
+            }
+        }
+
+        if (Schema::hasTable('pm_ezen_payment_vouchers')) {
+            $voucherRows = DB::table('pm_ezen_payment_vouchers')
+                ->when($landlordId > 0, fn ($query) => $query->where('landlord_id', $landlordId))
+                ->when($propertyIds !== [], fn ($query) => $query->whereIn('property_id', $propertyIds))
+                ->where('category', PmEzenPaymentVoucher::CATEGORY_REMITTANCE)
+                ->where('amount', '>', 0)
+                ->get([
+                    'id',
+                    'landlord_id',
+                    'property_id',
+                    'amount',
+                    'particulars',
+                    'ezen_voucher_no',
+                    'period_month',
+                    'txn_date',
+                ]);
+
+            foreach ($voucherRows as $row) {
+                if ((int) ($row->property_id ?? 0) <= 0) {
+                    continue;
+                }
+                $marker = $this->ezenVoucherMarker((string) ($row->ezen_voucher_no ?? ''));
+                if ($marker !== '' && isset($coveredMarkers[$marker])) {
+                    continue;
+                }
+                if (! $this->remittanceFallsInRange($row->period_month ?? null, $row->txn_date ?? null, $from, $until)) {
+                    continue;
+                }
+                if ($marker !== '') {
+                    $coveredMarkers[$marker] = true;
+                }
+
+                $particulars = trim((string) ($row->particulars ?? ''));
+                $rows[] = $this->remittanceRow(
+                    (int) $row->landlord_id,
+                    (int) $row->property_id,
+                    (float) $row->amount,
+                    $particulars !== '' ? $particulars : 'Landlord remittance '.$row->ezen_voucher_no,
+                    $row->txn_date ?? null,
+                    (string) ($row->period_month ?? ''),
+                    $marker,
+                    (string) ($row->ezen_voucher_no ?: 'VCH-'.$row->id),
+                );
+            }
+
+            $this->appendUnmatchedRemittances($rows, $coveredMarkers, $propertyIds, $landlordId, $from, $until);
+        }
+
+        if ($rows === []) {
+            return [];
+        }
+
+        $debitDescriptions = DB::table('pm_landlord_ledger_entries')
+            ->when($landlordId > 0, fn ($query) => $query->where('user_id', $landlordId))
+            ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
+            ->whereNull('reversed_at')
+            ->when($propertyIds !== [], fn ($query) => $query->whereIn('property_id', $propertyIds))
+            ->pluck('description')
+            ->map(fn ($description) => (string) $description)
+            ->all();
+
+        if ($debitDescriptions === []) {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, function (array $row) use ($debitDescriptions): bool {
+            $marker = (string) ($row['marker'] ?? '');
+            if ($marker === '') {
+                return true;
+            }
+            foreach ($debitDescriptions as $description) {
+                if (str_contains($description, $marker)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+    }
+
+    /**
+     * Remittances whose payee was not linked to a property still belong on the snapshot
+     * when one landlord name wins the match. Cheques for the same person are split
+     * across that person's properties by what each building collected that month.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, true>  $coveredMarkers
+     * @param  list<int>  $propertyIds
+     */
+    private function appendUnmatchedRemittances(array &$rows, array &$coveredMarkers, array $propertyIds, int $landlordId, ?Carbon $from, ?Carbon $until): void
+    {
+        $links = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when($landlordId > 0, fn ($query) => $query->where('u.id', $landlordId))
+            ->when($propertyIds !== [], fn ($query) => $query->whereIn('pl.property_id', $propertyIds))
+            ->get(['u.id as user_id', 'u.name', 'pl.property_id']);
+
+        $landlords = [];
+        foreach ($links as $link) {
+            $id = (int) $link->user_id;
+            $landlords[$id]['name'] = (string) $link->name;
+            $landlords[$id]['properties'][(int) $link->property_id] = true;
+        }
+        if ($landlords === []) {
+            return;
+        }
+
+        $voucherRows = DB::table('pm_ezen_payment_vouchers')
+            ->where('category', PmEzenPaymentVoucher::CATEGORY_REMITTANCE)
+            ->where('amount', '>', 0)
+            ->where(function ($query): void {
+                $query->whereNull('landlord_id')->orWhere('landlord_id', 0)->orWhereNull('property_id');
+            })
+            ->get([
+                'id',
+                'landlord_id',
+                'property_id',
+                'amount',
+                'particulars',
+                'paid_to',
+                'payee_name',
+                'property_code',
+                'ezen_voucher_no',
+                'period_month',
+                'txn_date',
+            ]);
+
+        if ($voucherRows->isEmpty()) {
+            return;
+        }
+
+        $codes = app(PassionPropertyCodeResolver::class);
+        $propertyMeta = DB::table('properties')
+            ->whereIn('id', collect($landlords)->flatMap(fn (array $info) => array_keys($info['properties']))->unique()->all())
+            ->get(['id', 'code', 'name'])
+            ->keyBy('id');
+
+        foreach ($voucherRows as $row) {
+            $marker = $this->ezenVoucherMarker((string) ($row->ezen_voucher_no ?? ''));
+            if ($marker !== '' && isset($coveredMarkers[$marker])) {
+                continue;
+            }
+            if (! $this->remittanceFallsInRange($row->period_month ?? null, $row->txn_date ?? null, $from, $until)) {
+                continue;
+            }
+
+            $explicitLandlord = (int) ($row->landlord_id ?? 0);
+            $payee = trim((string) ($row->paid_to ?: $row->payee_name));
+            $matchedLandlord = $explicitLandlord > 0 && isset($landlords[$explicitLandlord]) ? $explicitLandlord : 0;
+            $strippedKey = $matchedLandlord > 0
+                ? $this->strippedLandlordKey((string) ($landlords[$matchedLandlord]['name'] ?? ''))
+                : $this->uniquePayeeLandlordName($payee, $codes);
+            if ($matchedLandlord === 0) {
+                if ($strippedKey === '') {
+                    continue;
+                }
+                foreach ($landlords as $id => $info) {
+                    if ($this->strippedLandlordKey((string) $info['name']) === $strippedKey) {
+                        $matchedLandlord = (int) $id;
+                        break;
+                    }
+                }
+                if ($matchedLandlord === 0) {
+                    continue;
+                }
+            }
+
+            $owned = array_keys($landlords[$matchedLandlord]['properties'] ?? []);
+            $siblingMap = $this->propertiesOwnedByName($strippedKey);
+            if ($siblingMap === []) {
+                $siblingMap = [];
+                foreach ($owned as $pid) {
+                    $siblingMap[(int) $pid] = $matchedLandlord;
+                }
+            }
+            $siblingIds = array_keys($siblingMap);
+            $propertyId = (int) ($row->property_id ?? 0);
+            if ($propertyId > 0 && ! in_array($propertyId, $siblingIds, true) && ! in_array($propertyId, $owned, true)) {
+                $propertyId = 0;
+            }
+            if ($propertyId <= 0) {
+                $propertyId = $this->propertyIdFromVoucherText(
+                    $siblingIds,
+                    $propertyMeta,
+                    trim((string) ($row->paid_to.' '.$row->payee_name.' '.$row->particulars)),
+                    (string) ($row->property_code ?? ''),
+                );
+            }
+
+            $slices = $propertyId > 0
+                ? [$propertyId => round((float) $row->amount, 2)]
+                : $this->allocateRemittanceAmount((float) $row->amount, $siblingIds, (string) ($row->period_month ?? ''));
+            $scope = $propertyIds !== [] ? $propertyIds : $siblingIds;
+            $particulars = trim((string) ($row->particulars ?? ''));
+            $added = false;
+            foreach ($slices as $slicePropertyId => $sliceAmount) {
+                if ($sliceAmount <= 0.009 || ! in_array((int) $slicePropertyId, $scope, true)) {
+                    continue;
+                }
+                $rows[] = $this->remittanceRow(
+                    (int) ($siblingMap[(int) $slicePropertyId] ?? $matchedLandlord),
+                    (int) $slicePropertyId,
+                    (float) $sliceAmount,
+                    $particulars !== '' ? $particulars : 'Landlord remittance '.$row->ezen_voucher_no,
+                    $row->txn_date ?? null,
+                    (string) ($row->period_month ?? ''),
+                    $marker,
+                    (string) ($row->ezen_voucher_no ?: 'VCH-'.$row->id),
+                );
+                $added = true;
+            }
+            if ($added && $marker !== '') {
+                $coveredMarkers[$marker] = true;
+            }
+        }
+    }
+
+    /**
+     * Titles and bank-account words removed, so "DR. MURAGE" and "ITIBI INVESTMENT ACCOUNT" can match.
+     *
+     * @return list<string>
+     */
+    private function significantNameTokens(string $value): array
+    {
+        $stop = ['MR', 'MRS', 'MISS', 'DR', 'AND', 'THE', 'INVESTMENT', 'INVESTMENTS', 'ACCOUNT', 'ACCOUNTS', 'RENTAL', 'HOUSE', 'APARTMENT', 'APARTMENTS', 'COMPLEX'];
+        $value = strtoupper($value);
+        $value = preg_replace('/[^A-Z0-9 ]/', ' ', $value) ?? $value;
+        $out = [];
+        foreach (preg_split('/\s+/', trim($value)) ?: [] as $part) {
+            if (strlen($part) >= 4 && ! in_array($part, $stop, true)) {
+                $out[] = $part;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    private function strippedLandlordKey(string $name): string
+    {
+        return implode(' ', $this->significantNameTokens($name));
+    }
+
+    /**
+     * One cheque is attached only when a single landlord name wins.
+     * A shared surname such as Kamau or Githua is not enough on its own.
+     */
+    private function uniquePayeeLandlordName(string $payee, PassionPropertyCodeResolver $codes): string
+    {
+        $bestKey = '';
+        $best = 0;
+        $second = 0;
+        foreach (array_keys($this->landlordNameIndex()) as $key) {
+            $strength = $this->payeeMatchStrength($payee, $key, $codes);
+            if ($strength > $best) {
+                $second = $best;
+                $best = $strength;
+                $bestKey = $key;
+            } elseif ($strength > $second) {
+                $second = $strength;
+            }
+        }
+        if ($best < 200 || $second >= $best) {
+            return '';
+        }
+        if ($second >= 200 && $best < $second + 50) {
+            return '';
+        }
+
+        return $bestKey;
+    }
+
+    private function payeeMatchStrength(string $payee, string $landlordKey, PassionPropertyCodeResolver $codes): int
+    {
+        $payeeTokens = $this->significantNameTokens($payee);
+        $nameTokens = $this->significantNameTokens($landlordKey);
+        if ($payeeTokens === [] || $nameTokens === []) {
+            return 0;
+        }
+
+        $score = $codes->scoreNameMatch(implode(' ', $payeeTokens), implode(' ', $nameTokens));
+        if ($score >= 300) {
+            return $score;
+        }
+
+        $overlap = array_intersect($payeeTokens, $nameTokens);
+
+        return count($overlap) >= 2 ? 200 + count($overlap) : 0;
+    }
+
+    /**
+     * @return array<string, array{properties: array<int, int>}>
+     */
+    private function landlordNameIndex(): array
+    {
+        if ($this->landlordNameIndex !== null) {
+            return $this->landlordNameIndex;
+        }
+
+        $index = [];
+        $rows = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->get(['u.id as user_id', 'u.name', 'pl.property_id']);
+        foreach ($rows as $row) {
+            $key = $this->strippedLandlordKey((string) $row->name);
+            if ($key === '') {
+                continue;
+            }
+            $index[$key]['properties'][(int) $row->property_id] = (int) $row->user_id;
+        }
+
+        return $this->landlordNameIndex = $index;
+    }
+
+    /**
+     * @return array<int, int> property id => owning user id
+     */
+    private function propertiesOwnedByName(string $strippedKey): array
+    {
+        if ($strippedKey === '') {
+            return [];
+        }
+
+        return $this->landlordNameIndex()[$strippedKey]['properties'] ?? [];
+    }
+
+    /**
+     * @param  list<int>  $propertyIds
+     * @return array<int, float>
+     */
+    private function allocateRemittanceAmount(float $amount, array $propertyIds, string $periodMonth): array
+    {
+        $propertyIds = array_values(array_unique(array_filter(array_map('intval', $propertyIds), fn (int $id) => $id > 0)));
+        if ($amount <= 0 || $propertyIds === []) {
+            return [];
+        }
+        if (count($propertyIds) === 1) {
+            return [$propertyIds[0] => round($amount, 2)];
+        }
+
+        $weights = $this->collectionWeights($propertyIds, $periodMonth);
+        $weightTotal = array_sum($weights);
+        $allocated = [];
+        $running = 0.0;
+        $last = $propertyIds[array_key_last($propertyIds)];
+        foreach ($propertyIds as $propertyId) {
+            if ($propertyId === $last) {
+                $allocated[$propertyId] = round($amount - $running, 2);
+                break;
+            }
+            $share = $weightTotal > 0
+                ? round($amount * (($weights[$propertyId] ?? 0.0) / $weightTotal), 2)
+                : round($amount / count($propertyIds), 2);
+            $allocated[$propertyId] = $share;
+            $running += $share;
+        }
+
+        return $allocated;
+    }
+
+    /**
+     * @param  list<int>  $propertyIds
+     * @return array<int, float>
+     */
+    private function collectionWeights(array $propertyIds, string $periodMonth): array
+    {
+        if (preg_match('/^\d{4}-\d{2}$/', $periodMonth) !== 1) {
+            return [];
+        }
+
+        $cacheKey = $periodMonth.'|'.implode(',', $propertyIds);
+        if (isset($this->collectionWeightCache[$cacheKey])) {
+            return $this->collectionWeightCache[$cacheKey];
+        }
+
+        return $this->collectionWeightCache[$cacheKey] = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+            ->whereIn('pu.property_id', $propertyIds)
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->where('i.billing_period', $periodMonth)
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount), 0) as total')
+            ->pluck('total', 'property_id')
+            ->map(fn ($total) => (float) $total)
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $ownedIds
+     * @param  \Illuminate\Support\Collection<int, object>  $propertyMeta
+     */
+    private function propertyIdFromVoucherText(array $ownedIds, $propertyMeta, string $text, string $propertyCode): int
+    {
+        $code = strtoupper(trim($propertyCode));
+        $textUpper = strtoupper($text);
+        $hits = [];
+        foreach ($ownedIds as $pid) {
+            $meta = $propertyMeta->get($pid);
+            if ($meta === null) {
+                continue;
+            }
+            $propertyCodeOnFile = strtoupper(trim((string) ($meta->code ?? '')));
+            if ($propertyCodeOnFile !== '' && ($code === $propertyCodeOnFile || str_contains($textUpper, $propertyCodeOnFile))) {
+                $hits[$pid] = true;
+            }
+        }
+
+        return count($hits) === 1 ? (int) array_key_first($hits) : 0;
+    }
+
+    /**
+     * @param  list<int>  $propertyIds
+     */
+    public function remittedTotal(array $propertyIds, int $landlordId, ?Carbon $from, ?Carbon $until): float
+    {
+        $total = 0.0;
+        foreach ($this->landlordRemittances($propertyIds, $landlordId, $from, $until) as $row) {
+            $total += (float) $row['amount'];
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * Rent receipts that never became an invoice payment, keyed by bill month and property.
+     * These are omitted from allocation totals, so a month can look under-collected next to the remittance.
+     *
+     * @param  list<int>  $propertyIds
+     * @return array<string, array<int, float>>
+     */
+    public function unpostedReceiptsByPropertyMonth(array $propertyIds, Carbon $from, Carbon $until): array
+    {
+        $propertyIds = array_values(array_unique(array_filter(array_map('intval', $propertyIds), fn (int $id) => $id > 0)));
+        if ($propertyIds === [] || ! Schema::hasTable('pm_ezen_receipt_register')) {
+            return [];
+        }
+
+        $wanted = array_fill_keys($propertyIds, true);
+        $propertyByLabel = [];
+        foreach (DB::table('property_units')->get(['property_id', 'label']) as $unit) {
+            $label = $this->normalizeUnitLabel((string) $unit->label);
+            if ($label === '') {
+                continue;
+            }
+            $propertyId = (int) $unit->property_id;
+            if (! isset($propertyByLabel[$label])) {
+                $propertyByLabel[$label] = $propertyId;
+                continue;
+            }
+            if ($propertyByLabel[$label] !== $propertyId) {
+                $propertyByLabel[$label] = 0;
+            }
+        }
+        $propertyByLabel = array_filter(
+            $propertyByLabel,
+            fn (int $propertyId): bool => $propertyId > 0 && isset($wanted[$propertyId]),
+        );
+        if ($propertyByLabel === []) {
+            return [];
+        }
+
+        $receipts = DB::table('pm_ezen_receipt_register')
+            ->where('link_status', 'tenant_missing')
+            ->where('amount', '>', 0)
+            ->where('amount', '<=', 200000)
+            ->get(['txn_date', 'unit_label', 'amount', 'particulars']);
+
+        $seen = [];
+        $totals = [];
+        foreach ($receipts as $receipt) {
+            $label = $this->normalizeUnitLabel((string) $receipt->unit_label);
+            $propertyId = $propertyByLabel[$label] ?? 0;
+            if ($propertyId <= 0) {
+                continue;
+            }
+            $key = $receipt->txn_date.'|'.$label.'|'.$receipt->amount.'|'.$receipt->particulars;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $ym = $this->receiptBillMonth((string) $receipt->particulars, (string) $receipt->txn_date);
+            if ($ym === null || $ym < $from->format('Y-m') || $ym > $until->format('Y-m')) {
+                continue;
+            }
+            $totals[$ym][$propertyId] = ($totals[$ym][$propertyId] ?? 0.0) + (float) $receipt->amount;
+        }
+
+        return $totals;
+    }
+
+    private function normalizeUnitLabel(string $label): string
+    {
+        $label = strtoupper(trim($label));
+        $label = preg_replace('/^HSE\s+/', '', $label) ?? $label;
+
+        return trim($label);
+    }
+
+    private function receiptBillMonth(string $particulars, string $txnDate): ?string
+    {
+        if (preg_match_all('/rent for\s+([A-Za-z]+)\s*\/\s*(20\d{2})/i', $particulars, $matches, PREG_SET_ORDER) >= 1) {
+            $last = $matches[count($matches) - 1];
+            $parsed = \DateTime::createFromFormat('!M Y', ucfirst(strtolower(substr($last[1], 0, 3))).' '.$last[2]);
+            if ($parsed instanceof \DateTime) {
+                return $parsed->format('Y-m');
+            }
+        }
+
+        return preg_match('/^\d{4}-\d{2}/', $txnDate) === 1 ? substr($txnDate, 0, 7) : null;
+    }
+
+    /**
      * @return list<array{line_type: string, description: string, amount: float, occurred_at: string|null}>
      */
     private function periodDeductions(int $landlordId, int $propertyId, Carbon $start, Carbon $end): array
     {
-        return PmLandlordLedgerEntry::query()
+        $lines = PmLandlordLedgerEntry::query()
             ->where('user_id', $landlordId)
             ->where('property_id', $propertyId)
             ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
@@ -584,6 +1165,84 @@ final class LandlordSettlementService
             })
             ->values()
             ->all();
+
+        foreach ($this->landlordRemittances([$propertyId], $landlordId, $start, $end) as $remittance) {
+            $lines[] = [
+                'line_type' => self::LINE_REMITTANCE,
+                'description' => (string) $remittance['description'],
+                'amount' => round((float) $remittance['amount'], 2),
+                'occurred_at' => $remittance['occurred_at'],
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @return array{landlord_id: int, property_id: int, amount: float, description: string, occurred_at: string|null, period_month: string, marker: string, source_id: string}
+     */
+    private function remittanceRow(
+        int $landlordId,
+        int $propertyId,
+        float $amount,
+        string $description,
+        mixed $occurredAt,
+        string $periodMonth,
+        string $marker,
+        string $sourceId,
+    ): array {
+        $periodMonth = trim($periodMonth);
+        if (preg_match('/^\d{4}-\d{2}$/', $periodMonth) !== 1) {
+            $periodMonth = $occurredAt ? Carbon::parse($occurredAt)->format('Y-m') : '';
+        }
+
+        return [
+            'landlord_id' => $landlordId,
+            'property_id' => $propertyId,
+            'amount' => round($amount, 2),
+            'description' => $description,
+            'occurred_at' => $occurredAt ? Carbon::parse($occurredAt)->format('Y-m-d') : ($periodMonth !== '' ? $periodMonth.'-01' : null),
+            'period_month' => $periodMonth,
+            'marker' => $marker,
+            'source_id' => $sourceId,
+        ];
+    }
+
+    private function remittanceFallsInRange(mixed $periodMonth, mixed $occurredAt, ?Carbon $from, ?Carbon $until): bool
+    {
+        $periodMonth = trim((string) $periodMonth);
+        if (preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1) {
+            $point = Carbon::createFromFormat('Y-m', $periodMonth)->startOfMonth();
+        } elseif ($occurredAt) {
+            $point = Carbon::parse($occurredAt);
+        } else {
+            return false;
+        }
+
+        if ($from !== null && $point->lt($from->copy()->startOfDay())) {
+            return false;
+        }
+        if ($until !== null && $point->gt($until->copy()->endOfDay())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function ezenVoucherMarker(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/\[EZEN\s+(PM\d+)\]/i', $value, $match) === 1) {
+            return '[EZEN '.strtoupper($match[1]).']';
+        }
+        if (preg_match('/\b(PM\d+)\b/i', $value, $match) === 1) {
+            return '[EZEN '.strtoupper($match[1]).']';
+        }
+
+        return '';
     }
 
     private function ledgerNetBalance(int $landlordId, int $propertyId, ?Carbon $before = null): float

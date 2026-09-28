@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Support\CsvExport;
 use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\LandlordWorkspaceScope;
+use App\Support\Property\PhoneLink;
 use App\Support\Property\PropertyEntityHub;
 use App\Services\Property\LandlordHubDataService;
 use App\Support\Property\ResponsiveTableColumns;
@@ -1546,12 +1547,16 @@ class PropertyPortfolioController extends Controller
                 'fy' => $fyValue,
             ], false);
 
-            $contact = trim((string) ($u->email ?? '')) ?: trim((string) ($u->phone ?? '')) ?: '—';
+            $email = trim((string) ($u->email ?? ''));
+            $phone = trim((string) ($u->phone ?? ''));
+            $contactHtml = $email !== ''
+                ? e($email)
+                : ($phone !== '' ? (string) PhoneLink::html($phone) : '—');
             $landlordCell = new HtmlString(
                 '<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 dark:text-white hover:text-blue-700 dark:hover:text-blue-400 break-words">'.
                 e((string) $u->name).
                 '</a>'.
-                '<div class="text-xs text-slate-500 dark:text-slate-400 break-words mt-0.5">'.e($contact).'</div>'
+                '<div class="text-xs text-slate-500 dark:text-slate-400 break-words mt-0.5">'.$contactHtml.'</div>'
             );
 
             $linksCell = new HtmlString(
@@ -1866,14 +1871,29 @@ class PropertyPortfolioController extends Controller
                 ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                 ->whereIn('pu.property_id', $propertyIds)
                 ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
-                ->select(['pu.property_id', 'pay.paid_at', 'a.amount'])
+                ->where(function ($query) use ($periodStart, $periodEnd): void {
+                    $query->whereBetween('i.billing_period', [$periodStart->format('Y-m'), $periodEnd->format('Y-m')])
+                        ->orWhereBetween('i.issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+                })
+                ->select(['pu.property_id', 'i.billing_period', 'i.issue_date', 'a.amount'])
                 ->get();
 
             foreach ($allocationRows as $row) {
-                $ym = Carbon::parse((string) $row->paid_at)->format('Y-m');
+                $periodMonth = trim((string) ($row->billing_period ?? ''));
+                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
+                    ? $periodMonth
+                    : Carbon::parse((string) $row->issue_date)->format('Y-m');
+                if ($ym < $periodStart->format('Y-m') || $ym > $periodEnd->format('Y-m')) {
+                    continue;
+                }
                 $pid = (int) $row->property_id;
                 $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
+
+            foreach (app(LandlordSettlementService::class)->unpostedReceiptsByPropertyMonth($propertyIds, $periodStart, $periodEnd) as $ym => $byProperty) {
+                foreach ($byProperty as $pid => $amount) {
+                    $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $amount;
+                }
             }
 
             $invoiceRows = DB::table('pm_invoices as i')
@@ -1899,30 +1919,20 @@ class PropertyPortfolioController extends Controller
         }
 
         $remittedByMonthProperty = [];
-        if ($propertyIds !== [] && $landlordId > 0 && Schema::hasTable('pm_landlord_payout_items') && Schema::hasTable('pm_landlord_payouts')) {
-            $payoutRows = DB::table('pm_landlord_payout_items as item')
-                ->join('pm_landlord_payouts as po', 'po.id', '=', 'item.payout_id')
-                ->where('item.landlord_id', $landlordId)
-                ->whereIn('item.property_id', $propertyIds)
-                ->where('item.line_type', LandlordSettlementService::LINE_REMITTANCE)
-                ->where('item.amount', '>', 0)
-                ->select(['item.property_id', 'item.amount', 'item.period_month', 'po.paid_at', 'po.status'])
-                ->get();
-
-            foreach ($payoutRows as $row) {
-                $status = strtolower(trim((string) ($row->status ?? '')));
-                if ($status !== '' && ! in_array($status, ['paid', 'completed', 'approved'], true) && empty($row->paid_at)) {
+        if ($propertyIds !== [] && $landlordId > 0) {
+            $remittanceRows = app(LandlordSettlementService::class)->landlordRemittances(
+                $propertyIds,
+                $landlordId,
+                $periodStart,
+                $periodEnd,
+            );
+            foreach ($remittanceRows as $row) {
+                $ym = (string) ($row['period_month'] ?? '');
+                $pid = (int) ($row['property_id'] ?? 0);
+                if ($ym === '' || $pid <= 0) {
                     continue;
                 }
-                $periodMonth = trim((string) ($row->period_month ?? ''));
-                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
-                    ? $periodMonth
-                    : ($row->paid_at ? Carbon::parse((string) $row->paid_at)->format('Y-m') : '');
-                if ($ym === '' || $ym < $periodStart->format('Y-m') || $ym > $periodEnd->format('Y-m')) {
-                    continue;
-                }
-                $pid = (int) $row->property_id;
-                $remittedByMonthProperty[$ym][$pid] = ($remittedByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+                $remittedByMonthProperty[$ym][$pid] = ($remittedByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row['amount'];
             }
         }
         if ($remittedByMonthProperty === [] && $propertyIds !== [] && $landlordId > 0 && Schema::hasTable('pm_landlord_ledger_entries')) {

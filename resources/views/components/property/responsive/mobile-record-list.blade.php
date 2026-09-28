@@ -92,6 +92,14 @@
     @else
         @foreach ($rows as $rowIndex => $row)
             @php
+                if (is_array($row)) {
+                    foreach ($row as $__phoneIdx => $__phoneCell) {
+                        $__phoneLabel = (string) ($configs[$__phoneIdx]['label'] ?? '');
+                        if (\App\Support\Property\PhoneLink::isPhoneColumn($__phoneLabel)) {
+                            $row[$__phoneIdx] = \App\Support\Property\PhoneLink::html($__phoneCell);
+                        }
+                    }
+                }
                 $__filterText = $customRowFilters
                     ? mb_strtolower((string) $rowFilters[$rowIndex])
                     : mb_strtolower(implode(' ', array_map(static fn ($c) => strip_tags((string) $c), $row)));
@@ -100,9 +108,11 @@
                     $__cellHtml = (string) $__rowCell;
                     if (preg_match('/<a[^>]+href=["\\\']([^"\\\']+)["\\\']/i', $__cellHtml, $__hrefMatch)) {
                         $__rowHref = $__hrefMatch[1] ?? null;
-                        if (is_string($__rowHref) && trim($__rowHref) !== '') {
+                        $__hrefLower = is_string($__rowHref) ? strtolower(trim($__rowHref)) : '';
+                        if ($__hrefLower !== '' && ! str_starts_with($__hrefLower, 'tel:') && ! str_starts_with($__hrefLower, 'mailto:')) {
                             break;
                         }
+                        $__rowHref = null;
                     }
                 }
 

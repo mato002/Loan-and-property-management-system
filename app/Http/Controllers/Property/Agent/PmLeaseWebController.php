@@ -24,6 +24,7 @@ use App\Services\Property\PropertyActivityLogger;
 use App\Services\Property\PropertyDashboardCache;
 use App\Services\Property\PropertyMoney;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Support\TabularExport;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\JsonResponse;
@@ -514,9 +515,7 @@ SQL;
         $tenantAccount = $tenant?->account_number ?? '—';
         $tenantPhone = $tenant?->phone ?? '—';
         $tenantEmail = $tenant?->email ?? '—';
-        $tenantBalance = (float) ($tenant?->opening_arrears_amount ?? 0) > 0
-            ? number_format((float) $tenant->opening_arrears_amount, 2)
-            : '—';
+        $tenantBalance = WorkspaceRowAlert::followUpAmount((float) ($tenant?->opening_arrears_amount ?? 0));
         $variationType = $l->lease_variation_type ?? '—';
         $utilityExpenses = collect($l->utility_expenses ?? [])
             ->filter(fn ($row) => is_array($row))

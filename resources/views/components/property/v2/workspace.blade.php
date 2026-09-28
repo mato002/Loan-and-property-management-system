@@ -306,9 +306,11 @@
                                                     $__cellHtml = (string) $__rowCell;
                                                     if (preg_match('/<a[^>]+href=["\\\']([^"\\\']+)["\\\']/i', $__cellHtml, $__hrefMatch)) {
                                                         $__rowHref = $__hrefMatch[1] ?? null;
-                                                        if (is_string($__rowHref) && trim($__rowHref) !== '') {
+                                                        $__hrefLower = is_string($__rowHref) ? strtolower(trim($__rowHref)) : '';
+                                                        if ($__hrefLower !== '' && ! str_starts_with($__hrefLower, 'tel:') && ! str_starts_with($__hrefLower, 'mailto:')) {
                                                             break;
                                                         }
+                                                        $__rowHref = null;
                                                     }
                                                 }
                                                 $__rowTone = (string) ($resolvedRowTones[$rowIndex] ?? '');
@@ -328,10 +330,11 @@
                                                     aria-label="Open row details"
                                                 @endif
                                             >
-                                                @foreach ($row as $cell)
+                                                @foreach ($row as $cellIndex => $cell)
                                                     @php
                                                         $cellHtml = (string) $cell;
                                                         $containsDropdown = str_contains(strtolower($cellHtml), '<details');
+                                                        $isPhoneCol = \App\Support\Property\PhoneLink::isPhoneColumn($columns[$cellIndex] ?? '');
                                                     @endphp
                                                     <td
                                                         class="px-2 sm:px-4 py-2 sm:py-3 text-slate-700 dark:text-slate-200 align-top text-xs sm:text-sm {{ $containsDropdown ? 'whitespace-normal overflow-visible' : 'whitespace-normal break-words min-w-[5rem]' }}"
@@ -339,7 +342,9 @@
                                                             style="{{ $__rowToneStyle }}"
                                                         @endif
                                                     >
-                                                        @if ($cell instanceof \Illuminate\Support\HtmlString)
+                                                        @if ($isPhoneCol)
+                                                            {!! \App\Support\Property\PhoneLink::html($cell) !!}
+                                                        @elseif ($cell instanceof \Illuminate\Support\HtmlString)
                                                             {!! $cell !!}
                                                         @else
                                                             {{ $cell }}

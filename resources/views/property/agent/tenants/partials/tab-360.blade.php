@@ -63,7 +63,7 @@
         <dl class="mt-3 space-y-2 text-sm">
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Account</dt><dd class="font-mono text-slate-900">{{ $tenant->account_number ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $tenant->name }}</dd></div>
-            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900">{{ $tenant->phone ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900"><x-phone-link :value="$tenant->phone" /></dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Email</dt><dd class="text-slate-900 break-all">{{ $tenant->email ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">National ID / ref</dt><dd class="text-slate-900">{{ $tenant->national_id ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900">{{ $tenant->emergency_contact ?: '—' }}</dd></div>

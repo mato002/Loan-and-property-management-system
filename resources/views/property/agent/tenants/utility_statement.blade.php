@@ -33,7 +33,7 @@
         <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm print-hide">
             <p class="font-semibold text-slate-900">{{ $tenant->name }}</p>
             @if ($tenant->phone)
-                <p class="text-slate-600">{{ $tenant->phone }}</p>
+                <p class="text-slate-600"><x-phone-link :value="$tenant->phone" /></p>
             @endif
             @if (($filters['from'] ?? '') || ($filters['to'] ?? ''))
                 <p class="text-xs text-slate-500 mt-1">Period: {{ $filters['from'] ?: 'start' }} → {{ $filters['to'] ?: 'today' }}</p>

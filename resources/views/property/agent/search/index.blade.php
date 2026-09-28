@@ -63,15 +63,14 @@
                         @forelse ($tenants as $t)
                             <a href="{{ route('property.tenants.show', $t) }}" data-turbo-frame="property-main" class="block rounded-xl border border-slate-100 px-4 py-3 hover:bg-slate-50">
                                 <div class="font-bold text-slate-900">{{ $t->name }}</div>
-                                <div class="text-xs text-slate-500 mt-0.5">
-                                    @php
-                                        $tenantMeta = collect([
-                                            $t->phone ?: '—',
-                                            data_get($t, 'account_number'),
-                                            $t->email,
-                                        ])->filter(fn ($v) => $v !== null && $v !== '')->implode(' • ');
-                                    @endphp
-                                    {{ $tenantMeta }}
+                                <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1" data-row-ignore-click>
+                                    <x-phone-link :value="$t->phone" />
+                                    @if (data_get($t, 'account_number'))
+                                        <span>• {{ data_get($t, 'account_number') }}</span>
+                                    @endif
+                                    @if ($t->email)
+                                        <span>• {{ $t->email }}</span>
+                                    @endif
                                 </div>
                             </a>
                         @empty
