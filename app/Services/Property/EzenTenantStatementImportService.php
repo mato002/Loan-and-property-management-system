@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
- * Import missing charge lines (especially late-payment DBNs) from an EZEN
+ * Import missing charge lines (late-payment DBNs, rent deposits, and opening
+ * balances) from an EZEN
  * Tenant/Resident Statement of Account SpreadsheetML (.xls) export.
  */
 final class EzenTenantStatementImportService
@@ -263,23 +264,33 @@ final class EzenTenantStatementImportService
             $txn = strtoupper(trim((string) ($cells[$colTxn] ?? '')));
             $details = trim((string) ($cells[$colDetails] ?? ''));
             $chargeRaw = $this->parseMoney((string) ($cells[$colCharges] ?? ''));
-            if ($txn === '' || $chargeRaw === null || $chargeRaw <= 0.009) {
+            if ($chargeRaw === null || $chargeRaw <= 0.009) {
                 continue;
             }
 
-            if (! str_starts_with($txn, 'DBN-') && preg_match('/late\s+payment\s+charge/i', $details) !== 1) {
+            $isLatePayment = str_starts_with($txn, 'DBN-')
+                || preg_match('/late\s+payment\s+charge/i', $details) === 1;
+            $isRentDeposit = preg_match('/^\s*rent\s+deposit\s*$/i', $details) === 1;
+            $isOpeningBalance = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1;
+            if (! $isLatePayment && ! $isRentDeposit && ! $isOpeningBalance) {
                 continue;
             }
 
-            $type = PmInvoice::TYPE_LATE_PAYMENT;
-            if (preg_match('/\b(garbage|water|electricity|service|deposit)\b/i', $details, $m) === 1
-                && preg_match('/late\s+payment/i', $details) !== 1) {
-                $type = PmInvoice::resolveOrCreateTypeFromLabel($m[1], PmInvoice::TYPE_SERVICE);
+            $chargeDate = $this->parseDate((string) ($cells[$colDate] ?? '')) ?? now()->toDateString();
+            if ($isOpeningBalance && ($txn === '' || $txn === '-')) {
+                $txn = 'OB-'.($account ?: 'TENANT').'-'.substr($chargeDate, 0, 4);
             }
+            if ($txn === '' || $txn === '-') {
+                continue;
+            }
+
+            $type = $isLatePayment
+                ? PmInvoice::TYPE_LATE_PAYMENT
+                : PmInvoice::TYPE_SERVICE;
 
             $charges[] = [
                 'txn_no' => $txn,
-                'date' => $this->parseDate((string) ($cells[$colDate] ?? '')) ?? now()->toDateString(),
+                'date' => $chargeDate,
                 'memo' => $details !== '' ? $details : 'Late payment charge',
                 'period' => $this->billingPeriodFromMemo($details),
                 'amount' => $chargeRaw,

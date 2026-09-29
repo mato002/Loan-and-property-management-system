@@ -66,7 +66,10 @@ php artisan property:import-ezen-tenant-statement path/to/tenant_stmt.xls \
   --agent-user-id=1
 ```
 
-This creates `late_payment` invoices from `DBN-*` lines and applies any leftover payment remainder. Do not mix Phase 6c B/F with this mode.
+This creates `late_payment` invoices from `DBN-*` lines, restores statement-only
+rent-deposit and opening-balance charges, and applies any leftover payment
+remainder. Re-running is safe because EZEN transaction numbers are deduplicated.
+Do not mix Phase 6c B/F with this mode.
 
 **Mode A alternative:** if you only want closing balances (no line history), skip Phase 7/8 payments and use Phase 6c B/F + Phase 8 `--register-only` instead. Do not mix Mode A and Mode B.
 

@@ -14,7 +14,7 @@ class ImportEzenTenantStatementCommand extends Command
         {--post-gl : Post invoice issuance to trust GL (default off)}
         {--dry-run : Parse and match without saving}';
 
-    protected $description = 'Import missing charge lines (late-payment DBNs) from an EZEN tenant statement export.';
+    protected $description = 'Import missing DBNs, rent deposits, and opening balances from an EZEN tenant statement export.';
 
     public function handle(EzenTenantStatementImportService $service): int
     {
