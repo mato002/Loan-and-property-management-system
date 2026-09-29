@@ -142,13 +142,30 @@ final class TenantStatementLedgerService
         foreach ($invoices as $invoice) {
             $label = $invoice->invoice_no ?: 'INV-'.$invoice->id;
             $unitLabel = trim(($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—'));
+            $typeLabel = $invoice->invoice_type
+                ? strtoupper((string) $invoice->invoice_type)
+                : 'CHARGE';
+            if ((string) $invoice->invoice_type === PmInvoice::TYPE_LATE_PAYMENT) {
+                $typeLabel = 'LATE PAYMENT';
+            }
+            $memo = trim((string) ($invoice->description ?? ''));
+            if (preg_match('/^\[EZEN [^\]]+\]\s*(.+?)(?:\s*·\s*|$)/u', $memo, $m) === 1) {
+                $memo = trim($m[1]);
+            }
+            $desc = $typeLabel;
+            if ($memo !== '') {
+                $desc .= ' · '.$memo;
+            }
+            if ($unitLabel !== '— / —') {
+                $desc .= ' · '.$unitLabel;
+            }
 
             $entries->push([
                 'date' => $invoice->issue_date?->toDateString(),
                 'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
                 'type' => 'Invoice',
                 'ref' => $label,
-                'description' => ($invoice->invoice_type ? strtoupper((string) $invoice->invoice_type) : 'CHARGE').($unitLabel !== '— / —' ? ' · '.$unitLabel : ''),
+                'description' => $desc,
                 'debit' => (float) $invoice->amount,
                 'credit' => 0.0,
                 'payment_id' => null,

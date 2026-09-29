@@ -50,6 +50,8 @@ class PmInvoice extends Model
 
     public const TYPE_SERVICE = 'service';
 
+    public const TYPE_LATE_PAYMENT = 'late_payment';
+
     /** @deprecated Not offered in the create dropdown — agents should add a named type instead. Kept for legacy rows. */
     public const TYPE_OTHER = 'other';
 
@@ -72,6 +74,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
+            self::TYPE_LATE_PAYMENT => 'Late payment charge',
         ];
     }
 
@@ -88,6 +91,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY,
             self::TYPE_GARBAGE,
             self::TYPE_SERVICE,
+            self::TYPE_LATE_PAYMENT,
             self::TYPE_OTHER,
             self::TYPE_MIXED,
         ];
@@ -313,7 +317,7 @@ class PmInvoice extends Model
     {
         $type = (string) ($this->invoice_type ?? '');
 
-        return $type !== '' && $type !== self::TYPE_RENT;
+        return $type !== '' && $type !== self::TYPE_RENT && $type !== self::TYPE_LATE_PAYMENT;
     }
 
     public const KIND_INVOICE = 'invoice';
@@ -1142,6 +1146,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
+            self::TYPE_LATE_PAYMENT => 'Late payment charge',
             default => ucfirst(str_replace('_', ' ', $type)),
         };
     }

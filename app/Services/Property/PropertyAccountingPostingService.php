@@ -241,7 +241,7 @@ class PropertyAccountingPostingService
         $type = (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT);
 
         return match ($type) {
-            PmInvoice::TYPE_RENT => self::ACC_AR,
+            PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT => self::ACC_AR,
             default => self::resolveAccountCode(self::ACC_UTILITY_AR, self::ACC_AR),
         };
     }
@@ -260,6 +260,7 @@ class PropertyAccountingPostingService
         return match ($type) {
             PmInvoice::TYPE_RENT => self::ACC_RENTAL_INCOME,
             PmInvoice::TYPE_WATER => self::resolveAccountCode(self::ACC_WATER_REVENUE, self::ACC_UTILITY_RECOVERY_INCOME),
+            PmInvoice::TYPE_LATE_PAYMENT => self::resolveAccountCode(self::ACC_PENALTY_INCOME, self::ACC_RENTAL_INCOME),
             default => self::resolveAccountCode(self::ACC_UTILITY_RECOVERY_INCOME, self::ACC_RENTAL_INCOME),
         };
     }
@@ -273,6 +274,7 @@ class PropertyAccountingPostingService
         return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
             PmInvoice::TYPE_RENT => 'rental_income',
             PmInvoice::TYPE_WATER => 'water_revenue',
+            PmInvoice::TYPE_LATE_PAYMENT => 'penalty_income',
             default => 'utility_recovery_income',
         };
     }
@@ -286,6 +288,7 @@ class PropertyAccountingPostingService
         return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
             PmInvoice::TYPE_RENT => 'Rental Income',
             PmInvoice::TYPE_WATER => 'Water Revenue',
+            PmInvoice::TYPE_LATE_PAYMENT => 'Penalty Income',
             default => 'Utility Recovery Income',
         };
     }

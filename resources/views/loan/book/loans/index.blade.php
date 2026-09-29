@@ -192,41 +192,55 @@
             </div>
         </div>
 
-        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="flex flex-wrap items-end gap-2">
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, product..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+        <form method="get" class="loan-register-filters mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <style>
+                .loan-register-filters .lf-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.35rem 0.4rem; }
+                .loan-register-filters .lf { flex: 0 0 auto; min-width: 0; }
+                .loan-register-filters .lf label { display: block; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; }
+                .loan-register-filters .lf input,
+                .loan-register-filters .lf select { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; height: 2rem; }
+                .loan-register-filters .lf-search { width: 11rem; }
+                .loan-register-filters .lf-status,
+                .loan-register-filters .lf-branch { width: 7rem; }
+                .loan-register-filters .lf-repay { width: 7.6rem; }
+                .loan-register-filters .lf-next { width: 8.4rem; }
+                .loan-register-filters .lf-date { width: 8.6rem; }
+                .loan-register-filters .lf-page { width: 4.6rem; }
+            </style>
+            <div class="lf-row">
+                <div class="lf lf-search">
+                    <label>Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 shadow-sm">
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
-                    <select name="status" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-status">
+                    <label>Status</label>
+                    <select name="status" onchange="this.form.submit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                         <option value="">All</option>
                         @foreach (($statuses ?? []) as $k => $lbl)
                             <option value="{{ $k }}" @selected(($status ?? '') === $k)>{{ $lbl }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Branch</label>
-                    <select name="branch" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-branch">
+                    <label>Branch</label>
+                    <select name="branch" onchange="this.form.submit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                         <option value="">All</option>
                         @foreach (($branches ?? []) as $b)
                             <option value="{{ $b }}" @selected(($branch ?? '') === $b)>{{ $b }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Repayment</label>
-                    <select name="repayment" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-repay">
+                    <label>Repayment</label>
+                    <select name="repayment" onchange="this.form.submit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                         <option value="">All</option>
                         <option value="has_balance" @selected(($repayment ?? '') === 'has_balance')>Has balance</option>
                         <option value="fully_paid" @selected(($repayment ?? '') === 'fully_paid')>Fully paid</option>
                     </select>
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Next step</label>
-                    <select name="next_step" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-next">
+                    <label>Next step</label>
+                    <select name="next_step" onchange="this.form.submit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                         <option value="">All</option>
                         <option value="disburse" @selected(($nextStep ?? '') === 'disburse')>Disburse now</option>
                         <option value="record_payment" @selected(($nextStep ?? '') === 'record_payment')>Record payment</option>
@@ -234,56 +248,56 @@
                         <option value="arrears" @selected(($nextStep ?? '') === 'arrears')>Arrears follow-up</option>
                     </select>
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed from</label>
-                    <input type="date" name="disbursed_from" value="{{ $disbursedFrom ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-date">
+                    <label>Disbursed from</label>
+                    <input type="date" name="disbursed_from" value="{{ $disbursedFrom ?? '' }}" onchange="this.form.requestSubmit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed to</label>
-                    <input type="date" name="disbursed_to" value="{{ $disbursedTo ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-date">
+                    <label>Disbursed to</label>
+                    <input type="date" name="disbursed_to" value="{{ $disbursedTo ?? '' }}" onchange="this.form.requestSubmit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity from</label>
-                    <input type="date" name="maturity_from" value="{{ $maturityFrom ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-date">
+                    <label>Maturity from</label>
+                    <input type="date" name="maturity_from" value="{{ $maturityFrom ?? '' }}" onchange="this.form.requestSubmit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity to</label>
-                    <input type="date" name="maturity_to" value="{{ $maturityTo ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-date">
+                    <label>Maturity to</label>
+                    <input type="date" name="maturity_to" value="{{ $maturityTo ?? '' }}" onchange="this.form.requestSubmit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                 </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
-                    <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <div class="lf lf-page">
+                    <label>Per page</label>
+                    <select name="per_page" onchange="this.form.submit()" class="rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700 shadow-sm">
                         @foreach ([10, 15, 25, 50, 100, 200] as $size)
                             <option value="{{ $size }}" @selected((int) ($perPage ?? 15) === $size)>{{ $size }}</option>
                         @endforeach
                     </select>
                 </div>
-                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
-                <a href="{{ route('loan.book.loans.index') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
-                <div class="ml-auto flex items-center gap-2">
+                <button type="submit" class="h-8 shrink-0 rounded-md bg-[#2f4f4f] px-3 text-xs font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.book.loans.index') }}" class="inline-flex h-8 shrink-0 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+                <div class="ml-auto flex shrink-0 flex-wrap items-center gap-2">
                     @if (($bulkSyncEligibleCount ?? 0) > 0)
                         <button
                             id="bulk-sync-schedules-btn"
                             type="button"
-                            class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                            class="inline-flex h-8 items-center rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-800 hover:bg-amber-100"
                             data-loan-count="{{ (int) ($bulkSyncEligibleCount ?? 0) }}"
                         >
-                            Sync all schedules ({{ number_format((int) ($bulkSyncEligibleCount ?? 0)) }})
+                            Sync all ({{ number_format((int) ($bulkSyncEligibleCount ?? 0)) }})
                         </button>
                     @endif
                     @if (($bulkRebuildEligibleCount ?? 0) > 0)
                         <button
                             id="bulk-rebuild-snapshots-btn"
                             type="button"
-                            class="rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-900 hover:bg-cyan-100"
+                            class="inline-flex h-8 items-center rounded-md border border-cyan-300 bg-cyan-50 px-3 text-xs font-bold text-cyan-900 hover:bg-cyan-100"
                             data-loan-count="{{ (int) ($bulkRebuildEligibleCount ?? 0) }}"
                         >
-                            Rebuild snapshots ({{ number_format((int) ($bulkRebuildEligibleCount ?? 0)) }})
+                            Rebuild ({{ number_format((int) ($bulkRebuildEligibleCount ?? 0)) }})
                         </button>
                     @endif
-                    <a :href="exportUrl('csv')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-                    <a :href="exportUrl('xls')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a :href="exportUrl('pdf')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                    <a :href="exportUrl('csv')" class="inline-flex h-8 items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a :href="exportUrl('xls')" class="inline-flex h-8 items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a :href="exportUrl('pdf')" class="inline-flex h-8 items-center rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
                 </div>
             </div>
         </form>

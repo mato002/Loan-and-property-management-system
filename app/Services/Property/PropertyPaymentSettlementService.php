@@ -200,9 +200,15 @@ class PropertyPaymentSettlementService
     {
         $payment = $this->lockPayment($payment);
 
-        $remaining = round((float) $payment->amount, 2);
+        $alreadyAllocated = round((float) PmPaymentAllocation::query()
+            ->where('pm_payment_id', $payment->id)
+            ->where(function ($q): void {
+                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $remaining = round((float) $payment->amount - $alreadyAllocated, 2);
         if ($remaining <= 0.0001 || (int) $payment->pm_tenant_id <= 0) {
-            return $remaining;
+            return max(0.0, $remaining);
         }
 
         $openInvoices = $this->openInvoicesForPaymentQuery($payment, $invoiceType)
@@ -242,7 +248,13 @@ class PropertyPaymentSettlementService
         $targetInvoice = PmInvoice::query()->whereKey($targetInvoice->id)->lockForUpdate()->firstOrFail();
         $targetInvoice->syncAmountPaidFromAllocations();
 
-        $remaining = round((float) $payment->amount, 2);
+        $alreadyAllocated = round((float) PmPaymentAllocation::query()
+            ->where('pm_payment_id', $payment->id)
+            ->where(function ($q): void {
+                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $remaining = round((float) $payment->amount - $alreadyAllocated, 2);
         if ($remaining <= 0.0001) {
             return 0.0;
         }
