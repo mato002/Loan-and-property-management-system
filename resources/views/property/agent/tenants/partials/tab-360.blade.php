@@ -60,13 +60,34 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
     <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 class="text-sm font-semibold text-slate-900">Identity</h3>
+        @if ($tenant->photoUrl())
+            <img src="{{ $tenant->photoUrl() }}" alt="" class="mt-3 h-16 w-16 rounded-full object-cover border border-slate-200" />
+        @endif
         <dl class="mt-3 space-y-2 text-sm">
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Account</dt><dd class="font-mono text-slate-900">{{ $tenant->account_number ?: '—' }}</dd></div>
-            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $tenant->name }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Type</dt><dd class="text-slate-900">{{ $tenant->tenantTypeLabel() }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $tenant->name }}{{ $tenant->other_names ? ' · '.$tenant->other_names : '' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Gender</dt><dd class="text-slate-900">{{ \App\Models\PmTenant::GENDERS[$tenant->gender] ?? ($tenant->gender ?: '—') }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900"><x-phone-link :value="$tenant->phone" /></dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Email</dt><dd class="text-slate-900 break-all">{{ $tenant->email ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">National ID / ref</dt><dd class="text-slate-900">{{ $tenant->national_id ?: '—' }}</dd></div>
-            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900">{{ $tenant->emergency_contact ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">KRA PIN</dt><dd class="text-slate-900">{{ $tenant->kra_pin ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Address</dt>
+                <dd class="text-slate-900 text-right">
+                    {{ collect([$tenant->postal_address, $tenant->postal_code, $tenant->town, $tenant->country])->filter()->implode(', ') ?: '—' }}
+                </dd>
+            </div>
+            @php $kin = is_array($tenant->emergency_contacts) ? $tenant->emergency_contacts : []; @endphp
+            @forelse ($kin as $idx => $contact)
+                <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5">
+                    <dt class="text-slate-500">Emergency {{ $idx + 1 }}</dt>
+                    <dd class="text-slate-900 text-right">
+                        {{ collect([$contact['name'] ?? '', $contact['relationship'] ?? '', $contact['phone'] ?? '', $contact['email'] ?? ''])->filter()->implode(' · ') ?: '—' }}
+                    </dd>
+                </div>
+            @empty
+                <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900">{{ $tenant->emergency_contact ?: '—' }}</dd></div>
+            @endforelse
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Portal login</dt><dd class="text-slate-900">{{ $tenant->user_id ? 'Linked' : 'Not linked' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Risk</dt><dd class="capitalize text-slate-900">{{ $tenant->risk_level ?: 'normal' }}</dd></div>
         </dl>

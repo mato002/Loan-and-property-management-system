@@ -148,6 +148,10 @@
                 <p><span class="text-slate-500">Code:</span> {{ $property->code ?: '—' }}</p>
                 <p><span class="text-slate-500">City:</span> {{ $property->city ?: '—' }}</p>
                 <p><span class="text-slate-500">Address:</span> {{ $property->address_line ?: '—' }}</p>
+                <p><span class="text-slate-500">LR / title:</span> {{ $property->lr_number ?: '—' }}</p>
+                <p><span class="text-slate-500">Category:</span> {{ $property->category ?: '—' }}{{ $property->property_type ? ' · '.$property->property_type : '' }}</p>
+                <p><span class="text-slate-500">Estate / zone:</span> {{ trim(collect([$property->estate, $property->zone])->filter()->implode(' · ')) ?: '—' }}</p>
+                <p><span class="text-slate-500">Let / manage:</span> {{ $property->management_mode === 'letting' ? 'Letting' : 'Managing' }}</p>
                 <p>
                     <span class="text-slate-500">Linked landlord{{ count($ownerRows) === 1 ? '' : 's' }}:</span>
                     @if (count($ownerRows) > 0)

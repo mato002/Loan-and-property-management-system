@@ -9,6 +9,7 @@ use App\Models\ExpenseDefinition;
 use App\Models\PmFieldOfficer;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPortalProfile;
+use App\Models\PmLandlordDocument;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
 use App\Models\PmMaintenanceRequest;
@@ -922,6 +923,7 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -930,6 +932,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
             'expense_definitions' => ['nullable', 'array', 'max:50'],
             'expense_definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'expense_definitions.*.charge_key' => ['nullable', 'string', 'max:64'],
@@ -968,6 +972,7 @@ class PropertyPortfolioController extends Controller
         unset($data['charge_templates']);
         unset($data['expense_definitions']);
         unset($data['deposit_definitions']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -2099,6 +2104,10 @@ class PropertyPortfolioController extends Controller
 
         return property_view('property.agent.landlords.show', [
             'landlord' => $landlord,
+            'landlordProfile' => PmLandlordPortalProfile::forUser($landlord),
+            'landlordDocuments' => Schema::hasTable('pm_landlord_documents')
+                ? PmLandlordDocument::query()->where('user_id', $landlord->id)->latest()->get()
+                : collect(),
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             'activeTab' => $activeTab,
             'linkableProperties' => $linkableProperties,
@@ -2496,6 +2505,103 @@ class PropertyPortfolioController extends Controller
         );
     }
 
+    public function storeLandlordDocument(Request $request, User $landlord): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $request->validate($this->landlordDocumentUploadRules(true));
+        $this->persistLandlordDocumentFromRequest($request, $landlord);
+
+        return redirect()
+            ->route('property.landlords.show', [
+                'landlord' => $landlord->id,
+                'tab' => 'files',
+                'month' => $request->input('month'),
+                'fy' => $request->input('fy'),
+            ])
+            ->with('success', 'File saved.');
+    }
+
+    public function downloadLandlordDocument(Request $request, User $landlord, PmLandlordDocument $document)
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $this->assertLandlordDocument($landlord, $document);
+
+        if ($document->path === '' || ! Storage::disk('local')->exists($document->path)) {
+            abort(404);
+        }
+
+        $downloadName = (string) ($document->original_filename ?: $document->name);
+
+        return Storage::disk('local')->download($document->path, $downloadName);
+    }
+
+    public function destroyLandlordDocument(Request $request, User $landlord, PmLandlordDocument $document): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $this->assertLandlordDocument($landlord, $document);
+
+        if ($document->path !== '' && Storage::disk('local')->exists($document->path)) {
+            Storage::disk('local')->delete($document->path);
+        }
+        $document->delete();
+
+        return redirect()
+            ->route('property.landlords.show', ['landlord' => $landlord->id, 'tab' => 'files'])
+            ->with('success', 'File deleted.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function landlordDocumentUploadRules(bool $fileRequired): array
+    {
+        return [
+            'document_name' => [$fileRequired ? 'required' : 'nullable', 'required_with:document', 'string', 'max:160'],
+            'document_description' => ['nullable', 'string', 'max:2000'],
+            'document' => [$fileRequired ? 'required' : 'nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx,webp'],
+        ];
+    }
+
+    private function persistLandlordDocumentFromRequest(Request $request, User $landlord): void
+    {
+        if (! Schema::hasTable('pm_landlord_documents') || ! $request->hasFile('document')) {
+            return;
+        }
+
+        $file = $request->file('document');
+        if ($file === null) {
+            return;
+        }
+
+        $name = trim((string) $request->input('document_name', ''));
+        if ($name === '') {
+            $name = (string) pathinfo((string) $file->getClientOriginalName(), PATHINFO_FILENAME);
+        }
+        if ($name === '') {
+            $name = 'Document';
+        }
+
+        $path = $file->store('landlord-documents/'.$landlord->id, 'local');
+
+        PmLandlordDocument::query()->create([
+            'user_id' => $landlord->id,
+            'name' => Str::limit($name, 160, ''),
+            'description' => Str::limit(trim((string) $request->input('document_description', '')), 2000, '') ?: null,
+            'path' => $path,
+            'original_filename' => Str::limit((string) $file->getClientOriginalName(), 255, ''),
+            'size_bytes' => (int) $file->getSize(),
+            'mime' => (string) ($file->getMimeType() ?: ''),
+            'uploaded_by' => $request->user()?->id,
+        ]);
+    }
+
+    private function assertLandlordDocument(User $landlord, PmLandlordDocument $document): void
+    {
+        if ((int) $document->user_id !== (int) $landlord->id) {
+            abort(404);
+        }
+    }
+
     public function onboardLandlord(Request $request): RedirectResponse
     {
         $landlordFields = $this->landlordFieldConfig();
@@ -2509,12 +2615,13 @@ class PropertyPortfolioController extends Controller
         $extra = $request->validate(array_merge([
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ], $this->agreedPayScheduleRules(), $this->landlordProfileFieldRules($landlordFields)));
+        ], $this->agreedPayScheduleRules(), $this->landlordProfileFieldRules($landlordFields), $this->landlordDocumentUploadRules(false)));
 
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
         $landlord = $onboarding->createLandlordUser($data, $agentUserId);
         $onboarding->syncLandlordProfile($landlord, $extra);
+        $this->persistLandlordDocumentFromRequest($request, $landlord);
 
         if (! empty($extra['property_id'])) {
             $property = Property::query()->findOrFail((int) $extra['property_id']);
@@ -2615,6 +2722,7 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -2623,6 +2731,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
@@ -2633,6 +2743,7 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -2695,6 +2806,7 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -2703,6 +2815,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
@@ -2713,6 +2827,7 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -2965,6 +3080,8 @@ class PropertyPortfolioController extends Controller
                 'amount_mode' => $amountMode,
                 'rate_per_unit' => round($rate, 2),
                 'fixed_charge' => round($fixed, 2),
+                'vat_rate' => is_numeric($row['vat_rate'] ?? null) ? round(max(0.0, (float) $row['vat_rate']), 2) : null,
+                'escalates_with_rent' => in_array($row['escalates_with_rent'] ?? 0, [1, '1', true, 'true'], true),
                 'notes' => Str::limit($notes, 500, ''),
             ];
         }
@@ -4038,6 +4155,126 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
+     * Extra property records (title, area, listing, alerts) — optional, not required to create.
+     *
+     * @return array<string, mixed>
+     */
+    private function propertyRecordFieldRules(): array
+    {
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $rules = [
+            'acquired_at' => ['sometimes', 'nullable', 'date'],
+            'management_mode' => ['sometimes', 'nullable', 'in:managing,letting'],
+            'lr_number' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'category' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'property_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'specification' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'storey_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'floors_count' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:200'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'estate' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'zone' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'contact_info' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'gross_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'net_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'area_unit' => ['sometimes', 'nullable', 'in:sqm,sqft,acre'],
+            'rent_per_measure' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'statement_balance_cutoff_day' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:31'],
+            'listing_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'listing_agent_name' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'listing_contact_email' => ['sometimes', 'nullable', 'email', 'max:255'],
+            'listing_contact_phone' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'listing_min_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_min_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'exclude_from_fee_summary' => ['sometimes', 'nullable', 'in:0,1'],
+            'property_details_save' => ['sometimes', 'nullable'],
+        ];
+        foreach ($exemptKeys as $key) {
+            $rules['exempt_'.$key] = ['sometimes', 'nullable', 'in:0,1'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function applyPropertyRecordAttributes(Request $request, array $data): array
+    {
+        unset($data['property_details_save']);
+
+        $stringKeys = [
+            'management_mode', 'lr_number', 'category', 'property_type', 'specification',
+            'storey_type', 'country', 'estate', 'zone', 'notes', 'contact_info', 'area_unit',
+            'listing_notes', 'listing_agent_name', 'listing_contact_email', 'listing_contact_phone',
+        ];
+        foreach ($stringKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = is_string($data[$key]) ? trim($data[$key]) : $data[$key];
+            $data[$key] = ($value === '' || $value === null) ? null : $value;
+        }
+
+        $numericKeys = [
+            'floors_count', 'latitude', 'longitude', 'gross_lettable_area', 'net_lettable_area',
+            'rent_per_measure', 'statement_balance_cutoff_day', 'listing_min_rent', 'listing_max_rent',
+            'listing_min_service_charge', 'listing_max_service_charge',
+        ];
+        foreach ($numericKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($data[$key] === '' || $data[$key] === null) {
+                $data[$key] = null;
+            }
+        }
+
+        if (array_key_exists('acquired_at', $data) && ($data['acquired_at'] === '' || $data['acquired_at'] === null)) {
+            $data['acquired_at'] = null;
+        }
+
+        if (array_key_exists('exclude_from_fee_summary', $data) || $request->has('exclude_from_fee_summary')) {
+            $data['exclude_from_fee_summary'] = $request->boolean('exclude_from_fee_summary');
+        }
+
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $hasExempt = false;
+        $exemptions = [];
+        foreach ($exemptKeys as $key) {
+            $field = 'exempt_'.$key;
+            if ($request->has($field)) {
+                $hasExempt = true;
+            }
+            $exemptions[$key] = $request->boolean($field);
+            unset($data[$field]);
+        }
+        if ($hasExempt && Schema::hasColumn('properties', 'communication_exemptions')) {
+            $data['communication_exemptions'] = $exemptions;
+        }
+
+        foreach (array_keys($data) as $key) {
+            if (! Schema::hasColumn('properties', $key)) {
+                unset($data[$key]);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
      * @return array<string,array{enabled:bool,required:bool}>
      */
     private function landlordFieldConfig(): array
@@ -4135,6 +4372,7 @@ class PropertyPortfolioController extends Controller
                 'string',
                 'max:64',
             ],
+            'landlord_type' => ['nullable', 'in:individual,corporation,organization,institution,government'],
             'id_number' => [
                 Rule::requiredIf($this->isFieldRequired($landlordFields, 'id_number')),
                 'nullable',
@@ -4153,6 +4391,12 @@ class PropertyPortfolioController extends Controller
                 'string',
                 'max:255',
             ],
+            'location' => ['nullable', 'string', 'max:128'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:120'],
+            'bank_account_name' => ['nullable', 'string', 'max:120'],
+            'bank_account' => ['nullable', 'string', 'max:64'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
         ];
     }
 
@@ -4187,6 +4431,25 @@ class PropertyPortfolioController extends Controller
                 'date',
             ],
             'furnished' => ['sometimes', 'boolean'],
+            'bathrooms' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:20'],
+            'parking_spaces' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:50'],
+            'rent_per_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'charge_frequency' => ['sometimes', 'nullable', 'in:monthly,one_off,daily,weekly,biweekly,bimonthly,quarterly,semiannually,annually,biennially,triennially,none'],
+            'take_on_letting_date' => ['sometimes', 'nullable', 'date'],
+            'unit_sequence' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            'floor_number' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'location_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'electricity_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'electricity_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'extra_meters' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'extra_meters.*.meter_no' => ['nullable', 'string', 'max:64'],
+            'extra_meters.*.reading_setup' => ['nullable', 'string', 'max:120'],
+            'features' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'features.*.name' => ['nullable', 'string', 'max:120'],
+            'features.*.feature_type' => ['nullable', 'string', 'max:64'],
         ];
     }
 
@@ -4219,6 +4482,70 @@ class PropertyPortfolioController extends Controller
         if (array_key_exists('furnished', $data) || $request->has('furnished')) {
             $raw = $data['furnished'] ?? $request->input('furnished');
             $attrs['furnished'] = in_array($raw, [true, 1, '1', 'true', 'on', 'yes'], true);
+        }
+
+        foreach (['bathrooms', 'parking_spaces', 'unit_sequence'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : (int) $data[$key];
+        }
+
+        foreach (['rent_per_area'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : $data[$key];
+        }
+
+        foreach ([
+            'charge_frequency', 'floor_number', 'notes', 'location_notes',
+            'electricity_account', 'electricity_meter', 'water_account', 'water_meter',
+        ] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = trim((string) ($data[$key] ?? ''));
+            $attrs[$key] = $value !== '' ? $value : null;
+        }
+
+        if (array_key_exists('take_on_letting_date', $data)) {
+            $value = $data['take_on_letting_date'];
+            $attrs['take_on_letting_date'] = ($value === null || $value === '') ? null : $value;
+        }
+
+        if (array_key_exists('extra_meters', $data) || $request->has('extra_meters')) {
+            $rows = is_array($data['extra_meters'] ?? null) ? $data['extra_meters'] : (array) $request->input('extra_meters', []);
+            $attrs['extra_meters'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $no = trim((string) ($row['meter_no'] ?? ''));
+                $setup = trim((string) ($row['reading_setup'] ?? ''));
+                if ($no === '' && $setup === '') {
+                    return null;
+                }
+
+                return ['meter_no' => $no, 'reading_setup' => $setup];
+            }, $rows)));
+        }
+
+        if (array_key_exists('features', $data) || $request->has('features')) {
+            $rows = is_array($data['features'] ?? null) ? $data['features'] : (array) $request->input('features', []);
+            $attrs['features'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $name = trim((string) ($row['name'] ?? ''));
+                $type = trim((string) ($row['feature_type'] ?? ''));
+                if ($name === '' && $type === '') {
+                    return null;
+                }
+
+                return ['name' => $name, 'feature_type' => $type];
+            }, $rows)));
+        }
+
+        foreach (array_keys($attrs) as $key) {
+            if (! Schema::hasColumn('property_units', $key)) {
+                unset($attrs[$key]);
+            }
         }
 
         return $attrs;

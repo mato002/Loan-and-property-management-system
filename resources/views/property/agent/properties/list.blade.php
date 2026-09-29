@@ -204,6 +204,12 @@
                     <datalist id="ke-address-suggestions"></datalist>
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <details class="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-900/40 p-3">
+                    <summary class="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">More records (title, area, listing, alerts)</summary>
+                    <div class="mt-3">
+                        @include('property.agent.properties.partials.property_record_fields')
+                    </div>
+                </details>
                 <div class="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-900/40 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div>

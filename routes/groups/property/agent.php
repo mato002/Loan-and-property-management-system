@@ -342,6 +342,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->whereNumber('landlord')->name('landlords.show');
     Route::get('/landlords/{landlord}/edit', [PropertyPortfolioController::class, 'editLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.edit');
     Route::put('/landlords/{landlord}', [PropertyPortfolioController::class, 'updateLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.update');
+    Route::post('/landlords/{landlord}/documents', [PropertyPortfolioController::class, 'storeLandlordDocument'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.documents.store');
+    Route::get('/landlords/{landlord}/documents/{document}/download', [PropertyPortfolioController::class, 'downloadLandlordDocument'])->whereNumber(['landlord', 'document'])->name('landlords.documents.download');
+    Route::delete('/landlords/{landlord}/documents/{document}', [PropertyPortfolioController::class, 'destroyLandlordDocument'])->whereNumber(['landlord', 'document'])->middleware('property.permission:properties.manage')->name('landlords.documents.destroy');
     Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->whereNumber('landlord')->name('landlords.statement');
     Route::get('/landlords/{landlord}/statement/print', [PropertyPortfolioController::class, 'landlordsStatementPrint'])->whereNumber('landlord')->name('landlords.statement.print');
     Route::post('/landlords/{landlord}/resend-portal-login', [PropertyPortfolioController::class, 'resendLandlordPortalLogin'])

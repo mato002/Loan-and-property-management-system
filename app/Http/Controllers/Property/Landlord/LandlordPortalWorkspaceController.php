@@ -178,6 +178,8 @@ class LandlordPortalWorkspaceController extends Controller
         $data = $request->validate([
             'kra_pin' => ['nullable', 'string', 'max:32'],
             'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:120'],
+            'bank_account_name' => ['nullable', 'string', 'max:120'],
             'bank_account' => ['nullable', 'string', 'max:64'],
             'mpesa_phone' => ['nullable', 'string', 'max:32'],
             'notify_email' => ['nullable', 'boolean'],
@@ -188,6 +190,8 @@ class LandlordPortalWorkspaceController extends Controller
         $profile->update([
             'kra_pin' => $data['kra_pin'] ?? null,
             'bank_name' => $data['bank_name'] ?? null,
+            'bank_branch' => $data['bank_branch'] ?? null,
+            'bank_account_name' => $data['bank_account_name'] ?? null,
             'bank_account' => $data['bank_account'] ?? null,
             'mpesa_phone' => $data['mpesa_phone'] ?? null,
             'notify_email' => $request->boolean('notify_email'),

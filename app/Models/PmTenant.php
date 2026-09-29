@@ -23,7 +23,17 @@ class PmTenant extends Model
         'email',
         'national_id',
         'emergency_contact',
+        'emergency_contacts',
         'account_number',
+        'tenant_type',
+        'other_names',
+        'gender',
+        'kra_pin',
+        'postal_address',
+        'postal_code',
+        'town',
+        'country',
+        'photo_path',
         'risk_level',
         'opening_arrears_rent',
         'opening_arrears_utilities',
@@ -47,6 +57,7 @@ class PmTenant extends Model
             'opening_arrears_amount' => 'decimal:2',
             'opening_arrears_as_of' => 'date',
             'opening_arrears_items' => 'array',
+            'emergency_contacts' => 'array',
         ];
     }
 
@@ -115,6 +126,39 @@ class PmTenant extends Model
     public static function generatedAccountNumber(int $tenantId): string
     {
         return 'TEN-'.str_pad((string) max(1, $tenantId), 6, '0', STR_PAD_LEFT);
+    }
+
+    /** @var array<string, string> */
+    public const TYPES = [
+        'individual' => 'Individual',
+        'company' => 'Company',
+        'organization' => 'Organization',
+        'government' => 'Government',
+    ];
+
+    /** @var array<string, string> */
+    public const GENDERS = [
+        'male' => 'Male',
+        'female' => 'Female',
+        'other' => 'Other',
+        'unspecified' => 'Prefer not to say',
+    ];
+
+    public function photoUrl(): ?string
+    {
+        $path = trim((string) ($this->photo_path ?? ''));
+        if ($path === '') {
+            return null;
+        }
+
+        return asset('storage/'.$path);
+    }
+
+    public function tenantTypeLabel(): string
+    {
+        $type = (string) ($this->tenant_type ?? '');
+
+        return self::TYPES[$type] ?? ($type !== '' ? ucfirst($type) : '—');
     }
 
     public function user(): BelongsTo

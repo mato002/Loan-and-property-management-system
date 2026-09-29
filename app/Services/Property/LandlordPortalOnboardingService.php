@@ -3,6 +3,7 @@
 namespace App\Services\Property;
 
 use App\Mail\LandlordPortalCredentialsMail;
+use App\Models\PmMessageLog;
 use App\Models\PmPortalAction;
 use App\Models\User;
 use App\Support\Property\LandlordWorkspaceScope;
@@ -119,7 +120,7 @@ class LandlordPortalOnboardingService
         $profile = \App\Models\PmLandlordPortalProfile::forUser($landlord);
         $payload = [];
 
-        foreach (['legacy_landlord_code', 'id_number', 'kra_pin', 'address_line'] as $key) {
+        foreach (['legacy_landlord_code', 'landlord_type', 'id_number', 'kra_pin', 'address_line', 'location', 'bank_name', 'bank_branch', 'bank_account_name', 'bank_account', 'mpesa_phone'] as $key) {
             if (! array_key_exists($key, $data)) {
                 continue;
             }
@@ -231,6 +232,10 @@ class LandlordPortalOnboardingService
         $smsSent = false;
 
         if ($email !== '') {
+            $emailSubject = __('Your landlord portal login');
+            $emailLogBody = __('Landlord portal credentials emailed to :name. Temporary password omitted from this log.', [
+                'name' => $landlord->name,
+            ]);
             try {
                 Mail::to($email)->send(new LandlordPortalCredentialsMail(
                     landlordName: $landlord->name,
@@ -241,8 +246,25 @@ class LandlordPortalOnboardingService
                     landlordHomeUrl: $homeUrl,
                 ));
                 $emailSent = true;
-            } catch (Throwable) {
+                $this->logOutboundMessage(
+                    channel: 'email',
+                    toAddress: $email,
+                    subject: $emailSubject,
+                    body: $emailLogBody,
+                    userId: $agentUserId,
+                    deliveryStatus: 'sent',
+                );
+            } catch (Throwable $e) {
                 $emailSent = false;
+                $this->logOutboundMessage(
+                    channel: 'email',
+                    toAddress: $email,
+                    subject: $emailSubject,
+                    body: $emailLogBody,
+                    userId: $agentUserId,
+                    deliveryStatus: 'failed',
+                    deliveryError: $e->getMessage(),
+                );
             }
         }
 
@@ -257,6 +279,9 @@ class LandlordPortalOnboardingService
                 'loginHint' => $loginHint,
                 'password' => $plainPassword,
             ]);
+            $smsLogBody = __('Landlord portal credentials SMS to :name. Temporary password omitted from this log.', [
+                'name' => $landlord->name,
+            ]);
 
             try {
                 $result = $this->bulkSms->sendNow(
@@ -267,8 +292,26 @@ class LandlordPortalOnboardingService
                     verifyBalance: false,
                 );
                 $smsSent = (bool) ($result['ok'] ?? false);
-            } catch (Throwable) {
+                $this->logOutboundMessage(
+                    channel: 'sms',
+                    toAddress: $phone,
+                    subject: __('Landlord portal login'),
+                    body: $smsLogBody,
+                    userId: $agentUserId,
+                    deliveryStatus: $smsSent ? 'sent' : 'failed',
+                    deliveryError: $smsSent ? null : (string) ($result['message'] ?? 'SMS send failed'),
+                );
+            } catch (Throwable $e) {
                 $smsSent = false;
+                $this->logOutboundMessage(
+                    channel: 'sms',
+                    toAddress: $phone,
+                    subject: __('Landlord portal login'),
+                    body: $smsLogBody,
+                    userId: $agentUserId,
+                    deliveryStatus: 'failed',
+                    deliveryError: $e->getMessage(),
+                );
             }
         }
 
@@ -323,5 +366,34 @@ class LandlordPortalOnboardingService
             'email' => $email !== '' ? $email : null,
             'phone' => trim((string) ($landlord->phone ?? '')) ?: null,
         ];
+    }
+
+    private function logOutboundMessage(
+        string $channel,
+        string $toAddress,
+        string $subject,
+        string $body,
+        ?int $userId,
+        string $deliveryStatus,
+        ?string $deliveryError = null,
+    ): void {
+        if (! Schema::hasTable('pm_message_logs') || $toAddress === '') {
+            return;
+        }
+
+        try {
+            PmMessageLog::query()->create([
+                'user_id' => $userId,
+                'channel' => $channel,
+                'to_address' => $toAddress,
+                'subject' => $subject,
+                'body' => $body,
+                'delivery_status' => $deliveryStatus,
+                'delivery_error' => $deliveryError,
+                'sent_at' => $deliveryStatus === 'sent' ? now() : null,
+            ]);
+        } catch (Throwable) {
+            // Never block credential delivery on audit-log failures.
+        }
     }
 }

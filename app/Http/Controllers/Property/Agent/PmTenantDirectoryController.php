@@ -7,6 +7,7 @@ use App\Models\UserModuleAccess;
 use App\Mail\TenantPortalCredentialsMail;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmMessageLog;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PmTenantDeposit;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -974,7 +976,7 @@ class PmTenantDirectoryController extends Controller
                 'max:32',
                 Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
             ],
-        ]);
+        ] + $this->tenantRecordFieldRules());
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
 
         $plainPassword = null;
@@ -1017,7 +1019,9 @@ class PmTenantDirectoryController extends Controller
             'risk_level' => $data['risk_level'],
             ...$openingArrearsPayload,
             'notes' => $data['notes'] ?? null,
+            ...$this->extractTenantRecordAttributes($request, $data),
         ]);
+        $this->persistTenantPhoto($request, $tenant);
 
         $nextSteps = [
             'title' => 'Tenant saved',
@@ -1054,6 +1058,10 @@ class PmTenantDirectoryController extends Controller
         ];
 
         if ($user !== null && $plainPassword !== null) {
+            $emailSubject = __('Your tenant portal login');
+            $emailLogBody = __('Tenant portal credentials emailed to :name. Temporary password omitted from this log.', [
+                'name' => $data['name'],
+            ]);
             try {
                 Mail::to($user->email)->send(new TenantPortalCredentialsMail(
                     tenantName: $data['name'],
@@ -1062,11 +1070,39 @@ class PmTenantDirectoryController extends Controller
                     loginUrl: url(route('property.tenant.login', [], false)),
                     tenantHomeUrl: url(route('property.tenant.home', [], false)),
                 ));
+
+                if (Schema::hasTable('pm_message_logs')) {
+                    PmMessageLog::query()->create([
+                        'user_id' => $request->user()?->id,
+                        'channel' => 'email',
+                        'to_address' => (string) $user->email,
+                        'subject' => $emailSubject,
+                        'body' => $emailLogBody,
+                        'delivery_status' => 'sent',
+                        'sent_at' => now(),
+                    ]);
+                }
             } catch (\Throwable $e) {
                 Log::error('tenant_portal_welcome_mail_failed', [
                     'message' => $e->getMessage(),
                     'user_id' => $user->id,
                 ]);
+
+                if (Schema::hasTable('pm_message_logs')) {
+                    try {
+                        PmMessageLog::query()->create([
+                            'user_id' => $request->user()?->id,
+                            'channel' => 'email',
+                            'to_address' => (string) $user->email,
+                            'subject' => $emailSubject,
+                            'body' => $emailLogBody,
+                            'delivery_status' => 'failed',
+                            'delivery_error' => $e->getMessage(),
+                        ]);
+                    } catch (\Throwable) {
+                        // ignore log failures
+                    }
+                }
 
                 return back()
                     ->with('success', 'Tenant saved with portal login.')
@@ -1130,7 +1166,7 @@ class PmTenantDirectoryController extends Controller
                 'max:32',
                 Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
             ],
-        ]);
+        ] + $this->tenantRecordFieldRules());
 
         $user = null;
         if ($createPortal) {
@@ -1161,7 +1197,9 @@ class PmTenantDirectoryController extends Controller
             'account_number' => $this->normalizeTenantAccountNumber($data['account_number'] ?? null),
             'risk_level' => $data['risk_level'] ?? 'normal',
             'notes' => $data['notes'] ?? null,
+            ...$this->extractTenantRecordAttributes($request, $data),
         ]);
+        $this->persistTenantPhoto($request, $tenant);
 
         return response()->json([
             'ok' => true,
@@ -1599,7 +1637,7 @@ class PmTenantDirectoryController extends Controller
                     ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
                     ->ignore($tenant->id),
             ],
-        ]);
+        ] + $this->tenantRecordFieldRules());
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
 
         $tenant->update([
@@ -1612,7 +1650,9 @@ class PmTenantDirectoryController extends Controller
             'risk_level' => $data['risk_level'],
             'notes' => $data['notes'] ?? null,
             ...$openingArrearsPayload,
+            ...$this->extractTenantRecordAttributes($request, $data),
         ]);
+        $this->persistTenantPhoto($request, $tenant);
 
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
@@ -1691,6 +1731,113 @@ class PmTenantDirectoryController extends Controller
     private function isFieldRequired(array $config, string $field): bool
     {
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tenantRecordFieldRules(): array
+    {
+        return [
+            'tenant_type' => ['nullable', 'string', Rule::in(array_keys(PmTenant::TYPES))],
+            'other_names' => ['nullable', 'string', 'max:255'],
+            'gender' => ['nullable', 'string', Rule::in(array_keys(PmTenant::GENDERS))],
+            'kra_pin' => ['nullable', 'string', 'max:32'],
+            'postal_address' => ['nullable', 'string', 'max:255'],
+            'postal_code' => ['nullable', 'string', 'max:32'],
+            'town' => ['nullable', 'string', 'max:128'],
+            'country' => ['nullable', 'string', 'max:64'],
+            'photo' => ['nullable', 'image', 'max:5120'],
+            'emergency_contacts' => ['nullable', 'array', 'max:2'],
+            'emergency_contacts.*.name' => ['nullable', 'string', 'max:120'],
+            'emergency_contacts.*.relationship' => ['nullable', 'string', 'max:80'],
+            'emergency_contacts.*.phone' => ['nullable', 'string', 'max:64'],
+            'emergency_contacts.*.email' => ['nullable', 'email', 'max:255'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function extractTenantRecordAttributes(Request $request, array $data): array
+    {
+        $attrs = [];
+        foreach (['tenant_type', 'other_names', 'gender', 'kra_pin', 'postal_address', 'postal_code', 'town', 'country'] as $key) {
+            if (! array_key_exists($key, $data) && ! $request->exists($key)) {
+                continue;
+            }
+            $value = trim((string) ($data[$key] ?? $request->input($key) ?? ''));
+            $attrs[$key] = $value !== '' ? $value : null;
+        }
+
+        if (array_key_exists('emergency_contacts', $data) || $request->has('emergency_contacts')) {
+            $contacts = $this->packEmergencyContacts($data['emergency_contacts'] ?? $request->input('emergency_contacts'));
+            $attrs['emergency_contacts'] = $contacts;
+            $first = $contacts[0] ?? null;
+            if (is_array($first)) {
+                $line = trim(implode(' / ', array_filter([
+                    trim((string) ($first['name'] ?? '')),
+                    trim((string) ($first['phone'] ?? '')),
+                ], static fn (string $part): bool => $part !== '')));
+                if ($line !== '') {
+                    $attrs['emergency_contact'] = $line;
+                }
+            }
+        }
+
+        foreach (array_keys($attrs) as $key) {
+            if (! Schema::hasColumn('pm_tenants', $key)) {
+                unset($attrs[$key]);
+            }
+        }
+
+        return $attrs;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<array{name: string, relationship: string, phone: string, email: string}>
+     */
+    private function packEmergencyContacts(mixed $raw): array
+    {
+        $rows = is_array($raw) ? $raw : [];
+        $packed = [];
+        foreach (array_slice(array_values($rows), 0, 2) as $row) {
+            $row = is_array($row) ? $row : [];
+            $contact = [
+                'name' => trim((string) ($row['name'] ?? '')),
+                'relationship' => trim((string) ($row['relationship'] ?? '')),
+                'phone' => trim((string) ($row['phone'] ?? '')),
+                'email' => trim((string) ($row['email'] ?? '')),
+            ];
+            if (implode('', $contact) === '') {
+                continue;
+            }
+            $packed[] = $contact;
+        }
+
+        return $packed;
+    }
+
+    private function persistTenantPhoto(Request $request, PmTenant $tenant): void
+    {
+        if (! Schema::hasColumn('pm_tenants', 'photo_path') || ! $request->hasFile('photo')) {
+            return;
+        }
+
+        $file = $request->file('photo');
+        if ($file === null) {
+            return;
+        }
+
+        $path = $file->store('tenant-photos/'.$tenant->id, 'public');
+        $previous = trim((string) ($tenant->photo_path ?? ''));
+        if ($previous !== '' && $previous !== $path) {
+            Storage::disk('public')->delete($previous);
+        }
+
+        $tenant->updateQuietly(['photo_path' => $path]);
     }
 
     private function normalizeTenantEmergencyContact(mixed $value): ?string
@@ -1789,6 +1936,8 @@ class PmTenantDirectoryController extends Controller
             'internet' => 'Internet',
             'parking' => 'Parking',
             'utility_other' => 'Other utility',
+            'standing_charge' => 'Other standing charge',
+            'on_account' => 'On account',
             'penalty' => 'Penalty',
             'other' => 'Other charge',
             'custom_charge' => 'Custom charge',

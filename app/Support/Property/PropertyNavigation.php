@@ -394,7 +394,8 @@ final class PropertyNavigation
                 'flyout' => [
                     ['label' => 'Communications hub', 'route' => 'property.communications.index', 'active' => ['property.communications.index']],
                     ['label' => 'Notifications', 'route' => 'property.notifications', 'active' => ['property.notifications', 'property.notifications.*']],
-                    ['label' => 'SMS / email log', 'route' => 'property.communications.messages', 'active' => ['property.communications.messages', 'property.communications.messages.*']],
+                    ['label' => 'SMS', 'route' => 'property.communications.messages', 'query' => ['channel' => 'sms'], 'active' => ['property.communications.messages', 'property.communications.messages.*']],
+                    ['label' => 'Emails', 'route' => 'property.communications.messages', 'query' => ['channel' => 'email'], 'active' => ['property.communications.messages', 'property.communications.messages.*']],
                     ['label' => 'Bulk messaging', 'route' => 'property.communications.bulk', 'active' => ['property.communications.bulk', 'property.communications.bulk.*']],
                     ['label' => 'Templates', 'route' => 'property.communications.templates', 'active' => ['property.communications.templates', 'property.communications.templates.*']],
                     ['label' => 'Conversations', 'route' => 'property.communications.conversations', 'active' => ['property.communications.conversations', 'property.communications.conversations.*']],

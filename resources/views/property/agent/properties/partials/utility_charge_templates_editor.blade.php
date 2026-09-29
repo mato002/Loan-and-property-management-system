@@ -27,6 +27,8 @@
             'amount_mode' => $amountMode,
             'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? (string) $row['rate_per_unit'] : '',
             'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? (string) $row['fixed_charge'] : '',
+            'vat_rate' => is_numeric($row['vat_rate'] ?? null) ? (string) $row['vat_rate'] : '',
+            'escalates_with_rent' => ! empty($row['escalates_with_rent']),
             'notes' => (string) ($row['notes'] ?? ''),
         ];
     }, $seedChargeTemplates));
@@ -41,9 +43,9 @@
         unitLabels: @js($unitLabelMap),
         charges: @js($seedChargeTemplates),
         editingIndex: null,
-        draft: { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', notes: '' },
+        draft: { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', vat_rate: '', escalates_with_rent: false, notes: '' },
         emptyDraft() {
-            return { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', notes: '' };
+            return { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', vat_rate: '', escalates_with_rent: false, notes: '' };
         },
         init() {
             this.charges.forEach((charge) => {
@@ -97,6 +99,8 @@
                 amount_mode: mode,
                 rate_per_unit: mode === 'variable' ? '' : this.draft.rate_per_unit,
                 fixed_charge: mode === 'variable' ? '' : this.draft.fixed_charge,
+                vat_rate: this.draft.vat_rate,
+                escalates_with_rent: !!this.draft.escalates_with_rent,
                 notes: String(this.draft.notes || ''),
             };
             if (this.editingIndex === null) {
@@ -117,6 +121,8 @@
                 amount_mode: String(charge.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed',
                 rate_per_unit: charge.rate_per_unit ?? '',
                 fixed_charge: charge.fixed_charge ?? '',
+                vat_rate: charge.vat_rate ?? '',
+                escalates_with_rent: !!charge.escalates_with_rent,
                 notes: String(charge.notes || ''),
             };
             const type = this.draft.charge_type;
@@ -172,6 +178,8 @@
             <input type="hidden" :name="`charge_templates[${index}][amount_mode]`" :value="charge.amount_mode || 'fixed'" />
             <input type="hidden" :name="`charge_templates[${index}][rate_per_unit]`" :value="charge.rate_per_unit" />
             <input type="hidden" :name="`charge_templates[${index}][fixed_charge]`" :value="charge.fixed_charge" />
+            <input type="hidden" :name="`charge_templates[${index}][vat_rate]`" :value="charge.vat_rate" />
+            <input type="hidden" :name="`charge_templates[${index}][escalates_with_rent]`" :value="charge.escalates_with_rent ? 1 : 0" />
             <input type="hidden" :name="`charge_templates[${index}][notes]`" :value="charge.notes" />
         </div>
     </template>
@@ -269,6 +277,20 @@
             <div x-show="draft.amount_mode !== 'variable'">
                 <label class="block text-xs font-medium text-slate-600">Fixed charge <span class="text-red-600">*</span></label>
                 <input x-model="draft.fixed_charge" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+            </div>
+            <div x-show="draft.amount_mode !== 'variable'">
+                <label class="block text-xs font-medium text-slate-600">Per area / measure (optional)</label>
+                <input x-model="draft.rate_per_unit" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">VAT rate %</label>
+                    <input x-model="draft.vat_rate" type="number" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 16" />
+                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700 sm:mt-7">
+                    <input type="checkbox" x-model="draft.escalates_with_rent" class="rounded border-slate-300" />
+                    Escalates with rent
+                </label>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600">Notes</label>

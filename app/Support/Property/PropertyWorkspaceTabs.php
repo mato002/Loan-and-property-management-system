@@ -302,7 +302,8 @@ final class PropertyWorkspaceTabs
             'communications' => [
                 ['key' => 'hub', 'label' => 'Hub', 'route' => 'property.communications.index', 'active' => ['property.communications.index']],
                 ['key' => 'notifications', 'label' => 'Notifications', 'route' => 'property.notifications', 'active' => ['property.notifications', 'property.notifications.*']],
-                ['key' => 'messages', 'label' => 'SMS / email', 'route' => 'property.communications.messages', 'active' => ['property.communications.messages', 'property.communications.messages.*']],
+                ['key' => 'sms', 'label' => 'SMS', 'route' => 'property.communications.messages', 'query' => ['channel' => 'sms'], 'active' => ['property.communications.messages', 'property.communications.messages.*']],
+                ['key' => 'emails', 'label' => 'Emails', 'route' => 'property.communications.messages', 'query' => ['channel' => 'email'], 'active' => ['property.communications.messages', 'property.communications.messages.*']],
                 ['key' => 'provider_sms', 'label' => 'Provider SMS', 'route' => 'property.communications.sms_provider', 'active' => ['property.communications.sms_provider']],
                 ['key' => 'bulk', 'label' => 'Bulk messaging', 'route' => 'property.communications.bulk', 'active' => ['property.communications.bulk', 'property.communications.bulk.*', 'property.communications.recipients']],
                 ['key' => 'templates', 'label' => 'Templates', 'route' => 'property.communications.templates', 'active' => ['property.communications.templates', 'property.communications.templates.*']],
@@ -350,7 +351,7 @@ final class PropertyWorkspaceTabs
     /**
      * Sidebar flyout items — same destinations as workspace tabs.
      *
-     * @return list<array{label: string, route: string, active: list<string>, route_params?: array<string, mixed>}>
+     * @return list<array{label: string, route: string, active: list<string>, route_params?: array<string, mixed>, query?: array<string, mixed>}>
      */
     public static function flyoutFor(string $workspaceKey, ?User $user = null): array
     {
@@ -363,6 +364,9 @@ final class PropertyWorkspaceTabs
             ];
             if (! empty($tab['route_params']) && is_array($tab['route_params'])) {
                 $item['route_params'] = $tab['route_params'];
+            }
+            if (! empty($tab['query']) && is_array($tab['query'])) {
+                $item['query'] = $tab['query'];
             }
             $items[] = $item;
         }

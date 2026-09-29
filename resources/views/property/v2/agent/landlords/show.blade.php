@@ -133,6 +133,7 @@
         @includeWhen($activeTab === 'overview', 'property.agent.landlords.partials.tab-overview')
         @includeWhen($activeTab === 'properties', 'property.agent.landlords.partials.tab-properties')
         @includeWhen($activeTab === 'units', 'property.agent.landlords.partials.tab-units')
+        @includeWhen($activeTab === 'files', 'property.agent.landlords.partials.tab-files')
         @includeWhen($activeTab === 'collections', 'property.agent.landlords.partials.tab-collections')
         @includeWhen($activeTab === 'commission', 'property.agent.landlords.partials.tab-commission')
         @includeWhen($activeTab === 'settlements', 'property.agent.landlords.partials.tab-settlements')

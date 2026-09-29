@@ -237,6 +237,8 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         $filters = $this->normalizeMessageFilters($rawFilters);
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        $channelLocked = in_array($channel, ['sms', 'email'], true);
         $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 25);
 
         $query = $this->messageLogsQuery($filters);
@@ -258,7 +260,22 @@ class PropertyCommunicationsWebController extends Controller
         $inlineCompose = $this->shouldInlineComposeContext($request);
         $quickFilterCounts = $this->quickMessageFilterCounts();
 
+        $pageTitle = match ($channel) {
+            'sms' => 'SMS',
+            'email' => 'Emails',
+            default => 'SMS / email',
+        };
+        $pageSubtitle = match ($channel) {
+            'sms' => 'Outbound SMS delivery log (tenant and staff sends).',
+            'email' => 'Outbound email outbox (tenant, landlord, and staff sends).',
+            default => 'Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications.',
+        };
+
         return property_view('property.agent.communications.messages', [
+            'pageTitle' => $pageTitle,
+            'pageSubtitle' => $pageSubtitle,
+            'channelLocked' => $channelLocked,
+            'defaultComposeChannel' => $channelLocked ? $channel : 'email',
             'stats' => $stats,
             'logs' => $logs,
             'resendActions' => $resendActions,
@@ -1546,6 +1563,13 @@ class PropertyCommunicationsWebController extends Controller
             ['label' => $failedLabel, 'value' => (string) $failed, 'hint' => $failedHint],
             ['label' => 'SMS / Email', 'value' => $sms.' / '.$email, 'hint' => 'Channel split'],
         ];
+
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        if ($channel === 'sms') {
+            $stats[3] = ['label' => 'SMS', 'value' => (string) $sms, 'hint' => 'SMS only'];
+        } elseif ($channel === 'email') {
+            $stats[3] = ['label' => 'Emails', 'value' => (string) $email, 'hint' => 'Email only'];
+        }
 
         if (trim((string) ($filters['duplicates'] ?? '')) === 'yes') {
             $stats[] = [

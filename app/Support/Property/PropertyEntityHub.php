@@ -13,6 +13,7 @@ final class PropertyEntityHub
         ['key' => 'overview', 'label' => 'Overview'],
         ['key' => 'properties', 'label' => 'Properties'],
         ['key' => 'units', 'label' => 'Units'],
+        ['key' => 'files', 'label' => 'Files'],
         ['key' => 'collections', 'label' => 'Collections'],
         ['key' => 'commission', 'label' => 'Commission'],
         ['key' => 'settlements', 'label' => 'Settlements'],

@@ -38,7 +38,7 @@
             || trim((string) old('opening_arrears_notes', $tenant->opening_arrears_notes)) !== '';
         $tenantEditArrearsItems = array_values((array) old('opening_arrears_items', (array) ($tenant->opening_arrears_items ?? [])));
     @endphp
-    <form method="post" action="{{ route('property.tenants.update', $tenant) }}" x-data="{
+    <form method="post" action="{{ route('property.tenants.update', $tenant) }}" enctype="multipart/form-data" x-data="{
         showOpeningArrearsSection: @js($tenantEditShowOpeningArrears),
         arrearsItems: @js($tenantEditArrearsItems),
         arrearsTypeLabels: @js($openingArrearsTypeOptions ?? []),
@@ -61,7 +61,7 @@
         @endphp
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Tenant details</h3>
         <div>
-            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Surname / display name</label>
             <input type="text" name="name" value="{{ old('name', $tenant->name) }}" @required($tenantRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
             @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
@@ -93,6 +93,7 @@
                 @error('risk_level')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
+        @include('property.agent.tenants.partials.tenant_record_fields')
         <button
             type="button"
             @click="showOpeningArrearsSection = !showOpeningArrearsSection"

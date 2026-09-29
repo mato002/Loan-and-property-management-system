@@ -7,6 +7,7 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
 use App\Models\PmFieldOfficer;
 use App\Models\PmLease;
+use App\Models\PmMessageLog;
 use App\Models\PmRole;
 use App\Models\Property;
 use App\Models\PropertyUnit;
@@ -334,6 +335,13 @@ class PropertyHrEmployeeService
     public function sendLoginEmail(Employee $employee, User $user, string $plainPassword): array
     {
         $role = $user->pmRoles->pluck('name')->filter()->join(', ') ?: ($employee->job_title ?: 'Staff');
+        $subject = __('Your property workspace login');
+        $logBody = __('Staff login credentials emailed to :name (:role). Temporary password omitted from this log.', [
+            'name' => $employee->full_name,
+            'role' => $role,
+        ]);
+        $actorId = $employee->agent_user_id ?: Auth::id();
+        $actorId = $actorId ? (int) $actorId : null;
 
         try {
             Mail::to($user->email)->send(new PropertyStaffCredentialsMail(
@@ -345,6 +353,14 @@ class PropertyHrEmployeeService
                 workspaceUrl: route('property.dashboard'),
             ));
 
+            $this->logOutboundEmail(
+                toAddress: (string) $user->email,
+                subject: $subject,
+                body: $logBody,
+                userId: $actorId ? (int) $actorId : null,
+                deliveryStatus: 'sent',
+            );
+
             return ['mailed' => true, 'error' => null];
         } catch (Throwable $e) {
             Log::error('property_staff_credentials_mail_failed', [
@@ -354,7 +370,48 @@ class PropertyHrEmployeeService
                 'message' => $e->getMessage(),
             ]);
 
+            $this->logOutboundEmail(
+                toAddress: (string) $user->email,
+                subject: $subject,
+                body: $logBody,
+                userId: $actorId ? (int) $actorId : null,
+                deliveryStatus: 'failed',
+                deliveryError: $e->getMessage(),
+            );
+
             return ['mailed' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    private function logOutboundEmail(
+        string $toAddress,
+        string $subject,
+        string $body,
+        ?int $userId,
+        string $deliveryStatus,
+        ?string $deliveryError = null,
+    ): void {
+        if (! Schema::hasTable('pm_message_logs') || $toAddress === '') {
+            return;
+        }
+
+        try {
+            PmMessageLog::query()->create([
+                'user_id' => $userId,
+                'channel' => 'email',
+                'to_address' => $toAddress,
+                'subject' => $subject,
+                'body' => $body,
+                'delivery_status' => $deliveryStatus,
+                'delivery_error' => $deliveryError,
+                'sent_at' => $deliveryStatus === 'sent' ? now() : null,
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('property_outbound_email_log_failed', [
+                'to' => $toAddress,
+                'subject' => $subject,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 

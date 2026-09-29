@@ -37,6 +37,13 @@
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="text-slate-900 dark:text-white font-medium">{{ $landlord->name }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Email</dt><dd class="text-slate-900 dark:text-white break-all">{{ $landlord->email ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Phone</dt><dd class="text-slate-900 dark:text-white"><x-phone-link :value="$landlord->phone" /></dd></div>
+            @php $landlordProfileCard = $landlordProfile ?? null; @endphp
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Type</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->landlordTypeLabel() ?? '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Code</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->legacy_landlord_code ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">ID / registration</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->id_number ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">KRA PIN</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->kra_pin ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Address</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->address_line ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Location</dt><dd class="text-slate-900 dark:text-white">{{ $landlordProfileCard?->location ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Ownership total</dt><dd class="text-slate-900 dark:text-white tabular-nums">{{ number_format((float) ($totals['ownership_sum'] ?? 0), 2) }}%</dd></div>
         </dl>
     </div>
