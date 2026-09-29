@@ -390,12 +390,17 @@ final class EzenTenantStatementImportService
             $isLatePayment = str_starts_with($txn, 'DBN-')
                 || preg_match('/late\s+payment\s+charge/i', $details) === 1;
             $isDebitNote = preg_match('/^DN[\w-]+$/i', $txn) === 1;
+            $isReceiptReversal = str_starts_with($txn, 'RVS-');
             $isDeposit = preg_match(
                 '/^\s*(?:rent|water|electricity|garbage)\s+deposit\s*$/i',
                 $details,
             ) === 1;
             $isOpeningBalance = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1;
-            if (! $isLatePayment && ! $isDebitNote && ! $isDeposit && ! $isOpeningBalance) {
+            if (! $isLatePayment
+                && ! $isDebitNote
+                && ! $isReceiptReversal
+                && ! $isDeposit
+                && ! $isOpeningBalance) {
                 continue;
             }
 
