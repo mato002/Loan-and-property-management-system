@@ -29,6 +29,9 @@ final class EzenTenantStatementImportService
      *     charges_parsed: int,
      *     imported: int,
      *     skipped_existing: int,
+     *     payments_parsed: int,
+     *     payments_imported: int,
+     *     payments_skipped_existing: int,
      *     skipped_unmatched: int,
      *     payments_reallocated: float,
      *     warnings: list<string>,
@@ -45,6 +48,9 @@ final class EzenTenantStatementImportService
             'charges_parsed' => 0,
             'imported' => 0,
             'skipped_existing' => 0,
+            'payments_parsed' => 0,
+            'payments_imported' => 0,
+            'payments_skipped_existing' => 0,
             'skipped_unmatched' => 0,
             'payments_reallocated' => 0.0,
             'warnings' => [],
@@ -63,19 +69,20 @@ final class EzenTenantStatementImportService
         $summary['unit'] = $parsed['unit'];
         $summary['property'] = $parsed['property'];
         $summary['charges_parsed'] = count($parsed['charges']);
+        $summary['payments_parsed'] = count($parsed['payments']);
 
-        if ($parsed['charges'] === []) {
-            $summary['warnings'][] = 'No late-payment / DBN charge lines found in the statement.';
+        $tenant = $this->resolveTenant($parsed, $agentUserId);
+        if ($tenant === null) {
+            $summary['skipped_unmatched'] = count($parsed['charges']) + count($parsed['payments']);
+            $summary['errors'][] = 'Could not match tenant '
+                .($parsed['account'] ?: $parsed['tenant'] ?: '(unknown)')
+                .' / unit '.($parsed['unit'] ?: '?');
 
             return $summary;
         }
 
-        $tenant = $this->resolveTenant($parsed, $agentUserId);
-        if ($tenant === null) {
-            $summary['skipped_unmatched'] = count($parsed['charges']);
-            $summary['errors'][] = 'Could not match tenant '
-                .($parsed['account'] ?: $parsed['tenant'] ?: '(unknown)')
-                .' / unit '.($parsed['unit'] ?: '?');
+        if ($parsed['charges'] === [] && $parsed['payments'] === []) {
+            $summary['warnings'][] = 'No supported charge or payment lines found in the statement.';
 
             return $summary;
         }
@@ -129,6 +136,48 @@ final class EzenTenantStatementImportService
             }
         }
 
+        foreach ($parsed['payments'] as $row) {
+            if ($this->findExistingPayment((int) $tenant->id, $row['txn_no'], $row['external_ref']) !== null) {
+                $summary['payments_skipped_existing']++;
+
+                continue;
+            }
+
+            if ($dryRun) {
+                $summary['payments_imported']++;
+
+                continue;
+            }
+
+            try {
+                app(PropertyPaymentSettlementService::class)->recordAdvancePayment([
+                    'pm_tenant_id' => $tenant->id,
+                    'channel' => 'ezen_import',
+                    'amount' => $row['amount'],
+                    'external_ref' => $row['external_ref'],
+                    'paid_at' => $row['date'],
+                    'meta' => [
+                        'source' => 'ezen_tenant_statement',
+                        'ezen_receipt_no' => $row['txn_no'],
+                        'ezen_ref_no' => $row['bank_ref'],
+                        'particulars' => $row['memo'],
+                        'property_code' => $parsed['property'],
+                        'unit_label' => $parsed['unit'],
+                    ],
+                ], $actor);
+                $summary['payments_imported']++;
+            } catch (QueryException $e) {
+                if ($this->findExistingPayment((int) $tenant->id, $row['txn_no'], $row['external_ref']) !== null) {
+                    $summary['payments_skipped_existing']++;
+
+                    continue;
+                }
+                $summary['errors'][] = $row['txn_no'].': '.$e->getMessage();
+            } catch (\Throwable $e) {
+                $summary['errors'][] = $row['txn_no'].': '.$e->getMessage();
+            }
+        }
+
         if (! $dryRun && $summary['imported'] > 0) {
             $summary['payments_reallocated'] = $this->allocateLeftoverPayments((int) $tenant->id);
         }
@@ -142,7 +191,8 @@ final class EzenTenantStatementImportService
      *     account: ?string,
      *     unit: ?string,
      *     property: ?string,
-     *     charges: list<array{txn_no:string,date:string,memo:string,period:?string,amount:float,type:string}>
+     *     charges: list<array{txn_no:string,date:string,memo:string,period:?string,amount:float,type:string}>,
+     *     payments: list<array{txn_no:string,date:string,memo:string,amount:float,bank_ref:string,external_ref:string}>
      * }
      */
     public function parseSpreadsheet(string $path): array
@@ -188,10 +238,12 @@ final class EzenTenantStatementImportService
         $unit = null;
         $property = null;
         $charges = [];
+        $payments = [];
         $colDate = 1;
         $colTxn = 2;
         $colDetails = 3;
         $colCharges = null;
+        $colPayments = null;
         $inLedger = false;
 
         foreach ($rows as $cells) {
@@ -251,6 +303,8 @@ final class EzenTenantStatementImportService
                         $colDetails = $idx;
                     } elseif (str_contains($upper, 'CHARGE')) {
                         $colCharges = $idx;
+                    } elseif (str_contains($upper, 'PAYMENT')) {
+                        $colPayments = $idx;
                     }
                 }
 
@@ -263,6 +317,27 @@ final class EzenTenantStatementImportService
 
             $txn = strtoupper(trim((string) ($cells[$colTxn] ?? '')));
             $details = trim((string) ($cells[$colDetails] ?? ''));
+            $chargeDate = $this->parseDate((string) ($cells[$colDate] ?? '')) ?? now()->toDateString();
+            $paymentAmount = $colPayments !== null
+                ? $this->parseMoney((string) ($cells[$colPayments] ?? ''))
+                : null;
+            if ($paymentAmount !== null && $paymentAmount > 0.009 && preg_match('/^RC[\w-]+$/i', $txn) === 1) {
+                $bankRef = '';
+                if (preg_match('/\bREF\s*NO\s*:\s*([^\/,\s]+)/i', $details, $refMatch) === 1) {
+                    $bankRef = strtoupper(trim($refMatch[1]));
+                }
+                $payments[] = [
+                    'txn_no' => $txn,
+                    'date' => $chargeDate,
+                    'memo' => $details,
+                    'amount' => $paymentAmount,
+                    'bank_ref' => $bankRef,
+                    'external_ref' => $bankRef !== '' && $bankRef !== 'CASH'
+                        ? $bankRef
+                        : 'EZEN-'.$txn,
+                ];
+            }
+
             $chargeRaw = $this->parseMoney((string) ($cells[$colCharges] ?? ''));
             if ($chargeRaw === null || $chargeRaw <= 0.009) {
                 continue;
@@ -270,13 +345,13 @@ final class EzenTenantStatementImportService
 
             $isLatePayment = str_starts_with($txn, 'DBN-')
                 || preg_match('/late\s+payment\s+charge/i', $details) === 1;
+            $isDebitNote = preg_match('/^DN[\w-]+$/i', $txn) === 1;
             $isRentDeposit = preg_match('/^\s*rent\s+deposit\s*$/i', $details) === 1;
             $isOpeningBalance = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1;
-            if (! $isLatePayment && ! $isRentDeposit && ! $isOpeningBalance) {
+            if (! $isLatePayment && ! $isDebitNote && ! $isRentDeposit && ! $isOpeningBalance) {
                 continue;
             }
 
-            $chargeDate = $this->parseDate((string) ($cells[$colDate] ?? '')) ?? now()->toDateString();
             if ($isOpeningBalance && ($txn === '' || $txn === '-')) {
                 $txn = 'OB-'.($account ?: 'TENANT').'-'.substr($chargeDate, 0, 4);
             }
@@ -304,6 +379,7 @@ final class EzenTenantStatementImportService
             'unit' => $unit,
             'property' => $property,
             'charges' => $charges,
+            'payments' => $payments,
         ];
     }
 
@@ -402,6 +478,20 @@ final class EzenTenantStatementImportService
                     ->orWhere('description', 'like', '%[EZEN '.$txnNo.']%');
                 if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
                     $query->orWhere('carry_forward_origin->ezen_invoice_no', $txnNo);
+                }
+            })
+            ->first();
+    }
+
+    private function findExistingPayment(int $tenantId, string $receiptNo, string $externalRef): ?PmPayment
+    {
+        return PmPayment::query()
+            ->withoutGlobalScopes()
+            ->where('pm_tenant_id', $tenantId)
+            ->where(function ($query) use ($receiptNo, $externalRef): void {
+                $query->where('external_ref', $externalRef);
+                if (Schema::hasColumn('pm_payments', 'meta')) {
+                    $query->orWhere('meta->ezen_receipt_no', $receiptNo);
                 }
             })
             ->first();
