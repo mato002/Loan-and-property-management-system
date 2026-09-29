@@ -313,14 +313,48 @@ final class EzenTenantStatementImportService
     private function resolveTenant(array $parsed, int $agentUserId): ?PmTenant
     {
         $query = PmTenant::query()->withoutGlobalScopes();
-        if (Schema::hasColumn('pm_tenants', 'agent_user_id') && $agentUserId > 0) {
-            $query->where(function ($q) use ($agentUserId): void {
-                $q->where('agent_user_id', $agentUserId)->orWhereNull('agent_user_id');
-            });
-        }
+        $chooseCandidate = function ($candidates) use ($parsed, $agentUserId): ?PmTenant {
+            if ($candidates->isEmpty()) {
+                return null;
+            }
+
+            if (Schema::hasColumn('pm_tenants', 'agent_user_id') && $agentUserId > 0) {
+                $owned = $candidates
+                    ->filter(fn (PmTenant $tenant): bool => (int) $tenant->agent_user_id === $agentUserId)
+                    ->values();
+                if ($owned->count() === 1) {
+                    return $owned->first();
+                }
+                if ($owned->isNotEmpty()) {
+                    $candidates = $owned;
+                }
+            }
+
+            if ($candidates->count() === 1) {
+                return $candidates->first();
+            }
+
+            $unitLabel = strtoupper(trim((string) ($parsed['unit'] ?? '')));
+            if ($unitLabel !== '') {
+                $unitMatches = $candidates
+                    ->filter(function (PmTenant $tenant) use ($unitLabel): bool {
+                        return $tenant->leases()->whereHas('units', function ($q) use ($unitLabel): void {
+                            $q->whereRaw('UPPER(label) = ?', [$unitLabel]);
+                        })->exists();
+                    })
+                    ->values();
+                if ($unitMatches->count() === 1) {
+                    return $unitMatches->first();
+                }
+            }
+
+            return null;
+        };
 
         if (! empty($parsed['account'])) {
-            $byAccount = (clone $query)->where('account_number', $parsed['account'])->first();
+            $byAccount = $chooseCandidate(
+                (clone $query)->where('account_number', $parsed['account'])->get()
+            );
             if ($byAccount) {
                 return $byAccount;
             }
@@ -331,7 +365,9 @@ final class EzenTenantStatementImportService
             return null;
         }
 
-        $exact = (clone $query)->whereRaw('UPPER(name) = ?', [strtoupper($name)])->first();
+        $exact = $chooseCandidate(
+            (clone $query)->whereRaw('UPPER(name) = ?', [strtoupper($name)])->get()
+        );
         if ($exact) {
             return $exact;
         }
@@ -348,19 +384,9 @@ final class EzenTenantStatementImportService
                 })
                 ->limit(5)
                 ->get();
-            if ($candidates->count() === 1) {
-                return $candidates->first();
-            }
-            if ($candidates->count() > 1 && ! empty($parsed['unit'])) {
-                $unitLabel = strtoupper(trim((string) $parsed['unit']));
-                $matched = $candidates->first(function (PmTenant $t) use ($unitLabel): bool {
-                    return $t->leases()->whereHas('units', function ($q) use ($unitLabel): void {
-                        $q->whereRaw('UPPER(label) = ?', [$unitLabel]);
-                    })->exists();
-                });
-                if ($matched) {
-                    return $matched;
-                }
+            $matched = $chooseCandidate($candidates);
+            if ($matched) {
+                return $matched;
             }
         }
 
