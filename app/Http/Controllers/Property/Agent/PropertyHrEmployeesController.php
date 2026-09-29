@@ -16,6 +16,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PropertyHrEmployeesController extends Controller
@@ -71,7 +72,7 @@ class PropertyHrEmployeesController extends Controller
             $query->where('agent_user_id', $filters['agent_user_id']);
         }
 
-        $employees = $query->with('fieldOfficerProfile')->get();
+        $employees = $query->with(['fieldOfficerProfile', 'user'])->get();
         $fieldOfficerCount = $employees->filter(fn (Employee $e) => $e->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($e->job_title))->count();
 
         $isFieldOfficerList = $filters['role_type'] === 'field_officer';
@@ -201,37 +202,37 @@ class PropertyHrEmployeesController extends Controller
         $agentUserId = $this->hr->resolveAgentUserIdForStore($request);
         $validated = $this->validateEmployee($request, null, $agentUserId);
         $provision = null;
+        $createdEmployee = null;
 
-        DB::transaction(function () use ($validated, $agentUserId, $request, &$provision): void {
+        DB::transaction(function () use ($validated, $agentUserId, $request, &$provision, &$createdEmployee): void {
             $employee = Employee::query()->create([
                 ...$validated['employee'],
                 'agent_user_id' => $agentUserId,
                 'employee_number' => $validated['employee']['employee_number'] ?: $this->hr->generateNextEmployeeNumber(),
             ]);
-
-            if ($validated['provision_login']) {
-                $provision = $this->hr->provisionPropertyLogin(
-                    $employee->fresh(),
-                    $validated['role_ids'],
-                    $request->user(),
-                );
-                $employee->refresh();
-            }
+            $createdEmployee = $employee;
 
             $this->hr->syncFieldOfficerFromEmployee(
                 $employee->fresh(),
                 $validated['is_field_officer'],
-                $validated['portal_access'],
+                $validated['portal_access'] || $validated['provision_login'],
             );
         });
 
+        if ($validated['provision_login'] && $createdEmployee) {
+            $provision = $this->hr->issueLoginAndEmail(
+                $createdEmployee->fresh(),
+                $request->user(),
+                $validated['role_ids'],
+            );
+        }
+
         $redirect = redirect()->route('property.hr.employees.index')->with('status', 'Employee added.');
         if ($provision !== null) {
-            $redirect->with('hr_user_created', [
-                'email' => $provision['user']->email,
-                'temporary_password' => $provision['plain_password'],
-                'name' => $provision['user']->name,
-            ])->with('status', 'Employee added and portal login created. Share the temporary password securely.');
+            $redirect->with('hr_user_created', $this->loginFlash($provision));
+            $redirect->with('status', $provision['mailed']
+                ? 'Employee added. Login was emailed to '.$provision['user']->email.'.'
+                : 'Employee added and login created, but email failed. Copy the temporary password below.');
         }
 
         return $this->redirectOrPropertyFormModalSuccess(
@@ -323,36 +324,37 @@ class PropertyHrEmployeesController extends Controller
         $validated = $this->validateEmployee($request, $employee, $agentUserId);
         $provision = null;
 
-        DB::transaction(function () use ($employee, $validated, $agentUserId, $request, &$provision): void {
+        DB::transaction(function () use ($employee, $validated, $agentUserId, $request): void {
             $employee->update([
                 ...$validated['employee'],
                 'agent_user_id' => $agentUserId,
             ]);
 
-            if ($validated['provision_login'] && ! $employee->user_id) {
-                $provision = $this->hr->provisionPropertyLogin(
-                    $employee->fresh(),
-                    $validated['role_ids'],
-                    $request->user(),
-                );
-            } elseif ($employee->user_id && $validated['role_ids'] !== []) {
+            if ($employee->user_id && $validated['role_ids'] !== []) {
                 $employee->user?->pmRoles()?->sync($validated['role_ids']);
             }
 
             $this->hr->syncFieldOfficerFromEmployee(
                 $employee->fresh(),
                 $validated['is_field_officer'],
-                $validated['portal_access'],
+                $validated['portal_access'] || $validated['provision_login'],
             );
         });
 
+        if ($validated['provision_login'] && ! $employee->fresh()->user_id) {
+            $provision = $this->hr->issueLoginAndEmail(
+                $employee->fresh(),
+                $request->user(),
+                $validated['role_ids'],
+            );
+        }
+
         $redirect = redirect()->route('property.hr.employees.show', $employee)->with('status', 'Employee updated.');
         if ($provision !== null) {
-            $redirect->with('hr_user_created', [
-                'email' => $provision['user']->email,
-                'temporary_password' => $provision['plain_password'],
-                'name' => $provision['user']->name,
-            ])->with('status', 'Employee updated and portal login created.');
+            $redirect->with('hr_user_created', $this->loginFlash($provision));
+            $redirect->with('status', $provision['mailed']
+                ? 'Employee updated. Login was emailed to '.$provision['user']->email.'.'
+                : 'Employee updated and login created, but email failed. Copy the temporary password below.');
         }
 
         return $this->redirectOrPropertyFormModalSuccess(
@@ -360,6 +362,90 @@ class PropertyHrEmployeesController extends Controller
             $redirect,
             $provision !== null ? 'Employee updated and portal login created.' : 'Employee updated.',
         );
+    }
+
+    public function sendLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $roleIds = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('role_ids', [])))));
+
+        try {
+            $result = $this->hr->issueLoginAndEmail($employee->fresh(), $request->user(), $roleIds);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not create login.');
+        }
+
+        $message = $result['mailed']
+            ? ($result['created'] ? 'Login created and emailed to ' : 'New password emailed to ').$result['user']->email.'.'
+            : 'Login saved, but email failed. Copy the temporary password below.'.($result['mail_error'] ? ' '.$result['mail_error'] : '');
+
+        return back()
+            ->with('status', $message)
+            ->with('hr_user_created', $this->loginFlash($result));
+    }
+
+    public function revokeLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        try {
+            $this->hr->revokePortalAccess($employee);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not revoke login.');
+        }
+
+        return back()->with('status', 'Portal access revoked. The employee can no longer open the property workspace.');
+    }
+
+    public function restoreLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        try {
+            $this->hr->restorePortalAccess($employee, $request->user());
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not restore login.');
+        }
+
+        return back()->with('status', 'Portal access restored.');
+    }
+
+    public function updateStatus(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $data = $request->validate([
+            'employment_status' => ['required', 'in:active,on_leave,terminated'],
+        ]);
+
+        $this->hr->setEmploymentStatus($employee, (string) $data['employment_status']);
+
+        $label = str_replace('_', ' ', (string) $data['employment_status']);
+
+        return back()->with('status', 'Employment status set to '.$label.'.');
+    }
+
+    /**
+     * @param  array{user: \App\Models\User, plain_password: string}  $provision
+     * @return array{email: string, temporary_password: string, name: string, login_url: string}
+     */
+    private function loginFlash(array $provision): array
+    {
+        return [
+            'email' => $provision['user']->email,
+            'temporary_password' => $provision['plain_password'],
+            'name' => $provision['user']->name,
+            'login_url' => route('login'),
+        ];
+    }
+
+    private function assertEmployeeInWorkspace(Request $request, Employee $employee): void
+    {
+        $allowed = $this->hr->queryForActor($request->user())->whereKey($employee->id)->exists();
+        if (! $allowed) {
+            abort(404);
+        }
     }
 
     /**

@@ -96,7 +96,7 @@
     </label>
     <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
         <input type="checkbox" name="portal_access" value="1" @checked(old('portal_access', $employeeModel?->fieldOfficerProfile?->portal_access ?? false)) class="rounded border-slate-300" />
-        Portal access (future — officer can sign in when enabled)
+        Portal access (field officer can sign in once a login is generated)
     </label>
 </div>
 
@@ -116,11 +116,11 @@
         <h4 class="text-sm font-semibold text-slate-900 dark:text-white">Property portal login</h4>
         @if ($employeeModel?->user_id)
             <p class="text-sm text-emerald-700 dark:text-emerald-300">Linked login: {{ $employeeModel->user?->email ?? $employeeModel->email }}</p>
-            <p class="text-xs text-slate-500">Update the property role below. Password reset is handled separately under Settings → Users.</p>
+            <p class="text-xs text-slate-500">Use <strong>Reset &amp; email login</strong> on the employee profile or Actions menu to send a new password.</p>
         @else
             <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="provision_login" value="1" @checked(old('provision_login')) class="rounded border-slate-300" />
-                Create property portal login (requires work email)
+                Create property portal login and email credentials (requires work email)
             </label>
             @error('provision_login')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         @endif

@@ -23,12 +23,18 @@
     @if (session('status'))
         <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ session('status') }}</div>
     @endif
+    @if (session('error'))
+        <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{{ session('error') }}</div>
+    @endif
     @if (is_array(session('hr_user_created')))
         <div class="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
             Portal login for <strong>{{ session('hr_user_created.name') }}</strong>:
             email <code>{{ session('hr_user_created.email') }}</code>,
             temporary password <code>{{ session('hr_user_created.temporary_password') }}</code>.
-            Share securely and ask them to change it after first sign-in.
+            @if (! empty(session('hr_user_created.login_url')))
+                Sign-in: <a href="{{ session('hr_user_created.login_url') }}" class="underline font-semibold" target="_blank" rel="noopener">{{ session('hr_user_created.login_url') }}</a>.
+            @endif
+            Copy this now if email delivery is delayed. They should change the password after first sign-in.
         </div>
     @endif
 

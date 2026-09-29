@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Mail\PropertyStaffCredentialsMail;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
 use App\Models\PmFieldOfficer;
@@ -17,9 +18,12 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class PropertyHrEmployeeService
 {
@@ -123,7 +127,7 @@ class PropertyHrEmployeeService
             ]);
         }
 
-        $plainPassword = Str::password(16, symbols: false);
+        $plainPassword = Str::password(12, symbols: false);
 
         $user = DB::transaction(function () use ($employee, $email, $plainPassword, $roleIds, $actor) {
             $payload = [
@@ -162,6 +166,265 @@ class PropertyHrEmployeeService
         });
 
         return ['user' => $user, 'plain_password' => $plainPassword];
+    }
+
+    /**
+     * Create or reset a property login and email the temporary password.
+     *
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string, mailed: bool, created: bool, mail_error: ?string}
+     */
+    public function issueLoginAndEmail(Employee $employee, User $actor, array $roleIds = []): array
+    {
+        $employee->loadMissing('user.pmRoles');
+        $roleIds = array_values(array_unique(array_filter(array_map('intval', $roleIds))));
+        if ($roleIds === []) {
+            $roleIds = $employee->user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
+        }
+        if ($roleIds === []) {
+            $roleIds = $this->defaultRoleIdsForEmployee($employee);
+        }
+
+        $created = false;
+        if ($employee->user_id && $employee->user) {
+            $result = $this->resetLinkedLogin($employee, $roleIds);
+        } else {
+            $existing = $this->existingUserForEmployeeEmail($employee);
+            if ($existing) {
+                $result = $this->linkAndResetExistingUser($employee, $existing, $roleIds, $actor);
+            } else {
+                $result = $this->provisionPropertyLogin($employee->fresh(), $roleIds, $actor);
+                $created = true;
+            }
+        }
+
+        $delivery = $this->sendLoginEmail($employee->fresh(), $result['user']->loadMissing('pmRoles'), $result['plain_password']);
+
+        return [
+            'user' => $result['user'],
+            'plain_password' => $result['plain_password'],
+            'mailed' => $delivery['mailed'],
+            'created' => $created,
+            'mail_error' => $delivery['error'],
+        ];
+    }
+
+    /**
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string}
+     */
+    public function resetLinkedLogin(Employee $employee, array $roleIds = []): array
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no linked portal user yet.',
+            ]);
+        }
+
+        $plainPassword = Str::password(12, symbols: false);
+        $user->forceFill([
+            'password' => Hash::make($plainPassword),
+            'property_portal_role' => $user->property_portal_role ?: 'agent',
+            'email_verified_at' => $user->email_verified_at ?? now(),
+        ])->save();
+
+        if ($roleIds !== [] && Schema::hasTable('pm_user_role')) {
+            $user->pmRoles()->sync($roleIds);
+        }
+
+        $this->approvePropertyModule($user);
+
+        return ['user' => $user->fresh(['pmRoles']), 'plain_password' => $plainPassword];
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function defaultRoleIdsForEmployee(Employee $employee): array
+    {
+        $roles = $this->propertyRolesForForm();
+        if ($roles->isEmpty()) {
+            return [];
+        }
+
+        $prefer = [];
+        if ($this->isFieldOfficerEmployee($employee)) {
+            $prefer = ['field-officer', 'field_officer', 'officer'];
+        } else {
+            $title = Str::slug((string) $employee->job_title);
+            if ($title !== '') {
+                $prefer[] = $title;
+            }
+            $prefer[] = 'staff';
+            $prefer[] = 'agent';
+        }
+
+        foreach ($prefer as $needle) {
+            $match = $roles->first(function (PmRole $role) use ($needle) {
+                return str_contains(Str::slug($role->slug), $needle)
+                    || str_contains(Str::slug($role->name), $needle);
+            });
+            if ($match) {
+                return [(int) $match->id];
+            }
+        }
+
+        return [(int) $roles->first()->id];
+    }
+
+    public function revokePortalAccess(Employee $employee): void
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no portal login to revoke.',
+            ]);
+        }
+
+        if (Schema::hasTable('user_module_accesses')) {
+            UserModuleAccess::query()->updateOrCreate(
+                ['user_id' => $user->id, 'module' => 'property'],
+                ['status' => UserModuleAccess::STATUS_REVOKED],
+            );
+        }
+
+        if ($employee->fieldOfficerProfile) {
+            $employee->fieldOfficerProfile->update(['portal_access' => false]);
+        }
+    }
+
+    public function restorePortalAccess(Employee $employee, User $actor): void
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no portal login to restore.',
+            ]);
+        }
+
+        $this->approvePropertyModule($user, $actor);
+
+        if ($employee->fieldOfficerProfile) {
+            $employee->fieldOfficerProfile->update(['portal_access' => true]);
+        }
+    }
+
+    public function setEmploymentStatus(Employee $employee, string $status): Employee
+    {
+        $status = Str::lower(trim($status));
+        if (! in_array($status, ['active', 'on_leave', 'terminated'], true)) {
+            throw ValidationException::withMessages([
+                'employment_status' => 'Choose active, on leave, or terminated.',
+            ]);
+        }
+
+        $employee->update(['employment_status' => $status]);
+
+        if ($status === 'terminated' && $employee->user) {
+            $this->revokePortalAccess($employee);
+        }
+
+        return $employee->fresh();
+    }
+
+    /**
+     * @return array{mailed: bool, error: ?string}
+     */
+    public function sendLoginEmail(Employee $employee, User $user, string $plainPassword): array
+    {
+        $role = $user->pmRoles->pluck('name')->filter()->join(', ') ?: ($employee->job_title ?: 'Staff');
+
+        try {
+            Mail::to($user->email)->send(new PropertyStaffCredentialsMail(
+                employeeName: $employee->full_name,
+                role: $role,
+                email: $user->email,
+                plainPassword: $plainPassword,
+                loginUrl: route('login'),
+                workspaceUrl: route('property.dashboard'),
+            ));
+
+            return ['mailed' => true, 'error' => null];
+        } catch (Throwable $e) {
+            Log::error('property_staff_credentials_mail_failed', [
+                'employee_id' => $employee->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['mailed' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    private function existingUserForEmployeeEmail(Employee $employee): ?User
+    {
+        $email = Str::lower(trim((string) ($employee->email ?? '')));
+        if ($email === '') {
+            return null;
+        }
+
+        return User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+    }
+
+    /**
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string}
+     */
+    private function linkAndResetExistingUser(Employee $employee, User $user, array $roleIds, User $actor): array
+    {
+        $taken = Employee::query()
+            ->where('user_id', $user->id)
+            ->where('id', '!=', $employee->id)
+            ->exists();
+        if ($taken) {
+            throw ValidationException::withMessages([
+                'email' => 'This email already belongs to another employee login.',
+            ]);
+        }
+
+        $portal = (string) ($user->property_portal_role ?? '');
+        if (in_array($portal, ['landlord', 'tenant'], true)) {
+            throw ValidationException::withMessages([
+                'email' => 'This email is already used by a landlord or tenant portal account.',
+            ]);
+        }
+
+        $plainPassword = Str::password(12, symbols: false);
+        DB::transaction(function () use ($employee, $user, $plainPassword, $roleIds, $actor): void {
+            $user->forceFill([
+                'name' => $employee->full_name,
+                'password' => Hash::make($plainPassword),
+                'property_portal_role' => 'agent',
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ])->save();
+
+            if ($roleIds !== []) {
+                $user->pmRoles()->sync($roleIds);
+            }
+
+            $this->approvePropertyModule($user, $actor);
+            $employee->update(['user_id' => $user->id]);
+        });
+
+        return ['user' => $user->fresh(['pmRoles']), 'plain_password' => $plainPassword];
+    }
+
+    private function approvePropertyModule(User $user, ?User $actor = null): void
+    {
+        if (! Schema::hasTable('user_module_accesses')) {
+            return;
+        }
+
+        UserModuleAccess::query()->updateOrCreate(
+            ['user_id' => $user->id, 'module' => 'property'],
+            [
+                'status' => UserModuleAccess::STATUS_APPROVED,
+                'approved_by' => $actor?->id,
+                'approved_at' => now(),
+            ],
+        );
     }
 
     public function queryForActor(?User $user = null): Builder

@@ -329,6 +329,10 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'show'])->whereNumber('employee')->name('hr.employees.show');
     Route::get('/hr/employees/{employee}/edit', [PropertyHrEmployeesController::class, 'edit'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.edit');
     Route::put('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'update'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.update');
+    Route::post('/hr/employees/{employee}/send-login', [PropertyHrEmployeesController::class, 'sendLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.send_login');
+    Route::post('/hr/employees/{employee}/revoke-login', [PropertyHrEmployeesController::class, 'revokeLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.revoke_login');
+    Route::post('/hr/employees/{employee}/restore-login', [PropertyHrEmployeesController::class, 'restoreLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.restore_login');
+    Route::post('/hr/employees/{employee}/status', [PropertyHrEmployeesController::class, 'updateStatus'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.status');
     Route::post('/hr/employees/{employee}/properties/assign', [PropertyHrEmployeesController::class, 'assignProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.assign');
     Route::post('/hr/employees/{employee}/properties/detach', [PropertyHrEmployeesController::class, 'detachProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.detach');
     Route::get('/hr/leaves', [PropertyHrLeavesController::class, 'index'])->name('hr.leaves.index');

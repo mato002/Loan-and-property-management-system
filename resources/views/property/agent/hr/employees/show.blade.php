@@ -25,6 +25,12 @@
     <x-slot name="actions">
         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
             <a href="{{ route('property.hr.employees.edit', $employee, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Edit employee</a>
+            @if (trim((string) ($employee->email ?? '')) !== '')
+                <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" data-swal-title="{{ $employee->user_id ? 'Reset and email login?' : 'Generate and email login?' }}" data-swal-confirm="A temporary password will be emailed to {{ $employee->email }}." data-swal-confirm-text="Yes, send login">
+                    @csrf
+                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">{{ $employee->user_id ? 'Reset & email login' : 'Generate & email login' }}</button>
+                </form>
+            @endif
             <a href="{{ route('property.hr.leaves.create', ['employee_id' => $employee->id], false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Request leave</a>
         @endif
         <a href="{{ route('property.accounting.payroll', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Payroll</a>
@@ -40,6 +46,7 @@
         <div class="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
             Portal login: email <code>{{ session('hr_user_created.email') }}</code>,
             temporary password <code>{{ session('hr_user_created.temporary_password') }}</code>.
+            Copy this now if email is delayed. They should change the password after first sign-in.
         </div>
     @endif
 
@@ -85,8 +92,31 @@
                         @if ($employee->user)
                             <p><span class="text-slate-500">Login email:</span> {{ $employee->user->email }}</p>
                             <p><span class="text-slate-500">Roles:</span> {{ $employee->user->pmRoles->pluck('name')->join(', ') ?: '—' }}</p>
+                            <p class="text-xs text-slate-500">They sign in at the main staff login, then open the property workspace. Assigned roles control what they can do.</p>
+                            @if ($canManage ?? false)
+                                <div class="flex flex-wrap gap-2 pt-2">
+                                    <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top">
+                                        @csrf
+                                        <button type="submit" class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50">Reset &amp; email login</button>
+                                    </form>
+                                    <form method="post" action="{{ route('property.hr.employees.revoke_login', $employee) }}" data-turbo-frame="_top" data-swal-title="Revoke portal access?" data-swal-confirm="They will not be able to sign in until you restore access." data-swal-confirm-text="Revoke">
+                                        @csrf
+                                        <button type="submit" class="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50">Revoke access</button>
+                                    </form>
+                                    <form method="post" action="{{ route('property.hr.employees.restore_login', $employee) }}" data-turbo-frame="_top">
+                                        @csrf
+                                        <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Restore access</button>
+                                    </form>
+                                </div>
+                            @endif
                         @else
-                            <p class="text-slate-500">No portal login yet. Edit employee and enable portal login with property roles.</p>
+                            <p class="text-slate-500">No portal login yet. Add a work email, then use <strong>Generate &amp; email login</strong>.</p>
+                            @if (($canManage ?? false) && trim((string) ($employee->email ?? '')) !== '')
+                                <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" class="pt-2">
+                                    @csrf
+                                    <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Generate &amp; email login</button>
+                                </form>
+                            @endif
                         @endif
                     </div>
                 </div>
