@@ -4,6 +4,7 @@
     <x-property.page
         title="Conversation Inbox"
         subtitle="Inbound and outbound tenant communication threads."
+        workspace="communications"
     >
         <div class="grid gap-4 lg:grid-cols-2">
             @forelse($rows as $conversation)

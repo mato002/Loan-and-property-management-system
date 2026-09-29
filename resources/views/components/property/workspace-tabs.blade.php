@@ -11,6 +11,7 @@
                     <a
                         href="{{ \App\Support\Property\PropertyWorkspaceTabs::tabUrl($tab) }}"
                         data-turbo-frame="property-main"
+                        data-turbo-prefetch="true"
                         data-property-nav="{{ implode('|', $tab['active'] ?? []) }}"
                         data-property-workspace-tab="{{ $tab['key'] ?? '' }}"
                         @if ($active) aria-current="page" @endif

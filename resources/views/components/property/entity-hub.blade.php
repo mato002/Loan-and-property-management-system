@@ -24,6 +24,7 @@
             <a
                 href="{{ $tabUrl($tab['key']) }}"
                 data-turbo-frame="property-main"
+                data-turbo-prefetch="true"
                 @if ($activeTab === $tab['key']) aria-current="page" @endif
                 class="snap-start shrink-0 inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs font-semibold border border-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 aria-[current=page]:bg-indigo-600 aria-[current=page]:text-white aria-[current=page]:shadow-sm"
             >

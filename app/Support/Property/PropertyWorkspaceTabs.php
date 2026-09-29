@@ -142,7 +142,7 @@ final class PropertyWorkspaceTabs
     {
         $routeName = (string) $tab['route'];
         $routeParams = self::routeParamsWithContext($tab['route_params'] ?? [], $routeName);
-        $url = route($routeName, $routeParams);
+        $url = route($routeName, $routeParams, false);
         $query = $tab['query'] ?? [];
         if ($query !== []) {
             $url .= (str_contains($url, '?') ? '&' : '?').http_build_query($query);
