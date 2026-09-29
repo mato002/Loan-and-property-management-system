@@ -29,6 +29,8 @@ final class PropertyBulkRegisterImportService
 
     public const TYPE_LANDLORD_LEDGER = 'landlord_ledger';
 
+    public const TYPE_LANDLORD_INVOICES = 'landlord_invoices';
+
     public const TYPE_STATEMENT_BALANCES = 'statement_balances';
 
     /**
@@ -78,6 +80,11 @@ final class PropertyBulkRegisterImportService
                 'label' => 'Landlord / property ledger',
                 'description' => 'Property account statement into take-on balances and landlord ledger lines.',
                 'accept' => '.csv,.txt',
+            ],
+            self::TYPE_LANDLORD_INVOICES => [
+                'label' => 'Landlord invoices (management fees)',
+                'description' => 'EZEN Landlords Invoices listing (management fees by property and month) into the landlord-invoice register. Accepts a JSON array of rows.',
+                'accept' => '.json',
             ],
             self::TYPE_STATEMENT_BALANCES => [
                 'label' => 'Tenant statement balances (B/F)',
@@ -220,6 +227,13 @@ final class PropertyBulkRegisterImportService
                 $agentUserId,
                 $actor,
                 $dryRun,
+            ),
+            self::TYPE_LANDLORD_INVOICES => app(EzenLandlordInvoicesImportService::class)->importFromJsonPath(
+                $path,
+                $agentUserId,
+                $dryRun,
+                (bool) ($options['post_fees'] ?? false),
+                $actor->id,
             ),
             self::TYPE_STATEMENT_BALANCES => $this->importStatementBalances(
                 $path,
