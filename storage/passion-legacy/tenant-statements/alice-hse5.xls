@@ -1,0 +1,1223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">
+	<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+		<Author/>
+		<Title/>
+		<Description/>
+		<Subject/>
+	</DocumentProperties>
+	<Styles>
+		<Style ss:ID="HyperlinkId" ss:Name="Hyperlink">
+			<Font ss:Color="#0000ff"/>
+		</Style>
+		<Style ss:ID="1">
+			<NumberFormat ss:Format="yyyy-M-d HH:mm:ss AM/PM"/>
+		</Style>
+		<Style ss:ID="25">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="26">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="37">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="31">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="43">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="44">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+			<NumberFormat ss:Format="#,##0;(#,##0)"/>
+		</Style>
+		<Style ss:ID="35">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="38">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="32">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="33">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="47">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Italic="1" ss:Color="#7f7f7f"/>
+		</Style>
+		<Style ss:ID="36">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="39">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="21">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="45">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="27">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#bfbfbf" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="34">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="28">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#bfbfbf" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="29">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#bfbfbf" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="30">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#bfbfbf" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="41">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="42">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+			<NumberFormat ss:Format="#,##0;(#,##0)"/>
+		</Style>
+		<Style ss:ID="20">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.5" ss:Bold="1" ss:Underline="Single" ss:Color="#ff0000"/>
+		</Style>
+		<Style ss:ID="46">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="23">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.5" ss:Bold="1" ss:Color="#ff0000"/>
+		</Style>
+		<Style ss:ID="24">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#ffffff" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="40">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="22">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+	</Styles>
+	<Names>
+		<NamedRange ss:Name="__bookmark_2" ss:RefersTo="Report!R47C1:R48C16"/>
+		<NamedRange ss:Name="__bookmark_1" ss:RefersTo="Report!R8C1:R45C14"/>
+	</Names>
+
+<Worksheet ss:Name="Report">
+	<ss:Table>
+		<ss:Column ss:Width="56.832" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="68.224" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="15.744" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="26.88" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="57.6" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="84.48" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="20.224" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="64.256" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="9.728" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="32.512" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="41.472" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="0.768" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="8.448" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="70.4" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="1.664" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="3.968" ss:AutoFitWidth="0"/>
+		<Row ss:AutoFitHeight="0" ss:Height="26.25">
+			<Cell ss:Index="1" ss:StyleID="20" ss:MergeAcross="5">
+				<Data ss:Type="String">PASSION SHELTAZ INVESTMENTS</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="23" ss:MergeAcross="9">
+				<Data ss:Type="String">TENANT/RESIDENT STATEMENT OF ACCOUNT</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="5">
+				<Data ss:Type="String">TENANT/RESIDENT DETAILS</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="24" ss:MergeAcross="6">
+				<Data ss:Type="String">PROPERTY</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="24" ss:MergeAcross="2">
+				<Data ss:Type="String">UNIT/SPACE</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="22" ss:MergeAcross="5">
+				<Data ss:Type="String">ALICE WANJIKU</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25" ss:MergeAcross="6">
+				<Data ss:Type="String">[D00023A] DR. MURAGE (LUGAS APARTMENTS)</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="25" ss:MergeAcross="2">
+				<Data ss:Type="String">HSE 5</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="22" ss:MergeAcross="5" ss:MergeDown="2">
+				<Data ss:Type="String">TNT001080</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="24" ss:MergeAcross="3">
+				<Data ss:Type="String">STATEMENT PERIOD</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="24" ss:MergeAcross="5">
+				<Data ss:Type="String">STATEMENT DATE</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="7" ss:StyleID="25" ss:MergeAcross="3">
+				<Data ss:Type="String">01/01/2026 - 31/12/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25" ss:MergeAcross="5">
+				<Data ss:Type="String">Sep 29, 2026, 12:35 PM</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="7" ss:StyleID="26" ss:MergeAcross="9"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="26" ss:MergeAcross="15"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="29">
+				<Data ss:Type="String">DATE</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="29">
+				<Data ss:Type="String">TXN NO.</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="29" ss:MergeAcross="4">
+				<Data ss:Type="String">DETAILS</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="30" ss:MergeAcross="1">
+				<Data ss:Type="String">CHARGES</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="30" ss:MergeAcross="1">
+				<Data ss:Type="String">PAYMENTS</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="30" ss:MergeAcross="2">
+				<Data ss:Type="String">R. BALANCE</Data>
+			</Cell>
+			<Cell ss:Index="15" ss:StyleID="26" ss:MergeAcross="1" ss:MergeDown="37"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV32795</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV32450</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jan/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV32451</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Jan/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">07/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC20895</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jan/2026,GARBAGE for Jan/2026,WATER Meter Reading 1.00 units/BNK DATE: 07/01/2026/REF NO: UA7C7311UX</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV33172</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Feb/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV33173</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Feb/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV33542</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">04/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC21346</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Feb/2026,GARBAGE for Feb/2026,WATER Meter Reading 1.00 units/BNK DATE: 04/02/2026/REF NO: UB4C75KY1I</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/03/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV33881</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Mar/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/03/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV33882</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Mar/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/03/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV34254</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">05/03/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC21852</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Mar/2026,GARBAGE for Mar/2026,WATER Meter Reading 1.00 units/BNK DATE: 05/03/2026/REF NO: UC5C78A8FB</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV34933</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV34608</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Apr/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV34609</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Apr/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">09/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC22428</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Apr/2026, GARBAGE for Apr/2026, WATER Meter Reading 1.00 units/BNK DATE: 06/04/2026/REF NO: UD6L7BOQYA</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,300</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 50</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV35283</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for May/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,050</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV35284</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for May/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV35658</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,400</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">11/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC23024</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Apr/2026,Rent for May/2026,GARBAGE for May/2026,WATER Meter Reading 1.00 units/BNK DATE: 01/05/2026/REF NO: UE1L72LW8G</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,400</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV35953</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jun/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV35954</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Jun/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV36385</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">06/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC23344</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jun/2026,GARBAGE for Jun/2026,WATER Meter Reading 1.00 units/BNK DATE: 06/06/2026/REF NO: UF6C76KMU8</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/07/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV37204</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/07/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV36648</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jul/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/07/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV36649</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Jul/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">13/07/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC24069</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Jul/2026,GARBAGE for Jul/2026,WATER Meter Reading 1.00 units/BNK DATE: 12/07/2026/REF NO: UGCC7AQEQ9</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/08/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV37461</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Aug/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/08/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV37462</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Aug/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">10/08/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC24450</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Aug/2026,GARBAGE for Aug/2026/BNK DATE: 08/08/2026/REF NO: UH8C71UR52</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/09/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV38131</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Sep/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/09/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV38132</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE for Sep/2026</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 150</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,150</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">01/09/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">INV38621</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">WATER Meter Reading 1.00 units</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 200</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32">
+				<Data ss:Type="String">07/09/2026</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="32">
+				<Data ss:Type="String">RC24905</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="32" ss:MergeAcross="4">
+				<Data ss:Type="String">Rent for Sep/2026,GARBAGE for Sep/2026,WATER Meter Reading 1.00 units/BNK DATE: 07/09/2026/REF NO: UI7C7597JN</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="33" ss:MergeAcross="1">
+				<Data ss:Type="String"> 7,350</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="33" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="34" ss:MergeAcross="6"/>
+			<Cell ss:Index="8" ss:StyleID="36" ss:MergeAcross="1">
+				<Data ss:Type="String"> 65,950</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="36" ss:MergeAcross="1">
+				<Data ss:Type="String"> 65,950</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="36" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="37" ss:MergeAcross="6"/>
+			<Cell ss:Index="8" ss:StyleID="39" ss:MergeAcross="3">
+				<Data ss:Type="String">BALANCE DUE</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="39" ss:MergeAcross="2">
+				<Data ss:Type="String"> -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="40" ss:MergeAcross="15">
+				<Data ss:Type="String">AGED ANALYSIS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="29" ss:MergeAcross="2">
+				<Data ss:Type="String">LAST PAYMENT DATE</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="30" ss:MergeAcross="1">
+				<Data ss:Type="String">TOTAL DUE</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="30">
+				<Data ss:Type="String">0-30 DAYS</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="30" ss:MergeAcross="1">
+				<Data ss:Type="String">31-60 DAYS</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="30" ss:MergeAcross="3">
+				<Data ss:Type="String">61-90 DAYS</Data>
+			</Cell>
+			<Cell ss:Index="13" ss:StyleID="30" ss:MergeAcross="3">
+				<Data ss:Type="String">OVER 90 DAYS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">22D(s) (07/09/2026)</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="44" ss:MergeAcross="1">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="44">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="44" ss:MergeAcross="1">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="44" ss:MergeAcross="3">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="13" ss:StyleID="44" ss:MergeAcross="3">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="26" ss:MergeAcross="15"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="45" ss:MergeAcross="14">
+				<Data ss:Type="String">THIS STATEMENT IS SUBJECT TO CORRECTIONS, IF ANY.</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="46" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="47" ss:MergeAcross="10">
+				<Data ss:Type="String">POWERED BY EZEN</Data>
+			</Cell>
+		</Row>
+	</ss:Table>
+	<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+		<PageSetup>
+			<PageMargins x:Bottom="0.25" x:Left="0.25" x:Right="0.25" x:Top="0.25"/>
+		</PageSetup>
+		<Print>
+			<PaperSizeIndex>9</PaperSizeIndex>
+		</Print>
+	</WorksheetOptions>
+</Worksheet>
+</Workbook>

@@ -137,10 +137,45 @@ final class EzenTenantStatementImportService
         }
 
         foreach ($parsed['payments'] as $row) {
-            if ($this->findExistingPayment((int) $tenant->id, $row['txn_no'], $row['external_ref']) !== null) {
-                $summary['payments_skipped_existing']++;
+            $existingPayment = $this->findExistingPayment(
+                (int) $tenant->id,
+                $row['txn_no'],
+                $row['external_ref'],
+            );
+            $paymentAmount = (float) $row['amount'];
+            $externalRef = $row['external_ref'];
+            $isAmountRepair = false;
+            if ($existingPayment !== null) {
+                $recordedAmount = (float) PmPayment::query()
+                    ->withoutGlobalScopes()
+                    ->where('pm_tenant_id', $tenant->id)
+                    ->where(function ($query) use ($row): void {
+                        $query->whereIn('external_ref', [
+                            $row['external_ref'],
+                            $row['external_ref'].'-STMT-ADJ',
+                        ]);
+                        if (Schema::hasColumn('pm_payments', 'meta')) {
+                            $query->orWhere('meta->ezen_receipt_no', $row['txn_no']);
+                        }
+                    })
+                    ->sum('amount');
+                $difference = round($paymentAmount - $recordedAmount, 2);
+                // SpreadsheetML displays whole shillings in many exports while
+                // imported register rows retain cents. Do not "repair" display
+                // rounding; only restore a materially short receipt.
+                if ($difference <= 1.00) {
+                    if ($difference < -1.00) {
+                        $summary['warnings'][] = $row['txn_no'].' is '
+                            .number_format(abs($difference), 2)
+                            .' lower than payments already recorded; existing payments were not reduced.';
+                    }
+                    $summary['payments_skipped_existing']++;
 
-                continue;
+                    continue;
+                }
+                $paymentAmount = $difference;
+                $externalRef .= '-STMT-ADJ';
+                $isAmountRepair = true;
             }
 
             if ($dryRun) {
@@ -153,14 +188,17 @@ final class EzenTenantStatementImportService
                 app(PropertyPaymentSettlementService::class)->recordAdvancePayment([
                     'pm_tenant_id' => $tenant->id,
                     'channel' => 'ezen_import',
-                    'amount' => $row['amount'],
-                    'external_ref' => $row['external_ref'],
+                    'amount' => $paymentAmount,
+                    'external_ref' => $externalRef,
                     'paid_at' => $row['date'],
                     'meta' => [
-                        'source' => 'ezen_tenant_statement',
+                        'source' => $isAmountRepair
+                            ? 'ezen_tenant_statement_amount_repair'
+                            : 'ezen_tenant_statement',
                         'ezen_receipt_no' => $row['txn_no'],
                         'ezen_ref_no' => $row['bank_ref'],
                         'particulars' => $row['memo'],
+                        'statement_amount' => $row['amount'],
                         'property_code' => $parsed['property'],
                         'unit_label' => $parsed['unit'],
                     ],
@@ -321,7 +359,13 @@ final class EzenTenantStatementImportService
             $paymentAmount = $colPayments !== null
                 ? $this->parseMoney((string) ($cells[$colPayments] ?? ''))
                 : null;
-            if ($paymentAmount !== null && $paymentAmount > 0.009 && preg_match('/^RC[\w-]+$/i', $txn) === 1) {
+            $isReceipt = preg_match('/^RC[\w-]+$/i', $txn) === 1;
+            $isOpeningCredit = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1
+                && ($txn === '' || $txn === '-');
+            if ($paymentAmount !== null && $paymentAmount > 0.009 && ($isReceipt || $isOpeningCredit)) {
+                if ($isOpeningCredit) {
+                    $txn = 'OB-CREDIT-'.($account ?: 'TENANT').'-'.substr($chargeDate, 0, 4);
+                }
                 $bankRef = '';
                 if (preg_match('/\bREF\s*NO\s*:\s*([^\/,\s]+)/i', $details, $refMatch) === 1) {
                     $bankRef = strtoupper(trim($refMatch[1]));
@@ -346,9 +390,12 @@ final class EzenTenantStatementImportService
             $isLatePayment = str_starts_with($txn, 'DBN-')
                 || preg_match('/late\s+payment\s+charge/i', $details) === 1;
             $isDebitNote = preg_match('/^DN[\w-]+$/i', $txn) === 1;
-            $isRentDeposit = preg_match('/^\s*rent\s+deposit\s*$/i', $details) === 1;
+            $isDeposit = preg_match(
+                '/^\s*(?:rent|water|electricity|garbage)\s+deposit\s*$/i',
+                $details,
+            ) === 1;
             $isOpeningBalance = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1;
-            if (! $isLatePayment && ! $isDebitNote && ! $isRentDeposit && ! $isOpeningBalance) {
+            if (! $isLatePayment && ! $isDebitNote && ! $isDeposit && ! $isOpeningBalance) {
                 continue;
             }
 
