@@ -366,9 +366,10 @@ final class EzenTenantStatementImportService
                 ? $this->parseMoney((string) ($cells[$colPayments] ?? ''))
                 : null;
             $isReceipt = preg_match('/^RC[\w-]+$/i', $txn) === 1;
+            $isCreditNote = preg_match('/^CN[\w-]+$/i', $txn) === 1;
             $isOpeningCredit = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1
                 && ($txn === '' || $txn === '-');
-            if ($paymentAmount !== null && $paymentAmount > 0.009 && ($isReceipt || $isOpeningCredit)) {
+            if ($paymentAmount !== null && $paymentAmount > 0.009 && ($isReceipt || $isCreditNote || $isOpeningCredit)) {
                 if ($isOpeningCredit) {
                     $txn = 'OB-CREDIT-'.($account ?: 'TENANT').'-'.substr($chargeDate, 0, 4);
                 }

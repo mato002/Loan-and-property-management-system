@@ -68,7 +68,8 @@ php artisan property:import-ezen-tenant-statement path/to/tenant_stmt.xls \
 
 This creates `late_payment` invoices from `DBN-*` lines, restores statement-only
 rent-deposit and opening-balance charges, imports missing monthly INV rent/garbage
-lines that ERP has not billed yet, and applies any leftover payment remainder.
+lines that ERP has not billed yet, applies `CN*` credit notes as receipts, and
+applies any leftover payment remainder.
 Re-running is safe because EZEN transaction numbers (and rent/garbage period) are
 deduplicated. Do not mix Phase 6c B/F with this mode.
 
