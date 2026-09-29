@@ -193,7 +193,8 @@ class LoanBookLoanUpdateService
             default => ($unit === 'daily' ? $value / 365 : ($unit === 'weekly' ? $value / 52 : $value / 12)),
         };
 
-        return round($principal * ($ratePercent / 100) * max(0.0, $periodCount), 2);
+        // Nudge binary float dust (for example 5999.999999999) onto the cent boundary before rounding.
+        return round(($principal * ($ratePercent / 100) * max(0.0, $periodCount)) + 1.0e-8, 2);
     }
 }
 

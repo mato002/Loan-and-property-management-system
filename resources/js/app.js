@@ -18,6 +18,7 @@ import './property-bulk-actions';
 import './lease-form-modals';
 import './property-portal-turbo';
 import './loan-portal-turbo';
+import './loan-form-modal';
 import './staff-module-switch';
 import './property-quick-create-select';
 import './property-searchable-select';

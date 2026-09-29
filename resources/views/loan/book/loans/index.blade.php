@@ -481,12 +481,12 @@
                                             @endif
                                             <a href="{{ route('loan.payments.unposted', ['q' => $loan->loan_number]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Unposted</a>
                                             @if ($canSyncSchedule)
-                                                <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync term/rate period from linked application and recompute interest snapshot?">
+                                                <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync the term from the linked application, keep this product's interest period, and recompute the balance?">
                                                     @csrf
                                                     <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-amber-700 hover:bg-slate-50">Sync schedule</button>
                                                 </form>
                                             @endif
-                                            <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" data-swal-confirm="Rebuild repayment snapshot from disbursements and processed payments?">
+                                            <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" data-swal-confirm="Rebuild this loan from disbursements and payments, using the product interest period (monthly stays monthly)?">
                                                 @csrf
                                                 <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Rebuild</button>
                                             </form>
@@ -566,14 +566,14 @@
                     'bulk-sync-schedules-btn',
                     'bulk-sync-schedules-form',
                     'Sync all schedules?',
-                    'Sync schedule from linked applications for :count eligible loans? This recalculates interest snapshots and may take a while.',
+                    'Sync the term from each linked application for :count loans, keep each product interest period (a monthly product stays monthly), and recompute balances. This may take a while.',
                     'Yes, sync now'
                 );
                 bindBulkConfirm(
                     'bulk-rebuild-snapshots-btn',
                     'bulk-rebuild-snapshots-form',
                     'Rebuild all snapshots?',
-                    'Replay posted collections on :count loans in your portfolio and fix balances only where they differ from disbursements + payments. Loans that already match are left unchanged.',
+                    'Replay posted collections on :count loans and recompute balances from each product interest period, so a monthly product is not switched to per year. Loans that already match are left unchanged.',
                     'Yes, rebuild now'
                 );
             })();

@@ -35,6 +35,9 @@ class LoanBookLoansController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
+    /** @var array<string, string>|null */
+    private ?array $catalogInterestRatePeriodByProduct = null;
+
     public function __construct(
         private readonly LoanBookLoanUpdateService $loanMath,
         private readonly BorrowerClassificationService $borrowerClassifier
@@ -1126,10 +1129,13 @@ class LoanBookLoansController extends Controller
             'maturity_date',
         ]);
         if ($interestInputsChanged && ! $hadProcessedPayments) {
-            $principalOutstanding = max(0.0, (float) $loan_book_loan->principal_outstanding);
+            // No repayments yet: interest is on the booked principal. A drifted outstanding
+            // (for example 19999.99 on a 20000 loan) would leave the repayable amount one cent short.
+            $principalOutstanding = max(0.0, (float) $loan_book_loan->principal);
             if ($principalOutstanding <= 0.0) {
-                $principalOutstanding = max(0.0, (float) $loan_book_loan->principal);
+                $principalOutstanding = max(0.0, (float) $loan_book_loan->principal_outstanding);
             }
+            $loan_book_loan->principal_outstanding = round($principalOutstanding, 2);
             $loan_book_loan->interest_outstanding = $this->loanMath->estimateInterestForLoan(
                 $loan_book_loan,
                 $principalOutstanding,
@@ -1338,6 +1344,35 @@ class LoanBookLoansController extends Controller
     }
 
     /**
+     * Product "Interest applies" (daily / weekly / monthly / annual). Empty when the product does not set one.
+     * A missing value is not treated as yearly — the loan column default is already annual, and using that
+     * default here is what turned monthly products into per-year loans on rebuild and schedule sync.
+     */
+    private function catalogInterestRatePeriod(string $productName): ?string
+    {
+        $key = strtolower(trim($productName));
+        if ($key === '') {
+            return null;
+        }
+
+        if ($this->catalogInterestRatePeriodByProduct === null) {
+            $this->catalogInterestRatePeriodByProduct = [];
+            if (Schema::hasTable('loan_products') && Schema::hasColumn('loan_products', 'default_interest_rate_period')) {
+                foreach (LoanProduct::query()->get(['name', 'default_interest_rate_period']) as $product) {
+                    $name = strtolower(trim((string) $product->name));
+                    $period = strtolower(trim((string) $product->default_interest_rate_period));
+                    if ($name === '' || ! in_array($period, ['term', 'daily', 'weekly', 'monthly', 'annual'], true)) {
+                        continue;
+                    }
+                    $this->catalogInterestRatePeriodByProduct[$name] = $period;
+                }
+            }
+        }
+
+        return $this->catalogInterestRatePeriodByProduct[$key] ?? null;
+    }
+
+    /**
      * Overlay rate, term, and maturity from the selected loan product so booked loans stay on catalog terms.
      *
      * @param  array<string, mixed>  $validated
@@ -1439,7 +1474,9 @@ class LoanBookLoansController extends Controller
                         'default_interest_rate_type' => $hasDefaultRateType ? (string) ($product->default_interest_rate_type ?? 'percent') : 'percent',
                         'default_term_months' => max(0, (int) ($product->default_term_months ?? 0)),
                         'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
-                        'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
+                        'default_interest_rate_period' => $hasDefaultRatePeriod
+                            ? strtolower(trim((string) ($product->default_interest_rate_period ?? '')))
+                            : 'annual',
                     ],
                 ];
             })
@@ -1594,23 +1631,35 @@ class LoanBookLoansController extends Controller
             return false;
         }
 
+        $originalTermValue = (int) ($loan->term_value ?? 0);
+        $originalTermUnit = strtolower((string) ($loan->term_unit ?? ''));
+        $originalRatePeriod = strtolower((string) ($loan->interest_rate_period ?? ''));
+        $originalPrincipalOutstanding = round((float) ($loan->principal_outstanding ?? 0), 2);
+        $originalInterestOutstanding = round((float) ($loan->interest_outstanding ?? 0), 2);
+        $originalBalance = round((float) ($loan->balance ?? 0), 2);
+        $originalStatus = (string) $loan->status;
+
         $termValue = $app->term_value !== null ? (int) $app->term_value : (int) ($loan->term_value ?? 12);
         $termUnit = strtolower(trim((string) ($app->term_unit ?? $loan->term_unit ?? 'monthly')));
-        $ratePeriod = strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
+        // Product interest period wins. Linked applications often still say "per year" because that
+        // column defaults to annual, which overwrote a monthly product and left the balance wrong.
+        $catalogPeriod = $this->catalogInterestRatePeriod((string) ($loan->product_name ?? ''));
+        $ratePeriod = $catalogPeriod
+            ?? strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
 
+        $hasProcessedRepayments = $loan->processedRepayments()->exists();
+        $bookedPrincipal = max(0.0, (float) $loan->principal);
         $principalOutstanding = max(0.0, (float) $loan->principal_outstanding);
-        // Do not substitute full booked principal when the loan is already paid down (PO legitimately 0),
-        // otherwise schedule sync "re-opens" closed loans and inflates balance / to-pay on the register.
-        $seedPrincipalFromBooked = $principalOutstanding <= 0.0
-            && (float) $loan->principal > 0.0
-            && $loan->status !== LoanBookLoan::STATUS_CLOSED
-            && ! $loan->processedRepayments()->exists();
-        if ($seedPrincipalFromBooked) {
-            $principalOutstanding = max(0.0, (float) $loan->principal);
+        if (! $hasProcessedRepayments && $bookedPrincipal > 0.0 && $loan->status !== LoanBookLoan::STATUS_CLOSED) {
+            $principalOutstanding = $bookedPrincipal;
         }
 
         $normalizedTermUnit = in_array($termUnit, ['daily', 'weekly', 'monthly'], true) ? $termUnit : 'monthly';
         $normalizedRatePeriod = in_array($ratePeriod, ['term', 'daily', 'weekly', 'monthly', 'annual'], true) ? $ratePeriod : 'term';
+        $loan->term_value = $termValue;
+        $loan->term_unit = $normalizedTermUnit;
+        $loan->interest_rate_period = $normalizedRatePeriod;
+        $principalOutstanding = round($principalOutstanding, 2);
         $computedInterestOutstanding = $this->loanMath->estimateInterestForLoan(
             $loan,
             $principalOutstanding,
@@ -1623,12 +1672,13 @@ class LoanBookLoansController extends Controller
         }
 
         $unchanged =
-            (int) ($loan->term_value ?? 0) === $termValue
-            && strtolower((string) ($loan->term_unit ?? '')) === $normalizedTermUnit
-            && strtolower((string) ($loan->interest_rate_period ?? '')) === $normalizedRatePeriod
-            && round((float) ($loan->interest_outstanding ?? 0), 2) === round((float) $computedInterestOutstanding, 2)
-            && round((float) ($loan->balance ?? 0), 2) === round((float) $computedBalance, 2)
-            && (string) $loan->status === (string) $computedStatus;
+            $originalTermValue === $termValue
+            && $originalTermUnit === $normalizedTermUnit
+            && $originalRatePeriod === $normalizedRatePeriod
+            && $originalPrincipalOutstanding === $principalOutstanding
+            && $originalInterestOutstanding === round((float) $computedInterestOutstanding, 2)
+            && $originalBalance === round((float) $computedBalance, 2)
+            && $originalStatus === (string) $computedStatus;
 
         if ($unchanged) {
             return null;
@@ -1637,14 +1687,16 @@ class LoanBookLoansController extends Controller
         $loan->term_value = $termValue;
         $loan->term_unit = $normalizedTermUnit;
         $loan->interest_rate_period = $normalizedRatePeriod;
+        $loan->principal_outstanding = $principalOutstanding;
         $loan->interest_outstanding = $computedInterestOutstanding;
         $loan->balance = $computedBalance;
         if ($loan->balance > 0.0 && $loan->status === LoanBookLoan::STATUS_CLOSED) {
             $loan->status = LoanBookLoan::STATUS_ACTIVE;
         }
 
-        $audit = '[Schedule sync '.now()->format('Y-m-d H:i').'] Synced term/rate period from application '
-            .$app->reference.' by '.$actorName.'.';
+        $audit = '[Schedule sync '.now()->format('Y-m-d H:i').'] Synced term from application '
+            .$app->reference.' and interest period '.($catalogPeriod !== null ? 'from product ('.$normalizedRatePeriod.')' : 'from application ('.$normalizedRatePeriod.')')
+            .' by '.$actorName.'.';
         $existingNotes = trim((string) ($loan->notes ?? ''));
         $loan->notes = $existingNotes !== '' ? $existingNotes."\n".$audit : $audit;
 
@@ -1654,10 +1706,15 @@ class LoanBookLoansController extends Controller
     }
 
     /**
-     * @return array{principal_outstanding: float, interest_outstanding: float, fees_outstanding: float, balance: float, status: string}
+     * @return array{principal_outstanding: float, interest_outstanding: float, fees_outstanding: float, balance: float, status: string, interest_rate_period: ?string}
      */
     private function computeLoanRepaymentSnapshotState(LoanBookLoan $loan): array
     {
+        $catalogPeriod = $this->catalogInterestRatePeriod((string) ($loan->product_name ?? ''));
+        if ($catalogPeriod !== null) {
+            $loan->interest_rate_period = $catalogPeriod;
+        }
+
         $disbursedPrincipal = (float) $loan->disbursements()->sum('amount');
         $storedPrincipal = max(0.0, (float) $loan->principal);
         if ($disbursedPrincipal <= 0.0) {
@@ -1732,15 +1789,19 @@ class LoanBookLoansController extends Controller
             'fees_outstanding' => $feesOutstanding,
             'balance' => $balance,
             'status' => $newStatus,
+            'interest_rate_period' => $catalogPeriod,
         ];
     }
 
     private function applyRebuildSnapshotIfNeeded(LoanBookLoan $loan, string $actorName): bool
     {
+        $originalPeriod = strtolower(trim((string) ($loan->interest_rate_period ?? '')));
         $snap = $this->computeLoanRepaymentSnapshotState($loan);
+        $periodToStore = is_string($snap['interest_rate_period'] ?? null) ? $snap['interest_rate_period'] : null;
+        $periodChanged = $periodToStore !== null && $periodToStore !== $originalPeriod;
 
-        $unchanged =
-            round((float) $snap['principal_outstanding'], 2) === round((float) $loan->principal_outstanding, 2)
+        $unchanged = ! $periodChanged
+            && round((float) $snap['principal_outstanding'], 2) === round((float) $loan->principal_outstanding, 2)
             && round((float) $snap['interest_outstanding'], 2) === round((float) $loan->interest_outstanding, 2)
             && round((float) $snap['fees_outstanding'], 2) === round((float) $loan->fees_outstanding, 2)
             && round((float) $snap['balance'], 2) === round((float) $loan->balance, 2)
@@ -1750,18 +1811,24 @@ class LoanBookLoansController extends Controller
             return false;
         }
 
-        $audit = '[Snapshot rebuild '.now()->format('Y-m-d H:i').'] Recomputed from disbursements + processed payments by '
-            .$actorName.'.';
+        $audit = '[Snapshot rebuild '.now()->format('Y-m-d H:i').'] Recomputed from disbursements + processed payments'
+            .($periodChanged ? ' using product interest period '.$periodToStore : '')
+            .' by '.$actorName.'.';
         $existingNotes = trim((string) ($loan->notes ?? ''));
 
-        $loan->update([
+        $payload = [
             'principal_outstanding' => $snap['principal_outstanding'],
             'interest_outstanding' => $snap['interest_outstanding'],
             'fees_outstanding' => $snap['fees_outstanding'],
             'balance' => $snap['balance'],
             'status' => $snap['status'],
             'notes' => $existingNotes !== '' ? $existingNotes."\n".$audit : $audit,
-        ]);
+        ];
+        if ($periodToStore !== null) {
+            $payload['interest_rate_period'] = $periodToStore;
+        }
+
+        $loan->update($payload);
 
         return true;
     }
