@@ -115,6 +115,12 @@ final class EzenTenantStatementImportService
                 continue;
             }
 
+            if ($this->findExistingPeriodCharge((int) $tenant->id, $row['type'], $row['period']) !== null) {
+                $summary['skipped_existing']++;
+
+                continue;
+            }
+
             if ($dryRun) {
                 $summary['imported']++;
 
@@ -396,11 +402,14 @@ final class EzenTenantStatementImportService
                 $details,
             ) === 1;
             $isOpeningBalance = preg_match('/^\s*opening\s+balance\s*$/i', $details) === 1;
+            $standardType = $this->standardChargeType($details);
+            $isStandardInvoice = preg_match('/^INV[\w-]+$/i', $txn) === 1 && $standardType !== null;
             if (! $isLatePayment
                 && ! $isDebitNote
                 && ! $isReceiptReversal
                 && ! $isDeposit
-                && ! $isOpeningBalance) {
+                && ! $isOpeningBalance
+                && ! $isStandardInvoice) {
                 continue;
             }
 
@@ -413,7 +422,7 @@ final class EzenTenantStatementImportService
 
             $type = $isLatePayment
                 ? PmInvoice::TYPE_LATE_PAYMENT
-                : PmInvoice::TYPE_SERVICE;
+                : (($isStandardInvoice ? $standardType : null) ?? PmInvoice::TYPE_SERVICE);
 
             $charges[] = [
                 'txn_no' => $txn,
@@ -533,6 +542,53 @@ final class EzenTenantStatementImportService
                 }
             })
             ->first();
+    }
+
+    private function findExistingPeriodCharge(int $tenantId, string $type, ?string $period): ?PmInvoice
+    {
+        if ($period === null || $period === '') {
+            return null;
+        }
+
+        if (! in_array($type, [
+            PmInvoice::TYPE_RENT,
+            PmInvoice::TYPE_GARBAGE,
+            PmInvoice::TYPE_WATER,
+            PmInvoice::TYPE_ELECTRICITY,
+        ], true)) {
+            return null;
+        }
+
+        return PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('invoice_type', $type)
+            ->where('billing_period', $period)
+            ->first();
+    }
+
+    private function standardChargeType(string $details): ?string
+    {
+        if (preg_match('/deposit/i', $details) === 1) {
+            return null;
+        }
+        if (preg_match('/^\s*lease\s+fee\b/i', $details) === 1) {
+            return PmInvoice::TYPE_SERVICE;
+        }
+        if (preg_match('/^\s*rent\b/i', $details) === 1) {
+            return PmInvoice::TYPE_RENT;
+        }
+        if (preg_match('/^\s*garbage\b/i', $details) === 1) {
+            return PmInvoice::TYPE_GARBAGE;
+        }
+        if (preg_match('/^\s*water\b/i', $details) === 1) {
+            return PmInvoice::TYPE_WATER;
+        }
+        if (preg_match('/^\s*electricity\b/i', $details) === 1) {
+            return PmInvoice::TYPE_ELECTRICITY;
+        }
+
+        return null;
     }
 
     private function findExistingPayment(int $tenantId, string $receiptNo, string $externalRef): ?PmPayment
