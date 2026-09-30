@@ -666,7 +666,14 @@ final class EzenTenantStatementImportService
         }
 
         $fullName = trim((string) ($parsed['tenant'] ?? ''));
-        if ($fullName !== '' && strcasecmp((string) $tenant->name, $fullName) !== 0 && strlen($fullName) > strlen((string) $tenant->name)) {
+        $currentName = trim((string) $tenant->name);
+        $incomingIsOccupantLabel = preg_match('/^\s*occp\b/i', $fullName) === 1;
+        $currentIsOccupantLabel = preg_match('/^\s*occp\b/i', $currentName) === 1;
+        if ($fullName !== ''
+            && strcasecmp($currentName, $fullName) !== 0
+            && strlen($fullName) > strlen($currentName)
+            && ! ($incomingIsOccupantLabel && ! $currentIsOccupantLabel)
+        ) {
             $summary['warnings'][] = ($dryRun ? 'Would rename' : 'Renamed').' tenant to '.$fullName.'.';
             if (! $dryRun) {
                 $tenant->update(['name' => $fullName]);

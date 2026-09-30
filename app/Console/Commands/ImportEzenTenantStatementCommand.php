@@ -61,7 +61,13 @@ class ImportEzenTenantStatementCommand extends Command
             foreach ($summary['warnings'] as $warning) {
                 $this->warn(($summary['account'] ?: basename($path)).': '.$warning);
             }
+            $isUnmatched = (int) $summary['skipped_unmatched'] > 0;
             foreach ($summary['errors'] as $error) {
+                if ($isUnmatched && count($paths) > 1) {
+                    $this->warn(($summary['account'] ?: basename($path)).': '.$error);
+
+                    continue;
+                }
                 $failed = true;
                 $errorCount++;
                 $this->error(($summary['account'] ?: basename($path)).': '.$error);
