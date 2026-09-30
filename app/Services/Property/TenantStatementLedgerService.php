@@ -37,21 +37,22 @@ final class TenantStatementLedgerService
         $openingArrearsAsOf = $tenant->opening_arrears_as_of
             ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
             : null;
-        $hasEzenInvoiceHistory = $invoices->contains(function (PmInvoice $invoice): bool {
-            $origin = $invoice->carry_forward_origin;
-            if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
-                return true;
-            }
+        $hasRentalInvoiceReplay = $invoices->contains(
+            fn (PmInvoice $invoice): bool => $this->isEzenRentalInvoiceReplay($invoice)
+        );
+        $hasStatementImport = $invoices->contains(
+            fn (PmInvoice $invoice): bool => $this->isEzenTenantStatementInvoice($invoice)
+        );
+        $hasEzenInvoiceHistory = $hasRentalInvoiceReplay || $hasStatementImport
+            || $invoices->contains(fn (PmInvoice $invoice): bool => str_starts_with(trim((string) $invoice->description), '[EZEN INV'));
 
-            return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
-        });
-
-        // Residual B/F kept beside a rent-only EZEN replay (late fees / DBNs not imported):
-        // present B/F as the EZEN closing residual and hide the misleading rent replay lines.
-        $residualBfWithEzenRentHistory = $openingArrears > 0.009 && $hasEzenInvoiceHistory;
+        // Residual B/F kept beside a rent-only EZEN listing replay (late fees / DBNs not imported).
+        // A full tenant-statement import already has the real charge lines — do not hide them
+        // and do not keep the take-on snapshot as a second debit.
+        $residualBfWithEzenRentHistory = $openingArrears > 0.009 && $hasRentalInvoiceReplay && ! $hasStatementImport;
         if ($residualBfWithEzenRentHistory) {
             $invoices = $invoices
-                ->reject(fn (PmInvoice $invoice): bool => $this->isEzenImportedInvoice($invoice))
+                ->reject(fn (PmInvoice $invoice): bool => $this->isEzenRentalInvoiceReplay($invoice))
                 ->values();
         }
 
@@ -173,7 +174,7 @@ final class TenantStatementLedgerService
             ]);
         }
 
-        if ($openingArrears > 0) {
+        if ($openingArrears > 0 && ! $hasStatementImport) {
             $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
             $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
             $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
@@ -537,14 +538,27 @@ final class TenantStatementLedgerService
         return ($meta['source'] ?? '') === 'ezen_rental_invoice_import';
     }
 
-    private function isEzenImportedInvoice(PmInvoice $invoice): bool
+    private function isEzenRentalInvoiceReplay(PmInvoice $invoice): bool
     {
         $origin = $invoice->carry_forward_origin;
-        if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
+
+        return is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import';
+    }
+
+    private function isEzenTenantStatementInvoice(PmInvoice $invoice): bool
+    {
+        $origin = $invoice->carry_forward_origin;
+        $source = is_array($origin) ? (string) ($origin['source'] ?? '') : '';
+        if ($source === 'ezen_tenant_statement_dbn') {
             return true;
         }
+        if ($source === 'ezen_rental_invoice_import') {
+            return false;
+        }
 
-        return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
+        $description = trim((string) $invoice->description);
+
+        return str_starts_with($description, '[EZEN ');
     }
 
     /**

@@ -237,6 +237,8 @@ final class EzenTenantStatementImportService
             $summary['payments_reallocated'] = $this->allocateLeftoverPayments((int) $tenant->id);
         }
 
+        $this->retireOpeningArrearsReplacedByStatement($tenant, $dryRun, $summary);
+
         return $summary;
     }
 
@@ -661,6 +663,32 @@ final class EzenTenantStatementImportService
             if (! $dryRun) {
                 $tenant->update(['name' => $fullName]);
             }
+        }
+    }
+
+    private function retireOpeningArrearsReplacedByStatement(PmTenant $tenant, bool $dryRun, array &$summary): void
+    {
+        if (! Schema::hasColumn('pm_tenants', 'opening_arrears_status')) {
+            return;
+        }
+
+        $tenant->refresh();
+        $amount = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
+        $status = (string) ($tenant->opening_arrears_status ?? '');
+        if ($amount <= 0.009 || in_array($status, ['superseded', 'retired'], true)) {
+            return;
+        }
+
+        if (! app(CarryForwardConsolidationService::class)->tenantEzenInvoicesReplaceOpeningArrears($tenant)) {
+            return;
+        }
+
+        $summary['warnings'][] = ($dryRun ? 'Would retire' : 'Retired')
+            .' opening arrears B/F '.number_format($amount, 2)
+            .' because EZEN statement invoices replace the take-on snapshot.';
+
+        if (! $dryRun) {
+            $tenant->update(['opening_arrears_status' => 'retired']);
         }
     }
 
