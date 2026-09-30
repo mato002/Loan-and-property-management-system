@@ -21,9 +21,9 @@
         </p>
     </div>
 
-    <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+    <div class="max-h-[22rem] overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table class="w-full min-w-[1100px] border-collapse text-xs">
-            <thead class="bg-slate-100 dark:bg-slate-900/60 text-[10px] uppercase tracking-wide text-slate-500">
+            <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900/60 text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
                     <th class="px-2 py-2 text-left border border-slate-200 dark:border-slate-700">Unit</th>
                     <th class="px-2 py-2 text-left border border-slate-200 dark:border-slate-700">Tenant</th>

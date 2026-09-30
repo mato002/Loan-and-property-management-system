@@ -439,6 +439,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/accounting/payables/landlord-payment-fees/batch', [PropertyAccountingController::class, 'batchLandlordPaymentFees'])->name('accounting.payables.landlord_payment_fees.batch');
     Route::get('/accounting/payables/property-commissions', [PropertyAccountingController::class, 'propertyCommissions'])->name('accounting.payables.property_commissions');
     Route::get('/accounting/payables/payment-vouchers', [PropertyAccountingController::class, 'paymentVouchers'])->name('accounting.payables.payment_vouchers');
+    Route::get('/accounting/payables/payment-vouchers/create', [PropertyAccountingController::class, 'createPaymentVoucher'])->name('accounting.payables.payment_vouchers.create');
+    Route::post('/accounting/payables/payment-vouchers', [PropertyAccountingController::class, 'storePaymentVoucher'])->name('accounting.payables.payment_vouchers.store');
+    Route::get('/accounting/payables/payment-vouchers/{voucher}', [PropertyAccountingController::class, 'showPaymentVoucher'])->whereNumber('voucher')->name('accounting.payables.payment_vouchers.show');
     Route::get('/accounting/payables/landlord-settlements', [PropertyAccountingController::class, 'landlordSettlements'])->name('accounting.payables.landlord_settlements');
     Route::post('/accounting/payables/landlord-settlements/payout', [PropertyAccountingController::class, 'storeLandlordSettlementPayout'])->name('accounting.payables.landlord_settlements.payout');
     Route::get('/accounting/payables/landlord-payables', [PropertyAccountingController::class, 'landlordPayables'])->name('accounting.payables.landlord_payables');

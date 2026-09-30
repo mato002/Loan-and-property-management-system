@@ -1,0 +1,3346 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">
+	<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+		<Author>Ezen</Author>
+		<Title>Property Management</Title>
+		<Description/>
+		<Subject/>
+	</DocumentProperties>
+	<Styles>
+		<Style ss:ID="HyperlinkId" ss:Name="Hyperlink">
+			<Font ss:Color="#0000ff"/>
+		</Style>
+		<Style ss:ID="35">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="45">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="50">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="23">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Italic="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="36">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="62">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Italic="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="48">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="51">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="20">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="52">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="63">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="37">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="69">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Dot" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="72">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Dot" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="64">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="54">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="74">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Dot" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="26">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="18.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="55">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="57">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="71">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Dot" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="25">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="12.0" ss:Color="#cb1717"/>
+		</Style>
+		<Style ss:ID="56">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="58">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="70">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="22">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Italic="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="29">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="12.0" ss:Color="#cb1717"/>
+		</Style>
+		<Style ss:ID="49">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="65">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Dot" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="1">
+			<NumberFormat ss:Format="yyyy-M-d HH:mm:ss AM/PM"/>
+		</Style>
+		<Style ss:ID="34">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="38">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="40">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="59">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="60">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="61">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="39">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="41">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="53">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="66">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="67">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="42">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="44">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="43">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#a0a0a0"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="73">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="27">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="21">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="68">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="31">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="30">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Bold="1" ss:Underline="Single" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="32">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="46">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="24">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="7.5" ss:Italic="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="33">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="47">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#bfbfbf"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Bold="1" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="28">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="9.0" ss:Color="#000000"/>
+		</Style>
+	</Styles>
+	<Names>
+		<NamedRange ss:Name="__bookmark_1" ss:RefersTo="Property Management!R28C1:R181C26"/>
+		<NamedRange ss:Name="__bookmark_3" ss:RefersTo="Property Management!R182C1:R199C26"/>
+	</Names>
+
+<Worksheet ss:Name="Property Management">
+	<ss:Table>
+		<ss:Column ss:Width="40.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="17.92" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="22.4" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="80.64" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="24.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="56.448" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="24.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="16.128" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="48.384" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="32.256" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="34.048" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="6.272" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="7.936" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="32.256" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="4.864" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="6.4" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="4.864" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="24.192" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="40.32" ss:AutoFitWidth="0"/>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="20" ss:MergeAcross="20">
+				<Data ss:Type="String">Printed: 30/09/2026</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="22">
+				<Data ss:Type="String">1</Data>
+			</Cell>
+			<Cell ss:Index="23" ss:StyleID="23">
+				<Data ss:Type="String"> of </Data>
+			</Cell>
+			<Cell ss:Index="24" ss:StyleID="24">
+				<Data ss:Type="String">1</Data>
+			</Cell>
+			<Cell ss:Index="25" ss:StyleID="21" ss:MergeAcross="1"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25" ss:MergeAcross="4" ss:MergeDown="3"/>
+			<Cell ss:Index="6" ss:StyleID="26" ss:MergeAcross="11">
+				<Data ss:Type="String">PASSION SHELTAZ INVESTMENTS</Data>
+			</Cell>
+			<Cell ss:Index="18" ss:StyleID="25" ss:MergeAcross="8" ss:MergeDown="3"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="6" ss:StyleID="27" ss:MergeAcross="11">
+				<Data ss:Type="String">P.O BOX 16202-20100 - -</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="6" ss:StyleID="28" ss:MergeAcross="11">
+				<Data ss:Type="String">TEL: 0721388051/0718210436</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="6" ss:StyleID="28" ss:MergeAcross="11">
+				<Data ss:Type="String">EMAIL:PASSIONHOMESPC@GMAIL.COM</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="29" ss:MergeAcross="4"/>
+			<Cell ss:Index="6" ss:StyleID="29" ss:MergeAcross="11"/>
+			<Cell ss:Index="18" ss:StyleID="29" ss:MergeAcross="8"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="30" ss:MergeAcross="25">
+				<Data ss:Type="String">PROPERTY ACCOUNT STATEMENT - FINAL</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="31" ss:MergeAcross="1">
+				<Data ss:Type="String">LANDLORD</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="31" ss:MergeAcross="13">
+				<Data ss:Type="String">[M00021] MR. FRANCIS MACHARIA</Data>
+			</Cell>
+			<Cell ss:Index="17" ss:StyleID="21" ss:MergeAcross="9"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="31" ss:MergeAcross="1">
+				<Data ss:Type="String">PROPERTY</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="31" ss:MergeAcross="13">
+				<Data ss:Type="String">[M00021B] MR. FRANCIS MACHARIA (PCEA WORKERS)</Data>
+			</Cell>
+			<Cell ss:Index="17" ss:StyleID="21" ss:MergeAcross="9"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="32" ss:MergeAcross="25">
+				<Data ss:Type="String">STATEMENT PERIOD September - 2026</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="33" ss:MergeAcross="25">
+				<Data ss:Type="String">                 31/12/2023 - 30/09/2026</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="34"/>
+			<Cell ss:Index="2" ss:StyleID="34" ss:MergeAcross="4"/>
+			<Cell ss:Index="7" ss:StyleID="34" ss:MergeAcross="1"/>
+			<Cell ss:Index="9" ss:StyleID="36" ss:MergeAcross="4">
+				<Data ss:Type="String">BALANCE B/F</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="36" ss:MergeAcross="5">
+				<Data ss:Type="String">AMOUNT INVOICED</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="36" ss:MergeAcross="6">
+				<Data ss:Type="String">AMOUNT RECEIVED</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="37">
+				<Data ss:Type="String">UNIT</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="37" ss:MergeAcross="4">
+				<Data ss:Type="String">TENANT/RESIDENT</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="36" ss:MergeAcross="1">
+				<Data ss:Type="String">PER MONTH</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="36" ss:MergeAcross="2">
+				<Data ss:Type="String">RENT</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="36" ss:MergeAcross="1">
+				<Data ss:Type="String">GARBAGE</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="37" ss:MergeAcross="1">
+				<Data ss:Type="String">RENT</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="36" ss:MergeAcross="3">
+				<Data ss:Type="String">GARBAGE</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="37" ss:MergeAcross="1">
+				<Data ss:Type="String">RENT</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="36" ss:MergeAcross="4">
+				<Data ss:Type="String">GARBAGE</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 31</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">VACANT</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,000</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 32</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">AJAH GARANG DENG</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">7,000</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">101,500</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">3,000</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">101,500</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">3,000</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 33</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">STEVEN OTIENO ODOYO</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,500</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">214,500</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">212,700</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">6,400</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 34</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">EUNICE JEPKEMOI</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,500</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">214,500</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">214,500</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 35</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">WILSON ACHOLA</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,000</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">401</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">200</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">198,000</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">198,401</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">6,800</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 36</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">CAROLINE MUMBI MWANGI</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,000</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">162,000</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">5,400</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">162,000</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">5,400</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 37</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">LUKA CHEGE GAITHO</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,000</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">0</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">198,000</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">187,080</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">6,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="39">
+				<Data ss:Type="String">HSE 38</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="41" ss:MergeAcross="4">
+				<Data ss:Type="String">ELIZABETH AMACH GOCH</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">6,500</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="43" ss:MergeAcross="2">
+				<Data ss:Type="String">537</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="43" ss:MergeAcross="1">
+				<Data ss:Type="String">200</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">214,500</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="43" ss:MergeAcross="3">
+				<Data ss:Type="String">6,600</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="39" ss:MergeAcross="1">
+				<Data ss:Type="String">215,037</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="43" ss:MergeAcross="4">
+				<Data ss:Type="String">6,800</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="34"/>
+			<Cell ss:Index="2" ss:StyleID="34" ss:MergeAcross="4"/>
+			<Cell ss:Index="7" ss:StyleID="35" ss:MergeAcross="1">
+				<Data ss:Type="String">50,500</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="36" ss:MergeAcross="2">
+				<Data ss:Type="String">938</Data>
+			</Cell>
+			<Cell ss:Index="12" ss:StyleID="36" ss:MergeAcross="1">
+				<Data ss:Type="String">400</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="37" ss:MergeAcross="1">
+				<Data ss:Type="String">1,303,000</Data>
+			</Cell>
+			<Cell ss:Index="16" ss:StyleID="36" ss:MergeAcross="3">
+				<Data ss:Type="String">41,400</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="37" ss:MergeAcross="1">
+				<Data ss:Type="String">1,291,218</Data>
+			</Cell>
+			<Cell ss:Index="22" ss:StyleID="36" ss:MergeAcross="4">
+				<Data ss:Type="String">41,200</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="34"/>
+			<Cell ss:Index="2" ss:StyleID="34" ss:MergeAcross="4"/>
+			<Cell ss:Index="7" ss:StyleID="34" ss:MergeAcross="1"/>
+			<Cell ss:Index="9" ss:StyleID="36" ss:MergeAcross="4">
+				<Data ss:Type="String">TOTAL B/F: 1,338</Data>
+			</Cell>
+			<Cell ss:Index="14" ss:StyleID="36" ss:MergeAcross="5">
+				<Data ss:Type="String">TOTAL INVOICED: 1,344,400</Data>
+			</Cell>
+			<Cell ss:Index="20" ss:StyleID="36" ss:MergeAcross="6">
+				<Data ss:Type="String">TOTAL PAID: 1,332,418</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="44" ss:MergeAcross="25">
+				<Data ss:Type="String">OCCUPIED UNITS:</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="45" ss:MergeAcross="25">
+				<Data ss:Type="String"> 7  |  </Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="44" ss:MergeAcross="25">
+				<Data ss:Type="String">VACANT UNITS:</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="45" ss:MergeAcross="25">
+				<Data ss:Type="String"> 1</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="46" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="47" ss:MergeAcross="1">
+				<Data ss:Type="String">ADDITIONS</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">SECURITY DEPOSIT</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">24/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11659 RENT DEPOSIT - HSE 36</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">29/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11704 RENT DEPOSIT - HSE 36</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">29/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11704 WATER DEPOSIT - HSE 36</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">27/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15195 RENT DEPOSIT - HSE 32</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">27/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15195 WATER DEPOSIT - HSE 32</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">17/06/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC17617 RENT DEPOSIT - HSE 32</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">17/06/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC17617 WATER DEPOSIT - HSE 32</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">27000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">EXPENSE</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/01/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC08645 RENT FOR JAN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09131 RENT FOR JAN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">06/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09164 RENT FOR FEB/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/03/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09627 RENT FOR MAR/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/03/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09698 RENT FOR MAR/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10188 RENT FOR APR/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10490 RENT FOR APR/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10627 RENT FOR FEB/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4630.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">08/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10793 RENT FOR MAY/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10850 RENT FOR MAY/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">09/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11395 RENT FOR JUN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11420 RENT FOR JUN/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2780.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/07/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11800 RENT FOR JUL/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2438.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/07/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11800 RENT FOR JUN/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3220.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">08/07/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11887 RENT FOR JUL/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12306 RENT FOR AUG/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3861.8</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12306 RENT FOR JUL/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3562.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12526 RENT FOR AUG/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/09/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12919 RENT FOR AUG/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2138.2</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/09/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12919 RENT FOR SEP/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4627.98</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13454 RENT FOR OCT/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6300.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13458 RENT FOR OCT/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4470.78</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13458 RENT FOR SEP/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">1372.02</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">11/11/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14140 RENT FOR NOV/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14365 RENT FOR NOV/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14365 RENT FOR OCT/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">1529.22</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">20/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14699 RENT FOR DEC/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3777.86</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14798 RENT FOR DEC/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2222.14</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14798 RENT FOR JAN/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">27/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15195 RENT FOR FEB/2025 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">29/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15227 RENT FOR FEB/2025 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">06/03/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15855 RENT FOR MAR/2025 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/04/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16442 RENT FOR APR/2025 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">02/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16709 RENT FOR MAY/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">5800.14</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">02/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16730 RENT FOR MAY/2025 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">19/06/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC17630 RENT FOR JUN/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">1000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">22/07/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC18121 RENT FOR JUL/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3650.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">18/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC18577 RENT FOR AUG/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">510.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">18/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC18577 RENT FOR JUL/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2850.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">18/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC18588 RENT FOR AUG/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/09/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC19077 RENT FOR AUG/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3990.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">30/10/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC19769 RENT FOR OCT/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">1500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">30/10/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC19769 RENT FOR SEP/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20298 RENT FOR OCT/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">1330.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20321 RENT FOR DEC/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4270.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20504 RENT FOR DEC/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20588 RENT FOR NOV/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">4000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20658 RENT FOR NOV/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">2500.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 RENT FOR DEC/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">230.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 RENT FOR OCT/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3670.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20806 RENT FOR JAN/2026 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">6200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">30/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC21280 RENT FOR JAN/2026 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">300.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC21340 RENT FOR FEB/2026 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">3200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">222930.14</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">RECEIPT FROM TERMINATED TENANTS</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/01/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC08645 GARBAGE FOR JAN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09131 GARBAGE FOR JAN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">06/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09164 GARBAGE FOR FEB/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/03/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09627 GARBAGE FOR MAR/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/03/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC09698 GARBAGE FOR MAR/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10188 GARBAGE FOR APR/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10490 GARBAGE FOR APR/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC10850 GARBAGE FOR MAY/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">09/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11395 GARBAGE FOR JUN/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11420 GARBAGE FOR MAY/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/07/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11800 GARBAGE FOR JUN/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">08/07/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC11887 GARBAGE FOR JUL/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12306 GARBAGE FOR JUL/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">10/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12526 GARBAGE FOR AUG/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">04/09/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC12919 GARBAGE FOR AUG/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13454 GARBAGE FOR OCT/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13454 GARBAGE FOR SEP/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">05/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC13458 GARBAGE FOR SEP/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">11/11/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14140 GARBAGE FOR NOV/2024 - HSE 32 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14365 GARBAGE FOR NOV/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14365 GARBAGE FOR OCT/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14798 GARBAGE FOR DEC/2024 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">03/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC14798 GARBAGE FOR JAN/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">199.86</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">29/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15231 GARBAGE FOR JAN/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">0.14</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">12/02/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC15572 GARBAGE FOR FEB/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">17/03/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16082 GARBAGE FOR MAR/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">02/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16709 GARBAGE FOR APR/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">02/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC16709 GARBAGE FOR MAY/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">19/06/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC17630 GARBAGE FOR JUN/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">18/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC18577 GARBAGE FOR JUL/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/09/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC19077 GARBAGE FOR AUG/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 GARBAGE FOR DEC/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 GARBAGE FOR NOV/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 GARBAGE FOR OCT/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">31/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC20779 GARBAGE FOR SEP/2025 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">30/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">RC21280 GARBAGE FOR JAN/2026 - HSE 31 -TERMN</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="52" ss:MergeAcross="9">
+				<Data ss:Type="String">TOTAL ADDITIONS</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="53" ss:MergeAcross="4">
+				<Data ss:Type="Number">256930.13999999998</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="46" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="47" ss:MergeAcross="1">
+				<Data ss:Type="String">DEDUCTIONS</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">DEPOSIT REFUND</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/07/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03771 DEPOSIT REFUND (P.C.E.A HSE 32)</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-4496.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">-4496.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">PAYMENTS/DISBURSEMENT</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">20/01/2023</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM00813 GARBAGE</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/07/2023</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM01497 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">01/09/2023</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM01688 GARBAGE COLLECTION AUGUST</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-1600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">11/09/2023</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM01645 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-1600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">12/01/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02106 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-1600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/01/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02167 RENTAL REMITTANCE JAN 2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-39150.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02219 RENTAL REMITTANCE</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-38950.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">20/02/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02256 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-1600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02440 RENTAL REMITTANCE APRIL 2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-32650.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/04/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02458 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02503 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02526 WATER PAYMENTS PCEA</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-2074.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/06/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02656 RENTAL REMITTANCE JUNE 24</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-39600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/09/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02938 RENTAL REMITTANCE SEPT 2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-42150.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/10/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03036 RENTAL REMITTANCE OCT 2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-43800.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03159 WATER BILL PAYMENT (P.C.E.A HSE 32)</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-608.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03234 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/02/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03382 RENTAL REMITTANCE FEB 2025</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-51390.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">14/03/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03441 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">14/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03603 RENTAL REMITTANCE MAY 2025</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-45450.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">14/06/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03692 WATER BILLS - 04179233 (P.C.E.A HSE 32)</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-404.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/07/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04053 EXHAUSTER SERVICES</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-8000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/09/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03944 RENTAL REMITTANCE SEPT 2025</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-45450.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/09/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM03951 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/10/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04093 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">11/11/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04177 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/11/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04231 RENTAL REMITTANCE NOV/ 2025</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-44250.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/12/2025</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04302 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">14/01/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04348 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/02/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04376 RENTAL REMITTANCE FEB 2026</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-44200.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">17/03/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04475 RENTAL REMITTANCE, PERIOD OF MARCH/ 2026</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-44450.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04483 WATER BILL - 04179234 (P.C.E.A HSE 31)</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-856.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04493 RENTAL REMITTANCE, PERIOD OF APRIL/2026</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-40050.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">20/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04563 GARBAGE COLLECTIONS</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">14/07/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04702 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">13/08/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04757 GARBAGE COLLECTION</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-600.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">-578282.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="48" ss:MergeAcross="13">
+				<Data ss:Type="String">RENT REMITTANCE</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="49" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">15/03/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02388 RENT REMITTANCE, PERIOD OF MARCH/2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-43000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/08/2024</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM02818 RENT REMITTANCE, PERIOD OF AUGUST/2024</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-35850.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="38" ss:MergeAcross="3">
+				<Data ss:Type="String">16/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="38" ss:MergeAcross="9">
+				<Data ss:Type="String">PM04633 RENT REMITTANCE JUNE 2026</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="50" ss:MergeAcross="4">
+				<Data ss:Type="Number">-39050.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="51" ss:MergeAcross="4">
+				<Data ss:Type="Number">-117900.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="52" ss:MergeAcross="9">
+				<Data ss:Type="String">TOTAL DEDUCTIONS</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="53" ss:MergeAcross="4">
+				<Data ss:Type="Number">-700678.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="21" ss:MergeAcross="9"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="3"/>
+			<Cell ss:Index="5" ss:StyleID="21" ss:MergeAcross="1"/>
+			<Cell ss:Index="7" ss:StyleID="54" ss:MergeAcross="3"/>
+			<Cell ss:Index="11" ss:StyleID="56" ss:MergeAcross="9">
+				<Data ss:Type="String">NET ADDITIONS/DEDUCTIONS:</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="58" ss:MergeAcross="4">
+				<Data ss:Type="Number">-443747.86</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="33" ss:MergeAcross="11">
+				<Data ss:Type="String">STATEMENT SUMMARY</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="59" ss:MergeAcross="6">
+				<Data ss:Type="String">EXPECTED RENT</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="60" ss:MergeAcross="4">
+				<Data ss:Type="Number">1303000.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="59" ss:MergeAcross="6">
+				<Data ss:Type="String">TOTAL UTILITY</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="61" ss:MergeAcross="4">
+				<Data ss:Type="String">41,400</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12" ss:MergeDown="1"/>
+			<Cell ss:Index="14" ss:StyleID="62" ss:MergeAcross="6">
+				<Data ss:Type="String">Less:</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="60" ss:MergeAcross="4" ss:MergeDown="1">
+				<Data ss:Type="Number">153293.01</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21" ss:MergeDown="1"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="14" ss:StyleID="59" ss:MergeAcross="6">
+				<Data ss:Type="String"> MANAGEMENT FEE (10%)</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="63" ss:MergeAcross="4">
+				<Data ss:Type="Number">1191106.99</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12" ss:MergeDown="1"/>
+			<Cell ss:Index="14" ss:StyleID="62" ss:MergeAcross="6">
+				<Data ss:Type="String">Add:</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="64" ss:MergeAcross="4" ss:MergeDown="1">
+				<Data ss:Type="Number">256930.14</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21" ss:MergeDown="1"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="14" ss:StyleID="59" ss:MergeAcross="6">
+				<Data ss:Type="String"> OTHER ADDITIONS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12" ss:MergeDown="1"/>
+			<Cell ss:Index="14" ss:StyleID="62" ss:MergeAcross="6">
+				<Data ss:Type="String">Less:</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="64" ss:MergeAcross="4" ss:MergeDown="1">
+				<Data ss:Type="Number">700678.0</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21" ss:MergeDown="1"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="14" ss:StyleID="59" ss:MergeAcross="6">
+				<Data ss:Type="String"> OTHER DEDUCTIONS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="21" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="21" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="65" ss:MergeAcross="6"/>
+			<Cell ss:Index="21" ss:StyleID="65" ss:MergeAcross="4"/>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="21" ss:MergeAcross="12"/>
+			<Cell ss:Index="14" ss:StyleID="66" ss:MergeAcross="6">
+				<Data ss:Type="String">NET AMOUNT DUE</Data>
+			</Cell>
+			<Cell ss:Index="21" ss:StyleID="67" ss:MergeAcross="4">
+				<Data ss:Type="String">747,359.13</Data>
+			</Cell>
+			<Cell ss:Index="26" ss:StyleID="21"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="38" ss:MergeAcross="12">
+				<Data ss:Type="String">-</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="45" ss:MergeAcross="2">
+				<Data ss:Type="String">PREPARED BY:</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="69" ss:MergeAcross="3">
+				<Data ss:Type="String">SAM 0</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="45" ss:MergeAcross="1">
+				<Data ss:Type="String">APPROVED BY:</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="71" ss:MergeAcross="4">
+				<Data ss:Type="String">-</Data>
+			</Cell>
+			<Cell ss:Index="15" ss:StyleID="45" ss:MergeAcross="3">
+				<Data ss:Type="String">AUTHORISED BY:</Data>
+			</Cell>
+			<Cell ss:Index="19" ss:StyleID="72" ss:MergeAcross="7"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="31" ss:MergeAcross="25">
+				<Data ss:Type="String">RECEIVED BY</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="73" ss:MergeAcross="2">
+				<Data ss:Type="String">RECEIVED BY:</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="74" ss:MergeAcross="3"/>
+			<Cell ss:Index="8" ss:StyleID="73" ss:MergeAcross="1">
+				<Data ss:Type="String">DATE:</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="74" ss:MergeAcross="4"/>
+			<Cell ss:Index="15" ss:StyleID="73" ss:MergeAcross="3">
+				<Data ss:Type="String">SIGNATURE:</Data>
+			</Cell>
+			<Cell ss:Index="19" ss:StyleID="74" ss:MergeAcross="7"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="28" ss:MergeAcross="25">
+				<Data ss:Type="String">-</Data>
+			</Cell>
+		</Row>
+	</ss:Table>
+	<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+		<PageSetup>
+			<PageMargins x:Bottom="0.099999994" x:Left="0.25" x:Right="0.25" x:Top="0.099999994"/>
+			<Layout x:Orientation="Landscape"/>
+		</PageSetup>
+		<Print>
+			<PaperSizeIndex>9</PaperSizeIndex>
+		</Print>
+	</WorksheetOptions>
+</Worksheet>
+</Workbook>

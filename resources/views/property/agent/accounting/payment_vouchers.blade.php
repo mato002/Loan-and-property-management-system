@@ -3,14 +3,14 @@
     :legacy-toolbar="false"
     :show-search="false"
     title="Payment vouchers"
-    subtitle="Outgoing payments imported into {{ $appName }} — landlord remittances, commissions, tax, and operating expenses."
+    subtitle="Outgoing payments — record a voucher here, or import an EZEN listing. Remittances become landlord payouts; other rows become expenses."
     back-route="property.accounting.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     table-min-width="1280px"
-    empty-title="No payment vouchers imported"
-    empty-hint="Upload a payment voucher listing under Settings → Register imports (dry-run first)."
+    empty-title="No payment vouchers yet"
+    empty-hint="Record a voucher, or upload an EZEN listing under Settings → Register imports."
 >
     <x-slot name="secondary">
         <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
@@ -21,6 +21,7 @@
     </x-slot>
 
     <x-slot name="actions">
+        <a href="{{ route('property.accounting.payables.payment_vouchers.create', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Record voucher</a>
         @include('property.agent.partials.export_dropdown', [
             'route' => 'property.accounting.payables.payment_vouchers',
             'query' => request()->except(['export', 'format', 'page']),

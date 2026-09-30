@@ -177,9 +177,9 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
             </div>
-            <div class="mt-3 overflow-x-auto">
+            <div class="mt-3 max-h-[22rem] overflow-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
                             <th class="px-3 py-2">Landlord</th>
                             <th class="px-3 py-2">Share %</th>
@@ -258,12 +258,13 @@
     @endif
 
     @if ($activeTab === 'occupancy')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Occupancy snapshot</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Unit</th>
                     <th class="px-4 py-3">Status</th>
@@ -293,11 +294,12 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 
     @if ($activeTab === 'maintenance')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Maintenance requests</h3>
             <div class="flex flex-wrap gap-2">
@@ -307,8 +309,9 @@
                 <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline self-center">Open maintenance workspace</a>
             </div>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Date</th>
                     <th class="px-4 py-3">Unit</th>
@@ -333,11 +336,12 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 
     @if ($activeTab === 'units')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto overflow-y-visible">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -688,12 +692,13 @@
     @endif
 
     @if ($activeTab === 'revenue')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Recent collections ({{ $periodLabel }})</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Date</th>
                     <th class="px-4 py-3">Tenant</th>
@@ -716,14 +721,16 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
 
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Collection channel report ({{ $periodLabel }})</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Channel</th>
                     <th class="px-4 py-3">Transactions</th>
@@ -742,6 +749,7 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 

@@ -2960,8 +2960,10 @@ class PropertyAccountingController extends Controller
                 'landlords' => $landlords,
             ])->render());
 
+            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
+
             return [
-                $voucher->ezen_voucher_no,
+                new HtmlString('<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-indigo-700 hover:underline">'.e($voucher->ezen_voucher_no).'</a>'),
                 $voucher->txn_date?->format('Y-m-d') ?? '—',
                 $voucher->method !== null && $voucher->method !== '' ? $voucher->method : '—',
                 $voucher->ref_no !== null && $voucher->ref_no !== '' ? $voucher->ref_no : '—',
@@ -2982,6 +2984,77 @@ class PropertyAccountingController extends Controller
             'paginator' => $vouchers,
             'filters' => $filters,
         ]);
+    }
+
+    public function createPaymentVoucher(Request $request): View
+    {
+        return property_view('property.agent.accounting.payment_voucher_create', $this->paymentVoucherFormData($request));
+    }
+
+    public function storePaymentVoucher(Request $request, EzenPaymentVouchersImportService $vouchers): RedirectResponse
+    {
+        $data = $request->validate([
+            'txn_date' => ['required', 'date'],
+            'payee' => ['required', 'string', 'max:191'],
+            'paid_from' => ['required', 'string', 'max:128'],
+            'method' => ['required', 'in:'.implode(',', PmEzenPaymentVoucher::PAYMENT_METHODS)],
+            'ref_no' => ['required', 'string', 'max:128'],
+            'cheque_no' => ['nullable', 'string', 'max:64'],
+            'cheque_date' => ['nullable', 'date'],
+            'expense_group' => ['required', 'in:'.implode(',', array_keys(PmEzenPaymentVoucher::EXPENSE_GROUPS))],
+            'landlord_id' => ['nullable', 'integer', 'exists:users,id'],
+            'narration' => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'control_amount' => ['required', 'numeric', 'gt:0'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'lines.*.expense_group' => ['nullable', 'string', 'max:80'],
+            'lines.*.utility_account' => ['nullable', 'string', 'max:120'],
+            'lines.*.description' => ['nullable', 'string', 'max:500'],
+            'lines.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $voucher = $vouchers->recordManual(
+            (int) $request->user()->id,
+            $request->user(),
+            $data,
+            $data['lines'],
+        );
+
+        return redirect()
+            ->route('property.accounting.payables.payment_vouchers.show', $voucher)
+            ->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded.');
+    }
+
+    public function showPaymentVoucher(PmEzenPaymentVoucher $voucher): View
+    {
+        $voucher->load(['lines.property', 'property', 'landlord', 'payout']);
+
+        return property_view('property.agent.accounting.payment_voucher_show', [
+            'voucher' => $voucher,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentVoucherFormData(Request $request): array
+    {
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return [
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
+            'landlords' => $landlords,
+            'expenseGroups' => PmEzenPaymentVoucher::EXPENSE_GROUPS,
+            'methods' => PmEzenPaymentVoucher::PAYMENT_METHODS,
+            'paidFromAccounts' => ['Cash account', 'Co-operative Bank', 'M-Pesa', 'Equity Bank', 'KCB Bank'],
+        ];
     }
 
     public function batchLandlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): RedirectResponse

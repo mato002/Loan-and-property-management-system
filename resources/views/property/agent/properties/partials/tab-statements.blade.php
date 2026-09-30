@@ -89,9 +89,9 @@
             <h3 class="text-sm font-semibold text-slate-900">Month-by-month (FY {{ $fy }})</h3>
             @include('property.agent.partials.table_export_dropdown', $exportFor('months'))
         </div>
-        <div class="overflow-x-auto">
+        <div class="max-h-[22rem] overflow-auto">
             <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                         <th class="px-3 py-2">Month</th>
                         <th class="px-3 py-2 text-right">Invoiced</th>
@@ -152,11 +152,11 @@
             </div>
             @include('property.agent.partials.table_export_dropdown', $exportFor('unit_grid'))
         </div>
-        <div class="overflow-x-auto">
+        <div class="max-h-[22rem] overflow-auto">
             <table class="min-w-full border-collapse text-[11px] [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                <thead class="bg-slate-50 text-left font-semibold uppercase tracking-wide text-slate-500">
+                <thead class="sticky top-0 z-10 bg-slate-50 text-left font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                        <th class="px-2 py-2 sticky left-0 bg-slate-50 z-10">Unit</th>
+                        <th class="px-2 py-2 sticky left-0 top-0 bg-slate-50 z-20">Unit</th>
                         <th class="px-2 py-2">Tenant</th>
                         @foreach ($monthKeys as $ym)
                             <th class="px-2 py-2 text-right whitespace-nowrap">{{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $ym)->format('M') }}</th>

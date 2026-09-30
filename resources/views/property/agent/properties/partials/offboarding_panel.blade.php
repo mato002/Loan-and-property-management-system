@@ -100,8 +100,9 @@
 
     @if ($step === 2)
         <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div class="max-h-[22rem] overflow-auto">
             <table class="min-w-full text-sm">
-                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Lease</th>
                         <th class="px-4 py-3">Tenant</th>
@@ -138,6 +139,7 @@
                     @endforelse
                 </tbody>
             </table>
+            </div>
         </div>
     @endif
 
