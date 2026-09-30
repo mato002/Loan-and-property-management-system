@@ -474,11 +474,19 @@ class PropertyHrEmployeeService
 
             return ['mailed' => true, 'error' => null];
         } catch (Throwable $e) {
+            $errorDetail = trim($e->getMessage());
+            if ($errorDetail === '' && $e->getPrevious()) {
+                $errorDetail = trim($e->getPrevious()->getMessage());
+            }
+            if ($errorDetail === '') {
+                $errorDetail = $e::class;
+            }
+
             Log::error('property_staff_credentials_mail_failed', [
                 'employee_id' => $employee->id,
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'message' => $e->getMessage(),
+                'message' => $errorDetail,
             ]);
 
             $this->logOutboundEmail(
@@ -487,10 +495,10 @@ class PropertyHrEmployeeService
                 body: $logBody,
                 userId: $actorId,
                 deliveryStatus: 'failed',
-                deliveryError: $e->getMessage(),
+                deliveryError: $errorDetail,
             );
 
-            return ['mailed' => false, 'error' => $e->getMessage()];
+            return ['mailed' => false, 'error' => $errorDetail];
         }
     }
 

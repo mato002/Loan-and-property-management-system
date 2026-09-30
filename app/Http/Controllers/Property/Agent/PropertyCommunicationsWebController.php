@@ -557,8 +557,12 @@ class PropertyCommunicationsWebController extends Controller
 
     public function resendMessage(Request $request, PmMessageLog $log): RedirectResponse
     {
+        if ($log->channel === 'email') {
+            return $this->resendFailedStaffCredentialsEmail($request, $log);
+        }
+
         if ($log->channel !== 'sms') {
-            return back()->withErrors(['channel' => 'Only SMS messages can be resent from this action.']);
+            return back()->withErrors(['channel' => 'Only SMS or staff login emails can be resent from this action.']);
         }
 
         /** @var BulkSmsService $sms */
@@ -577,6 +581,91 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return back()->with('success', 'SMS resent to '.implode(', ', $phones).'.');
+    }
+
+    private function resendFailedStaffCredentialsEmail(Request $request, PmMessageLog $log): RedirectResponse
+    {
+        if (! $this->isStaffCredentialsLog($log)) {
+            return back()->withErrors(['channel' => 'Only failed staff login emails can be resent from this outbox. Use HR → Employees → Resend logins for other cases.']);
+        }
+
+        if (strtolower((string) ($log->delivery_status ?? '')) !== 'failed') {
+            return back()->withErrors(['status' => 'Only failed staff login emails can be resent.']);
+        }
+
+        $employee = $this->employeeForStaffCredentialsLog($log);
+        if (! $employee) {
+            return back()->withErrors(['to_address' => 'No employee matches '.$log->to_address.'. Open HR and resend from the employee record.']);
+        }
+
+        if (method_exists($employee, 'isOffboarded') && $employee->isOffboarded()) {
+            return back()->withErrors(['status' => 'Re-activate this employee before resending login credentials.']);
+        }
+
+        try {
+            $result = app(\App\Services\Property\PropertyHrEmployeeService::class)
+                ->issueLoginAndEmail($employee->fresh(), $request->user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors(['body' => collect($e->errors())->flatten()->first() ?: 'Could not resend login email.']);
+        }
+
+        $this->markMessageLogSuperseded($log);
+
+        if (! ($result['mailed'] ?? false)) {
+            $error = app(SmsDeliveryErrorPresenter::class)->forEmail((string) ($result['mail_error'] ?? ''));
+
+            return back()->withErrors(['body' => 'Login was reset, but email still failed: '.$error]);
+        }
+
+        return back()->with('success', 'Staff login email resent to '.$result['user']->email.'.');
+    }
+
+    private function isStaffCredentialsLog(PmMessageLog $log): bool
+    {
+        if ($log->channel !== 'email') {
+            return false;
+        }
+
+        $category = strtolower(trim((string) ($log->template_category ?? '')));
+        $stage = strtolower(trim((string) ($log->internal_stage ?? '')));
+        $subject = strtolower(trim((string) ($log->subject ?? '')));
+
+        return $category === 'staff_credentials'
+            || $stage === 'staff_login'
+            || str_contains($subject, 'workspace login');
+    }
+
+    private function employeeForStaffCredentialsLog(PmMessageLog $log): ?Employee
+    {
+        $email = Str::lower(trim((string) $log->to_address));
+        if ($email === '' || ! str_contains($email, '@')) {
+            return null;
+        }
+
+        $employee = Employee::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
+        if ($employee) {
+            return $employee;
+        }
+
+        $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if (! $user) {
+            return null;
+        }
+
+        return Employee::query()->where('user_id', $user->id)->first();
+    }
+
+    private function markMessageLogSuperseded(PmMessageLog $log): void
+    {
+        $payload = [];
+        if (Schema::hasColumn('pm_message_logs', 'superseded_at')) {
+            $payload['superseded_at'] = now();
+        }
+        if ($payload !== []) {
+            $log->forceFill($payload)->save();
+        }
     }
 
     public function messagesExport(Request $request)
@@ -640,19 +729,29 @@ class PropertyCommunicationsWebController extends Controller
             );
         }
 
-        $resendAction = app(RentReminderEligibilityService::class)->smsResendActionForLog(
-            $log,
-            app(RentReminderEligibilityService::class)->deliveredInvoiceKeysForInvoiceNumbers([
-                app(RentReminderEligibilityService::class)->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body),
-            ])
-        );
+        $resendAction = null;
+        if ($log->channel === 'sms') {
+            $resendAction = app(RentReminderEligibilityService::class)->smsResendActionForLog(
+                $log,
+                app(RentReminderEligibilityService::class)->deliveredInvoiceKeysForInvoiceNumbers([
+                    app(RentReminderEligibilityService::class)->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body),
+                ])
+            );
+        } elseif ($this->isStaffCredentialsLog($log) && strtolower((string) ($log->delivery_status ?? '')) === 'failed') {
+            $resendAction = [
+                'can_resend' => true,
+                'can_bulk_select' => false,
+                'label' => 'Resend logins',
+                'hint' => 'Resets the temporary password and emails it again.',
+            ];
+        }
 
         return property_view('property.agent.communications.message_show', [
             'log' => $log,
             'backRoute' => $backRoute,
             'backLabel' => $backLabel,
             'canManageCommunications' => $this->canManageCommunications(request()),
-            'resendAction' => $resendAction,
+            'resendAction' => $resendAction ?? [],
         ]);
     }
 
@@ -1643,16 +1742,38 @@ class PropertyCommunicationsWebController extends Controller
             return [];
         }
 
+        $actions = [];
+
+        foreach ($logs as $log) {
+            if (! $log instanceof PmMessageLog) {
+                continue;
+            }
+            if ($log->channel === 'email'
+                && $this->isStaffCredentialsLog($log)
+                && strtolower((string) ($log->delivery_status ?? '')) === 'failed'
+            ) {
+                $actions[(int) $log->id] = [
+                    'can_resend' => true,
+                    'can_bulk_select' => false,
+                    'label' => 'Resend logins',
+                    'hint' => 'Resets the temporary password and emails it again.',
+                ];
+            }
+        }
+
         $failedSms = $logs->filter(static function (PmMessageLog $log): bool {
             return $log->channel === 'sms'
                 && strtolower((string) ($log->delivery_status ?? '')) === 'failed';
         });
 
-        if ($failedSms->isEmpty()) {
-            return [];
+        if ($failedSms->isNotEmpty()) {
+            $smsActions = app(RentReminderEligibilityService::class)->resendActionsForLogs($failedSms);
+            foreach ($smsActions as $id => $action) {
+                $actions[(int) $id] = $action;
+            }
         }
 
-        return app(RentReminderEligibilityService::class)->resendActionsForLogs($failedSms);
+        return $actions;
     }
 
     /**

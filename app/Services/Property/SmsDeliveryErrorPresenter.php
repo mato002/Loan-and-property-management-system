@@ -7,6 +7,42 @@ namespace App\Services\Property;
  */
 final class SmsDeliveryErrorPresenter
 {
+    public function forChannel(string $channel, ?string $raw, ?string $invoiceHint = null): string
+    {
+        if (strtolower(trim($channel)) === 'email') {
+            return $this->forEmail($raw);
+        }
+
+        return $this->forAgent($raw, $invoiceHint);
+    }
+
+    public function forEmail(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return 'This email could not be sent. Check mail settings (SMTP) and try again.';
+        }
+
+        $lower = strtolower($raw);
+        if ($this->matchesAny($lower, [
+            'connection could not be established',
+            'connection timed out',
+            'could not authenticate',
+            'failed to authenticate',
+            'smtp',
+            'stream_socket_client',
+            'unable to connect',
+        ])) {
+            return 'Email server rejected or could not be reached. Check SMTP host, port, username, and password in .env, then resend.';
+        }
+
+        if ($this->matchesAny($lower, ['address in mailbox given', 'invalid email', 'does not comply with rfc'])) {
+            return 'The recipient email address is invalid. Update the employee email, then resend.';
+        }
+
+        return $this->truncate($raw, 280);
+    }
+
     public function forAgent(?string $raw, ?string $invoiceHint = null): string
     {
         $raw = trim((string) $raw);
