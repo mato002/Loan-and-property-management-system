@@ -12,6 +12,7 @@ class ImportEzenTenantStatementCommand extends Command
         {file : EZEN Tenant/Resident Statement of Account .xls (SpreadsheetML)}
         {--agent-user-id= : Agent that owns the portfolio}
         {--post-gl : Post invoice issuance to trust GL (default off)}
+        {--create-missing : Create the tenant and lease when the TNT account is new}
         {--dry-run : Parse and match without saving}';
 
     protected $description = 'Import missing DBNs, rent deposits, and opening balances from an EZEN tenant statement export.';
@@ -32,6 +33,7 @@ class ImportEzenTenantStatementCommand extends Command
             $actor,
             (bool) $this->option('dry-run'),
             (bool) $this->option('post-gl'),
+            (bool) $this->option('create-missing'),
         );
 
         $this->line('Tenant: '.($summary['tenant'] ?: '—'));

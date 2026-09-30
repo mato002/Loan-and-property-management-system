@@ -6,6 +6,9 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
+use App\Models\PmTenantDeposit;
+use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -38,7 +41,7 @@ final class EzenTenantStatementImportService
      *     errors: list<string>
      * }
      */
-    public function importFromPath(string $path, int $agentUserId, ?User $actor = null, bool $dryRun = false, bool $postGl = false): array
+    public function importFromPath(string $path, int $agentUserId, ?User $actor = null, bool $dryRun = false, bool $postGl = false, bool $createMissing = false): array
     {
         $summary = [
             'tenant' => null,
@@ -72,6 +75,12 @@ final class EzenTenantStatementImportService
         $summary['payments_parsed'] = count($parsed['payments']);
 
         $tenant = $this->resolveTenant($parsed, $agentUserId);
+        if ($tenant === null && $createMissing) {
+            $tenant = $this->createMissingTenantAndLease($parsed, $agentUserId, $dryRun, $summary);
+            if ($tenant === null && $dryRun && $summary['errors'] === []) {
+                return $summary;
+            }
+        }
         if ($tenant === null) {
             $summary['skipped_unmatched'] = count($parsed['charges']) + count($parsed['payments']);
             $summary['errors'][] = 'Could not match tenant '
@@ -443,6 +452,203 @@ final class EzenTenantStatementImportService
             'charges' => $charges,
             'payments' => $payments,
         ];
+    }
+
+    /**
+     * @param  array{
+     *     tenant:?string,
+     *     account:?string,
+     *     unit:?string,
+     *     property:?string,
+     *     charges:list<array{txn_no:string,date:string,memo:string,period:?string,amount:float,type:string}>,
+     *     payments:list<array{txn_no:string,date:string,memo:string,amount:float,bank_ref:string,external_ref:string}>
+     * }  $parsed
+     * @param  array<string, mixed>  $summary
+     */
+    private function createMissingTenantAndLease(array $parsed, int $agentUserId, bool $dryRun, array &$summary): ?PmTenant
+    {
+        $account = strtoupper(trim((string) ($parsed['account'] ?? '')));
+        $name = trim((string) ($parsed['tenant'] ?? ''));
+        if ($account === '' || $name === '') {
+            $summary['errors'][] = 'Cannot create missing tenant without a TNT account and name.';
+
+            return null;
+        }
+
+        $unit = $this->resolveStatementUnit($parsed, $agentUserId);
+        if ($unit === null) {
+            $summary['errors'][] = 'Cannot create '.$account.': unit '.($parsed['unit'] ?: '?')
+                .' was not found on '.($parsed['property'] ?: 'the statement property').'.';
+
+            return null;
+        }
+
+        $startDate = $this->statementStartDate($parsed);
+        $rent = $this->statementRentAmount($parsed, $unit);
+        $rentDeposit = $this->statementDepositAmount($parsed, 'rent deposit');
+        $additional = [];
+        foreach (['water deposit', 'electricity deposit', 'garbage deposit'] as $label) {
+            $amount = $this->statementDepositAmount($parsed, $label);
+            if ($amount > 0.009) {
+                $additional[] = ['label' => ucfirst($label), 'amount' => $amount];
+            }
+        }
+        $held = round($rentDeposit + array_sum(array_column($additional, 'amount')), 2);
+
+        $previous = PmLease::query()
+            ->withoutGlobalScopes()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereHas('units', fn ($q) => $q->where('property_units.id', $unit->id))
+            ->with('pmTenant')
+            ->get();
+
+        foreach ($previous as $oldLease) {
+            $summary['warnings'][] = ($dryRun ? 'Would end' : 'Ended').' '
+                .($oldLease->pmTenant?->name ?? 'previous occupant')
+                .' ('.($oldLease->pmTenant?->account_number ?? '—').') on '.$unit->label
+                .' before onboarding '.$name.'.';
+        }
+        $summary['warnings'][] = ($dryRun ? 'Would create' : 'Created').' tenant '.$account
+            .' '.$name.' on '.$unit->label.' from '.$startDate
+            .' at rent '.number_format($rent, 2).'.';
+
+        if ($dryRun) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($account, $name, $agentUserId, $unit, $startDate, $rent, $rentDeposit, $additional, $held, $previous): PmTenant {
+            $endBefore = Carbon::parse($startDate)->subDay()->toDateString();
+            foreach ($previous as $oldLease) {
+                $oldLease->update([
+                    'status' => PmLease::STATUS_TERMINATED,
+                    'end_date' => $endBefore,
+                ]);
+            }
+
+            $tenantPayload = [
+                'name' => $name,
+                'account_number' => $account,
+                'opening_arrears_amount' => 0,
+                'opening_arrears_status' => 'none',
+                'notes' => 'Onboarded from EZEN tenant statement '.$startDate.'.',
+            ];
+            if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                $tenantPayload['agent_user_id'] = $agentUserId;
+            }
+            $tenant = PmTenant::query()->create($tenantPayload);
+
+            $leasePayload = [
+                'pm_tenant_id' => $tenant->id,
+                'start_date' => $startDate,
+                'end_date' => null,
+                'monthly_rent' => $rent,
+                'deposit_amount' => $rentDeposit,
+                'status' => PmLease::STATUS_ACTIVE,
+            ];
+            if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
+                $leasePayload['additional_deposits'] = $additional;
+            }
+            if (Schema::hasColumn('pm_leases', 'rent_due_day')) {
+                $leasePayload['rent_due_day'] = 1;
+            }
+            $lease = PmLease::query()->create($leasePayload);
+            $lease->units()->sync([$unit->id]);
+
+            $unit->update([
+                'status' => PropertyUnit::STATUS_OCCUPIED,
+                'rent_amount' => $rent,
+                'vacant_since' => null,
+            ]);
+
+            if (Schema::hasTable('pm_tenant_deposits') && $held > 0.009) {
+                $depositPayload = [
+                    'tenant_id' => $tenant->id,
+                    'amount' => $held,
+                    'status' => 'held',
+                ];
+                if (Schema::hasColumn('pm_tenant_deposits', 'agent_user_id')) {
+                    $depositPayload['agent_user_id'] = $agentUserId;
+                }
+                PmTenantDeposit::query()->create($depositPayload);
+            }
+
+            return $tenant;
+        });
+    }
+
+    /**
+     * @param  array{property:?string,unit:?string}  $parsed
+     */
+    private function resolveStatementUnit(array $parsed, int $agentUserId): ?PropertyUnit
+    {
+        $code = null;
+        if (preg_match('/\[([A-Z0-9]+)\]/i', (string) ($parsed['property'] ?? ''), $m) === 1) {
+            $code = strtoupper($m[1]);
+        }
+        $label = strtoupper(trim((string) ($parsed['unit'] ?? '')));
+        if ($code === null || $label === '') {
+            return null;
+        }
+
+        $propertyQuery = Property::query()->withoutGlobalScopes()->where('code', $code);
+        if (Schema::hasColumn('properties', 'agent_user_id') && $agentUserId > 0) {
+            $propertyQuery->where('agent_user_id', $agentUserId);
+        }
+        $property = $propertyQuery->first();
+        if ($property === null) {
+            return null;
+        }
+
+        return PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->where('property_id', $property->id)
+            ->whereRaw('UPPER(label) = ?', [$label])
+            ->first();
+    }
+
+    /**
+     * @param  array{charges:list<array{date:string}>,payments:list<array{date:string}>}  $parsed
+     */
+    private function statementStartDate(array $parsed): string
+    {
+        $dates = [];
+        foreach (array_merge($parsed['charges'], $parsed['payments']) as $row) {
+            if (! empty($row['date'])) {
+                $dates[] = $row['date'];
+            }
+        }
+        sort($dates);
+
+        return $dates[0] ?? now()->toDateString();
+    }
+
+    /**
+     * @param  array{charges:list<array{memo:string,amount:float,type:string}>}  $parsed
+     */
+    private function statementRentAmount(array $parsed, PropertyUnit $unit): float
+    {
+        foreach (array_reverse($parsed['charges']) as $row) {
+            if (($row['type'] ?? '') === PmInvoice::TYPE_RENT || preg_match('/^\s*rent\s+for\b/i', (string) $row['memo']) === 1) {
+                return round((float) $row['amount'], 2);
+            }
+        }
+
+        return round((float) ($unit->rent_amount ?? 0), 2);
+    }
+
+    /**
+     * @param  array{charges:list<array{memo:string,amount:float}>}  $parsed
+     */
+    private function statementDepositAmount(array $parsed, string $label): float
+    {
+        $total = 0.0;
+        foreach ($parsed['charges'] as $row) {
+            if (preg_match('/^\s*'.preg_quote($label, '/').'\s*$/i', (string) $row['memo']) === 1) {
+                $total += (float) $row['amount'];
+            }
+        }
+
+        return round($total, 2);
     }
 
     /**
