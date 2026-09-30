@@ -619,7 +619,12 @@ final class EzenTenantStatementImportService
     ): PmInvoice {
         return DB::transaction(function () use ($tenant, $lease, $unit, $row, $actor, $postGl): PmInvoice {
             $amount = round((float) $row['amount'], 2);
-            $description = '[EZEN '.$row['txn_no'].'] '.$row['memo'].' · '.$tenant->name.' · '.$unit->label;
+            $description = mb_substr(
+                '[EZEN '.$row['txn_no'].'] '.$row['memo'].' · '.$tenant->name.' · '.$unit->label,
+                0,
+                255
+            );
+            $lineMemo = mb_substr((string) $row['memo'], 0, 255);
 
             $invoice = PmInvoice::query()->create([
                 'pm_lease_id' => $lease->id,
@@ -645,7 +650,7 @@ final class EzenTenantStatementImportService
                 ],
             ]);
 
-            $invoice->ensureDefaultRentLineItem($amount, $row['memo']);
+            $invoice->ensureDefaultRentLineItem($amount, $lineMemo);
 
             if ($postGl) {
                 PropertyAccountingPostingService::postInvoiceIssued($invoice->fresh(), $actor);
