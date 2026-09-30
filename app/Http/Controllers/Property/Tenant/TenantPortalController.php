@@ -1449,6 +1449,9 @@ class TenantPortalController extends Controller
 
         return property_view('property.tenant.payments.receipt', [
             'payment' => $payment,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+                (int) ($tenant->agent_user_id ?? 0) > 0 ? (int) $tenant->agent_user_id : null
+            ),
         ]);
     }
 
@@ -1463,6 +1466,9 @@ class TenantPortalController extends Controller
 
         $html = view('property.tenant.payments.receipt_download', [
             'payment' => $payment,
+            'doc' => \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+                (int) ($tenant->agent_user_id ?? 0) > 0 ? (int) $tenant->agent_user_id : null
+            ),
         ])->render();
 
         $fileName = 'receipt-RCP-PAY-'.$payment->id.'.html';

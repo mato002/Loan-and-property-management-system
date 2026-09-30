@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmTenant;
 use App\Models\Property;
-use App\Models\PropertyPortalSetting;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\UtilityLedgerService;
 use App\Services\Property\UtilityReconciliationService;
+use App\Support\Property\PropertyWorkspaceBranding;
 use App\Support\TabularExport;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -143,7 +143,7 @@ class UtilityLedgerController extends Controller
             'ledger' => $ledger,
             'currentBalance' => $currentBalance,
             'filters' => ['from' => $from, 'to' => $to],
-            'branding' => $this->branding(),
+            'branding' => $this->branding($tenant),
             'generatedAt' => now()->format('d M Y, H:i'),
             'embed' => $embed,
         ];
@@ -240,17 +240,13 @@ class UtilityLedgerController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function branding(): array
+    private function branding(?PmTenant $tenant = null): array
     {
-        $b = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
+        $agentUserId = null;
+        if ($tenant !== null && (int) ($tenant->agent_user_id ?? 0) > 0) {
+            $agentUserId = (int) $tenant->agent_user_id;
+        }
 
-        return array_merge([
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'address' => '',
-            'phone' => '',
-            'email' => '',
-            'colour' => '#0f766e',
-        ], is_array($decoded) ? $decoded : []);
+        return PropertyWorkspaceBranding::documentSnapshot($agentUserId);
     }
 }

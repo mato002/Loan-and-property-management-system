@@ -6,6 +6,19 @@
             <a href="{{ route('property.reports.tenant.statements', ['tenant_id' => $tenant->id], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reports</a>
         </div>
     </div>
+    <div class="p-4 border-b border-slate-100">
+        @include('property.agent.partials.statement_report_builder', [
+            'showUrl' => route('property.tenants.statement', $tenant, false),
+            'printUrl' => route('property.tenants.statement', $tenant, false),
+            'showProperty' => false,
+            'showDetailLevel' => true,
+            'defaultPeriod' => 'fy',
+            'defaultReport' => 'detail',
+            'defaultFy' => (int) now()->year,
+            'title' => 'Generate tenant statement',
+            'hint' => 'Export this tenant’s ledger for any FY / month / range as summary or full detail.',
+        ])
+    </div>
     <iframe
         src="{{ route('property.tenants.statement', [$tenant, 'embed' => 1], false) }}"
         title="Tenant statement preview"

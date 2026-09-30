@@ -1392,17 +1392,44 @@ class PmTenantDirectoryController extends Controller
         ]);
     }
 
-    public function statement(Request $request, PmTenant $tenant): View
+    public function statement(Request $request, PmTenant $tenant): View|\Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\Response
     {
         $formulas = app(FinancialReportingFormulaService::class);
         $validated = $request->validate([
-            'from' => ['nullable', 'date'],
-            'to' => ['nullable', 'date'],
+            'from' => ['nullable', 'string', 'max:32'],
+            'to' => ['nullable', 'string', 'max:32'],
+            'fy' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['nullable', 'string', 'max:7'],
+            'report' => ['nullable', 'in:summary,detail'],
+            'export' => ['nullable', 'string'],
+            'export_scope' => ['nullable', 'string'],
+            'print' => ['nullable'],
         ]);
         $embed = $request->boolean('embed');
 
         $from = isset($validated['from']) ? trim((string) $validated['from']) : '';
         $to = isset($validated['to']) ? trim((string) $validated['to']) : '';
+        $month = isset($validated['month']) ? trim((string) $validated['month']) : '';
+        $fy = (int) ($validated['fy'] ?? 0);
+        $reportMode = strtolower((string) ($validated['report'] ?? 'detail'));
+        $exportScope = strtolower((string) ($validated['export_scope'] ?? ''));
+        if (in_array($exportScope, ['summary', 'detail'], true) && ! isset($validated['report'])) {
+            $reportMode = $exportScope;
+        }
+
+        // Period shortcuts: FY / month / date-range.
+        if ($from === '' && $to === '' && preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $from = Carbon::createFromFormat('Y-m', $month)->startOfMonth()->toDateString();
+            $to = Carbon::createFromFormat('Y-m', $month)->endOfMonth()->toDateString();
+        } elseif ($from === '' && $to === '' && $fy >= 2000) {
+            $from = Carbon::create($fy, 1, 1)->toDateString();
+            $to = Carbon::create($fy, 12, 31)->toDateString();
+        } elseif ($from !== '' && preg_match('/^\d{4}-\d{2}$/', $from) === 1 && strlen($from) === 7) {
+            $from = Carbon::createFromFormat('Y-m', $from)->startOfMonth()->toDateString();
+            if ($to !== '' && preg_match('/^\d{4}-\d{2}$/', $to) === 1 && strlen($to) === 7) {
+                $to = Carbon::createFromFormat('Y-m', $to)->endOfMonth()->toDateString();
+            }
+        }
 
         $fromDate = $from !== '' ? Carbon::parse($from)->startOfDay() : null;
         $toDate = $to !== '' ? Carbon::parse($to)->endOfDay() : null;
@@ -1420,6 +1447,7 @@ class PmTenantDirectoryController extends Controller
         $totalCredit = 0.0;
 
         $rows = [];
+        $exportRows = [];
         if ($fromDate) {
             $rows[] = [
                 $fromDate->toDateString(),
@@ -1431,6 +1459,16 @@ class PmTenantDirectoryController extends Controller
                 PropertyMoney::kes($openingBalance),
                 '—',
                 '—',
+            ];
+            $exportRows[] = [
+                $fromDate->toDateString(),
+                'Opening balance',
+                '',
+                'B/F',
+                '',
+                number_format($openingBalance, 2, '.', ''),
+                number_format($openingBalance, 2, '.', ''),
+                '',
             ];
         }
 
@@ -1461,13 +1499,59 @@ class PmTenantDirectoryController extends Controller
                 (string) ($e['status'] ?? ($e['type'] === 'Invoice' ? 'Issued' : '—')),
                 $actions,
             ];
+            $exportRows[] = [
+                (string) ($e['date'] ?? ''),
+                (string) $e['type'],
+                (string) $e['ref'],
+                (string) $e['description'],
+                $debit > 0 ? number_format($debit, 2, '.', '') : '',
+                $credit > 0 ? number_format($credit, 2, '.', '') : '',
+                number_format($running, 2, '.', ''),
+                (string) ($e['status'] ?? ''),
+            ];
         }
 
         $billingSnapshot = $formulas->tenantBillingSnapshot($tenant);
         $canonicalOutstanding = $formulas->tenantTotalDue($tenant);
         $ledgerRunningBalance = $running;
-        // Statement closing follows the ledger the user sees (avoids AR=0 while unpaid lines remain visible).
         $closingBalance = round($ledgerRunningBalance, 2);
+
+        $export = strtolower(trim((string) ($validated['export'] ?? $request->query('export', ''))));
+        if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true) || $request->boolean('print')) {
+            $periodLabel = collect([
+                $fromDate?->toDateString(),
+                $toDate?->toDateString(),
+            ])->filter()->implode(' to ') ?: 'all-time';
+            $slug = 'tenant-'.$tenant->id.'-statement-'.\Illuminate\Support\Str::slug($periodLabel);
+
+            if ($reportMode === 'summary') {
+                return TabularExport::stream(
+                    $slug.'-summary',
+                    ['Metric', 'Value'],
+                    function () use ($tenant, $totalDebit, $totalCredit, $closingBalance, $canonicalOutstanding, $unpostedReceiptTotal, $entries, $periodLabel) {
+                        yield ['Tenant', (string) $tenant->name];
+                        yield ['Period', $periodLabel];
+                        yield ['Transactions', (string) count($entries)];
+                        yield ['Total debit', number_format($totalDebit, 2, '.', '')];
+                        yield ['Total credit', number_format($totalCredit, 2, '.', '')];
+                        yield ['Closing balance', number_format($closingBalance, 2, '.', '')];
+                        yield ['Amount due', number_format(round($canonicalOutstanding - $unpostedReceiptTotal, 2), 2, '.', '')];
+                    },
+                    $export !== '' ? $export : 'csv',
+                );
+            }
+
+            return TabularExport::stream(
+                $slug,
+                ['Date', 'Type', 'Ref', 'Description', 'Debit', 'Credit', 'Balance', 'Status'],
+                function () use ($exportRows) {
+                    foreach ($exportRows as $row) {
+                        yield $row;
+                    }
+                },
+                $export !== '' ? $export : 'csv',
+            );
+        }
 
         $stats = [
             ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => 'Statement owner'],
@@ -1527,7 +1611,12 @@ class PmTenantDirectoryController extends Controller
             'stats' => $stats,
             'columns' => ['Date', 'Type', 'Ref', 'Description', 'Debit', 'Credit', 'Balance', 'Status', 'Receipt'],
             'tableRows' => $rows,
-            'filters' => ['from' => $from !== '' ? $from : null, 'to' => $to !== '' ? $to : null],
+            'filters' => [
+                'from' => $from !== '' ? $from : null,
+                'to' => $to !== '' ? $to : null,
+                'fy' => $fy > 0 ? $fy : null,
+                'month' => $month !== '' ? $month : null,
+            ],
             'leaseSummary' => $leaseSummary,
             'invoiceSummary' => $invoiceSummary,
             'paymentSummary' => $paymentSummary,

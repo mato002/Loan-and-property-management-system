@@ -125,7 +125,7 @@ final class ResponsiveTableColumns
     public static function landlordStatementBreakdown(): array
     {
         return self::build(
-            ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'],
+            ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection', 'Reports'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
                 1 => ['priority' => 3, 'mobile_label' => 'Ownership'],
@@ -133,6 +133,7 @@ final class ResponsiveTableColumns
                 3 => ['priority' => 4, 'mobile_label' => 'Pending'],
                 4 => ['priority' => 5, 'mobile_label' => 'Agent earning'],
                 5 => ['priority' => 6, 'mobile_label' => 'Last paid'],
+                6 => ['is_action' => true, 'priority' => 1, 'mobile_label' => 'Reports'],
             ]
         );
     }

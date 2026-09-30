@@ -66,33 +66,56 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.accounting.payables.landlord_settlements') }}" class="flex flex-wrap items-end gap-2">
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Property</label>
-                <select name="property_id" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[12rem]">
-                    <option value="">Select property…</option>
-                    @foreach ($properties as $property)
-                        <option value="{{ $property->id }}" @selected((int) ($filters['property_id'] ?? 0) === (int) $property->id)>{{ $property->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Landlord</label>
-                <select name="landlord_id" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[12rem]" @disabled((int) ($filters['property_id'] ?? 0) <= 0)>
-                    <option value="">Select landlord…</option>
-                    @foreach ($landlords as $landlord)
-                        <option value="{{ $landlord->id }}" @selected((int) ($filters['landlord_id'] ?? 0) === (int) $landlord->id)>
-                            {{ $landlord->name }} ({{ rtrim(rtrim(number_format((float) $landlord->ownership_percent, 2, '.', ''), '0'), '.') }}%)
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Month</label>
-                <input type="month" name="month" value="{{ $filters['month'] ?? now()->format('Y-m') }}" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
-            </div>
-            <button type="submit" class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800">Preview</button>
-        </form>
+        <div class="w-full space-y-3">
+            <form method="get" action="{{ route('property.accounting.payables.landlord_settlements') }}" class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Property</label>
+                    <select name="property_id" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[12rem]">
+                        <option value="">Select property…</option>
+                        @foreach ($properties as $property)
+                            <option value="{{ $property->id }}" @selected((int) ($filters['property_id'] ?? 0) === (int) $property->id)>{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Landlord</label>
+                    <select name="landlord_id" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[12rem]" @disabled((int) ($filters['property_id'] ?? 0) <= 0)>
+                        <option value="">Select landlord…</option>
+                        @foreach ($landlords as $landlord)
+                            <option value="{{ $landlord->id }}" @selected((int) ($filters['landlord_id'] ?? 0) === (int) $landlord->id)>
+                                {{ $landlord->name }} ({{ rtrim(rtrim(number_format((float) $landlord->ownership_percent, 2, '.', ''), '0'), '.') }}%)
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Month</label>
+                    <input type="month" name="month" value="{{ $filters['month'] ?? now()->format('Y-m') }}" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </div>
+                <button type="submit" class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800">Preview</button>
+            </form>
+
+            @if ((int) ($filters['property_id'] ?? 0) > 0 && (int) ($filters['landlord_id'] ?? 0) > 0)
+                @include('property.agent.partials.statement_report_builder', [
+                    'showUrl' => route('property.accounting.payables.landlord_settlements', [], false),
+                    'printUrl' => route('property.accounting.payables.landlord_settlements', [], false),
+                    'showProperty' => false,
+                    'showDetailLevel' => true,
+                    'defaultPeriod' => ! empty($filters['from']) && ! empty($filters['to']) && ($filters['from'] !== $filters['to']) ? 'range' : 'month',
+                    'defaultReport' => $filters['report'] ?? 'detail',
+                    'defaultFy' => (int) ($filters['fy'] ?? now()->year),
+                    'defaultMonth' => $filters['month'] ?? now()->format('Y-m'),
+                    'defaultFrom' => $filters['from'] ?? now()->format('Y-m'),
+                    'defaultTo' => $filters['to'] ?? now()->format('Y-m'),
+                    'extraQuery' => [
+                        'property_id' => (int) $filters['property_id'],
+                        'landlord_id' => (int) $filters['landlord_id'],
+                    ],
+                    'title' => 'Export settlement for any period',
+                    'hint' => 'After selecting property and landlord above, generate FY / month / custom-range remittance as summary or full unit detail.',
+                ])
+            @endif
+        </div>
     </x-slot>
 
     @if (session('status'))

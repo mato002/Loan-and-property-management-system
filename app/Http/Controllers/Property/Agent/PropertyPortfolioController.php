@@ -23,6 +23,7 @@ use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\PhoneLink;
 use App\Support\Property\PropertyEntityHub;
+use App\Support\Property\PropertyWorkspaceBranding;
 use App\Services\Property\LandlordHubDataService;
 use App\Support\Property\ResponsiveTableColumns;
 use App\Support\Property\UnitListPresentation;
@@ -799,6 +800,15 @@ class PropertyPortfolioController extends Controller
         if ($activeTab === 'statements') {
             $landlordId = (int) ($property->landlords->first()?->id ?? 0);
             $openMonth = preg_match('/^\d{4}-\d{2}$/', $month) === 1 ? $month : '';
+            $fromYm = (string) $request->query('from', '');
+            $toYm = (string) $request->query('to', '');
+            $reportMode = strtolower((string) $request->query('report', ''));
+            $exportScope = strtolower((string) $request->query('export_scope', ''));
+            if (in_array($exportScope, ['summary', 'detail'], true) && $reportMode === '') {
+                $reportMode = $exportScope;
+            }
+            $isCustomRange = preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1;
+
             $propertyStatement = app(LandlordSettlementService::class)->buildPropertyStatementHub(
                 (int) $property->id,
                 $fy,
@@ -808,13 +818,79 @@ class PropertyPortfolioController extends Controller
 
             $printScope = strtolower((string) $request->query('print_scope', ''));
             $export = strtolower((string) $request->query('export', ''));
-            $exportScope = strtolower((string) $request->query('export_scope', ''));
-            if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
-                && in_array($exportScope, ['year_units', 'month_units', 'months', 'unit_grid', 'year', 'month'], true)) {
-                return $this->streamPropertyStatementTable($property, $propertyStatement, $exportScope, $export);
-            }
-            if ($request->boolean('print') || in_array($export, ['pdf', 'word', 'csv', 'xls', 'xlsx'], true) || $printScope !== '') {
-                $wantYear = $printScope === 'year' || in_array($exportScope, ['year', 'year_units'], true);
+            $wantsOutput = in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
+                || $request->boolean('print')
+                || $printScope !== '';
+
+            if ($wantsOutput) {
+                $settlementService = app(LandlordSettlementService::class);
+
+                if ($isCustomRange) {
+                    $rangeStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+                    $rangeEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+                    if ($rangeEnd->lt($rangeStart)) {
+                        [$rangeStart, $rangeEnd] = [$rangeEnd->copy()->startOfMonth(), $rangeStart->copy()->endOfMonth()];
+                    }
+                    $rangeLabel = $fromYm === $toYm
+                        ? $rangeStart->format('F Y')
+                        : $rangeStart->format('M Y').' – '.$rangeEnd->format('M Y');
+                    $rangeSettlement = $settlementService->buildPropertyPeriodStatement(
+                        (int) $property->id,
+                        $rangeStart,
+                        $rangeEnd,
+                        $landlordId > 0 ? $landlordId : null,
+                    );
+
+                    if ($reportMode === 'summary' || in_array($exportScope, ['summary', 'months'], true)) {
+                        $monthly = [];
+                        for ($year = (int) $rangeStart->year; $year <= (int) $rangeEnd->year; $year++) {
+                            $monthly = array_merge(
+                                $monthly,
+                                $settlementService->monthlyActivityForProperty((int) $property->id, $year)
+                            );
+                        }
+                        $monthly = array_values(array_filter(
+                            $monthly,
+                            static fn (array $row): bool => ($row['month'] ?? '') >= min($fromYm, $toYm) && ($row['month'] ?? '') <= max($fromYm, $toYm)
+                        ));
+
+                        return TabularExport::stream(
+                            'property-'.$property->id.'-months-'.Str::slug($rangeLabel),
+                            ['Month', 'Month label', 'Invoiced', 'Received'],
+                            function () use ($monthly) {
+                                foreach ($monthly as $row) {
+                                    yield [
+                                        (string) ($row['month'] ?? ''),
+                                        (string) ($row['month_label'] ?? ''),
+                                        number_format((float) ($row['billed'] ?? 0), 2, '.', ''),
+                                        number_format((float) ($row['received'] ?? 0), 2, '.', ''),
+                                    ];
+                                }
+                            },
+                            $export !== '' ? $export : 'csv',
+                        );
+                    }
+
+                    return $this->streamPropertyAccountStatement(
+                        $property,
+                        [$rangeSettlement],
+                        $rangeLabel,
+                        $export !== '' ? $export : 'print',
+                    );
+                }
+
+                if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
+                    && in_array($exportScope, ['year_units', 'month_units', 'months', 'unit_grid', 'year', 'month'], true)) {
+                    return $this->streamPropertyStatementTable($property, $propertyStatement, $exportScope, $export);
+                }
+
+                if ($reportMode === 'summary' || $exportScope === 'summary') {
+                    return $this->streamPropertyStatementTable($property, $propertyStatement, 'months', $export !== '' ? $export : 'csv');
+                }
+
+                $wantYear = $printScope === 'year'
+                    || in_array($exportScope, ['year', 'year_units', 'detail'], true)
+                    || ($reportMode === 'detail' && $openMonth === '' && $printScope === '');
                 $settlement = $wantYear
                     ? ($propertyStatement['year_settlement'] ?? null)
                     : ($propertyStatement['month_settlement'] ?? $propertyStatement['year_settlement'] ?? null);
@@ -1692,15 +1768,34 @@ class PropertyPortfolioController extends Controller
      *   recentCollections:\Illuminate\Support\Collection<int,object>
      * }
      */
-    private function buildLandlordSnapshot(User $landlord, string $month, int $fy): array
-    {
+    private function buildLandlordSnapshot(
+        User $landlord,
+        string $month,
+        int $fy,
+        string $fromYm = '',
+        string $toYm = '',
+        ?int $propertyId = null,
+    ): array {
         if ($fy < 2000 || $fy > 2100) {
             $fy = (int) now()->year;
         }
-        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+        $isRange = preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1;
+        if ($isRange) {
+            $periodStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+            }
+            $periodLabel = $fromYm === $toYm
+                ? $periodStart->format('M Y')
+                : $periodStart->format('M Y').' – '.$periodEnd->format('M Y');
+            $fy = (int) $periodStart->year;
+            $month = $fromYm === $toYm ? $fromYm : '';
+        } elseif (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
             $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
             $periodEnd = $periodStart->copy()->endOfMonth();
             $periodLabel = $periodStart->format('M Y');
+            $fy = (int) $periodStart->year;
         } else {
             $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
             $periodEnd = $periodStart->copy()->endOfYear();
@@ -1720,6 +1815,9 @@ class PropertyPortfolioController extends Controller
                 'p.name as property_name',
             ])
             ->orderBy('p.name');
+        if ($propertyId !== null && $propertyId > 0) {
+            $propertyLinksQuery->where('pl.property_id', $propertyId);
+        }
         if (AgentWorkspaceScope::shouldApply()) {
             $propertyLinksQuery->where('p.agent_user_id', (int) Auth::id());
         }
@@ -1766,8 +1864,8 @@ class PropertyPortfolioController extends Controller
         $commissionOverrides = [];
         $decodedOverrides = json_decode($commissionOverridesRaw, true);
         if (is_array($decodedOverrides)) {
-            foreach ($decodedOverrides as $propertyId => $pct) {
-                $pid = (int) $propertyId;
+            foreach ($decodedOverrides as $overridePropertyId => $pct) {
+                $pid = (int) $overridePropertyId;
                 if ($pid <= 0 || ! is_numeric($pct)) {
                     continue;
                 }
@@ -1853,8 +1951,8 @@ class PropertyPortfolioController extends Controller
         $monthlyPack = $this->buildLandlordMonthlyBreakdown(
             $propertyLinks,
             $propertyIds,
-            Carbon::create($fy, 1, 1)->startOfDay(),
-            Carbon::create($fy, 12, 31)->endOfDay(),
+            $isRange ? $periodStart->copy()->startOfMonth() : Carbon::create($fy, 1, 1)->startOfDay(),
+            $isRange ? $periodEnd->copy()->endOfMonth() : Carbon::create($fy, 12, 31)->endOfDay(),
             (int) $landlord->id,
         );
         $monthlyBreakdown = $monthlyPack['months'];
@@ -2080,31 +2178,48 @@ class PropertyPortfolioController extends Controller
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
-        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+        $report = $this->resolveLandlordStatementReportOptions($request, $landlord, $fy, $month);
+        $snapshot = $this->buildLandlordSnapshot(
+            $landlord,
+            $report['month'],
+            $report['fy'],
+            $report['from'],
+            $report['to'],
+            $report['property_id'],
+        );
 
         $export = $request->string('export')->toString();
-        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+        if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
             $exportScope = strtolower((string) $request->query('export_scope', ''));
-            $isMonthScoped = preg_match('/^\d{4}-\d{2}$/', $month) === 1;
+            $wantDetail = $report['report'] === 'detail'
+                || in_array($exportScope, ['detail', 'statement'], true)
+                || ($report['report'] !== 'summary' && $report['is_month'] && ! in_array($exportScope, ['monthly', 'summary', 'properties'], true));
 
-            // Single-month export = full property account statement (units / B/F / invoiced / received), not FY summaries.
-            if ($isMonthScoped && $exportScope !== 'monthly') {
-                return $this->streamLandlordMonthAccountStatements($landlord, $month, $export);
+            if ($wantDetail && ! in_array($exportScope, ['monthly', 'summary', 'properties'], true)) {
+                return $this->streamLandlordAccountStatementsForPeriod(
+                    $landlord,
+                    $report['period_start'],
+                    $report['period_end'],
+                    $report['period_label'],
+                    $export,
+                    $report['property_id'],
+                );
             }
 
-            $wantMonthly = $exportScope === 'monthly' || ! $isMonthScoped;
-            if ($wantMonthly) {
+            $wantMonthly = $exportScope === 'monthly'
+                || ($exportScope === '' && ! $report['is_month'] && $report['report'] === 'summary');
+            if ($wantMonthly && ! in_array($exportScope, ['summary', 'properties', 'detail', 'statement'], true)) {
                 return TabularExport::stream(
-                    'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
+                    'landlord-'.$landlord->id.'-monthly-'.Str::slug($report['period_label']),
                     [
-                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Paid to landlord', 'Pending', 'Owner share', 'Agent earning', 'Properties with collections',
+                        'Landlord Name', 'Landlord Email', 'Period', 'Month', 'Month label', 'Gross collected', 'Paid to landlord', 'Pending', 'Owner share', 'Agent earning', 'Properties with collections',
                     ],
-                    function () use ($landlord, $snapshot) {
-                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $snapshot) {
+                    function () use ($landlord, $snapshot, $report) {
+                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $report) {
                             return [
                                 (string) $landlord->name,
                                 (string) $landlord->email,
-                                (string) ($snapshot['fyValue'] ?? ''),
+                                (string) $report['period_label'],
                                 (string) ($row['month'] ?? ''),
                                 (string) ($row['month_label'] ?? ''),
                                 (string) number_format((float) ($row['gross_collected'] ?? 0), 2, '.', ''),
@@ -2121,16 +2236,16 @@ class PropertyPortfolioController extends Controller
             }
 
             return TabularExport::stream(
-                'landlord-'.$landlord->id.'-snapshot'.($month !== '' ? '-'.$month : ''),
+                'landlord-'.$landlord->id.'-snapshot-'.Str::slug($report['period_label']),
                 [
                     'Landlord Name', 'Landlord Email', 'Period', 'Property', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection',
                 ],
-                function () use ($landlord, $snapshot) {
-                    return $snapshot['propertyBreakdown']->map(function (array $row) use ($landlord, $snapshot) {
+                function () use ($landlord, $snapshot, $report) {
+                    return $snapshot['propertyBreakdown']->map(function (array $row) use ($landlord, $report) {
                         return [
                             (string) $landlord->name,
                             (string) $landlord->email,
-                            (string) $snapshot['periodLabel'],
+                            (string) $report['period_label'],
                             (string) ($row['property_name'] ?? ''),
                             (string) number_format((float) ($row['ownership_percent'] ?? 0), 2),
                             (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
@@ -2203,31 +2318,179 @@ class PropertyPortfolioController extends Controller
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
+        $report = $this->resolveLandlordStatementReportOptions($request, $landlord, $fy, $month);
 
-        // Month print = Ezen-style property account statement(s) for that month only.
-        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
-            $settlements = $this->buildLandlordMonthSettlements($landlord, $month);
-            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        if ($report['report'] === 'detail') {
+            $settlements = $this->buildLandlordSettlementsForPeriod(
+                $landlord,
+                $report['period_start'],
+                $report['period_end'],
+                $report['property_id'],
+            );
 
             return view('property.agent.landlords.landlord_monthly_account_statements_print', [
                 'landlord' => $landlord,
                 'settlements' => $settlements,
-                'periodLabel' => $periodStart->format('F').' - '.$periodStart->format('Y'),
-                'branding' => $this->landlordStatementBranding(),
+                'periodLabel' => $report['period_label'],
+                'branding' => $this->landlordStatementBranding(
+                    $report['property_id'] ? Property::query()->find($report['property_id']) : null,
+                    $landlord
+                ),
                 'generatedAt' => now()->format('d M Y H:i'),
                 'autoPrint' => $request->boolean('print'),
             ]);
         }
 
-        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+        $snapshot = $this->buildLandlordSnapshot(
+            $landlord,
+            $report['month'],
+            $report['fy'],
+            $report['from'],
+            $report['to'],
+            $report['property_id'],
+        );
 
         return view('property.agent.landlords.landlord_statement_print', [
             'landlord' => $landlord,
-            'branding' => $this->landlordStatementBranding(),
+            'branding' => $this->landlordStatementBranding(
+                $report['property_id'] ? Property::query()->find($report['property_id']) : null,
+                $landlord
+            ),
             'generatedAt' => now()->format('Y-m-d H:i'),
             'autoPrint' => $request->boolean('print'),
             ...$snapshot,
         ]);
+    }
+
+    /**
+     * Resolve landlord statement report options: property, period, summary vs full detail.
+     *
+     * @return array{
+     *     report: string,
+     *     property_id: int|null,
+     *     period_start: \Illuminate\Support\Carbon,
+     *     period_end: \Illuminate\Support\Carbon,
+     *     period_label: string,
+     *     month: string,
+     *     fy: int,
+     *     from: string,
+     *     to: string,
+     *     is_month: bool,
+     *     is_range: bool
+     * }
+     */
+    private function resolveLandlordStatementReportOptions(Request $request, User $landlord, int $defaultFy, string $defaultMonth = ''): array
+    {
+        $fy = (int) $request->query('fy', $defaultFy);
+        if ($fy < 2000 || $fy > 2100) {
+            $fy = (int) now()->year;
+        }
+
+        $month = (string) $request->query('month', $defaultMonth);
+        $from = (string) $request->query('from', '');
+        $to = (string) $request->query('to', '');
+        $propertyId = (int) $request->query('property_id', 0);
+        if ($propertyId > 0 && ! $this->landlordOwnsProperty($landlord, $propertyId)) {
+            $propertyId = 0;
+        }
+
+        $isRange = preg_match('/^\d{4}-\d{2}$/', $from) === 1 && preg_match('/^\d{4}-\d{2}$/', $to) === 1;
+        $isMonth = ! $isRange && preg_match('/^\d{4}-\d{2}$/', $month) === 1;
+
+        if ($isRange) {
+            $periodStart = Carbon::createFromFormat('Y-m', $from)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $to)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+                [$from, $to] = [$to, $from];
+            }
+            $periodLabel = $from === $to
+                ? $periodStart->format('F Y')
+                : $periodStart->format('M Y').' – '.$periodEnd->format('M Y');
+            $fy = (int) $periodStart->year;
+            $month = $from === $to ? $from : '';
+        } elseif ($isMonth) {
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('F Y');
+            $fy = (int) $periodStart->year;
+            $from = $month;
+            $to = $month;
+        } else {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $periodLabel = 'FY '.$fy;
+            $month = '';
+            $from = '';
+            $to = '';
+        }
+
+        $reportRaw = strtolower(trim((string) $request->query('report', '')));
+        if (! in_array($reportRaw, ['summary', 'detail'], true)) {
+            // Month defaults to full unit statement; year/range defaults to summary unless explicitly detailed.
+            $reportRaw = $isMonth ? 'detail' : 'summary';
+        }
+
+        if ($propertyId > 0) {
+            $propertyName = (string) (Property::query()->whereKey($propertyId)->value('name') ?? 'Property');
+            $periodLabel .= ' · '.$propertyName;
+        }
+
+        return [
+            'report' => $reportRaw,
+            'property_id' => $propertyId > 0 ? $propertyId : null,
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'period_label' => $periodLabel,
+            'month' => $month,
+            'fy' => $fy,
+            'from' => $from,
+            'to' => $to,
+            'is_month' => $isMonth || ($isRange && $from === $to),
+            'is_range' => $isRange && $from !== $to,
+        ];
+    }
+
+    private function landlordOwnsProperty(User $landlord, int $propertyId): bool
+    {
+        $query = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->where('pl.property_id', $propertyId);
+        if (AgentWorkspaceScope::shouldApply()) {
+            $query->where('p.agent_user_id', (int) Auth::id());
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * Full property-account statements for linked properties over any period.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildLandlordSettlementsForPeriod(User $landlord, Carbon $periodStart, Carbon $periodEnd, ?int $propertyId = null): array
+    {
+        $propertyIdsQuery = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->orderBy('p.name')
+            ->select('pl.property_id');
+        if ($propertyId !== null && $propertyId > 0) {
+            $propertyIdsQuery->where('pl.property_id', $propertyId);
+        }
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
+        }
+
+        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+        $service = app(LandlordSettlementService::class);
+        $settlements = [];
+        foreach ($propertyIds as $pid) {
+            $settlements[] = $service->buildSettlement($pid, (int) $landlord->id, $periodStart, $periodEnd);
+        }
+
+        return $settlements;
     }
 
     /**
@@ -2238,43 +2501,43 @@ class PropertyPortfolioController extends Controller
     private function buildLandlordMonthSettlements(User $landlord, string $monthYm): array
     {
         $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
 
-        $propertyIdsQuery = DB::table('property_landlord as pl')
-            ->join('properties as p', 'p.id', '=', 'pl.property_id')
-            ->where('pl.user_id', $landlord->id)
-            ->orderBy('p.name')
-            ->select('pl.property_id');
-        if (AgentWorkspaceScope::shouldApply()) {
-            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
-        }
-
-        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
-        $service = app(LandlordSettlementService::class);
-        $settlements = [];
-        foreach ($propertyIds as $propertyId) {
-            $settlements[] = $service->buildSettlement($propertyId, (int) $landlord->id, $periodStart, $periodEnd);
-        }
-
-        return $settlements;
+        return $this->buildLandlordSettlementsForPeriod(
+            $landlord,
+            $periodStart,
+            $periodStart->copy()->endOfMonth(),
+            null,
+        );
     }
 
     /**
      * @param  list<array<string, mixed>>  $settlements
      */
-    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export): StreamedResponse|Response
-    {
-        $settlements = $this->buildLandlordMonthSettlements($landlord, $monthYm);
-        $slug = Str::slug((string) $landlord->name).'-'.$monthYm;
+    private function streamLandlordAccountStatementsForPeriod(
+        User $landlord,
+        Carbon $periodStart,
+        Carbon $periodEnd,
+        string $periodLabel,
+        string $export,
+        ?int $propertyId = null,
+    ): StreamedResponse|Response {
+        $settlements = $this->buildLandlordSettlementsForPeriod($landlord, $periodStart, $periodEnd, $propertyId);
+        $slug = Str::slug((string) $landlord->name).'-'.Str::slug($periodLabel);
+        if ($propertyId) {
+            $slug .= '-p'.$propertyId;
+        }
 
-        if (in_array($export, ['pdf', 'word'], true)) {
+        if (in_array($export, ['pdf', 'word', 'print'], true)) {
             $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
                 'landlord' => $landlord,
                 'settlements' => $settlements,
-                'periodLabel' => Carbon::createFromFormat('Y-m', $monthYm)->format('F').' - '.Carbon::createFromFormat('Y-m', $monthYm)->format('Y'),
-                'branding' => $this->landlordStatementBranding(),
+                'periodLabel' => $periodLabel,
+                'branding' => $this->landlordStatementBranding(
+                    $propertyId ? Property::query()->find($propertyId) : null,
+                    $landlord
+                ),
                 'generatedAt' => now()->format('d M Y H:i'),
-                'autoPrint' => false,
+                'autoPrint' => $export === 'print',
             ])->render();
 
             if ($export === 'word') {
@@ -2282,6 +2545,10 @@ class PropertyPortfolioController extends Controller
                     'Content-Type' => 'application/msword; charset=UTF-8',
                     'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
                 ]);
+            }
+
+            if ($export === 'print') {
+                return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
             }
 
             try {
@@ -2306,6 +2573,28 @@ class PropertyPortfolioController extends Controller
             }
         }
 
+        return $this->streamLandlordMonthAccountStatementsRows($settlements, $slug, $periodLabel, $export);
+    }
+
+    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export, ?int $propertyId = null): StreamedResponse|Response
+    {
+        $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
+
+        return $this->streamLandlordAccountStatementsForPeriod(
+            $landlord,
+            $periodStart,
+            $periodStart->copy()->endOfMonth(),
+            $periodStart->format('F').' - '.$periodStart->format('Y'),
+            $export,
+            $propertyId,
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamLandlordMonthAccountStatementsRows(array $settlements, string $slug, string $periodLabel, string $export): StreamedResponse|Response
+    {
         $n = static fn (float $v): string => number_format($v, 2, '.', '');
 
         return TabularExport::stream(
@@ -2328,7 +2617,7 @@ class PropertyPortfolioController extends Controller
                 'Amount',
                 'Notes',
             ],
-            function () use ($settlements, $n, $monthYm) {
+            function () use ($settlements, $n, $periodLabel) {
                 foreach ($settlements as $settlement) {
                     $propertyName = (string) ($settlement['property_name'] ?? '');
                     yield [
@@ -2338,7 +2627,7 @@ class PropertyPortfolioController extends Controller
                         (string) ($settlement['landlord_name'] ?? ''),
                         '', '', '', '', '', '', '', '', '', '',
                         '',
-                        (string) (($settlement['period_label'] ?? $monthYm).' '.($settlement['period_range_label'] ?? '')),
+                        (string) (($settlement['period_label'] ?? $periodLabel).' '.($settlement['period_range_label'] ?? '')),
                     ];
 
                     foreach ($settlement['unit_lines'] ?? [] as $line) {
@@ -2436,7 +2725,7 @@ class PropertyPortfolioController extends Controller
                     yield [$propertyName, 'Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0)), ''];
                 }
             },
-            TabularExport::FORMAT_CSV,
+            $export === 'xls' || $export === 'xlsx' ? 'xls' : ($export === 'pdf' || $export === 'word' ? $export : TabularExport::FORMAT_CSV),
         );
     }
 
@@ -2596,7 +2885,7 @@ class PropertyPortfolioController extends Controller
             'landlord' => $landlord,
             'settlements' => $settlements,
             'periodLabel' => $periodLabel,
-            'branding' => $this->landlordStatementBranding(),
+            'branding' => $this->landlordStatementBranding($property),
             'generatedAt' => now()->format('d M Y H:i'),
             'autoPrint' => $export === 'print',
         ])->render();
@@ -2635,20 +2924,33 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
+     * Letterhead for landlord / property account statements.
+     * Uses the agent workspace branding (name, logo, address, phone, email).
+     *
      * @return array<string, mixed>
      */
-    private function landlordStatementBranding(): array
+    private function landlordStatementBranding(?Property $property = null, ?User $landlord = null): array
     {
-        $brandingRaw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($brandingRaw) ? json_decode($brandingRaw, true) : (is_array($brandingRaw) ? $brandingRaw : []);
+        $agentUserId = null;
+        if ($property !== null && (int) ($property->agent_user_id ?? 0) > 0) {
+            $agentUserId = (int) $property->agent_user_id;
+        }
 
-        return array_merge([
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'address' => '',
-            'phone' => '',
-            'email' => '',
-            'colour' => '#0f766e',
-        ], is_array($decoded) ? $decoded : []);
+        if ($agentUserId === null && $landlord !== null
+            && Schema::hasTable('property_landlord')
+            && Schema::hasColumn('properties', 'agent_user_id')) {
+            $linked = DB::table('property_landlord as pl')
+                ->join('properties as p', 'p.id', '=', 'pl.property_id')
+                ->where('pl.user_id', (int) $landlord->id)
+                ->whereNotNull('p.agent_user_id')
+                ->where('p.agent_user_id', '>', 0)
+                ->value('p.agent_user_id');
+            if ($linked) {
+                $agentUserId = (int) $linked;
+            }
+        }
+
+        return PropertyWorkspaceBranding::documentSnapshot($agentUserId);
     }
 
     public function resendLandlordPortalLogin(Request $request, User $landlord): RedirectResponse

@@ -2104,16 +2104,13 @@ class PropertyAccountingController extends Controller
             ->sum('amount');
         $deductions = max(0.0, $credits - (float) ($meta['net_pay'] ?? 0));
         $net = (float) ($meta['net_pay'] ?? ($gross - $deductions));
-        $companyName = PropertyPortalSetting::getValue('company_name', 'Property Management');
-        $logoRaw = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
-        $logoUrl = null;
-        if ($logoRaw !== '') {
-            $logoUrl = str_starts_with($logoRaw, 'http://')
-                || str_starts_with($logoRaw, 'https://')
-                || str_starts_with($logoRaw, '/')
-                ? $logoRaw
-                : asset($logoRaw);
-        }
+        $branding = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+            (int) ($request->user()?->id ?? 0) > 0 && strtolower((string) ($request->user()?->property_portal_role ?? '')) === 'agent'
+                ? (int) $request->user()->id
+                : null
+        );
+        $companyName = (string) ($branding['company_name'] ?? config('app.name', 'Property Management'));
+        $logoUrl = trim((string) (($branding['logo_url'] ?? '') ?: ($branding['company_logo_url'] ?? ''))) ?: null;
 
         return property_view('property.agent.accounting.payroll.payslip', [
             'reference' => $reference,
@@ -3110,12 +3107,40 @@ class PropertyAccountingController extends Controller
         $propertyId = (int) $request->integer('property_id');
         $landlordId = (int) $request->integer('landlord_id');
         $month = trim($request->string('month')->toString());
-        if ($month === '') {
-            $month = now()->format('Y-m');
+        $fromYm = trim($request->string('from')->toString());
+        $toYm = trim($request->string('to')->toString());
+        $fy = (int) $request->integer('fy');
+        $reportMode = strtolower(trim($request->string('report')->toString()));
+        $exportScope = strtolower(trim($request->string('export_scope')->toString()));
+        if (in_array($exportScope, ['summary', 'detail'], true) && $reportMode === '') {
+            $reportMode = $exportScope;
+        }
+        if ($reportMode === '') {
+            $reportMode = 'detail';
         }
 
-        $periodStart = Carbon::createFromFormat('Y-m', $month)?->startOfMonth() ?? now()->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
+        if (preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1) {
+            $periodStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+            }
+            $month = $fromYm === $toYm ? $fromYm : $periodStart->format('Y-m');
+        } elseif ($fy >= 2000 && $fy <= 2100 && $month === '') {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $month = '';
+            $fromYm = $periodStart->format('Y-m');
+            $toYm = $periodEnd->format('Y-m');
+        } else {
+            if ($month === '') {
+                $month = now()->format('Y-m');
+            }
+            $periodStart = Carbon::createFromFormat('Y-m', $month)?->startOfMonth() ?? now()->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $fromYm = $periodStart->format('Y-m');
+            $toYm = $periodEnd->format('Y-m');
+        }
 
         $properties = Property::query()->orderBy('name')->get(['id', 'name']);
         $landlords = collect();
@@ -3134,10 +3159,29 @@ class PropertyAccountingController extends Controller
                 $settlement = $settlements->buildSettlement($propertyId, $landlordId, $periodStart, $periodEnd);
 
                 $export = strtolower(trim($request->string('export')->toString()));
-                if ($export === 'pdf') {
+                if ($reportMode === 'summary' && in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
+                    return TabularExport::stream(
+                        'landlord-settlement-summary-'.$propertyId.'-'.$landlordId.'-'.$periodStart->format('Y-m').'-'.$periodEnd->format('Y-m'),
+                        ['Metric', 'Value'],
+                        function () use ($settlement, $periodStart, $periodEnd) {
+                            yield ['Property', (string) ($settlement['property_name'] ?? '')];
+                            yield ['Landlord', (string) ($settlement['landlord_name'] ?? '')];
+                            yield ['Period', $periodStart->format('M Y').' – '.$periodEnd->format('M Y')];
+                            yield ['Rent received', number_format((float) ($settlement['rent_received'] ?? 0), 2, '.', '')];
+                            yield ['Utility received', number_format((float) ($settlement['utility_received'] ?? 0), 2, '.', '')];
+                            yield ['Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
+                            yield ['Additions', number_format((float) ($settlement['additions_total'] ?? 0), 2, '.', '')];
+                            yield ['Deductions', number_format((float) ($settlement['deductions_total'] ?? 0), 2, '.', '')];
+                            yield ['Balance B/F', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
+                            yield ['Net amount due', number_format((float) ($settlement['net_amount_due'] ?? 0), 2, '.', '')];
+                        },
+                        $export,
+                    );
+                }
+                if ($export === 'pdf' || $export === 'word' || $request->boolean('print')) {
                     return $this->streamLandlordSettlementPdf($settlement);
                 }
-                if (in_array($export, ['csv', 'xls'], true)) {
+                if (in_array($export, ['csv', 'xls', 'xlsx'], true)) {
                     return $this->streamLandlordSettlementCsv($settlement);
                 }
             } catch (\Throwable $e) {
@@ -3154,6 +3198,10 @@ class PropertyAccountingController extends Controller
                 'property_id' => $propertyId,
                 'landlord_id' => $landlordId,
                 'month' => $month,
+                'from' => $fromYm,
+                'to' => $toYm,
+                'fy' => $fy > 0 ? $fy : (int) $periodStart->year,
+                'report' => $reportMode,
             ],
         ]);
     }
@@ -4136,16 +4184,11 @@ class PropertyAccountingController extends Controller
      */
     private function buildRunPayslipPayload(AccountingPayrollPeriod $period, AccountingPayrollLine $line): array
     {
-        $companyName = PropertyPortalSetting::getValue('company_name', 'Property Management');
-        $logoRaw = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
-        $logoUrl = null;
-        if ($logoRaw !== '') {
-            $logoUrl = str_starts_with($logoRaw, 'http://')
-                || str_starts_with($logoRaw, 'https://')
-                || str_starts_with($logoRaw, '/')
-                ? $logoRaw
-                : asset($logoRaw);
-        }
+        $branding = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+            (int) ($period->agent_user_id ?? 0) > 0 ? (int) $period->agent_user_id : null
+        );
+        $companyName = (string) ($branding['company_name'] ?? config('app.name', 'Property Management'));
+        $logoUrl = trim((string) (($branding['logo_url'] ?? '') ?: ($branding['company_logo_url'] ?? ''))) ?: null;
         $raw = PropertyPortalSetting::query()->where('key', 'property_payroll_settings')->value('value');
         $settings = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
         $expenseAccount = (string) ($settings['expense_account'] ?? 'Payroll Expense');

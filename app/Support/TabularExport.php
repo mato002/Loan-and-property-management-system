@@ -42,7 +42,7 @@ class TabularExport
 
         return match ($format) {
             self::FORMAT_PDF => self::streamPdf($filenameBase.'.pdf', $headers, $rows, $options),
-            self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows),
+            self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows, $options),
             self::FORMAT_XLS, 'xlsx' => self::streamSpreadsheetMl($filenameBase.'.xls', $headers, $rows),
             default => CsvExport::stream($filenameBase.'.csv', $headers, $rows),
         };
@@ -116,10 +116,11 @@ class TabularExport
      *
      * @param  list<string>  $headers
      * @param  Closure(): iterable<array<int, scalar|null>>  $rows
+     * @param  array<string,mixed>  $options
      */
-    private static function streamWordHtml(string $filename, array $headers, Closure $rows): StreamedResponse
+    private static function streamWordHtml(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
     {
-        $html = self::htmlTable($headers, $rows, []);
+        $html = self::htmlTable($headers, $rows, array_merge($options, ['__column_count' => count($headers)]));
 
         return response()->streamDownload(function () use ($html) {
             echo $html;
@@ -181,11 +182,16 @@ class TabularExport
 
         $agentUserId = isset($options['agent_user_id']) && (int) $options['agent_user_id'] > 0
             ? (int) $options['agent_user_id']
-            : null;
+            : PropertyWorkspaceBranding::resolveViewerAgentUserId();
         $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
         $brandName = trim((string) ($doc['company_name'] ?? ''));
-        if ($brandName === '') {
-            $brandName = (string) config('app.name', 'Property Management System');
+        if ($brandName === '' || strtolower($brandName) === 'laravel' || strtolower($brandName) === 'property manager') {
+            $appName = trim((string) config('app.name', 'Property Management System'));
+            if ($appName !== '' && strtolower($appName) !== 'laravel') {
+                $brandName = $appName;
+            } elseif ($brandName === '' || strtolower($brandName) === 'laravel') {
+                $brandName = 'Property Management System';
+            }
         }
         $brandTagline = Schema::hasTable('property_portal_settings')
             ? trim((string) (PropertyPortalSetting::getValue('company_tagline', '') ?? ''))

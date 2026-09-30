@@ -34,6 +34,20 @@
 @endphp
 
 <div class="mt-5 space-y-5">
+    @include('property.agent.partials.statement_report_builder', [
+        'showUrl' => route('property.properties.show', ['property' => $property->id], false),
+        'printUrl' => route('property.properties.show', ['property' => $property->id], false),
+        'showProperty' => false,
+        'showDetailLevel' => true,
+        'defaultPeriod' => $openMonth !== '' ? 'month' : 'fy',
+        'defaultReport' => 'detail',
+        'defaultFy' => $fy,
+        'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
+        'extraQuery' => ['tab' => 'statements'],
+        'title' => 'Generate property statement',
+        'hint' => 'Choose FY, a single month, or a custom range. Summary = month totals; Full = unit B/F / invoiced / received. Print or download CSV / Excel / PDF / Word.',
+    ])
+
     <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>

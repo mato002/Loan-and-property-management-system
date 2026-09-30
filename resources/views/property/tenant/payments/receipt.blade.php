@@ -1,6 +1,8 @@
-@php($doc = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot())
-@php($brandName = $doc['company_name'])
-@php($logoUrl = $doc['logo_url'] !== '' ? $doc['logo_url'] : null)
+@php
+    $doc = $doc ?? \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
+    $brandName = (string) ($doc['company_name'] ?? config('app.name', 'Property Management System'));
+    $logoUrl = trim((string) (($doc['logo_url'] ?? '') ?: ($doc['company_logo_url'] ?? ''))) ?: null;
+@endphp
 <x-property-layout>
     <x-slot name="header">Receipt #RCP-PAY-{{ $payment->id }}</x-slot>
 

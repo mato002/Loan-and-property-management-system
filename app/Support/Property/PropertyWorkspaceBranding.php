@@ -425,8 +425,13 @@ final class PropertyWorkspaceBranding
         }
 
         $companyName = trim($companyName) !== '' ? trim($companyName) : (string) config('app.name', 'Property Manager');
-        if (strtolower($companyName) === 'laravel') {
-            $companyName = 'Property Manager';
+        if (in_array(strtolower($companyName), ['laravel', 'property manager'], true)) {
+            $appName = trim((string) config('app.name', 'Property Management System'));
+            if ($appName !== '' && strtolower($appName) !== 'laravel') {
+                $companyName = $appName;
+            } elseif (strtolower($companyName) === 'laravel') {
+                $companyName = 'Property Management System';
+            }
         }
 
         $contactLine = collect([$phone, $email, $address, $regNo !== '' ? 'Reg: '.$regNo : ''])

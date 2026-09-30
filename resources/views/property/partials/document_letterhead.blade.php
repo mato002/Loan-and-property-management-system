@@ -11,7 +11,15 @@
     $doc = is_array($branding) && $branding !== []
         ? $branding
         : \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot();
-    $company = (string) ($doc['company_name'] ?? 'Property Manager');
+    $company = trim((string) ($doc['company_name'] ?? ''));
+    if ($company === '' || strtolower($company) === 'laravel' || strtolower($company) === 'property manager') {
+        $appName = trim((string) config('app.name', 'Property Management System'));
+        if ($appName !== '' && strtolower($appName) !== 'laravel') {
+            $company = $appName;
+        } elseif ($company === '' || strtolower($company) === 'laravel') {
+            $company = 'Property Management System';
+        }
+    }
     $logoSrc = (string) (($doc['logo_embed'] ?? '')
         ?: \App\Support\Property\PropertyWorkspaceBranding::embeddableLogoSrc($doc)
         ?: ($doc['logo_url'] ?? $doc['company_logo_url'] ?? ''));
