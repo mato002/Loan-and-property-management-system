@@ -37,6 +37,8 @@ final class EzenTenantStatementImportService
      *     payments_skipped_existing: int,
      *     skipped_unmatched: int,
      *     payments_reallocated: float,
+     *     pending_charges: list<string>,
+     *     pending_payments: list<string>,
      *     warnings: list<string>,
      *     errors: list<string>
      * }
@@ -56,6 +58,8 @@ final class EzenTenantStatementImportService
             'payments_skipped_existing' => 0,
             'skipped_unmatched' => 0,
             'payments_reallocated' => 0.0,
+            'pending_charges' => [],
+            'pending_payments' => [],
             'warnings' => [],
             'errors' => [],
         ];
@@ -132,6 +136,8 @@ final class EzenTenantStatementImportService
                 continue;
             }
 
+            $summary['pending_charges'][] = $row['txn_no'].' '.$row['memo'].' '.number_format((float) $row['amount'], 2);
+
             if ($dryRun) {
                 $summary['imported']++;
 
@@ -194,6 +200,8 @@ final class EzenTenantStatementImportService
                 $externalRef .= '-STMT-ADJ';
                 $isAmountRepair = true;
             }
+
+            $summary['pending_payments'][] = $row['txn_no'].' '.number_format($paymentAmount, 2);
 
             if ($dryRun) {
                 $summary['payments_imported']++;
