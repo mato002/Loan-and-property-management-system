@@ -11,7 +11,7 @@
             ['label' => 'Employee #', 'value' => $employee->employee_number, 'hint' => 'HR record'],
             ['label' => 'Department', 'value' => (string) ($employee->department ?: '—'), 'hint' => 'Current'],
             ['label' => 'Job title', 'value' => (string) ($employee->job_title ?: '—'), 'hint' => 'Current'],
-            ['label' => 'Status', 'value' => ucfirst((string) ($employee->employment_status ?: 'active')), 'hint' => 'Employment'],
+            ['label' => 'Status', 'value' => $employee->employmentStatusLabel(), 'hint' => 'Employment'],
         ];
 @endphp
 
@@ -25,13 +25,15 @@
     <x-slot name="actions">
         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
             <a href="{{ route('property.hr.employees.edit', $employee, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Edit employee</a>
-            @if (trim((string) ($employee->email ?? '')) !== '')
+            @if (trim((string) ($employee->email ?? '')) !== '' && ! $employee->isOffboarded())
                 <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" data-swal-title="{{ $employee->user_id ? 'Reset and email login?' : 'Generate and email login?' }}" data-swal-confirm="A temporary password will be emailed to {{ $employee->email }}." data-swal-confirm-text="Yes, send login">
                     @csrf
                     <button type="submit" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">{{ $employee->user_id ? 'Reset & email login' : 'Generate & email login' }}</button>
                 </form>
             @endif
+            @if (! $employee->isOffboarded())
             <a href="{{ route('property.hr.leaves.create', ['employee_id' => $employee->id], false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Request leave</a>
+            @endif
         @endif
         <a href="{{ route('property.accounting.payroll', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Payroll</a>
     </x-slot>
@@ -72,6 +74,8 @@
             @include('property.agent.hr.employees.partials.tab-portfolio')
         @else
             <div class="grid gap-4 lg:grid-cols-2">
+                @include('property.agent.hr.employees.partials.lifecycle')
+
                 <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Profile</h3>
                     <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
@@ -80,6 +84,10 @@
                         <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$employee->phone" /></p>
                         <p><span class="text-slate-500">National ID:</span> {{ $employee->national_id ?: '—' }}</p>
                         <p><span class="text-slate-500">Hire date:</span> {{ $employee->hire_date?->format('Y-m-d') ?? '—' }}</p>
+                        <p><span class="text-slate-500">Work type:</span> {{ $employee->work_type ? str_replace('_', ' ', $employee->work_type) : '—' }}</p>
+                        <p><span class="text-slate-500">Next of kin:</span> {{ $employee->next_of_kin_name ?: '—' }} @if($employee->next_of_kin_phone) ({{ $employee->next_of_kin_phone }}) @endif</p>
+                        <p><span class="text-slate-500">Bank:</span> {{ $employee->bank_name ?: '—' }} {{ $employee->bank_account_number ? '· '.$employee->bank_account_number : '' }}</p>
+                        <p><span class="text-slate-500">KRA / NHIF / NSSF:</span> {{ $employee->kra_pin ?: '—' }} · {{ $employee->nhif_number ?: '—' }} · {{ $employee->nssf_number ?: '—' }}</p>
                         @if ($employee->supervisor)
                             <p><span class="text-slate-500">Supervisor:</span> {{ $employee->supervisor->full_name }}</p>
                         @endif
@@ -94,6 +102,7 @@
                             <p><span class="text-slate-500">Roles:</span> {{ $employee->user->pmRoles->pluck('name')->join(', ') ?: '—' }}</p>
                             <p class="text-xs text-slate-500">They sign in at the main staff login, then open the property workspace. Assigned roles control what they can do.</p>
                             @if ($canManage ?? false)
+                                @if (! $employee->isOffboarded())
                                 <div class="flex flex-wrap gap-2 pt-2">
                                     <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top">
                                         @csrf
@@ -108,10 +117,11 @@
                                         <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Restore access</button>
                                     </form>
                                 </div>
+                                @endif
                             @endif
                         @else
                             <p class="text-slate-500">No portal login yet. Add a work email, then use <strong>Generate &amp; email login</strong>.</p>
-                            @if (($canManage ?? false) && trim((string) ($employee->email ?? '')) !== '')
+                            @if (($canManage ?? false) && ! $employee->isOffboarded() && trim((string) ($employee->email ?? '')) !== '')
                                 <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" class="pt-2">
                                     @csrf
                                     <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Generate &amp; email login</button>

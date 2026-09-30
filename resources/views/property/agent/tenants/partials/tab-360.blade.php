@@ -88,6 +88,11 @@
             @empty
                 <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900">{{ $tenant->emergency_contact ?: '—' }}</dd></div>
             @endforelse
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Bank</dt>
+                <dd class="text-slate-900 text-right">
+                    {{ collect([$tenant->bank_name, $tenant->bank_account_name, $tenant->bank_account_number])->filter()->implode(' · ') ?: '—' }}
+                </dd>
+            </div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Portal login</dt><dd class="text-slate-900">{{ $tenant->user_id ? 'Linked' : 'Not linked' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Risk</dt><dd class="capitalize text-slate-900">{{ $tenant->risk_level ?: 'normal' }}</dd></div>
         </dl>

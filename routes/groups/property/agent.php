@@ -217,6 +217,10 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
         ->name('tenants.repair_allocations');
     Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->whereNumber('tenant')->name('tenants.edit');
     Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.update');
+    Route::post('/tenants/{tenant}/deposits/refund', [PmTenantDirectoryController::class, 'storeDepositRefund'])
+        ->whereNumber('tenant')
+        ->middleware('property.permission:payments.record')
+        ->name('tenants.deposits.refund');
     Route::delete('/tenants/{tenant}', [PmTenantDirectoryController::class, 'destroy'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.destroy');
     Route::get('/leases/create-form', [PmLeaseWebController::class, 'createForm'])->middleware('property.permission:leases.manage')->name('leases.create_form');
     Route::get('/leases/form/tenants', [PmLeaseWebController::class, 'formTenants'])->middleware('property.permission:leases.manage')->name('leases.form_tenants');
@@ -333,6 +337,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/hr/employees/{employee}/revoke-login', [PropertyHrEmployeesController::class, 'revokeLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.revoke_login');
     Route::post('/hr/employees/{employee}/restore-login', [PropertyHrEmployeesController::class, 'restoreLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.restore_login');
     Route::post('/hr/employees/{employee}/status', [PropertyHrEmployeesController::class, 'updateStatus'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.status');
+    Route::post('/hr/employees/{employee}/complete-onboarding', [PropertyHrEmployeesController::class, 'completeOnboarding'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.complete_onboarding');
+    Route::post('/hr/employees/{employee}/offboard', [PropertyHrEmployeesController::class, 'offboard'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.offboard');
     Route::post('/hr/employees/{employee}/properties/assign', [PropertyHrEmployeesController::class, 'assignProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.assign');
     Route::post('/hr/employees/{employee}/properties/detach', [PropertyHrEmployeesController::class, 'detachProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.detach');
     Route::get('/hr/leaves', [PropertyHrLeavesController::class, 'index'])->name('hr.leaves.index');

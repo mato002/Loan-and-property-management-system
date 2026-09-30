@@ -68,13 +68,21 @@
         @error('job_title')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
     </div>
     <div>
-        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Employment status</label>
-        <select name="employment_status" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-            @foreach (['active' => 'Active', 'on_leave' => 'On leave', 'terminated' => 'Terminated'] as $value => $label)
-                <option value="{{ $value }}" @selected(old('employment_status', $employeeModel->employment_status ?? 'active') === $value)>{{ $label }}</option>
-            @endforeach
-        </select>
-        @error('employment_status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+        @if ($employeeModel?->employment_status === 'terminated')
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Employment status</label>
+            <p class="mt-1 min-h-[44px] rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">Offboarded — use Re-activate on the profile to bring them back.</p>
+        @else
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Employment status</label>
+            <select name="employment_status" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                @foreach (['onboarding' => 'Onboarding', 'active' => 'Active', 'on_leave' => 'On leave'] as $value => $label)
+                    <option value="{{ $value }}" @selected(old('employment_status', $employeeModel->employment_status ?? 'onboarding') === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+            @error('employment_status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            @if (! $isEdit)
+                <p class="mt-1 text-xs text-slate-500">New staff start in onboarding. Activate them from the employee profile when they begin work.</p>
+            @endif
+        @endif
     </div>
     <div>
         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Hire date</label>
@@ -82,9 +90,68 @@
         @error('hire_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
     </div>
     <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Probation ends</label>
+        <input type="date" name="probation_ends_on" value="{{ old('probation_ends_on', optional($employeeModel?->probation_ends_on)->format('Y-m-d')) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+        @error('probation_ends_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Work type</label>
+        <select name="work_type" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+            <option value="">Select…</option>
+            @foreach (['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Intern'] as $value => $label)
+                <option value="{{ $value }}" @selected(old('work_type', $employeeModel->work_type ?? '') === $value)>{{ $label }}</option>
+            @endforeach
+        </select>
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Gender</label>
+        <select name="gender" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+            <option value="">Select…</option>
+            @foreach (['female' => 'Female', 'male' => 'Male', 'other' => 'Other'] as $value => $label)
+                <option value="{{ $value }}" @selected(old('gender', $employeeModel->gender ?? '') === $value)>{{ $label }}</option>
+            @endforeach
+        </select>
+    </div>
+    <div>
         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">National ID</label>
         <input type="text" name="national_id" value="{{ old('national_id', $employeeModel->national_id ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
         @error('national_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Personal email</label>
+        <input type="email" name="personal_email" value="{{ old('personal_email', $employeeModel->personal_email ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Next of kin</label>
+        <input type="text" name="next_of_kin_name" value="{{ old('next_of_kin_name', $employeeModel->next_of_kin_name ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Next of kin phone</label>
+        <input type="text" name="next_of_kin_phone" value="{{ old('next_of_kin_phone', $employeeModel->next_of_kin_phone ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">KRA PIN</label>
+        <input type="text" name="kra_pin" value="{{ old('kra_pin', $employeeModel->kra_pin ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank name</label>
+        <input type="text" name="bank_name" value="{{ old('bank_name', $employeeModel->bank_name ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank account number</label>
+        <input type="text" name="bank_account_number" value="{{ old('bank_account_number', $employeeModel->bank_account_number ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">NHIF number</label>
+        <input type="text" name="nhif_number" value="{{ old('nhif_number', $employeeModel->nhif_number ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">NSSF number</label>
+        <input type="text" name="nssf_number" value="{{ old('nssf_number', $employeeModel->nssf_number ?? '') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+    </div>
+    <div class="sm:col-span-2">
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Assigned tools / assets</label>
+        <textarea name="assigned_tools" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('assigned_tools', $employeeModel->assigned_tools ?? '') }}</textarea>
     </div>
 </div>
 

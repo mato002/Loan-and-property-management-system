@@ -281,6 +281,38 @@ final class WorkspaceRowAlert
     }
 
     /**
+     * Signed account balance. Debt is a rose pill. Credit (extra on account) is a green pill.
+     * Zero is shown as 0.00 so a settled account is not a dash.
+     */
+    public static function accountBalance(float $balance): HtmlString
+    {
+        if (abs($balance) <= 0.009) {
+            return new HtmlString('<span class="tabular-nums text-slate-600">0.00</span>');
+        }
+
+        if ($balance > 0) {
+            $label = number_format($balance, 2);
+
+            return new HtmlString(
+                '<span class="sr-only">unpaid</span>'.
+                '<span class="inline-flex items-center rounded-md bg-rose-600 px-2 py-0.5 text-xs font-bold tabular-nums text-white shadow-sm" title="Debt — amount owed">'.
+                e($label).
+                '</span>'
+            );
+        }
+
+        $label = number_format(abs($balance), 2);
+
+        return new HtmlString(
+            '<span class="sr-only">credit balance</span>'.
+            '<span class="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-emerald-50 px-2 py-0.5 text-xs font-bold tabular-nums text-emerald-800 shadow-sm" title="Credit — extra amount on the account">'.
+            '<span aria-hidden="true">CR</span>'.
+            e($label).
+            '</span>'
+        );
+    }
+
+    /**
      * Outstanding money that still needs follow-up. Empty / zero stays a dash.
      */
     public static function followUpAmount(float $amount, ?string $formatted = null): HtmlString|string

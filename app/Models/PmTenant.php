@@ -34,6 +34,10 @@ class PmTenant extends Model
         'town',
         'country',
         'photo_path',
+        'bank_name',
+        'bank_branch',
+        'bank_account_name',
+        'bank_account_number',
         'risk_level',
         'opening_arrears_rent',
         'opening_arrears_utilities',
@@ -179,6 +183,11 @@ class PmTenant extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(PmPayment::class, 'pm_tenant_id');
+    }
+
+    public function depositRefunds(): HasMany
+    {
+        return $this->hasMany(PmTenantDepositRefund::class, 'tenant_id');
     }
 
     /**

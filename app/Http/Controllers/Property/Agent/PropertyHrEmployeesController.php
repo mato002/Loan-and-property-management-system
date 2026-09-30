@@ -141,7 +141,7 @@ class PropertyHrEmployeesController extends Controller
                     ),
                     (string) ($employee->department ?: '—'),
                     (string) ($employee->job_title ?: '—'),
-                    (string) ($employee->employment_status ?: '—'),
+                    $employee->employmentStatusLabel(),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
                     $actions,
                 ];
@@ -161,7 +161,7 @@ class PropertyHrEmployeesController extends Controller
                 ['label' => 'Employees', 'value' => (string) $employees->count(), 'hint' => 'Matching filters'],
                 ['label' => 'Field officers', 'value' => (string) $fieldOfficerCount, 'hint' => 'With portfolio role'],
                 ['label' => 'Active', 'value' => (string) $employees->where('employment_status', 'active')->count(), 'hint' => 'Employment status'],
-                ['label' => 'Departments', 'value' => (string) $employees->pluck('department')->filter()->unique()->count(), 'hint' => 'In result set'],
+                ['label' => 'Onboarding', 'value' => (string) $employees->where('employment_status', 'onboarding')->count(), 'hint' => 'Not yet activated'],
             ];
 
         $columns = $isFieldOfficerList
@@ -205,10 +205,15 @@ class PropertyHrEmployeesController extends Controller
         $createdEmployee = null;
 
         DB::transaction(function () use ($validated, $agentUserId, $request, &$provision, &$createdEmployee): void {
+            $employeePayload = $validated['employee'];
+            $employeePayload['employee_number'] = $employeePayload['employee_number'] ?: $this->hr->generateNextEmployeeNumber();
+            if (($employeePayload['employment_status'] ?? 'onboarding') === 'active') {
+                $employeePayload['onboarding_completed_at'] = now();
+            }
+
             $employee = Employee::query()->create([
-                ...$validated['employee'],
+                ...$employeePayload,
                 'agent_user_id' => $agentUserId,
-                'employee_number' => $validated['employee']['employee_number'] ?: $this->hr->generateNextEmployeeNumber(),
             ]);
             $createdEmployee = $employee;
 
@@ -227,7 +232,13 @@ class PropertyHrEmployeesController extends Controller
             );
         }
 
-        $redirect = redirect()->route('property.hr.employees.index')->with('status', 'Employee added.');
+        if (! $createdEmployee) {
+            return redirect()->route('property.hr.employees.index')->with('error', 'Could not save the employee.');
+        }
+
+        $redirect = redirect()
+            ->route('property.hr.employees.show', $createdEmployee)
+            ->with('status', 'Employee record created. Complete onboarding when the hire is ready to work.');
         if ($provision !== null) {
             $redirect->with('hr_user_created', $this->loginFlash($provision));
             $redirect->with('status', $provision['mailed']
@@ -270,6 +281,8 @@ class PropertyHrEmployeesController extends Controller
             'unassignedProperties' => $unassignedProperties,
             'canManage' => $canManage,
             'recentLeaves' => $employee->staffLeaves,
+            'onboardingChecklist' => $this->hr->onboardingChecklist($employee),
+            'exitReasons' => Employee::EXIT_REASONS,
         ]);
     }
 
@@ -325,8 +338,15 @@ class PropertyHrEmployeesController extends Controller
         $provision = null;
 
         DB::transaction(function () use ($employee, $validated, $agentUserId, $request): void {
+            $employeePayload = $validated['employee'];
+            if ($employee->isOffboarded()) {
+                unset($employeePayload['employment_status']);
+            } elseif (($employeePayload['employment_status'] ?? '') === 'active' && ! $employee->onboarding_completed_at) {
+                $employeePayload['onboarding_completed_at'] = now();
+            }
+
             $employee->update([
-                ...$validated['employee'],
+                ...$employeePayload,
                 'agent_user_id' => $agentUserId,
             ]);
 
@@ -368,6 +388,10 @@ class PropertyHrEmployeesController extends Controller
     {
         $this->assertEmployeeInWorkspace($request, $employee);
 
+        if ($employee->isOffboarded()) {
+            return back()->with('error', 'Re-activate this employee before issuing a portal login.');
+        }
+
         $roleIds = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('role_ids', [])))));
 
         try {
@@ -402,6 +426,10 @@ class PropertyHrEmployeesController extends Controller
     {
         $this->assertEmployeeInWorkspace($request, $employee);
 
+        if ($employee->isOffboarded()) {
+            return back()->with('error', 'Re-activate this employee before restoring portal access.');
+        }
+
         try {
             $this->hr->restorePortalAccess($employee, $request->user());
         } catch (ValidationException $e) {
@@ -416,14 +444,54 @@ class PropertyHrEmployeesController extends Controller
         $this->assertEmployeeInWorkspace($request, $employee);
 
         $data = $request->validate([
-            'employment_status' => ['required', 'in:active,on_leave,terminated'],
+            'employment_status' => ['required', 'in:onboarding,active,on_leave'],
         ]);
 
         $this->hr->setEmploymentStatus($employee, (string) $data['employment_status']);
 
-        $label = str_replace('_', ' ', (string) $data['employment_status']);
+        $label = Employee::STATUSES[(string) $data['employment_status']] ?? $data['employment_status'];
 
         return back()->with('status', 'Employment status set to '.$label.'.');
+    }
+
+    public function completeOnboarding(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        try {
+            $this->hr->completeOnboarding($employee);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not complete onboarding.');
+        }
+
+        return redirect()
+            ->route('property.hr.employees.show', $employee)
+            ->with('status', $employee->full_name.' is now active.');
+    }
+
+    public function offboard(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $data = $request->validate([
+            'exit_date' => ['required', 'date'],
+            'exit_reason' => ['required', 'in:'.implode(',', array_keys(Employee::EXIT_REASONS))],
+            'offboarding_notes' => ['nullable', 'string', 'max:2000'],
+            'unassign_properties' => ['nullable', 'boolean'],
+            'revoke_portal' => ['nullable', 'boolean'],
+        ]);
+
+        $this->hr->offboardEmployee($employee, [
+            'exit_date' => $data['exit_date'],
+            'exit_reason' => $data['exit_reason'],
+            'offboarding_notes' => $data['offboarding_notes'] ?? null,
+            'unassign_properties' => $request->boolean('unassign_properties', true),
+            'revoke_portal' => $request->boolean('revoke_portal', true),
+        ], $request->user());
+
+        return redirect()
+            ->route('property.hr.employees.show', $employee)
+            ->with('status', $employee->full_name.' has been offboarded.');
     }
 
     /**
@@ -503,9 +571,21 @@ class PropertyHrEmployeesController extends Controller
             'phone' => ['nullable', 'string', 'max:40'],
             'department' => ['nullable', 'string', 'max:120'],
             'job_title' => ['nullable', 'string', 'max:120'],
-            'employment_status' => ['nullable', 'string', 'max:40'],
+            'employment_status' => ['nullable', 'in:onboarding,active,on_leave'],
             'hire_date' => ['nullable', 'date'],
+            'probation_ends_on' => ['nullable', 'date'],
+            'work_type' => ['nullable', 'string', 'max:40'],
+            'gender' => ['nullable', 'string', 'max:20'],
             'national_id' => ['nullable', 'string', 'max:40'],
+            'personal_email' => ['nullable', 'email', 'max:255'],
+            'next_of_kin_name' => ['nullable', 'string', 'max:200'],
+            'next_of_kin_phone' => ['nullable', 'string', 'max:40'],
+            'kra_pin' => ['nullable', 'string', 'max:30'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_account_number' => ['nullable', 'string', 'max:80'],
+            'nhif_number' => ['nullable', 'string', 'max:40'],
+            'nssf_number' => ['nullable', 'string', 'max:40'],
+            'assigned_tools' => ['nullable', 'string', 'max:2000'],
             'is_field_officer' => ['nullable', 'boolean'],
             'portal_access' => ['nullable', 'boolean'],
             'provision_login' => ['nullable', 'boolean'],
@@ -535,9 +615,21 @@ class PropertyHrEmployeesController extends Controller
                 'phone' => trim((string) ($validated['phone'] ?? '')) ?: null,
                 'department' => trim((string) ($validated['department'] ?? '')) ?: null,
                 'job_title' => trim((string) ($validated['job_title'] ?? '')) ?: null,
-                'employment_status' => trim((string) ($validated['employment_status'] ?? '')) ?: 'active',
+                'employment_status' => trim((string) ($validated['employment_status'] ?? '')) ?: 'onboarding',
                 'hire_date' => $validated['hire_date'] ?? null,
+                'probation_ends_on' => $validated['probation_ends_on'] ?? null,
+                'work_type' => trim((string) ($validated['work_type'] ?? '')) ?: null,
+                'gender' => trim((string) ($validated['gender'] ?? '')) ?: null,
                 'national_id' => trim((string) ($validated['national_id'] ?? '')) ?: null,
+                'personal_email' => trim((string) ($validated['personal_email'] ?? '')) ?: null,
+                'next_of_kin_name' => trim((string) ($validated['next_of_kin_name'] ?? '')) ?: null,
+                'next_of_kin_phone' => trim((string) ($validated['next_of_kin_phone'] ?? '')) ?: null,
+                'kra_pin' => trim((string) ($validated['kra_pin'] ?? '')) ?: null,
+                'bank_name' => trim((string) ($validated['bank_name'] ?? '')) ?: null,
+                'bank_account_number' => trim((string) ($validated['bank_account_number'] ?? '')) ?: null,
+                'nhif_number' => trim((string) ($validated['nhif_number'] ?? '')) ?: null,
+                'nssf_number' => trim((string) ($validated['nssf_number'] ?? '')) ?: null,
+                'assigned_tools' => trim((string) ($validated['assigned_tools'] ?? '')) ?: null,
             ],
             'is_field_officer' => $isFieldOfficer,
             'portal_access' => $request->boolean('portal_access'),

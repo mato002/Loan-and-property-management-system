@@ -1,7 +1,7 @@
 <x-property.crud-shell
     :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Add employee"
-    subtitle="Register property staff in HR. Enable field officer to link portfolio assignments."
+    subtitle="Register property staff. They start in onboarding; activate them from the profile when they begin work. Enable field officer to link portfolio assignments."
     back-route="property.hr.employees.index"
     :stats="[]"
     :columns="[]"

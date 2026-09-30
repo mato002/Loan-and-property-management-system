@@ -11,6 +11,7 @@ use App\Models\PmMessageLog;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PmTenantDeposit;
+use App\Models\PmTenantDepositRefund;
 use App\Models\PmTenantNotice;
 use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
@@ -341,7 +342,9 @@ class PmTenantDirectoryController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $rows = $tenants->getCollection()->map(function (PmTenant $t) {
+        $statementLedger = app(TenantStatementLedgerService::class);
+        $tenantCredits = app(TenantCreditService::class);
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger, $tenantCredits) {
             $leaseEnd = $t->leases_max_end_date
                 ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
                 : '—';
@@ -351,6 +354,11 @@ class PmTenantDirectoryController extends Controller
                 ? trim(($activeUnit->property->name ?? '').' / '.$activeUnit->label, ' /')
                 : '—';
             $deleteConfirm = e("Delete {$t->name} and all related records? This cannot be undone.");
+            $accountBalance = $statementLedger->closingBalance($t);
+            $unusedCredit = $tenantCredits->balanceForTenant((int) $t->id);
+            if ($unusedCredit > 0.009 && $accountBalance >= -0.009) {
+                $accountBalance = round($accountBalance - $unusedCredit, 2);
+            }
 
             $actions = new HtmlString(
                 '<div class="relative inline-block text-left">'.
@@ -377,7 +385,7 @@ class PmTenantDirectoryController extends Controller
                 PhoneLink::html($t->phone),
                 $t->email ?? '—',
                 $unitLabel,
-                WorkspaceRowAlert::followUpAmount((float) ($t->opening_arrears_amount ?? 0)),
+                WorkspaceRowAlert::accountBalance($accountBalance),
                 $activeLease?->monthly_rent !== null
                     ? number_format((float) $activeLease->monthly_rent, 2)
                     : '—',
@@ -1376,6 +1384,7 @@ class PmTenantDirectoryController extends Controller
             'utilityReadings' => $utilityReadings,
             'standingExtras' => $standingExtras,
             'depositSnapshot' => $depositSnapshot,
+            'depositRefunds' => $this->tenantDepositRefunds($tenant),
             'activityFeed' => $activityFeed,
             'alerts' => $alerts,
             'quickActions' => $quickActions,
@@ -1661,6 +1670,104 @@ class PmTenantDirectoryController extends Controller
         );
     }
 
+    public function storeDepositRefund(Request $request, PmTenant $tenant): RedirectResponse
+    {
+        if (! Schema::hasTable('pm_tenant_deposit_refunds')) {
+            return back()->with('error', 'Deposit refunds are not available until the latest migration is applied.');
+        }
+
+        $data = $request->validate([
+            'refunded_at' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'property_id' => ['nullable', 'integer'],
+            'property_unit_id' => ['nullable', 'integer'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:80'],
+            'bank_account_name' => ['nullable', 'string', 'max:160'],
+            'bank_account_number' => ['nullable', 'string', 'max:64'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $occupancy = $this->tenantRefundOccupancy($tenant);
+        $propertyId = (int) ($data['property_id'] ?? 0) ?: (int) ($occupancy['property_id'] ?? 0);
+        $unitId = (int) ($data['property_unit_id'] ?? 0) ?: (int) ($occupancy['property_unit_id'] ?? 0);
+        $bank = [
+            'bank_name' => trim((string) ($data['bank_name'] ?? '')) ?: null,
+            'bank_branch' => trim((string) ($data['bank_branch'] ?? '')) ?: null,
+            'bank_account_name' => trim((string) ($data['bank_account_name'] ?? '')) ?: null,
+            'bank_account_number' => trim((string) ($data['bank_account_number'] ?? '')) ?: null,
+        ];
+
+        $refund = null;
+        DB::transaction(function () use ($request, $tenant, $data, $propertyId, $unitId, $bank, &$refund): void {
+            $heldDeposit = null;
+            if (Schema::hasTable('pm_tenant_deposits')) {
+                $heldDeposit = PmTenantDeposit::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->where('status', 'held')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            $refund = PmTenantDepositRefund::query()->create([
+                'tenant_id' => $tenant->id,
+                'property_id' => $propertyId > 0 ? $propertyId : null,
+                'property_unit_id' => $unitId > 0 ? $unitId : null,
+                'pm_tenant_deposit_id' => $heldDeposit?->id,
+                'amount' => round((float) $data['amount'], 2),
+                'refunded_at' => $data['refunded_at'],
+                ...$bank,
+                'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
+                'created_by' => $request->user()?->id,
+                'agent_user_id' => $tenant->agent_user_id ?: $request->user()?->id,
+            ]);
+
+            $tenantBank = [];
+            foreach ($bank as $key => $value) {
+                if ($value !== null && trim((string) ($tenant->{$key} ?? '')) === '' && Schema::hasColumn('pm_tenants', $key)) {
+                    $tenantBank[$key] = $value;
+                }
+            }
+            if ($tenantBank !== []) {
+                $tenant->update($tenantBank);
+            }
+
+            if ($heldDeposit) {
+                $heldDeposit->update(['status' => 'refunded']);
+            }
+
+            if (Schema::hasTable('lease_deposit_lines')) {
+                $leaseIds = $tenant->leases()->pluck('id');
+                if ($leaseIds->isNotEmpty()) {
+                    \App\Models\LeaseDepositLine::query()
+                        ->whereIn('pm_lease_id', $leaseIds)
+                        ->where('is_refundable', true)
+                        ->where('refund_status', '!=', 'refunded')
+                        ->update(['refund_status' => 'refunded']);
+                }
+            }
+        });
+
+        if ($refund?->pm_tenant_deposit_id) {
+            $deposit = PmTenantDeposit::query()->find($refund->pm_tenant_deposit_id);
+            if ($deposit) {
+                try {
+                    app(\App\Services\Property\PropertyTrustAccountingService::class)
+                        ->postTenantDepositRefund($deposit, $request->user()?->id);
+                } catch (\Throwable $e) {
+                    Log::warning('tenant_deposit_refund_gl_skipped', [
+                        'refund_id' => $refund->id,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return redirect()
+            ->route('property.tenants.show', ['tenant' => $tenant->id, 'tab' => 'deposits'])
+            ->with('success', 'Deposit refund recorded.');
+    }
+
     public function destroy(PmTenant $tenant): RedirectResponse
     {
         $tenantName = $tenant->name;
@@ -1748,6 +1855,10 @@ class PmTenantDirectoryController extends Controller
             'town' => ['nullable', 'string', 'max:128'],
             'country' => ['nullable', 'string', 'max:64'],
             'photo' => ['nullable', 'image', 'max:5120'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:80'],
+            'bank_account_name' => ['nullable', 'string', 'max:160'],
+            'bank_account_number' => ['nullable', 'string', 'max:64'],
             'emergency_contacts' => ['nullable', 'array', 'max:2'],
             'emergency_contacts.*.name' => ['nullable', 'string', 'max:120'],
             'emergency_contacts.*.relationship' => ['nullable', 'string', 'max:80'],
@@ -1763,7 +1874,10 @@ class PmTenantDirectoryController extends Controller
     private function extractTenantRecordAttributes(Request $request, array $data): array
     {
         $attrs = [];
-        foreach (['tenant_type', 'other_names', 'gender', 'kra_pin', 'postal_address', 'postal_code', 'town', 'country'] as $key) {
+        foreach ([
+            'tenant_type', 'other_names', 'gender', 'kra_pin', 'postal_address', 'postal_code', 'town', 'country',
+            'bank_name', 'bank_branch', 'bank_account_name', 'bank_account_number',
+        ] as $key) {
             if (! array_key_exists($key, $data) && ! $request->exists($key)) {
                 continue;
             }
@@ -2055,6 +2169,43 @@ class PmTenantDirectoryController extends Controller
             'held' => $held,
             'expected' => $expected,
             'lines' => $lines,
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, PmTenantDepositRefund>
+     */
+    private function tenantDepositRefunds(PmTenant $tenant)
+    {
+        if (! Schema::hasTable('pm_tenant_deposit_refunds')) {
+            return collect();
+        }
+
+        return PmTenantDepositRefund::query()
+            ->where('tenant_id', $tenant->id)
+            ->with(['createdBy:id,name', 'property:id,name', 'unit:id,label'])
+            ->orderByDesc('refunded_at')
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    /**
+     * @return array{property_id: int, property_unit_id: int}
+     */
+    private function tenantRefundOccupancy(PmTenant $tenant): array
+    {
+        if (! $tenant->relationLoaded('leases')) {
+            $tenant->load(['leases' => fn ($q) => $q->with('units')->orderByDesc('id')]);
+        }
+
+        $lease = $tenant->leases
+            ->first(fn ($row) => (string) $row->status === PmLease::STATUS_ACTIVE)
+            ?? $tenant->leases->first();
+        $unit = $lease?->units?->first();
+
+        return [
+            'property_id' => (int) ($unit?->property_id ?? 0),
+            'property_unit_id' => (int) ($unit?->id ?? 0),
         ];
     }
 

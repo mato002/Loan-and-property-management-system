@@ -49,6 +49,10 @@ class PropertyHrEmployeeService
 
     public const FIELD_OFFICER_JOB_TITLE = 'Field Officer';
 
+    public const EMPLOYMENT_STATUSES = Employee::STATUSES;
+
+    public const EXIT_REASONS = Employee::EXIT_REASONS;
+
     public const LEAVE_TYPES = [
         'Annual leave',
         'Sick leave',
@@ -314,19 +318,126 @@ class PropertyHrEmployeeService
     public function setEmploymentStatus(Employee $employee, string $status): Employee
     {
         $status = Str::lower(trim($status));
-        if (! in_array($status, ['active', 'on_leave', 'terminated'], true)) {
+        if (! array_key_exists($status, Employee::STATUSES)) {
             throw ValidationException::withMessages([
-                'employment_status' => 'Choose active, on leave, or terminated.',
+                'employment_status' => 'Choose onboarding, active, on leave, or offboarded.',
             ]);
         }
 
-        $employee->update(['employment_status' => $status]);
+        if ($status === 'terminated') {
+            return $this->offboardEmployee($employee, [
+                'exit_date' => now()->toDateString(),
+                'exit_reason' => 'other',
+                'offboarding_notes' => null,
+                'unassign_properties' => true,
+                'revoke_portal' => true,
+            ], Auth::user());
+        }
 
-        if ($status === 'terminated' && $employee->user) {
+        $payload = ['employment_status' => $status];
+
+        if ($status === 'active') {
+            $payload['onboarding_completed_at'] = $employee->onboarding_completed_at ?? now();
+            $payload['exit_date'] = null;
+            $payload['exit_reason'] = null;
+            $payload['offboarding_notes'] = null;
+            $payload['offboarded_by_user_id'] = null;
+            if (! $employee->hire_date) {
+                $payload['hire_date'] = now()->toDateString();
+            }
+        }
+
+        $employee->update($payload);
+
+        return $employee->fresh();
+    }
+
+    public function completeOnboarding(Employee $employee): Employee
+    {
+        if ($employee->isOffboarded()) {
+            throw ValidationException::withMessages([
+                'employment_status' => 'Re-activate this employee before completing onboarding.',
+            ]);
+        }
+
+        $payload = [
+            'employment_status' => 'active',
+            'onboarding_completed_at' => now(),
+        ];
+        if (! $employee->hire_date) {
+            $payload['hire_date'] = now()->toDateString();
+        }
+
+        $employee->update($payload);
+
+        return $employee->fresh();
+    }
+
+    /**
+     * @return list<array{key: string, label: string, done: bool}>
+     */
+    public function onboardingChecklist(Employee $employee): array
+    {
+        $hasContact = trim((string) $employee->email) !== '' || trim((string) $employee->phone) !== '';
+
+        return [
+            ['key' => 'identity', 'label' => 'National ID on file', 'done' => trim((string) $employee->national_id) !== ''],
+            ['key' => 'contact', 'label' => 'Work email or phone', 'done' => $hasContact],
+            ['key' => 'role', 'label' => 'Department and job title', 'done' => trim((string) $employee->department) !== '' && trim((string) $employee->job_title) !== ''],
+            ['key' => 'hire', 'label' => 'Hire date', 'done' => $employee->hire_date !== null],
+            ['key' => 'kin', 'label' => 'Next of kin', 'done' => trim((string) $employee->next_of_kin_name) !== ''],
+            ['key' => 'payroll', 'label' => 'Bank account for payroll', 'done' => trim((string) $employee->bank_name) !== '' && trim((string) $employee->bank_account_number) !== ''],
+            ['key' => 'login', 'label' => 'Portal login (optional)', 'done' => (bool) $employee->user_id],
+        ];
+    }
+
+    /**
+     * @param  array{
+     *     exit_date?: mixed,
+     *     exit_reason?: mixed,
+     *     offboarding_notes?: mixed,
+     *     unassign_properties?: mixed,
+     *     revoke_portal?: mixed
+     * }  $data
+     */
+    public function offboardEmployee(Employee $employee, array $data, ?User $actor = null): Employee
+    {
+        $exitDate = $data['exit_date'] ?? now()->toDateString();
+        $reason = Str::lower(trim((string) ($data['exit_reason'] ?? 'other')));
+        if (! array_key_exists($reason, Employee::EXIT_REASONS)) {
+            $reason = 'other';
+        }
+
+        $employee->update([
+            'employment_status' => 'terminated',
+            'exit_date' => $exitDate,
+            'exit_reason' => $reason,
+            'offboarding_notes' => trim((string) ($data['offboarding_notes'] ?? '')) ?: null,
+            'offboarded_by_user_id' => $actor?->id,
+        ]);
+
+        if (! empty($data['unassign_properties'])) {
+            $this->unassignAllPropertiesFromEmployee($employee->fresh());
+        }
+
+        $employee = $employee->fresh();
+        if (! empty($data['revoke_portal']) && $employee?->user) {
             $this->revokePortalAccess($employee);
         }
 
         return $employee->fresh();
+    }
+
+    public function unassignAllPropertiesFromEmployee(Employee $employee): int
+    {
+        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
+        if (! $fieldOfficer) {
+            return 0;
+        }
+
+        return Property::query()
+            ->where('field_officer_id', $fieldOfficer->id)
+            ->update(['field_officer_id' => null]);
     }
 
     /**

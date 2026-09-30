@@ -284,6 +284,21 @@ final class TenantStatementLedgerService
     }
 
     /**
+     * Same figure as the tenant statement closing balance with no date filter.
+     * Positive is debt. Negative is extra money on the account.
+     */
+    public function closingBalance(PmTenant $tenant): float
+    {
+        $ledger = $this->build($tenant, null, null);
+        $balance = (float) ($ledger['openingBalance'] ?? 0);
+        foreach ($ledger['entries'] as $entry) {
+            $balance += (float) ($entry['debit'] ?? 0) - (float) ($entry['credit'] ?? 0);
+        }
+
+        return round($balance, 2);
+    }
+
+    /**
      * @param  Collection<int, \App\Models\PmLease>  $leases
      * @return \Illuminate\Database\Eloquent\Builder<PmInvoice>
      */

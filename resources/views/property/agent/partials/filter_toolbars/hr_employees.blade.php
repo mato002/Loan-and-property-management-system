@@ -40,9 +40,10 @@
             label="Status"
             empty-option="Status: All"
             :options="[
+                ['value' => 'onboarding', 'label' => 'Onboarding'],
                 ['value' => 'active', 'label' => 'Active'],
                 ['value' => 'on_leave', 'label' => 'On leave'],
-                ['value' => 'terminated', 'label' => 'Terminated'],
+                ['value' => 'terminated', 'label' => 'Offboarded'],
             ]"
             :value="$filters['employment_status'] ?? ''"
         />

@@ -92,6 +92,25 @@
             <input type="file" name="photo" accept="image/*" class="mt-1 block w-full text-sm text-slate-600" />
             @error('photo')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
+        <div class="sm:col-span-2 grid gap-3 sm:grid-cols-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900/60 p-3">
+            <p class="sm:col-span-2 text-xs font-semibold text-slate-700 dark:text-slate-200">Bank details (for deposit refunds)</p>
+            <div>
+                <label class="{{ $labelClass }}">Bank</label>
+                <input type="text" name="bank_name" value="{{ old('bank_name', $t?->bank_name) }}" maxlength="120" class="{{ $inputClass }}" />
+            </div>
+            <div>
+                <label class="{{ $labelClass }}">Branch code</label>
+                <input type="text" name="bank_branch" value="{{ old('bank_branch', $t?->bank_branch) }}" maxlength="80" class="{{ $inputClass }}" />
+            </div>
+            <div>
+                <label class="{{ $labelClass }}">Account name</label>
+                <input type="text" name="bank_account_name" value="{{ old('bank_account_name', $t?->bank_account_name) }}" maxlength="160" class="{{ $inputClass }}" />
+            </div>
+            <div>
+                <label class="{{ $labelClass }}">Account number</label>
+                <input type="text" name="bank_account_number" value="{{ old('bank_account_number', $t?->bank_account_number) }}" maxlength="64" class="{{ $inputClass }}" />
+            </div>
+        </div>
         @foreach ($contacts as $idx => $contact)
             <div class="sm:col-span-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900/60 p-3">
                 <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">Emergency contact {{ $idx + 1 }}</p>
