@@ -619,51 +619,25 @@ final class EzenTenantStatementImportService
         }
         $held = round($rentDeposit + array_sum(array_column($additional, 'amount')), 2);
 
-        $updates = [];
         $currentStart = $lease->start_date ? Carbon::parse($lease->start_date)->toDateString() : null;
         if ($currentStart !== null && $currentStart > $startDate) {
-            $updates['start_date'] = $startDate;
             $summary['warnings'][] = ($dryRun ? 'Would backdate' : 'Backdated').' lease start from '
                 .$currentStart.' to '.$startDate.'.';
-        }
-        if ($rentDeposit > 0.009 && round((float) $lease->deposit_amount, 2) < 0.009) {
-            $updates['deposit_amount'] = $rentDeposit;
-            $summary['warnings'][] = ($dryRun ? 'Would set' : 'Set').' rent deposit '
-                .number_format($rentDeposit, 2).'.';
-        }
-        if ($additional !== [] && Schema::hasColumn('pm_leases', 'additional_deposits')) {
-            $existingExtra = $lease->additional_deposits;
-            if (! is_array($existingExtra) || $existingExtra === []) {
-                $updates['additional_deposits'] = $additional;
+            if (! $dryRun) {
+                $lease->update(['start_date' => $startDate]);
             }
         }
 
-        if ($updates !== [] && ! $dryRun) {
-            $lease->update($updates);
-        }
-
-        if ($held > 0.009 && Schema::hasTable('pm_tenant_deposits')) {
-            $alreadyHeld = PmTenantDeposit::query()
-                ->withoutGlobalScopes()
-                ->where('tenant_id', $tenant->id)
-                ->where('status', 'held')
-                ->exists();
-            if (! $alreadyHeld) {
-                $summary['warnings'][] = ($dryRun ? 'Would record' : 'Recorded').' held deposits '
-                    .number_format($held, 2).'.';
-                if (! $dryRun) {
-                    $payload = [
-                        'tenant_id' => $tenant->id,
-                        'amount' => $held,
-                        'status' => 'held',
-                    ];
-                    if (Schema::hasColumn('pm_tenant_deposits', 'agent_user_id')) {
-                        $payload['agent_user_id'] = $agentUserId;
-                    }
-                    PmTenantDeposit::query()->create($payload);
-                }
-            }
-        }
+        $this->applyLeaseAndHeldDeposits(
+            $lease,
+            $tenant,
+            $rentDeposit,
+            $additional,
+            $held,
+            $agentUserId,
+            $dryRun,
+            $summary,
+        );
 
         $fullName = trim((string) ($parsed['tenant'] ?? ''));
         $currentName = trim((string) $tenant->name);
@@ -679,6 +653,198 @@ final class EzenTenantStatementImportService
                 $tenant->update(['name' => $fullName]);
             }
         }
+    }
+
+    /**
+     * Copy imported EZEN rent/utility deposit invoices onto the lease and
+     * trust-deposit records that the tenant 360 deposit tab reads.
+     *
+     * @return array{tenants:int,leases_updated:int,held_created:int,skipped:int,warnings:list<string>}
+     */
+    public function syncDepositsFromImportedInvoices(int $agentUserId, bool $dryRun = false): array
+    {
+        $summary = [
+            'tenants' => 0,
+            'leases_updated' => 0,
+            'held_created' => 0,
+            'skipped' => 0,
+            'warnings' => [],
+        ];
+
+        $tenantIds = PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where(function ($query): void {
+                $query->where('description', 'like', '%RENT DEPOSIT%')
+                    ->orWhere('description', 'like', '%WATER DEPOSIT%')
+                    ->orWhere('description', 'like', '%ELECTRICITY DEPOSIT%')
+                    ->orWhere('description', 'like', '%GARBAGE DEPOSIT%');
+            })
+            ->distinct()
+            ->pluck('pm_tenant_id');
+
+        foreach ($tenantIds as $tenantId) {
+            $tenant = PmTenant::query()->withoutGlobalScopes()->find((int) $tenantId);
+            if ($tenant === null) {
+                continue;
+            }
+            $summary['tenants']++;
+
+            $lease = PmLease::query()
+                ->withoutGlobalScopes()
+                ->where('pm_tenant_id', $tenant->id)
+                ->orderByRaw("case when status = 'active' then 0 else 1 end")
+                ->orderByDesc('id')
+                ->first();
+            if ($lease === null) {
+                $summary['warnings'][] = ($tenant->account_number ?: '#'.$tenant->id).' has deposit invoices but no lease.';
+                $summary['skipped']++;
+
+                continue;
+            }
+
+            $invoices = PmInvoice::query()
+                ->withoutGlobalScopes()
+                ->where('pm_tenant_id', $tenant->id)
+                ->where(function ($query): void {
+                    $query->where('description', 'like', '%RENT DEPOSIT%')
+                        ->orWhere('description', 'like', '%WATER DEPOSIT%')
+                        ->orWhere('description', 'like', '%ELECTRICITY DEPOSIT%')
+                        ->orWhere('description', 'like', '%GARBAGE DEPOSIT%');
+                })
+                ->get();
+
+            $rentDeposit = 0.0;
+            $additionalMap = [];
+            $paid = 0.0;
+            foreach ($invoices as $invoice) {
+                $kind = $this->depositKindFromInvoice($invoice);
+                if ($kind === null) {
+                    continue;
+                }
+                $amount = (float) $invoice->amount;
+                $paid += (float) $invoice->amount_paid;
+                if ($kind === 'rent') {
+                    $rentDeposit += $amount;
+
+                    continue;
+                }
+                $label = ucfirst($kind).' deposit';
+                $additionalMap[$label] = ($additionalMap[$label] ?? 0) + $amount;
+            }
+
+            $additional = [];
+            foreach ($additionalMap as $label => $amount) {
+                if ($amount > 0.009) {
+                    $additional[] = ['label' => $label, 'amount' => round($amount, 2)];
+                }
+            }
+
+            $expected = round($rentDeposit + array_sum(array_column($additional, 'amount')), 2);
+            $held = round($paid > 0.009 ? $paid : $expected, 2);
+            if ($expected <= 0.009) {
+                $summary['skipped']++;
+
+                continue;
+            }
+
+            $leaseTouched = $this->applyLeaseAndHeldDeposits(
+                $lease,
+                $tenant,
+                round($rentDeposit, 2),
+                $additional,
+                $held,
+                $agentUserId,
+                $dryRun,
+                $summary,
+            );
+            if ($leaseTouched['lease']) {
+                $summary['leases_updated']++;
+            }
+            if ($leaseTouched['held']) {
+                $summary['held_created']++;
+            }
+            if (! $leaseTouched['lease'] && ! $leaseTouched['held']) {
+                $summary['skipped']++;
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param  list<array{label:string,amount:float}>  $additional
+     * @param  array<string, mixed>  $summary
+     * @return array{lease:bool,held:bool}
+     */
+    private function applyLeaseAndHeldDeposits(
+        PmLease $lease,
+        PmTenant $tenant,
+        float $rentDeposit,
+        array $additional,
+        float $held,
+        int $agentUserId,
+        bool $dryRun,
+        array &$summary,
+    ): array {
+        $touchedLease = false;
+        $touchedHeld = false;
+        $updates = [];
+
+        if ($rentDeposit > 0.009 && round((float) $lease->deposit_amount, 2) < 0.009) {
+            $updates['deposit_amount'] = $rentDeposit;
+            $summary['warnings'][] = ($dryRun ? 'Would set' : 'Set').' '
+                .($tenant->account_number ?: '#'.$tenant->id).' rent deposit '
+                .number_format($rentDeposit, 2).'.';
+            $touchedLease = true;
+        }
+        if ($additional !== [] && Schema::hasColumn('pm_leases', 'additional_deposits')) {
+            $existingExtra = $lease->additional_deposits;
+            if (! is_array($existingExtra) || $existingExtra === []) {
+                $updates['additional_deposits'] = $additional;
+                $summary['warnings'][] = ($dryRun ? 'Would set' : 'Set').' '
+                    .($tenant->account_number ?: '#'.$tenant->id).' extra deposits.';
+                $touchedLease = true;
+            }
+        }
+
+        if ($updates !== [] && ! $dryRun) {
+            $lease->update($updates);
+        }
+
+        if ($held > 0.009 && Schema::hasTable('pm_tenant_deposits')) {
+            $alreadyHeld = PmTenantDeposit::query()
+                ->withoutGlobalScopes()
+                ->where('tenant_id', $tenant->id)
+                ->exists();
+            if (! $alreadyHeld) {
+                $summary['warnings'][] = ($dryRun ? 'Would record' : 'Recorded').' '
+                    .($tenant->account_number ?: '#'.$tenant->id).' held deposits '
+                    .number_format($held, 2).'.';
+                $touchedHeld = true;
+                if (! $dryRun) {
+                    $payload = [
+                        'tenant_id' => $tenant->id,
+                        'amount' => $held,
+                        'status' => 'held',
+                    ];
+                    if (Schema::hasColumn('pm_tenant_deposits', 'agent_user_id')) {
+                        $payload['agent_user_id'] = $agentUserId;
+                    }
+                    PmTenantDeposit::query()->create($payload);
+                }
+            }
+        }
+
+        return ['lease' => $touchedLease, 'held' => $touchedHeld];
+    }
+
+    private function depositKindFromInvoice(PmInvoice $invoice): ?string
+    {
+        if (preg_match('/\]\s*(rent|water|electricity|garbage)\s+deposit\b/i', (string) $invoice->description, $match) === 1) {
+            return strtolower($match[1]);
+        }
+
+        return null;
     }
 
     private function retireOpeningArrearsReplacedByStatement(PmTenant $tenant, bool $dryRun, array &$summary): void

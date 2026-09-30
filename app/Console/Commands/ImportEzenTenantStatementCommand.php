@@ -15,6 +15,7 @@ class ImportEzenTenantStatementCommand extends Command
         {--agent-user-id= : Agent that owns the portfolio}
         {--post-gl : Post invoice issuance to trust GL (default off)}
         {--create-missing : Create the tenant and lease when the TNT account is new}
+        {--sync-deposits : Copy imported EZEN deposit invoices onto the tenant 360 deposit tab}
         {--dry-run : Parse and match without saving}';
 
     protected $description = 'Import missing DBNs, rent deposits, and opening balances from an EZEN tenant statement export.';
@@ -29,9 +30,27 @@ class ImportEzenTenantStatementCommand extends Command
             return self::FAILURE;
         }
 
+        if ($this->option('sync-deposits')) {
+            $result = $service->syncDepositsFromImportedInvoices(
+                $agentUserId,
+                (bool) $this->option('dry-run'),
+            );
+            $this->info('Tenants with EZEN deposit invoices: '.$result['tenants']);
+            $this->line('Leases updated: '.$result['leases_updated']);
+            $this->line('Trust deposits recorded: '.$result['held_created']);
+            $this->line('Already on deposit tab: '.$result['skipped']);
+            foreach ($result['warnings'] as $warning) {
+                $this->warn($warning);
+            }
+
+            $this->info($this->option('dry-run') ? 'Dry run complete.' : 'Deposit tab sync complete.');
+
+            return self::SUCCESS;
+        }
+
         $paths = $this->statementPaths($service);
         if ($paths === []) {
-            $this->error('Pass a .xls file, --dir=, or --all.');
+            $this->error('Pass a .xls file, --dir=, --all, or --sync-deposits.');
 
             return self::FAILURE;
         }
