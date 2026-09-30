@@ -343,8 +343,7 @@ class PmTenantDirectoryController extends Controller
             ->withQueryString();
 
         $statementLedger = app(TenantStatementLedgerService::class);
-        $tenantCredits = app(TenantCreditService::class);
-        $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger, $tenantCredits) {
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger) {
             $leaseEnd = $t->leases_max_end_date
                 ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
                 : '—';
@@ -354,11 +353,10 @@ class PmTenantDirectoryController extends Controller
                 ? trim(($activeUnit->property->name ?? '').' / '.$activeUnit->label, ' /')
                 : '—';
             $deleteConfirm = e("Delete {$t->name} and all related records? This cannot be undone.");
+            // Statement closing already includes every receipt. Do not subtract
+            // the leftover-credit wallet again — that turns a settled deposit
+            // payment into a fake CR extra on the directory.
             $accountBalance = $statementLedger->closingBalance($t);
-            $unusedCredit = $tenantCredits->balanceForTenant((int) $t->id);
-            if ($unusedCredit > 0.009 && $accountBalance >= -0.009) {
-                $accountBalance = round($accountBalance - $unusedCredit, 2);
-            }
 
             $actions = new HtmlString(
                 '<div class="relative inline-block text-left">'.

@@ -208,6 +208,8 @@ class PropertyPaymentSettlementService
             ->sum('amount'), 2);
         $remaining = round((float) $payment->amount - $alreadyAllocated, 2);
         if ($remaining <= 0.0001 || (int) $payment->pm_tenant_id <= 0) {
+            app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
+
             return max(0.0, $remaining);
         }
 
@@ -233,6 +235,8 @@ class PropertyPaymentSettlementService
             $this->createAllocation($payment, $invoice, $allocation);
             $remaining = round($remaining - $allocation, 2);
         }
+
+        app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
 
         return max(0.0, $remaining);
     }

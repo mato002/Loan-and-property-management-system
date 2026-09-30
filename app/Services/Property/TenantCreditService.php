@@ -108,6 +108,81 @@ class TenantCreditService
     }
 
     /**
+     * Keep the overpayment wallet in line with money still unallocated on that payment.
+     * Deposit invoices imported later consume the leftover, but the credit row was left behind
+     * and then shown as extra A/C balance even though the statement already nets to zero.
+     */
+    public function syncOverpaymentCreditToPaymentRemainder(PmPayment $payment, ?User $actor = null, bool $dryRun = false): float
+    {
+        if (! $this->isEnabled()) {
+            return 0.0;
+        }
+
+        $txnId = (int) data_get($payment->meta, 'tenant_credit_transaction_id', 0);
+        if ($txnId <= 0) {
+            return 0.0;
+        }
+
+        $created = PmTenantCreditTransaction::query()->find($txnId);
+        if (! $created || $created->type !== PmTenantCreditTransaction::TYPE_CREDIT_CREATED) {
+            return 0.0;
+        }
+
+        $tenantId = (int) $created->pm_tenant_id;
+        $createdAmount = round((float) $created->amount, 2);
+        $alreadyReversed = round((float) PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('pm_payment_id', (int) $payment->id)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->sum('amount'), 2);
+        $creditStillOpen = round(max(0.0, $createdAmount - $alreadyReversed), 2);
+        if ($creditStillOpen <= 0.009) {
+            return 0.0;
+        }
+
+        $allocated = round((float) $payment->allocations()
+            ->where(function ($q): void {
+                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $unallocated = round(max(0.0, (float) $payment->amount - $allocated), 2);
+        $excess = round($creditStillOpen - $unallocated, 2);
+        if ($excess <= 0.009) {
+            return 0.0;
+        }
+
+        if ($dryRun) {
+            return $excess;
+        }
+
+        return DB::transaction(function () use ($payment, $actor, $tenantId, $excess) {
+            $balance = $this->lockBalanceRow($tenantId);
+            $available = round((float) $balance->balance, 2);
+            $toReverse = round(min($excess, $available), 2);
+            if ($toReverse <= 0.009) {
+                return 0.0;
+            }
+
+            PmTenantCreditTransaction::query()->create([
+                'pm_tenant_id' => $tenantId,
+                'pm_payment_id' => (int) $payment->id,
+                'pm_invoice_id' => null,
+                'type' => PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+                'amount' => $toReverse,
+                'reference' => 'PAY-ALLOC-'.(int) $payment->id,
+                'notes' => 'Cleared after leftover from payment #'.$payment->id.' was allocated to invoices',
+                'application_mode' => PmTenantCreditTransaction::MODE_AUTO,
+                'created_by' => $actor?->id,
+            ]);
+
+            $balance->balance = round(max(0.0, $available - $toReverse), 2);
+            $balance->save();
+
+            return $toReverse;
+        });
+    }
+
+    /**
      * Reverse GL + operational credit application for tenant_credit channel payments.
      */
     public function reverseCreditApplicationPayment(PmPayment $payment, ?User $actor = null, ?string $reason = null): void
