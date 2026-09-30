@@ -117,6 +117,8 @@ final class EzenTenantStatementImportService
             return $summary;
         }
 
+        $this->syncExistingLeaseFromStatement($lease, $tenant, $parsed, $agentUserId, $dryRun, $summary);
+
         foreach ($parsed['charges'] as $row) {
             if ($this->findExistingCharge($row['txn_no']) !== null) {
                 $summary['skipped_existing']++;
@@ -231,7 +233,7 @@ final class EzenTenantStatementImportService
             }
         }
 
-        if (! $dryRun && $summary['imported'] > 0) {
+        if (! $dryRun && ($summary['imported'] > 0 || $summary['payments_imported'] > 0)) {
             $summary['payments_reallocated'] = $this->allocateLeftoverPayments((int) $tenant->id);
         }
 
@@ -574,6 +576,92 @@ final class EzenTenantStatementImportService
 
             return $tenant;
         });
+    }
+
+    /**
+     * Existing tenants created from a move-in often start on the first rent
+     * invoice date, so deposits and the first statement activity are missing
+     * from the lease even after charge lines import.
+     *
+     * @param  array{
+     *     tenant:?string,
+     *     charges:list<array{date:string,memo:string,amount:float,type:string}>,
+     *     payments:list<array{date:string}>
+     * }  $parsed
+     * @param  array<string, mixed>  $summary
+     */
+    private function syncExistingLeaseFromStatement(
+        PmLease $lease,
+        PmTenant $tenant,
+        array $parsed,
+        int $agentUserId,
+        bool $dryRun,
+        array &$summary,
+    ): void {
+        $startDate = $this->statementStartDate($parsed);
+        $rentDeposit = $this->statementDepositAmount($parsed, 'rent deposit');
+        $additional = [];
+        foreach (['water deposit', 'electricity deposit', 'garbage deposit'] as $label) {
+            $amount = $this->statementDepositAmount($parsed, $label);
+            if ($amount > 0.009) {
+                $additional[] = ['label' => ucfirst($label), 'amount' => $amount];
+            }
+        }
+        $held = round($rentDeposit + array_sum(array_column($additional, 'amount')), 2);
+
+        $updates = [];
+        $currentStart = $lease->start_date ? Carbon::parse($lease->start_date)->toDateString() : null;
+        if ($currentStart !== null && $currentStart > $startDate) {
+            $updates['start_date'] = $startDate;
+            $summary['warnings'][] = ($dryRun ? 'Would backdate' : 'Backdated').' lease start from '
+                .$currentStart.' to '.$startDate.'.';
+        }
+        if ($rentDeposit > 0.009 && round((float) $lease->deposit_amount, 2) < 0.009) {
+            $updates['deposit_amount'] = $rentDeposit;
+            $summary['warnings'][] = ($dryRun ? 'Would set' : 'Set').' rent deposit '
+                .number_format($rentDeposit, 2).'.';
+        }
+        if ($additional !== [] && Schema::hasColumn('pm_leases', 'additional_deposits')) {
+            $existingExtra = $lease->additional_deposits;
+            if (! is_array($existingExtra) || $existingExtra === []) {
+                $updates['additional_deposits'] = $additional;
+            }
+        }
+
+        if ($updates !== [] && ! $dryRun) {
+            $lease->update($updates);
+        }
+
+        if ($held > 0.009 && Schema::hasTable('pm_tenant_deposits')) {
+            $alreadyHeld = PmTenantDeposit::query()
+                ->withoutGlobalScopes()
+                ->where('tenant_id', $tenant->id)
+                ->where('status', 'held')
+                ->exists();
+            if (! $alreadyHeld) {
+                $summary['warnings'][] = ($dryRun ? 'Would record' : 'Recorded').' held deposits '
+                    .number_format($held, 2).'.';
+                if (! $dryRun) {
+                    $payload = [
+                        'tenant_id' => $tenant->id,
+                        'amount' => $held,
+                        'status' => 'held',
+                    ];
+                    if (Schema::hasColumn('pm_tenant_deposits', 'agent_user_id')) {
+                        $payload['agent_user_id'] = $agentUserId;
+                    }
+                    PmTenantDeposit::query()->create($payload);
+                }
+            }
+        }
+
+        $fullName = trim((string) ($parsed['tenant'] ?? ''));
+        if ($fullName !== '' && strcasecmp((string) $tenant->name, $fullName) !== 0 && strlen($fullName) > strlen((string) $tenant->name)) {
+            $summary['warnings'][] = ($dryRun ? 'Would rename' : 'Renamed').' tenant to '.$fullName.'.';
+            if (! $dryRun) {
+                $tenant->update(['name' => $fullName]);
+            }
+        }
     }
 
     /**
