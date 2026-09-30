@@ -11,6 +11,7 @@
         ['url' => route('property.communications.messages', ['period' => 'today', 'status' => 'success'], absolute: false), 'label' => 'Sent today', 'count' => $quickFilterCounts['sent_today'] ?? null],
         ['url' => route('property.communications.messages', ['period' => 'today', 'channel' => 'sms'], absolute: false), 'label' => 'SMS today', 'count' => $quickFilterCounts['sms_today'] ?? null],
         ['url' => route('property.communications.messages', ['period' => 'today', 'channel' => 'email'], absolute: false), 'label' => 'Email today', 'count' => $quickFilterCounts['email_today'] ?? null],
+        ['url' => route('property.communications.messages', ['period' => 'month', 'channel' => 'email', 'q' => 'workspace login'], absolute: false), 'label' => 'Staff logins', 'count' => null],
         ['url' => route('property.communications.messages', ['period' => 'today', 'status' => 'failed', 'channel' => 'sms'], absolute: false), 'label' => 'Failed today', 'count' => $quickFilterCounts['failed_today'] ?? null],
         ['url' => route('property.communications.messages', ['duplicates' => 'yes', 'status' => 'sent', 'channel' => 'sms', 'period' => 'today'], absolute: false), 'label' => 'Duplicates today', 'count' => null],
     ];

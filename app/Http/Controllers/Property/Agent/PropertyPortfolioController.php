@@ -291,9 +291,10 @@ class PropertyPortfolioController extends Controller
                 '</div>'
             );
 
+            $showUrl = route('property.properties.show', $p, false);
             $nameCodeCell = new HtmlString(
                 '<div class="space-y-0.5">'.
-                '<div class="font-medium text-slate-900">'.e((string) $p->name).'</div>'.
+                '<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 hover:text-indigo-700">'.e((string) $p->name).'</a>'.
                 '<div class="text-xs text-slate-500">'.e((string) ($p->code ?? '—')).'</div>'.
                 '</div>'
             );

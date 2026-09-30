@@ -451,7 +451,7 @@ class PropertyHrEmployeeService
             'name' => $employee->full_name,
             'role' => $role,
         ]);
-        $actorId = $employee->agent_user_id ?: Auth::id();
+        $actorId = Auth::id() ?: $employee->agent_user_id;
         $actorId = $actorId ? (int) $actorId : null;
 
         try {
@@ -468,7 +468,7 @@ class PropertyHrEmployeeService
                 toAddress: (string) $user->email,
                 subject: $subject,
                 body: $logBody,
-                userId: $actorId ? (int) $actorId : null,
+                userId: $actorId,
                 deliveryStatus: 'sent',
             );
 
@@ -485,13 +485,93 @@ class PropertyHrEmployeeService
                 toAddress: (string) $user->email,
                 subject: $subject,
                 body: $logBody,
-                userId: $actorId ? (int) $actorId : null,
+                userId: $actorId,
                 deliveryStatus: 'failed',
                 deliveryError: $e->getMessage(),
             );
 
             return ['mailed' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Whether a staff-credentials email was already logged for this employee.
+     */
+    public function loginCredentialsWereEmailed(Employee $employee): bool
+    {
+        if (! Schema::hasTable('pm_message_logs')) {
+            return false;
+        }
+
+        $employee->loadMissing('user');
+
+        $emails = collect([
+            $employee->email ?? '',
+            $employee->user?->email ?? '',
+        ])
+            ->map(fn ($value) => Str::lower(trim((string) $value)))
+            ->filter(fn (string $email) => $email !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($emails === []) {
+            return false;
+        }
+
+        return PmMessageLog::query()
+            ->withoutGlobalScopes()
+            ->where('channel', 'email')
+            ->where(function ($query) use ($emails): void {
+                foreach ($emails as $index => $email) {
+                    $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+                    $query->{$method}('LOWER(to_address) = ?', [$email]);
+                }
+            })
+            ->where(function ($query): void {
+                $query->where('subject', 'like', '%workspace login%')
+                    ->orWhere('template_category', 'staff_credentials')
+                    ->orWhere('body', 'like', '%Staff login credentials%');
+            })
+            ->exists();
+    }
+
+    /**
+     * @return array{
+     *     has_email: bool,
+     *     has_login: bool,
+     *     login_emailed: bool,
+     *     can_send_login: bool,
+     *     login_action: 'send'|'resend'|null,
+     *     login_action_label: string|null
+     * }
+     */
+    public function loginActionState(Employee $employee): array
+    {
+        $hasEmail = trim((string) ($employee->email ?? '')) !== '';
+        $hasLogin = (int) ($employee->user_id ?? 0) > 0;
+        $loginEmailed = $hasEmail && $this->loginCredentialsWereEmailed($employee);
+        $offboarded = method_exists($employee, 'isOffboarded')
+            ? $employee->isOffboarded()
+            : $employee->employmentStatusKey() === 'terminated';
+        $canSend = $hasEmail && ! $offboarded;
+        $action = null;
+        if ($canSend) {
+            $action = ($hasLogin || $loginEmailed) ? 'resend' : 'send';
+        }
+
+        return [
+            'has_email' => $hasEmail,
+            'has_login' => $hasLogin,
+            'login_emailed' => $loginEmailed,
+            'can_send_login' => $canSend,
+            'login_action' => $action,
+            'login_action_label' => match ($action) {
+                'send' => 'Send logins',
+                'resend' => 'Resend logins',
+                default => null,
+            },
+        ];
     }
 
     private function logOutboundEmail(
@@ -507,7 +587,7 @@ class PropertyHrEmployeeService
         }
 
         try {
-            PmMessageLog::query()->create([
+            $payload = [
                 'user_id' => $userId,
                 'channel' => 'email',
                 'to_address' => $toAddress,
@@ -516,7 +596,18 @@ class PropertyHrEmployeeService
                 'delivery_status' => $deliveryStatus,
                 'delivery_error' => $deliveryError,
                 'sent_at' => $deliveryStatus === 'sent' ? now() : null,
-            ]);
+            ];
+            if (Schema::hasColumn('pm_message_logs', 'template_category')) {
+                $payload['template_category'] = 'staff_credentials';
+            }
+            if (Schema::hasColumn('pm_message_logs', 'display_stage')) {
+                $payload['display_stage'] = 'Staff login';
+            }
+            if (Schema::hasColumn('pm_message_logs', 'internal_stage')) {
+                $payload['internal_stage'] = 'staff_login';
+            }
+
+            PmMessageLog::query()->create($payload);
         } catch (Throwable $e) {
             Log::warning('property_outbound_email_log_failed', [
                 'to' => $toAddress,

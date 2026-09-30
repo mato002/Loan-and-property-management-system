@@ -22,13 +22,29 @@
     :stats="$headerStats"
     :columns="[]"
 >
+    @php
+        $loginState = $loginState ?? [
+            'has_email' => trim((string) ($employee->email ?? '')) !== '',
+            'has_login' => (bool) ($employee->user_id ?? false),
+            'login_emailed' => false,
+            'can_send_login' => trim((string) ($employee->email ?? '')) !== '' && ! $employee->isOffboarded(),
+            'login_action' => null,
+            'login_action_label' => null,
+        ];
+        if (($loginState['login_action'] ?? null) === null && ($loginState['can_send_login'] ?? false)) {
+            $loginState['login_action'] = ! empty($loginState['has_login']) || ! empty($loginState['login_emailed']) ? 'resend' : 'send';
+            $loginState['login_action_label'] = $loginState['login_action'] === 'resend' ? 'Resend logins' : 'Send logins';
+        }
+        $loginAction = $loginState['login_action'] ?? null;
+        $loginLabel = $loginState['login_action_label'] ?? null;
+    @endphp
     <x-slot name="actions">
-        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+        @if ($canManage ?? false)
             <a href="{{ route('property.hr.employees.edit', $employee, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Edit employee</a>
-            @if (trim((string) ($employee->email ?? '')) !== '' && ! $employee->isOffboarded())
-                <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" data-swal-title="{{ $employee->user_id ? 'Reset and email login?' : 'Generate and email login?' }}" data-swal-confirm="A temporary password will be emailed to {{ $employee->email }}." data-swal-confirm-text="Yes, send login">
+            @if (($loginState['can_send_login'] ?? false) && $loginLabel)
+                <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" data-swal-title="{{ $loginAction === 'resend' ? 'Resend login credentials?' : 'Send login credentials?' }}" data-swal-confirm="A temporary password will be emailed to {{ $employee->email }}." data-swal-confirm-text="{{ $loginAction === 'resend' ? 'Yes, resend' : 'Yes, send logins' }}">
                     @csrf
-                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">{{ $employee->user_id ? 'Reset & email login' : 'Generate & email login' }}</button>
+                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">{{ $loginLabel }}</button>
                 </form>
             @endif
             @if (! $employee->isOffboarded())
@@ -104,10 +120,12 @@
                             @if ($canManage ?? false)
                                 @if (! $employee->isOffboarded())
                                 <div class="flex flex-wrap gap-2 pt-2">
-                                    <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top">
-                                        @csrf
-                                        <button type="submit" class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50">Reset &amp; email login</button>
-                                    </form>
+                                    @if (($loginState['can_send_login'] ?? false) && $loginLabel)
+                                        <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top">
+                                            @csrf
+                                            <button type="submit" class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50">{{ $loginLabel }}</button>
+                                        </form>
+                                    @endif
                                     <form method="post" action="{{ route('property.hr.employees.revoke_login', $employee) }}" data-turbo-frame="_top" data-swal-title="Revoke portal access?" data-swal-confirm="They will not be able to sign in until you restore access." data-swal-confirm-text="Revoke">
                                         @csrf
                                         <button type="submit" class="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50">Revoke access</button>
@@ -120,11 +138,11 @@
                                 @endif
                             @endif
                         @else
-                            <p class="text-slate-500">No portal login yet. Add a work email, then use <strong>Generate &amp; email login</strong>.</p>
-                            @if (($canManage ?? false) && ! $employee->isOffboarded() && trim((string) ($employee->email ?? '')) !== '')
+                            <p class="text-slate-500">No portal login yet. Add a work email, then use <strong>Send logins</strong>.</p>
+                            @if (($canManage ?? false) && ($loginState['can_send_login'] ?? false) && $loginLabel)
                                 <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" class="pt-2">
                                     @csrf
-                                    <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Generate &amp; email login</button>
+                                    <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">{{ $loginLabel }}</button>
                                 </form>
                             @endif
                         @endif

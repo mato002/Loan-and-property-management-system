@@ -87,6 +87,8 @@ class PropertyHrEmployeesController extends Controller
             $showUrl = route('property.hr.employees.show', ['employee' => $employee->id], false);
             $isFieldOfficer = $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title);
             $portfolioStats = $employee->fieldOfficerProfile?->portfolioStats() ?? [];
+            $loginState = $this->hr->loginActionState($employee);
+            $canManage = $this->canManageHr($request);
 
             if ($isFieldOfficerList && $isFieldOfficer) {
                 $totalProperties += (int) ($portfolioStats['properties'] ?? 0);
@@ -104,6 +106,8 @@ class PropertyHrEmployeesController extends Controller
                     'editUrl' => $editUrl,
                     'portfolioUrl' => $portfolioUrl,
                     'isFieldOfficer' => true,
+                    'canManage' => $canManage,
+                    'loginState' => $loginState,
                 ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
@@ -130,6 +134,8 @@ class PropertyHrEmployeesController extends Controller
                     'editUrl' => $editUrl,
                     'portfolioUrl' => $portfolioUrl,
                     'isFieldOfficer' => $isFieldOfficer,
+                    'canManage' => $canManage,
+                    'loginState' => $loginState,
                 ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
@@ -268,7 +274,8 @@ class PropertyHrEmployeesController extends Controller
         $portfolioStats = $fieldOfficer?->portfolioStats();
         $assignedProperties = $fieldOfficer ? $this->hr->assignedPropertyRows($fieldOfficer) : [];
         $unassignedProperties = $fieldOfficer ? $this->hr->unassignedPropertiesForOfficer($fieldOfficer) : [];
-        $canManage = auth()->check() && auth()->user()?->hasPmPermission('properties.manage');
+        $canManage = $this->canManageHr($request);
+        $loginState = $this->hr->loginActionState($employee);
 
         return property_view('property.agent.hr.employees.show', [
             'employee' => $employee,
@@ -280,6 +287,7 @@ class PropertyHrEmployeesController extends Controller
             'assignedProperties' => $assignedProperties,
             'unassignedProperties' => $unassignedProperties,
             'canManage' => $canManage,
+            'loginState' => $loginState,
             'recentLeaves' => $employee->staffLeaves,
             'onboardingChecklist' => $this->hr->onboardingChecklist($employee),
             'exitReasons' => Employee::EXIT_REASONS,
@@ -659,6 +667,17 @@ class PropertyHrEmployeesController extends Controller
             ->map(fn (User $u) => ['id' => (int) $u->id, 'name' => (string) $u->name])
             ->values()
             ->all();
+    }
+
+    private function canManageHr(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user) {
+            return false;
+        }
+
+        return ($user->is_super_admin ?? false) === true
+            || $user->hasPmPermission('properties.manage');
     }
 
     private function defaultAgentUserId(Request $request): int
