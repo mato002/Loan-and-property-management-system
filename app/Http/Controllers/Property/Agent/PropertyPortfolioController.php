@@ -34,6 +34,7 @@ use App\Services\Property\LandlordPortalOnboardingService;
 use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyOffboardingService;
 use App\Services\Property\PropertyRegisterImportService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -636,7 +637,9 @@ class PropertyPortfolioController extends Controller
         $collectionRate = $invoiced > 0 ? round(($collected / $invoiced) * 100, 1) : 0.0;
         $avgArrearsPerUnit = $totalUnits > 0 ? ($arrears / $totalUnits) : 0.0;
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+        $isStatementsExport = (string) $request->query('tab') === 'statements'
+            && (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true) || $request->boolean('print') || (string) $request->query('print_scope') !== '');
+        if (! $isStatementsExport && in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
             if ($exportReport === 'units') {
                 return TabularExport::stream(
                     'property-'.$property->id.'-units',
@@ -766,6 +769,66 @@ class PropertyPortfolioController extends Controller
 
         $activeTab = PropertyEntityHub::activeTabFromRequest($request, 'property');
 
+        $offboardingStep = 1;
+        $offboardingCheck = [];
+        $offboardingCanDetach = ['allowed' => false, 'reasons' => []];
+        $offboardingCanArchive = ['allowed' => false, 'reasons' => []];
+        if ($activeTab === 'offboarding') {
+            $offboarding = app(PropertyOffboardingService::class);
+            $loads = ['landlords' => fn ($q) => $q->orderBy('name')];
+            if (Schema::hasColumn('properties', 'archived_by')) {
+                $loads['archivedByUser'] = fn ($q) => $q->select('id', 'name');
+            }
+            $property->load($loads);
+            $override = (bool) ($request->user()?->hasPmPermission('property.archive.override'));
+            $offboardingStep = max(1, min(5, (int) $request->query('step', 1)));
+            $offboardingCheck = $offboarding->statusCheck($property);
+            $offboardingCanDetach = $offboarding->canDetachLandlord($property, $override);
+            $offboardingCanArchive = $offboarding->canArchive($property, $override);
+        }
+
+        $propertyStatement = [
+            'fy' => $fy,
+            'open_month' => '',
+            'year_settlement' => null,
+            'month_settlement' => null,
+            'monthly' => [],
+            'unit_months' => [],
+            'month_keys' => [],
+        ];
+        if ($activeTab === 'statements') {
+            $landlordId = (int) ($property->landlords->first()?->id ?? 0);
+            $openMonth = preg_match('/^\d{4}-\d{2}$/', $month) === 1 ? $month : '';
+            $propertyStatement = app(LandlordSettlementService::class)->buildPropertyStatementHub(
+                (int) $property->id,
+                $fy,
+                $openMonth !== '' ? $openMonth : null,
+                $landlordId > 0 ? $landlordId : null,
+            );
+
+            $printScope = strtolower((string) $request->query('print_scope', ''));
+            $export = strtolower((string) $request->query('export', ''));
+            $exportScope = strtolower((string) $request->query('export_scope', ''));
+            if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
+                && in_array($exportScope, ['year_units', 'month_units', 'months', 'unit_grid', 'year', 'month'], true)) {
+                return $this->streamPropertyStatementTable($property, $propertyStatement, $exportScope, $export);
+            }
+            if ($request->boolean('print') || in_array($export, ['pdf', 'word', 'csv', 'xls', 'xlsx'], true) || $printScope !== '') {
+                $wantYear = $printScope === 'year' || in_array($exportScope, ['year', 'year_units'], true);
+                $settlement = $wantYear
+                    ? ($propertyStatement['year_settlement'] ?? null)
+                    : ($propertyStatement['month_settlement'] ?? $propertyStatement['year_settlement'] ?? null);
+                if (is_array($settlement)) {
+                    return $this->streamPropertyAccountStatement(
+                        $property,
+                        [$settlement],
+                        (string) ($settlement['period_label'] ?? $periodLabel),
+                        $export !== '' ? $export : 'print',
+                    );
+                }
+            }
+        }
+
         $maintenanceRequests = collect();
         if ($unitIds !== [] && in_array($activeTab, ['maintenance', 'overview'], true)) {
             $maintenanceRequests = PmMaintenanceRequest::query()
@@ -886,6 +949,7 @@ class PropertyPortfolioController extends Controller
                 'collection_rate' => $collectionRate,
                 'avg_arrears_per_unit' => $avgArrearsPerUnit,
             ],
+            'propertyStatement' => $propertyStatement,
             'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
             'propertyExpenseDefinitions' => $this->propertyExpenseDefinitions((int) $property->id),
             'propertyDepositDefinitions' => $this->propertyDepositDefinitions((int) $property->id),
@@ -893,6 +957,10 @@ class PropertyPortfolioController extends Controller
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(['id', 'name', 'email', 'phone']),
             'isManagementReadOnly' => $property->isManagementReadOnly(),
             'managementStatusLabel' => $property->managementStatusLabel(),
+            'step' => $offboardingStep,
+            'check' => $offboardingCheck,
+            'canDetach' => $offboardingCanDetach,
+            'canArchive' => $offboardingCanArchive,
         ]);
     }
 
@@ -2370,6 +2438,200 @@ class PropertyPortfolioController extends Controller
             },
             TabularExport::FORMAT_CSV,
         );
+    }
+
+    /**
+     * Tabular export for the property Statements tab (year units, months, unit grid).
+     *
+     * @param  array<string, mixed>  $packet
+     */
+    private function streamPropertyStatementTable(Property $property, array $packet, string $scope, string $export): StreamedResponse|Response
+    {
+        $fy = (int) ($packet['fy'] ?? now()->year);
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+        $slug = Str::slug((string) $property->name).'-'.$fy.'-'.$scope;
+        $title = $property->name.' — statement '.$scope.' FY '.$fy;
+
+        if (in_array($scope, ['year_units', 'year', 'month_units', 'month'], true)) {
+            $settlement = in_array($scope, ['month_units', 'month'], true)
+                ? ($packet['month_settlement'] ?? $packet['year_settlement'] ?? [])
+                : ($packet['year_settlement'] ?? []);
+            $headers = [
+                'Unit', 'Tenant', 'Per month',
+                'B/F rent', 'B/F garbage', 'B/F water',
+                'Inv. rent', 'Inv. garbage', 'Inv. water',
+                'Rec. rent', 'Rec. garbage', 'Rec. water',
+                'Total inv.', 'Total rec.',
+            ];
+            $lines = $settlement['unit_lines'] ?? [];
+
+            return TabularExport::stream(
+                $slug,
+                $headers,
+                function () use ($lines, $n) {
+                    foreach ($lines as $line) {
+                        yield [
+                            (string) ($line['unit_label'] ?? ''),
+                            (string) ($line['tenant_name'] ?? ''),
+                            $n((float) ($line['rent_per_month'] ?? 0)),
+                            $n((float) ($line['rent_bf'] ?? 0)),
+                            $n((float) ($line['garbage_bf'] ?? 0)),
+                            $n((float) ($line['water_bf'] ?? 0)),
+                            $n((float) ($line['rent_billed'] ?? 0)),
+                            $n((float) ($line['garbage_billed'] ?? 0)),
+                            $n((float) ($line['water_billed'] ?? 0)),
+                            $n((float) ($line['rent_received'] ?? 0)),
+                            $n((float) ($line['garbage_received'] ?? 0)),
+                            $n((float) ($line['water_received'] ?? 0)),
+                            $n((float) ($line['total_billed'] ?? 0)),
+                            $n((float) ($line['total_received'] ?? 0)),
+                        ];
+                    }
+                },
+                $export,
+                ['title' => $title, 'pdf_orientation' => 'landscape', 'pdf_paper' => 'a3'],
+            );
+        }
+
+        if ($scope === 'months') {
+            return TabularExport::stream(
+                $slug,
+                ['Month', 'Invoiced', 'Received'],
+                function () use ($packet, $n) {
+                    foreach ($packet['monthly'] ?? [] as $row) {
+                        yield [
+                            (string) ($row['month_label'] ?? $row['month'] ?? ''),
+                            $n((float) ($row['billed'] ?? 0)),
+                            $n((float) ($row['received'] ?? 0)),
+                        ];
+                    }
+                },
+                $export,
+                ['title' => $title],
+            );
+        }
+
+        $monthKeys = $packet['month_keys'] ?? [];
+        $headers = ['Unit', 'Tenant'];
+        foreach ($monthKeys as $ym) {
+            $label = Carbon::createFromFormat('Y-m', (string) $ym)->format('M');
+            $headers[] = $label.' invoiced';
+            $headers[] = $label.' received';
+        }
+        $headers[] = 'Year invoiced';
+        $headers[] = 'Year received';
+
+        return TabularExport::stream(
+            $slug,
+            $headers,
+            function () use ($packet, $monthKeys, $n) {
+                foreach ($packet['unit_months'] ?? [] as $unit) {
+                    $row = [
+                        (string) ($unit['unit_label'] ?? ''),
+                        (string) ($unit['tenant_name'] ?? ''),
+                    ];
+                    foreach ($monthKeys as $ym) {
+                        $cell = $unit['months'][$ym] ?? ['billed' => 0, 'received' => 0];
+                        $row[] = $n((float) ($cell['billed'] ?? 0));
+                        $row[] = $n((float) ($cell['received'] ?? 0));
+                    }
+                    $row[] = $n((float) ($unit['year_billed'] ?? 0));
+                    $row[] = $n((float) ($unit['year_received'] ?? 0));
+                    yield $row;
+                }
+            },
+            $export,
+            ['title' => $title, 'pdf_orientation' => 'landscape', 'pdf_paper' => 'a3'],
+        );
+    }
+
+    /**
+     * Print or export this property's account statement (year or a single month).
+     *
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamPropertyAccountStatement(Property $property, array $settlements, string $periodLabel, string $export): StreamedResponse|Response
+    {
+        $slug = Str::slug((string) $property->name).'-'.Str::slug($periodLabel);
+        $landlord = $property->landlords->first() ?? (object) ['name' => (string) $property->name];
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+
+        if ($export === 'csv') {
+            return TabularExport::stream(
+                'property-statement-'.$slug,
+                [
+                    'Unit', 'Tenant', 'Per month',
+                    'B/F rent', 'B/F garbage', 'B/F water',
+                    'Inv. rent', 'Inv. garbage', 'Inv. water',
+                    'Rec. rent', 'Rec. garbage', 'Rec. water',
+                    'Total inv.', 'Total rec.',
+                ],
+                function () use ($settlements, $n) {
+                    foreach ($settlements as $settlement) {
+                        foreach ($settlement['unit_lines'] ?? [] as $line) {
+                            yield [
+                                (string) ($line['unit_label'] ?? ''),
+                                (string) ($line['tenant_name'] ?? ''),
+                                $n((float) ($line['rent_per_month'] ?? 0)),
+                                $n((float) ($line['rent_bf'] ?? 0)),
+                                $n((float) ($line['garbage_bf'] ?? 0)),
+                                $n((float) ($line['water_bf'] ?? 0)),
+                                $n((float) ($line['rent_billed'] ?? 0)),
+                                $n((float) ($line['garbage_billed'] ?? 0)),
+                                $n((float) ($line['water_billed'] ?? 0)),
+                                $n((float) ($line['rent_received'] ?? 0)),
+                                $n((float) ($line['garbage_received'] ?? 0)),
+                                $n((float) ($line['water_received'] ?? 0)),
+                                $n((float) ($line['total_billed'] ?? 0)),
+                                $n((float) ($line['total_received'] ?? 0)),
+                            ];
+                        }
+                    }
+                },
+                'csv',
+            );
+        }
+
+        $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
+            'landlord' => $landlord,
+            'settlements' => $settlements,
+            'periodLabel' => $periodLabel,
+            'branding' => $this->landlordStatementBranding(),
+            'generatedAt' => now()->format('d M Y H:i'),
+            'autoPrint' => $export === 'print',
+        ])->render();
+
+        if ($export === 'word') {
+            return response($html, 200, [
+                'Content-Type' => 'application/msword; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
+            ]);
+        }
+
+        if ($export === 'pdf') {
+            try {
+                $options = new Options;
+                $options->set('isRemoteEnabled', true);
+                $options->set('chroot', public_path());
+                $options->set('defaultFont', 'DejaVu Sans');
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'landscape');
+                $dompdf->render();
+
+                return response($dompdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="property-account-statement-'.$slug.'.pdf"',
+                ]);
+            } catch (Throwable) {
+                return response($html, 200, [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.html"',
+                ]);
+            }
+        }
+
+        return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 
     /**

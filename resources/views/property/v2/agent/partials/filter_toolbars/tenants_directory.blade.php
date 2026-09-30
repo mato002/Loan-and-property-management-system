@@ -11,6 +11,7 @@
     :chip-labels="[
         'q' => 'Search',
         'status' => 'Status',
+        'balance' => 'Balance',
         'risk' => 'Risk',
         'portal' => 'Portal login',
     ]"
@@ -23,6 +24,13 @@
             empty-option="All statuses"
             :options="\App\Support\Property\TenantProfileStatus::filterOptions()"
             :value="$filters['status'] ?? ''"
+        />
+        <x-property.filter-field type="select"
+            name="balance"
+            label="Balance"
+            empty-option="All balances"
+            :options="\App\Support\Property\TenantDirectoryBalanceFilter::filterOptions()"
+            :value="$filters['balance'] ?? ''"
         />
         <x-property.filter-field type="select"
             name="risk"

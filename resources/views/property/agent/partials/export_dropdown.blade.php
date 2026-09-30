@@ -24,7 +24,7 @@
         $wordUrl = $wordUrl ?? ($generated['wordUrl'] ?? null);
     }
 
-    foreach (['pdf' => 'pdfUrl', 'word' => 'wordUrl'] as $format => $urlKey) {
+    foreach (['xls' => 'xlsUrl', 'pdf' => 'pdfUrl', 'word' => 'wordUrl'] as $format => $urlKey) {
         if (! empty($$urlKey) || empty($csvUrl)) {
             continue;
         }
@@ -43,6 +43,7 @@
 
 <select
     class="{{ $class }}"
+    data-turbo="false"
     onchange="if(this.value){ window.location.href=this.value; this.selectedIndex=0; }"
 >
     <option value="">Export</option>

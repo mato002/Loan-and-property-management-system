@@ -1,3 +1,12 @@
+@php
+    $ledgerField = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2';
+    $ledgerModalDefaults = [
+        'showLedgerAdvanceForm' => ($advanceCreditsEnabled ?? false)
+            && (old('payment_form') === 'advance' || $errors->has('advance') || (old('return_to') === 'credit_ledger' && $errors->hasAny(['amount','channel','external_ref']))),
+        'showLedgerCreditApplyForm' => old('credit_form') === 'apply' && $errors->hasAny(['pm_invoice_id','amount','notes']),
+        'showLedgerCreditRefundForm' => old('credit_form') === 'refund' && $errors->hasAny(['amount','reference','notes']),
+    ];
+@endphp
 <x-property.workspace
     :title="'Credit ledger — '.$tenant->name"
     subtitle="Advance rent balance, applications, and refunds."
@@ -8,102 +17,135 @@
         ['label' => 'Open invoices', 'value' => (string) $openInvoices->count(), 'hint' => 'Can receive credit'],
     ]"
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($ledgerModalDefaults) !!}"></x-slot>
+
     <x-slot name="actions">
+        @if ($advanceCreditsEnabled ?? false)
+            <button type="button" class="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700" data-property-modal-open="showLedgerAdvanceForm" @click="showLedgerAdvanceForm = true">Record advance</button>
+        @endif
+        <button type="button" class="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700" data-property-modal-open="showLedgerCreditApplyForm" @click="showLedgerCreditApplyForm = true">Apply credit</button>
+        <button type="button" class="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800" data-property-modal-open="showLedgerCreditRefundForm" @click="showLedgerCreditRefundForm = true">Refund credit</button>
         <form method="post" action="{{ route('property.tenants.credit.auto_apply', $tenant, false) }}" data-turbo-frame="property-main">
             @csrf
-            <button type="submit" class="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Auto-apply to open invoices</button>
+            <button type="submit" class="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100">Auto-apply to open invoices</button>
         </form>
     </x-slot>
 
-    @if ($advanceCreditsEnabled ?? false)
-        <div class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 max-w-3xl">
-            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Record advance payment</p>
-            <p class="mt-1 text-xs text-emerald-900/80">Receive prepayment for this tenant (no invoice required). Open invoices are paid first; the remainder stays as credit on this ledger.</p>
-            <form method="post" action="{{ route('property.payments.store_advance', absolute: false) }}" data-turbo-frame="property-main" class="mt-3 grid gap-3 sm:grid-cols-2">
-                @csrf
-                <input type="hidden" name="payment_form" value="advance" />
-                <input type="hidden" name="return_to" value="credit_ledger" />
-                <input type="hidden" name="pm_tenant_id" value="{{ $tenant->id }}" />
-                <div>
-                    <label class="text-xs text-slate-600">Channel</label>
-                    <select name="channel" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
-                        @foreach (['mpesa' => 'M-Pesa', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque'] as $value => $label)
-                            <option value="{{ $value }}" @selected(old('channel', 'mpesa') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Amount (KES)</label>
-                    <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0.01" required class="mt-1 w-full rounded-lg border-slate-300 text-sm" />
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Paid at</label>
-                    <input type="datetime-local" name="paid_at" value="{{ old('paid_at') }}" class="mt-1 w-full rounded-lg border-slate-300 text-sm" />
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Reference</label>
-                    <input type="text" name="external_ref" value="{{ old('external_ref') }}" class="mt-1 w-full rounded-lg border-slate-300 text-sm" placeholder="M-Pesa / bank ref" />
-                </div>
-                <div class="sm:col-span-2">
-                    <label class="text-xs text-slate-600">Notes</label>
-                    <input type="text" name="notes" value="{{ old('notes') }}" maxlength="500" class="mt-1 w-full rounded-lg border-slate-300 text-sm" placeholder="e.g. Prepaid rent for next month" />
-                </div>
-                <div class="sm:col-span-2">
-                    <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Save advance payment</button>
-                </div>
-            </form>
-        </div>
-    @endif
+    <x-slot name="modals">
+        @if ($advanceCreditsEnabled ?? false)
+            <x-property.modal
+                show="showLedgerAdvanceForm"
+                close="showLedgerAdvanceForm = false"
+                name="credit-ledger-advance"
+                title="Record advance payment"
+                max-width="2xl"
+            >
+                <p class="text-xs text-slate-500">Receive prepayment for this tenant (no invoice required). Open invoices are paid first; the remainder stays as credit on this ledger.</p>
+                <form method="post" action="{{ route('property.payments.store_advance', absolute: false) }}" data-turbo-frame="property-main" class="mt-3 grid gap-3 sm:grid-cols-2">
+                    @csrf
+                    <input type="hidden" name="payment_form" value="advance" />
+                    <input type="hidden" name="return_to" value="credit_ledger" />
+                    <input type="hidden" name="pm_tenant_id" value="{{ $tenant->id }}" />
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
+                        <select name="channel" required class="{{ $ledgerField }}">
+                            @foreach (['mpesa' => 'M-Pesa', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque'] as $value => $label)
+                                <option value="{{ $value }}" @selected(old('channel', 'mpesa') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                        <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0.01" required class="{{ $ledgerField }}" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Paid at</label>
+                        <input type="datetime-local" name="paid_at" value="{{ old('paid_at') }}" class="{{ $ledgerField }}" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference</label>
+                        <input type="text" name="external_ref" value="{{ old('external_ref') }}" class="{{ $ledgerField }}" placeholder="M-Pesa / bank ref" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="notes" value="{{ old('notes') }}" maxlength="500" class="{{ $ledgerField }}" placeholder="e.g. Prepaid rent for next month" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Save advance payment</button>
+                    </div>
+                </form>
+            </x-property.modal>
+        @endif
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <p class="text-xs uppercase tracking-wide text-emerald-800 font-semibold">Apply credit manually</p>
-            <form method="post" action="{{ route('property.tenants.credit.apply', $tenant, false) }}" class="mt-3 space-y-3" data-turbo-frame="property-main">
-                @csrf
-                <div>
-                    <label class="text-xs text-slate-600">Invoice</label>
-                    <select id="credit-apply-invoice-select" name="pm_invoice_id" class="mt-1 w-full rounded-lg border-slate-300 text-sm" required>
-                        @foreach ($openInvoices as $inv)
-                            @php $openBal = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
-                            <option
-                                value="{{ $inv->id }}"
-                                data-open-balance="{{ number_format($openBal, 2, '.', '') }}"
-                                @selected($loop->first || (string) old('pm_invoice_id') === (string) $inv->id)
-                            >{{ $inv->invoice_no }} — due {{ \App\Services\Property\PropertyMoney::kes($openBal) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Amount (KES)</label>
-                    <input id="credit-apply-amount-input" type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount') }}" class="mt-1 w-full rounded-lg border-slate-300 text-sm" required>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Notes</label>
-                    <input type="text" name="notes" class="mt-1 w-full rounded-lg border-slate-300 text-sm" maxlength="500">
-                </div>
-                <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">Apply credit</button>
-            </form>
-        </div>
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <p class="text-xs uppercase tracking-wide text-amber-900 font-semibold">Refund unused credit</p>
-            <form method="post" action="{{ route('property.tenants.credit.refund', $tenant, false) }}" class="mt-3 space-y-3" data-turbo-frame="property-main">
-                @csrf
-                <div>
-                    <label class="text-xs text-slate-600">Amount (max {{ \App\Services\Property\PropertyMoney::kes((float) $balance) }})</label>
-                    <input type="number" step="0.01" min="0.01" max="{{ $balance }}" name="amount" class="mt-1 w-full rounded-lg border-slate-300 text-sm" required>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Reference</label>
-                    <input type="text" name="reference" class="mt-1 w-full rounded-lg border-slate-300 text-sm" maxlength="128">
-                </div>
-                <div>
-                    <label class="text-xs text-slate-600">Notes</label>
-                    <input type="text" name="notes" class="mt-1 w-full rounded-lg border-slate-300 text-sm" maxlength="500">
-                </div>
-                <button type="submit" class="rounded-lg bg-amber-700 px-3 py-2 text-sm font-medium text-white">Process refund</button>
-            </form>
-        </div>
-    </div>
+        <x-property.modal
+            show="showLedgerCreditApplyForm"
+            close="showLedgerCreditApplyForm = false"
+            name="credit-ledger-apply"
+            title="Apply credit"
+            max-width="xl"
+        >
+            @if ($openInvoices->isEmpty() || (float) $balance <= 0)
+                <p class="text-sm text-slate-600">Need both credit balance and an open invoice to apply. Current credit {{ \App\Services\Property\PropertyMoney::kes((float) $balance) }}.</p>
+            @else
+                <form method="post" action="{{ route('property.tenants.credit.apply', $tenant, false) }}" class="space-y-3" data-turbo-frame="property-main">
+                    @csrf
+                    <input type="hidden" name="credit_form" value="apply" />
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice</label>
+                        <select id="credit-apply-invoice-select" name="pm_invoice_id" class="{{ $ledgerField }}" required data-property-searchable="true">
+                            @foreach ($openInvoices as $inv)
+                                @php $openBal = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
+                                <option
+                                    value="{{ $inv->id }}"
+                                    data-open-balance="{{ number_format($openBal, 2, '.', '') }}"
+                                    @selected($loop->first || (string) old('pm_invoice_id') === (string) $inv->id)
+                                >{{ $inv->invoice_no }} — due {{ \App\Services\Property\PropertyMoney::kes($openBal) }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                        <input id="credit-apply-amount-input" type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount') }}" class="{{ $ledgerField }}" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="notes" value="{{ old('notes') }}" class="{{ $ledgerField }}" maxlength="500">
+                    </div>
+                    <button type="submit" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Apply credit</button>
+                </form>
+            @endif
+        </x-property.modal>
+
+        <x-property.modal
+            show="showLedgerCreditRefundForm"
+            close="showLedgerCreditRefundForm = false"
+            name="credit-ledger-refund"
+            title="Refund unused credit"
+            max-width="xl"
+        >
+            @if ((float) $balance <= 0)
+                <p class="text-sm text-slate-600">No credit available to refund.</p>
+            @else
+                <form method="post" action="{{ route('property.tenants.credit.refund', $tenant, false) }}" class="space-y-3" data-turbo-frame="property-main">
+                    @csrf
+                    <input type="hidden" name="credit_form" value="refund" />
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (max {{ \App\Services\Property\PropertyMoney::kes((float) $balance) }})</label>
+                        <input type="number" step="0.01" min="0.01" max="{{ $balance }}" name="amount" value="{{ old('amount') }}" class="{{ $ledgerField }}" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference</label>
+                        <input type="text" name="reference" value="{{ old('reference') }}" class="{{ $ledgerField }}" maxlength="128">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="notes" value="{{ old('notes') }}" class="{{ $ledgerField }}" maxlength="500">
+                    </div>
+                    <button type="submit" class="rounded-xl bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800">Process refund</button>
+                </form>
+            @endif
+        </x-property.modal>
+    </x-slot>
 
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100">

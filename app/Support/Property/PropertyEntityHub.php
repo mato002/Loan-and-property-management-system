@@ -45,6 +45,7 @@ final class PropertyEntityHub
         ['key' => 'maintenance', 'label' => 'Maintenance'],
         ['key' => 'performance', 'label' => 'Performance'],
         ['key' => 'revenue', 'label' => 'Revenue'],
+        ['key' => 'statements', 'label' => 'Statements'],
         ['key' => 'offboarding', 'label' => 'Offboarding'],
     ];
 

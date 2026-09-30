@@ -16,12 +16,13 @@ class TabularExport
     public const FORMAT_CSV = 'csv';
     public const FORMAT_PDF = 'pdf';
     public const FORMAT_WORD = 'word';
+    public const FORMAT_XLS = 'xls';
 
     /** @var list<string> */
-    public const TABLE_FORMATS = [self::FORMAT_CSV, self::FORMAT_PDF, self::FORMAT_WORD];
+    public const TABLE_FORMATS = [self::FORMAT_CSV, self::FORMAT_XLS, self::FORMAT_PDF, self::FORMAT_WORD];
 
     /** @var list<string> */
-    public const REVENUE_FORMATS = [self::FORMAT_CSV, 'xls', self::FORMAT_PDF, self::FORMAT_WORD];
+    public const REVENUE_FORMATS = [self::FORMAT_CSV, self::FORMAT_XLS, 'xlsx', self::FORMAT_PDF, self::FORMAT_WORD];
 
     public static function requestedFormat(?string $export, ?string $format = null, string $default = self::FORMAT_CSV): string
     {
@@ -42,6 +43,7 @@ class TabularExport
         return match ($format) {
             self::FORMAT_PDF => self::streamPdf($filenameBase.'.pdf', $headers, $rows, $options),
             self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows),
+            self::FORMAT_XLS, 'xlsx' => self::streamSpreadsheetMl($filenameBase.'.xls', $headers, $rows),
             default => CsvExport::stream($filenameBase.'.csv', $headers, $rows),
         };
     }
@@ -123,6 +125,45 @@ class TabularExport
             echo $html;
         }, $filename, [
             'Content-Type' => 'application/msword; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Excel-openable SpreadsheetML (.xls) so migration copies are not CSV renamed as Excel.
+     *
+     * @param  list<string>  $headers
+     * @param  Closure(): iterable<array<int, scalar|null>>  $rows
+     */
+    private static function streamSpreadsheetMl(string $filename, array $headers, Closure $rows): StreamedResponse
+    {
+        $esc = static fn ($v): string => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $cell = static function (mixed $value) use ($esc): string {
+            $raw = trim((string) ($value ?? ''));
+            if ($raw !== '' && preg_match('/^-?\d+(\.\d+)?$/', $raw) === 1) {
+                return '<Cell><Data ss:Type="Number">'.$esc($raw).'</Data></Cell>';
+            }
+
+            return '<Cell><Data ss:Type="String">'.$esc($raw).'</Data></Cell>';
+        };
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
+        $xml .= '<?mso-application progid="Excel.Sheet"?>'."\n";
+        $xml .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+        $xml .= '<Worksheet ss:Name="Export"><Table>';
+        $xml .= '<Row>'.implode('', array_map($cell, $headers)).'</Row>';
+        foreach ($rows() as $row) {
+            $xml .= '<Row>';
+            foreach ($row as $value) {
+                $xml .= $cell($value);
+            }
+            $xml .= '</Row>';
+        }
+        $xml .= '</Table></Worksheet></Workbook>';
+
+        return response()->streamDownload(function () use ($xml) {
+            echo $xml;
+        }, $filename, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
         ]);
     }
 

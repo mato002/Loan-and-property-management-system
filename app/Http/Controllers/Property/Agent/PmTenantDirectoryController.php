@@ -43,6 +43,7 @@ use App\Support\Property\PropertyEntityHub;
 use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\TenantCompliancePresentation;
+use App\Support\Property\TenantDirectoryBalanceFilter;
 use App\Support\Property\TenantProfileStatus;
 use App\Support\Property\WorkspaceRowAlert;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
@@ -419,6 +420,7 @@ class PmTenantDirectoryController extends Controller
                 'unit_id' => $unitId > 0 ? (string) $unitId : '0',
                 'risk' => (string) request()->string('risk'),
                 'status' => (string) request()->string('status'),
+                'balance' => (string) request()->string('balance'),
                 'portal' => (string) request()->string('portal'),
                 'per_page' => $perPage,
             ],
@@ -913,6 +915,7 @@ class PmTenantDirectoryController extends Controller
         }
 
         TenantProfileStatus::applyFilter($query, trim((string) $request->string('status')));
+        TenantDirectoryBalanceFilter::apply($query, trim((string) $request->string('balance')));
 
         $propertyId = (int) $request->integer('property_id');
         $unitId = (int) $request->integer('unit_id');
@@ -2097,55 +2100,37 @@ class PmTenantDirectoryController extends Controller
     }
 
     /**
-     * @return array{held: float, expected: float, lines: list<array{label: string, amount: float, source: string, status: string}>}
+     * One row per deposit charge: amount to pay, amount paid, amount still due.
+     *
+     * @return array{held: float, expected: float, to_pay: float, paid: float, due: float, lines: list<array<string, mixed>>}
      */
     private function tenantDepositSnapshot(PmTenant $tenant): array
     {
+        $invoices = $this->depositChargeInvoices($tenant);
+        $usedInvoiceIds = [];
         $lines = [];
         $expected = 0.0;
 
         foreach ($tenant->leases as $lease) {
-            $rentDeposit = (float) ($lease->deposit_amount ?? 0);
-            if ($rentDeposit > 0) {
-                $expected += $rentDeposit;
-                $lines[] = [
-                    'label' => 'Rent deposit · lease #'.$lease->id,
-                    'amount' => $rentDeposit,
-                    'source' => 'lease',
-                    'status' => (string) $lease->status,
-                ];
+            foreach ($this->leaseDepositObligations($lease) as $obligation) {
+                $expected += $obligation['amount'];
+                $invoice = $this->takeMatchingDepositInvoice($invoices, $usedInvoiceIds, $obligation);
+                $lines[] = $this->depositChargeRow($obligation, $invoice);
             }
-            foreach (is_array($lease->additional_deposits) ? $lease->additional_deposits : [] as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $amount = (float) ($row['amount'] ?? 0);
-                if ($amount <= 0) {
-                    continue;
-                }
-                $expected += $amount;
-                $label = trim((string) ($row['label'] ?? ''));
-                $lines[] = [
-                    'label' => ($label !== '' ? $label : 'Additional deposit').' · lease #'.$lease->id,
-                    'amount' => $amount,
-                    'source' => 'lease',
-                    'status' => (string) $lease->status,
-                ];
+        }
+
+        foreach ($invoices as $invoice) {
+            if (in_array($invoice['invoice_id'], $usedInvoiceIds, true)) {
+                continue;
             }
-            if ($lease->relationLoaded('depositLines')) {
-                foreach ($lease->depositLines as $depositLine) {
-                    $amount = (float) ($depositLine->expected_amount ?? $depositLine->paid_amount ?? 0);
-                    if ($amount <= 0) {
-                        continue;
-                    }
-                    $lines[] = [
-                        'label' => (string) ($depositLine->label ?: $depositLine->deposit_key ?: 'Deposit line'),
-                        'amount' => $amount,
-                        'source' => 'register',
-                        'status' => (string) ($depositLine->refund_status ?? 'held'),
-                    ];
-                }
-            }
+            $lines[] = $this->depositChargeRow([
+                'item' => $invoice['memo'],
+                'subtitle' => null,
+                'source' => 'Invoice',
+                'amount' => (float) $invoice['invoiced'],
+                'kind' => 'other',
+            ], $invoice);
+            $expected += $invoice['invoiced'];
         }
 
         $held = 0.0;
@@ -2153,21 +2138,193 @@ class PmTenantDirectoryController extends Controller
             $held = (float) PmTenantDeposit::query()
                 ->where('tenant_id', $tenant->id)
                 ->sum('amount');
-            foreach (PmTenantDeposit::query()->where('tenant_id', $tenant->id)->orderByDesc('id')->get() as $row) {
-                $lines[] = [
-                    'label' => 'Trust deposit',
-                    'amount' => (float) $row->amount,
-                    'source' => 'trust',
-                    'status' => (string) ($row->status ?? 'held'),
-                ];
+        }
+
+        $invoicePaid = 0.0;
+        foreach ($lines as $line) {
+            if (($line['invoice_id'] ?? null) !== null) {
+                $invoicePaid += (float) $line['paid'];
             }
+        }
+        $pool = max(0.0, round($held - $invoicePaid, 2));
+        foreach ($lines as $index => $line) {
+            if (($line['invoice_id'] ?? null) !== null || $pool <= 0.009) {
+                continue;
+            }
+            $take = min((float) $line['due'], $pool);
+            if ($take <= 0.009) {
+                continue;
+            }
+            $paid = round((float) $line['paid'] + $take, 2);
+            $due = round(max(0.0, (float) $line['to_pay'] - $paid), 2);
+            $lines[$index]['paid'] = $paid;
+            $lines[$index]['due'] = $due;
+            $lines[$index]['status'] = $due <= 0.009 ? 'paid' : 'partial';
+            $lines[$index]['status_label'] = $due <= 0.009 ? 'Paid' : 'Partially paid';
+            $pool = round($pool - $take, 2);
+        }
+
+        $toPay = 0.0;
+        $paid = 0.0;
+        $due = 0.0;
+        foreach ($lines as $line) {
+            $toPay += (float) $line['to_pay'];
+            $paid += (float) $line['paid'];
+            $due += (float) $line['due'];
         }
 
         return [
             'held' => $held,
             'expected' => $expected,
+            'to_pay' => round($toPay, 2),
+            'paid' => round($paid, 2),
+            'due' => round($due, 2),
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * @return list<array{item: string, subtitle: string, source: string, amount: float, kind: string}>
+     */
+    private function leaseDepositObligations(PmLease $lease): array
+    {
+        $rows = [];
+        $rentDeposit = (float) ($lease->deposit_amount ?? 0);
+        if ($rentDeposit > 0) {
+            $rows[] = [
+                'item' => 'Rent deposit',
+                'subtitle' => 'Lease #'.$lease->id,
+                'source' => 'Lease agreement',
+                'amount' => $rentDeposit,
+                'kind' => 'rent',
+            ];
+        }
+        foreach (is_array($lease->additional_deposits) ? $lease->additional_deposits : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $amount = (float) ($row['amount'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+            $label = trim((string) ($row['label'] ?? ''));
+            $rows[] = [
+                'item' => $label !== '' ? $label : 'Additional deposit',
+                'subtitle' => 'Lease #'.$lease->id,
+                'source' => 'Lease agreement',
+                'amount' => $amount,
+                'kind' => 'other',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $invoices
+     * @param  list<int>  $usedInvoiceIds
+     * @param  array{item: string, subtitle: ?string, source: string, amount: float, kind: string}  $obligation
+     * @return array<string, mixed>|null
+     */
+    private function takeMatchingDepositInvoice(array $invoices, array &$usedInvoiceIds, array $obligation): ?array
+    {
+        $fallback = null;
+        foreach ($invoices as $invoice) {
+            $invoiceId = (int) $invoice['invoice_id'];
+            if (in_array($invoiceId, $usedInvoiceIds, true)) {
+                continue;
+            }
+            $sameAmount = abs((float) $invoice['invoiced'] - (float) $obligation['amount']) <= 0.009;
+            $memo = strtolower((string) ($invoice['memo'] ?? ''));
+            $isRent = $obligation['kind'] === 'rent' && str_contains($memo, 'rent deposit');
+            if ($sameAmount && ($obligation['kind'] === 'rent' || $isRent || $fallback === null)) {
+                $usedInvoiceIds[] = $invoiceId;
+
+                return $invoice;
+            }
+            if ($fallback === null && ($isRent || ($obligation['kind'] === 'rent' && str_contains($memo, 'deposit')))) {
+                $fallback = $invoice;
+            }
+        }
+        if ($fallback !== null) {
+            $usedInvoiceIds[] = (int) $fallback['invoice_id'];
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * @param  array{item: string, subtitle: ?string, source: string, amount: float, kind: string}  $obligation
+     * @param  array<string, mixed>|null  $invoice
+     * @return array<string, mixed>
+     */
+    private function depositChargeRow(array $obligation, ?array $invoice): array
+    {
+        $toPay = (float) $obligation['amount'];
+        $paid = $invoice !== null ? (float) $invoice['paid'] : 0.0;
+        if ($invoice !== null && $toPay <= 0.009) {
+            $toPay = (float) $invoice['invoiced'];
+        }
+        $due = round(max(0.0, $toPay - $paid), 2);
+        $status = $due <= 0.009 ? 'paid' : ($paid > 0.009 ? 'partial' : 'unpaid');
+
+        return [
+            'item' => (string) $obligation['item'],
+            'subtitle' => $obligation['subtitle'] ?? null,
+            'source' => (string) ($obligation['source'] ?? 'Lease agreement'),
+            'label' => (string) $obligation['item'],
+            'invoice_id' => $invoice['invoice_id'] ?? null,
+            'invoice_no' => $invoice['invoice_no'] ?? null,
+            'url' => $invoice['url'] ?? null,
+            'date' => $invoice['date'] ?? null,
+            'to_pay' => round($toPay, 2),
+            'paid' => round($paid, 2),
+            'due' => $due,
+            'status' => $status,
+            'status_label' => match ($status) {
+                'paid' => 'Paid',
+                'partial' => 'Partially paid',
+                default => 'Unpaid',
+            },
+        ];
+    }
+
+    /**
+     * Deposit invoices, paid or still open, in the old Amount / Total Paid / Amt Due shape.
+     *
+     * @return list<array{invoice_id: int, invoice_no: string, url: string, date: string, memo: string, invoiced: float, paid: float}>
+     */
+    private function depositChargeInvoices(PmTenant $tenant): array
+    {
+        if (! Schema::hasTable('pm_invoices')) {
+            return [];
+        }
+
+        return PmInvoice::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->where('amount', '>', 0)
+            ->where(function ($query): void {
+                $query->where('description', 'like', '%DEPOSIT%')
+                    ->orWhere('invoice_type', 'like', '%deposit%');
+            })
+            ->orderBy('issue_date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (PmInvoice $invoice): array {
+                $memo = trim((string) ($invoice->description ?? ''));
+                $memo = preg_replace('/^\[[^\]]+\]\s*/', '', $memo) ?? $memo;
+
+                return [
+                    'invoice_id' => (int) $invoice->id,
+                    'invoice_no' => (string) ($invoice->invoice_no ?: '#'.$invoice->id),
+                    'url' => route('property.revenue.invoices.show', $invoice, false),
+                    'date' => $invoice->issue_date?->format('Y-m-d') ?? '—',
+                    'memo' => $memo !== '' ? $memo : 'Deposit',
+                    'invoiced' => (float) $invoice->amount,
+                    'paid' => (float) $invoice->amount_paid,
+                ];
+            })
+            ->all();
     }
 
     /**

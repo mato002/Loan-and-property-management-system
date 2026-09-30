@@ -68,9 +68,31 @@
             <div data-property-export-actions>
                 {{ $export }}
             </div>
+        @else
+            <div data-property-export-actions>
+                @include('property.agent.partials.table_export_dropdown', [
+                    'current' => true,
+                    'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
+                ])
+            </div>
         @endif
         @if ($hasActions)
             {{ $actions }}
         @endif
+    </div>
+@else
+    <div
+        @class([
+            'flex gap-2 min-w-0',
+            'flex-col w-full' => $isMobile,
+            'flex-row flex-wrap items-center shrink-0 md:ml-auto' => ! $isMobile,
+        ])
+        data-filter-actions
+        data-property-export-actions
+    >
+        @include('property.agent.partials.table_export_dropdown', [
+            'current' => true,
+            'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
+        ])
     </div>
 @endif

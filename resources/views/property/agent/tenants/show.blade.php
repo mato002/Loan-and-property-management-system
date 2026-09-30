@@ -12,6 +12,12 @@
             && old('return_to') === 'tenant_show',
         'showHubMaintenanceForm' => $errors->hasAny(['property_id','property_unit_id','category','urgency','description'])
             && old('return_to') === 'tenant_show',
+        'showHubDepositRefundForm' => $errors->hasAny(['refunded_at','amount','bank_name','bank_branch','bank_account_name','bank_account_number'])
+            && old('refund_form') === 'deposit',
+        'showHubCreditApplyForm' => $errors->hasAny(['pm_invoice_id','amount','notes'])
+            && old('credit_form') === 'apply',
+        'showHubCreditRefundForm' => $errors->hasAny(['amount','reference','notes'])
+            && old('credit_form') === 'refund',
         'showLeaseCreateForm' => false,
     ];
 @endphp
@@ -41,6 +47,8 @@
             'hubUnits' => $hubUnits ?? collect(),
             'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
             'noticeTemplate' => $noticeTemplate ?? '',
+            'creditBalance' => $creditBalance ?? 0,
+            'depositSnapshot' => $depositSnapshot ?? ['held' => 0.0],
         ])
         @include('property.agent.partials.lease_create_shell', [
             'openLeaseCreateModal' => false,

@@ -444,10 +444,244 @@ final class LandlordSettlementService
     }
 
     /**
+     * Property account statement for one period (this property only).
+     * Uses a linked landlord when available so remittance/net due match the owner statement.
+     *
+     * @return array<string, mixed>
+     */
+    public function buildPropertyPeriodStatement(int $propertyId, Carbon $periodStart, Carbon $periodEnd, ?int $landlordId = null): array
+    {
+        if ($landlordId !== null && $landlordId > 0) {
+            try {
+                return $this->buildSettlement($propertyId, $landlordId, $periodStart, $periodEnd);
+            } catch (InvalidArgumentException) {
+                // Fall through to unit-only statement.
+            }
+        }
+
+        $property = Property::query()->find($propertyId);
+        $unitLines = $this->unitSettlementLines($propertyId, $periodStart, $periodEnd);
+        $unitTotals = $this->sumUnitLines($unitLines);
+        $collected = $this->collectedByTypeForProperty($propertyId, $periodStart, $periodEnd);
+        $additions = $this->periodAdditions($propertyId, $periodStart, $periodEnd);
+        $additionsTotal = round(collect($additions)->sum('amount'), 2);
+        $sameMonth = $periodStart->format('Y-m') === $periodEnd->format('Y-m');
+
+        return [
+            'property_id' => $propertyId,
+            'landlord_id' => 0,
+            'property_name' => (string) ($property?->name ?? ''),
+            'landlord_name' => '—',
+            'ownership_percent' => 0.0,
+            'commission_percent' => $this->commission->commissionPercentForProperty($propertyId),
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'period_label' => $sameMonth
+                ? $periodStart->format('F').' - '.$periodStart->format('Y')
+                : $periodStart->format('M Y').' – '.$periodEnd->format('M Y'),
+            'period_range_label' => $periodStart->format('d/m/Y').' - '.$periodEnd->format('d/m/Y'),
+            'period_month' => $periodStart->format('Y-m'),
+            'unit_stats' => PropertyUnitOccupancyStats::forProperty($propertyId),
+            'collected' => $collected,
+            'owner_collected' => $collected,
+            'rent_received' => round($collected['rent'], 2),
+            'utility_received' => round($collected['garbage'] + $collected['water'], 2),
+            'other_expenses' => round(max(0.0, $collected['other']), 2),
+            'management_fee' => 0.0,
+            'net_collected' => round($collected['total'], 2),
+            'balance_brought_forward' => 0.0,
+            'period_credits' => $additionsTotal,
+            'period_debits' => 0.0,
+            'additions' => $additions,
+            'additions_total' => $additionsTotal,
+            'deductions' => [],
+            'deductions_total' => 0.0,
+            'open_advances' => [],
+            'open_advances_total' => 0.0,
+            'agreed_pay_day' => null,
+            'agreed_pay_notes' => '',
+            'next_agreed_pay_date' => null,
+            'closing_balance' => round((float) ($unitTotals['rent_closing'] ?? 0) + (float) ($unitTotals['garbage_closing'] ?? 0) + (float) ($unitTotals['water_closing'] ?? 0), 2),
+            'net_amount_due' => 0.0,
+            'unit_lines' => $unitLines,
+            'unit_totals' => $unitTotals,
+        ];
+    }
+
+    /**
+     * Yearly property statement plus month totals and per-unit monthly billed/received.
+     *
+     * @return array{
+     *     fy: int,
+     *     open_month: string,
+     *     year_settlement: array<string, mixed>,
+     *     month_settlement: array<string, mixed>|null,
+     *     monthly: list<array<string, mixed>>,
+     *     unit_months: list<array<string, mixed>>,
+     *     month_keys: list<string>
+     * }
+     */
+    public function buildPropertyStatementHub(int $propertyId, int $fy, ?string $openMonthYm, ?int $landlordId = null): array
+    {
+        $yearStart = Carbon::create($fy, 1, 1)->startOfDay();
+        $yearEnd = $yearStart->copy()->endOfYear();
+        $openMonth = is_string($openMonthYm) && preg_match('/^\d{4}-\d{2}$/', $openMonthYm) === 1
+            ? $openMonthYm
+            : '';
+        if ($openMonth !== '' && (int) substr($openMonth, 0, 4) !== $fy) {
+            $openMonth = '';
+        }
+
+        $yearSettlement = $this->buildPropertyPeriodStatement($propertyId, $yearStart, $yearEnd, $landlordId);
+        $yearSettlement['period_label'] = 'FY '.$fy;
+        $yearSettlement['period_range_label'] = $yearStart->format('d/m/Y').' - '.$yearEnd->format('d/m/Y');
+        $monthly = $this->monthlyActivityForProperty($propertyId, $fy);
+        $unitMonths = $this->unitMonthlyActivity($propertyId, $fy, $yearSettlement['unit_lines'] ?? []);
+
+        $monthSettlement = null;
+        if ($openMonth !== '') {
+            $monthStart = Carbon::createFromFormat('Y-m', $openMonth)->startOfMonth();
+            $monthSettlement = $this->buildPropertyPeriodStatement(
+                $propertyId,
+                $monthStart,
+                $monthStart->copy()->endOfMonth(),
+                $landlordId,
+            );
+        }
+
+        $monthKeys = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $monthKeys[] = Carbon::create($fy, $month, 1)->format('Y-m');
+        }
+
+        return [
+            'fy' => $fy,
+            'open_month' => $openMonth,
+            'year_settlement' => $yearSettlement,
+            'month_settlement' => $monthSettlement,
+            'monthly' => $monthly,
+            'unit_months' => $unitMonths,
+            'month_keys' => $monthKeys,
+        ];
+    }
+
+    /**
+     * @return list<array{month: string, month_label: string, billed: float, received: float}>
+     */
+    public function monthlyActivityForProperty(int $propertyId, int $fy): array
+    {
+        $yearStart = Carbon::create($fy, 1, 1)->startOfDay();
+        $yearEnd = $yearStart->copy()->endOfYear();
+
+        $billed = DB::table('pm_invoices as i')
+            ->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+            ->where('u.property_id', $propertyId)
+            ->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
+            ->whereBetween('i.issue_date', [$yearStart->toDateString(), $yearEnd->toDateString()])
+            ->groupByRaw("DATE_FORMAT(i.issue_date, '%Y-%m')")
+            ->selectRaw("DATE_FORMAT(i.issue_date, '%Y-%m') as ym, COALESCE(SUM(i.amount), 0) as billed")
+            ->pluck('billed', 'ym');
+
+        $received = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+            ->where('u.property_id', $propertyId)
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->whereBetween('pay.paid_at', [$yearStart, $yearEnd])
+            ->groupByRaw("DATE_FORMAT(pay.paid_at, '%Y-%m')")
+            ->selectRaw("DATE_FORMAT(pay.paid_at, '%Y-%m') as ym, COALESCE(SUM(a.amount), 0) as received")
+            ->pluck('received', 'ym');
+
+        $months = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $start = Carbon::create($fy, $month, 1)->startOfMonth();
+            $ym = $start->format('Y-m');
+            $months[] = [
+                'month' => $ym,
+                'month_label' => $start->format('M Y'),
+                'billed' => round((float) ($billed[$ym] ?? 0), 2),
+                'received' => round((float) ($received[$ym] ?? 0), 2),
+            ];
+        }
+
+        return $months;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $unitLines
+     * @return list<array<string, mixed>>
+     */
+    public function unitMonthlyActivity(int $propertyId, int $fy, array $unitLines): array
+    {
+        $yearStart = Carbon::create($fy, 1, 1)->startOfDay();
+        $yearEnd = $yearStart->copy()->endOfYear();
+
+        $billedRows = DB::table('pm_invoices as i')
+            ->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+            ->where('u.property_id', $propertyId)
+            ->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
+            ->whereBetween('i.issue_date', [$yearStart->toDateString(), $yearEnd->toDateString()])
+            ->groupBy('i.property_unit_id')
+            ->groupByRaw("DATE_FORMAT(i.issue_date, '%Y-%m')")
+            ->selectRaw("i.property_unit_id as unit_id, DATE_FORMAT(i.issue_date, '%Y-%m') as ym, COALESCE(SUM(i.amount), 0) as billed")
+            ->get();
+
+        $receivedRows = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+            ->where('u.property_id', $propertyId)
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->whereBetween('pay.paid_at', [$yearStart, $yearEnd])
+            ->groupBy('i.property_unit_id')
+            ->groupByRaw("DATE_FORMAT(pay.paid_at, '%Y-%m')")
+            ->selectRaw("i.property_unit_id as unit_id, DATE_FORMAT(pay.paid_at, '%Y-%m') as ym, COALESCE(SUM(a.amount), 0) as received")
+            ->get();
+
+        $billedMap = [];
+        foreach ($billedRows as $row) {
+            $billedMap[(int) $row->unit_id][(string) $row->ym] = round((float) $row->billed, 2);
+        }
+        $receivedMap = [];
+        foreach ($receivedRows as $row) {
+            $receivedMap[(int) $row->unit_id][(string) $row->ym] = round((float) $row->received, 2);
+        }
+
+        return collect($unitLines)->map(function (array $line) use ($billedMap, $receivedMap, $fy) {
+            $unitId = (int) ($line['unit_id'] ?? 0);
+            $months = [];
+            $yearBilled = 0.0;
+            $yearReceived = 0.0;
+            for ($month = 1; $month <= 12; $month++) {
+                $ym = Carbon::create($fy, $month, 1)->format('Y-m');
+                $billed = (float) ($billedMap[$unitId][$ym] ?? 0);
+                $received = (float) ($receivedMap[$unitId][$ym] ?? 0);
+                $yearBilled += $billed;
+                $yearReceived += $received;
+                $months[$ym] = [
+                    'billed' => $billed,
+                    'received' => $received,
+                ];
+            }
+
+            return [
+                'unit_id' => $unitId,
+                'unit_label' => (string) ($line['unit_label'] ?? '—'),
+                'tenant_name' => (string) ($line['tenant_name'] ?? '—'),
+                'rent_per_month' => (float) ($line['rent_per_month'] ?? 0),
+                'months' => $months,
+                'year_billed' => round($yearBilled, 2),
+                'year_received' => round($yearReceived, 2),
+            ];
+        })->values()->all();
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $unitLines
      * @return array<string, float>
      */
-    private function sumUnitLines(array $unitLines): array
+    public function sumUnitLines(array $unitLines): array
     {
         $keys = [
             'rent_per_month', 'rent_bf', 'garbage_bf', 'water_bf',

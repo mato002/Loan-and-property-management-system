@@ -113,9 +113,11 @@
                 </div>
                 <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">CSV</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">PDF</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Word</a>
+                @include('property.agent.partials.table_export_dropdown', [
+                    'current' => true,
+                    'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
+                    'class' => 'h-9 rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50',
+                ])
             </form>
 
             @if (count($hubSummaryStats) > 0)
@@ -743,17 +745,14 @@
     </div>
     @endif
 
+    @if ($activeTab === 'statements')
+        @include('property.agent.properties.partials.tab-statements')
+    @endif
+
     @if ($activeTab === 'offboarding')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 class="text-sm font-semibold text-slate-900">Property offboarding</h3>
-        <p class="mt-2 text-sm text-slate-600">Safely wind down management without deleting invoices, payments, leases, or accounting history.</p>
-        <p class="mt-1 text-sm text-slate-600">Current status: <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span></p>
-        @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Open offboarding wizard
-            </a>
-        @endif
-    </div>
+        <div class="mt-5">
+            @include('property.agent.properties.partials.offboarding_panel')
+        </div>
     @endif
     </div>
 

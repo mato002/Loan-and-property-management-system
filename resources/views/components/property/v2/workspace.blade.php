@@ -97,6 +97,15 @@
     $hasPageActions = isset($actions) && ! $actions->isEmpty();
 @endphp
 
+@php
+    if ($hasTable) {
+        $autoExport = \App\Support\WorkspaceTableExport::fromRequest((string) $title, $columns, $tableRows);
+        if ($autoExport !== null) {
+            abort($autoExport);
+        }
+    }
+@endphp
+
 <x-property-layout>
     <x-slot name="header">{{ $title }}</x-slot>
     @php
