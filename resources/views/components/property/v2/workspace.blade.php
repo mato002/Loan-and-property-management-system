@@ -47,6 +47,7 @@
         && PropertyWorkspaceTabs::shouldShow($routeName);
 
     $hasToolbar = isset($toolbar) && ! $toolbar->isEmpty();
+    $toolbarHasExport = $hasToolbar && str_contains((string) $toolbar, 'property-export-select');
     $hasMobileFiltersExtra = ($legacyToolbar ?? true) && isset($mobile_filters_extra) && ! $mobile_filters_extra->isEmpty();
     $useLegacyToolbar = (bool) ($legacyToolbar ?? true);
     $hasTableActions = isset($table_actions) && ! $table_actions->isEmpty();
@@ -267,6 +268,16 @@
 
                 @if ($hasTable)
                     <div class="w-full min-w-0 space-y-2.5">
+                    @if (! $toolbarHasExport)
+                        <div class="print-hide flex justify-end">
+                            @include('property.agent.partials.export_dropdown', [
+                                'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
+                                'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
+                                'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
+                                'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
+                            ])
+                        </div>
+                    @endif
                     @if ($showRowToneLegend)
                         <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
                             <span class="property-row-alert-legend__item">

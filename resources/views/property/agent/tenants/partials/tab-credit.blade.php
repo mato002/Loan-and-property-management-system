@@ -28,7 +28,10 @@
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Credit history</h3>
-            <a href="{{ route('property.tenants.credit.ledger', $tenant, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-700 hover:underline">Full ledger</a>
+            <span class="flex items-center gap-3">
+                <a href="{{ route('property.tenants.credit.ledger', array_merge(['tenant' => $tenant->id], ['export' => 'pdf']), false) }}" data-turbo="false" class="text-xs font-semibold text-slate-700 hover:underline">Export PDF</a>
+                <a href="{{ route('property.tenants.credit.ledger', $tenant, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-700 hover:underline">Full ledger</a>
+            </span>
         </div>
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

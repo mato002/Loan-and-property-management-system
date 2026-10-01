@@ -44,6 +44,10 @@
             </select>
             <input type="search" name="landlord" value="{{ $filters['landlord'] ?? '' }}" placeholder="Landlord…" class="rounded-lg border border-slate-200 px-3 py-2 text-sm w-44" />
             <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">Apply</button>
+            @include('property.agent.partials.export_dropdown', [
+                'route' => 'property.accounting.payables.landlord_payables',
+                'query' => request()->except(['export', 'page']),
+            ])
         </form>
     </x-slot>
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">

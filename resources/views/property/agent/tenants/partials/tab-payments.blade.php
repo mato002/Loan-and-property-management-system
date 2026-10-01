@@ -5,6 +5,7 @@
             <button type="button" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700" data-property-modal-open="showHubPaymentForm" @click="showHubPaymentForm = true">Record payment</button>
             <button type="button" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-property-modal-open="showHubAdvanceForm" @click="showHubAdvanceForm = true">Record advance</button>
             <a href="{{ route('property.revenue.payments', ['q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-600 hover:underline self-center">Payment register</a>
+            <a href="{{ route('property.tenants.statement', ['tenant' => $tenant->id, 'export' => 'pdf'], false) }}" data-turbo="false" class="text-xs font-semibold text-slate-700 hover:underline self-center">Statement PDF</a>
         </div>
     </div>
     <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">

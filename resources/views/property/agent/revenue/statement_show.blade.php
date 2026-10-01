@@ -25,11 +25,23 @@
         <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{{ $errors->first() }}</div>
     @endif
 
-    <div class="mb-4 flex flex-wrap gap-2 text-sm">
-        <a href="{{ route('property.revenue.statements.show', $statement) }}" class="rounded-lg px-3 py-1.5 {{ $status === '' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">All</a>
-        <a href="{{ route('property.revenue.statements.show', [$statement, 'status' => 'unmatched']) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
-        <a href="{{ route('property.revenue.statements.show', [$statement, 'status' => 'matched']) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
-        <a href="{{ route('property.revenue.statements.show', [$statement, 'status' => 'bank_only']) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
+    <div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === '' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">All</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'unmatched', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'matched', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'bank_only', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
+        <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" class="ml-auto flex flex-wrap items-center gap-2">
+            @if ($status !== '')
+                <input type="hidden" name="status" value="{{ $status }}">
+            @endif
+            <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Reference, phone, or payer" class="h-10 min-w-[14rem] rounded-lg border border-slate-300 px-3 text-sm">
+            <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Filter</button>
+            @include('property.agent.partials.export_dropdown', [
+                'route' => 'property.revenue.statements.show',
+                'routeParams' => ['statement' => $statement->id],
+                'query' => request()->except(['export', 'page']),
+            ])
+        </form>
     </div>
 
     <p class="mb-3 text-sm text-slate-600">

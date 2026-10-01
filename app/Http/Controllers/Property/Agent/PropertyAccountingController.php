@@ -1251,7 +1251,7 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
-    public function payroll(Request $request): View
+    public function payroll(Request $request): View|StreamedResponse
     {
         $user = $request->user();
         $agentUserId = (int) $user->id;
@@ -1286,6 +1286,35 @@ class PropertyAccountingController extends Controller
         }
         if ($filters['employee_id'] > 0) {
             $runsQuery->whereHas('lines', fn ($q) => $q->where('employee_id', $filters['employee_id']));
+        }
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $runs = (clone $runsQuery)->orderByDesc('period_year')->orderByDesc('period_month')->orderByDesc('id')->limit(2000)->get();
+
+            return TabularExport::stream(
+                'payroll-runs-'.now()->format('Ymd_His'),
+                ['Run', 'Period', 'Gross', 'Deductions', 'Net', 'Status', 'Created by', 'Posted at'],
+                function () use ($runs) {
+                    foreach ($runs as $run) {
+                        yield [
+                            (string) $run->id,
+                            (string) ($run->label ?: ($run->period_start?->format('M Y') ?? '')),
+                            number_format((float) $run->total_gross, 2, '.', ''),
+                            number_format((float) $run->total_deductions, 2, '.', ''),
+                            number_format((float) $run->total_net, 2, '.', ''),
+                            (string) $run->status,
+                            (string) ($run->createdByUser?->name ?? ''),
+                            $run->posted_at?->format('Y-m-d H:i') ?? '',
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Payroll runs',
+                    'subtitle' => $runs->count().' run'.($runs->count() === 1 ? '' : 's'),
+                ],
+            );
         }
 
         $paginator = $runsQuery->orderByDesc('period_year')->orderByDesc('period_month')->orderByDesc('id')
@@ -2465,7 +2494,7 @@ class PropertyAccountingController extends Controller
         );
     }
 
-    public function journalBatches(Request $request): View
+    public function journalBatches(Request $request): View|StreamedResponse
     {
         $agentUserId = (int) $request->user()->id;
         $status = strtolower(trim($request->string('status')->toString()));
@@ -2517,6 +2546,47 @@ class PropertyAccountingController extends Controller
             'posted_batches' => (int) (clone $summaryQuery)->where('status', AccountingJournalBatch::STATUS_POSTED)->count(),
             'reversed_batches' => (int) (clone $summaryQuery)->where('status', AccountingJournalBatch::STATUS_REVERSED)->count(),
         ];
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $exportBatches = (clone $batchQuery)->orderByDesc('date')->orderByDesc('id')->limit(5000)->get();
+            $exportIds = $exportBatches->pluck('id')->all();
+            $exportTotals = collect();
+            if ($exportIds !== []) {
+                $exportTotals = AccountingJournalLine::query()
+                    ->whereIn('batch_id', $exportIds)
+                    ->where('agent_user_id', $agentUserId)
+                    ->selectRaw('batch_id, COALESCE(SUM(debit),0) as debit_total, COALESCE(SUM(credit),0) as credit_total')
+                    ->groupBy('batch_id')
+                    ->get()
+                    ->keyBy('batch_id');
+            }
+
+            return TabularExport::stream(
+                'journal-batches-'.now()->format('Ymd_His'),
+                ['Batch', 'Date', 'Source', 'Description', 'Debit', 'Credit', 'Status', 'Created by'],
+                function () use ($exportBatches, $exportTotals) {
+                    foreach ($exportBatches as $batch) {
+                        $totals = $exportTotals->get($batch->id);
+                        yield [
+                            (string) $batch->id,
+                            optional($batch->date)->format('Y-m-d') ?? '',
+                            (string) ($batch->source_type ?? ''),
+                            (string) ($batch->description ?? ''),
+                            number_format((float) ($totals->debit_total ?? 0), 2, '.', ''),
+                            number_format((float) ($totals->credit_total ?? 0), 2, '.', ''),
+                            (string) ($batch->status ?? ''),
+                            (string) ($batch->createdByUser?->name ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Journal batches',
+                    'subtitle' => $exportBatches->count().' batch'.($exportBatches->count() === 1 ? '' : 'es'),
+                ],
+            );
+        }
 
         $batches = $batchQuery
             ->orderByDesc('date')
@@ -2659,13 +2729,56 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
-    public function tenantStatements(Request $request): View
+    public function tenantStatements(Request $request): View|StreamedResponse
     {
         $formulas = app(FinancialReportingFormulaService::class);
+        $q = trim((string) $request->query('q', ''));
+        $propertyId = max(0, (int) $request->query('property_id', 0));
 
-        $tenants = PmTenant::query()
+        $tenantQuery = PmTenant::query()
             ->withCount('invoices')
-            ->orderBy('name')
+            ->when($q !== '', function ($tenant) use ($q): void {
+                $tenant->where(function ($w) use ($q): void {
+                    $w->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%')
+                        ->orWhere('account_number', 'like', '%'.$q.'%');
+                });
+            })
+            ->when($propertyId > 0, function ($tenant) use ($propertyId): void {
+                $tenant->whereHas('leases.units', fn ($unit) => $unit->where('property_units.property_id', $propertyId));
+            })
+            ->orderBy('name');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            @set_time_limit(180);
+            $exportTenants = (clone $tenantQuery)->limit(3000)->get();
+
+            return TabularExport::stream(
+                'tenant-statements-'.now()->format('Ymd_His'),
+                ['Tenant', 'Ac/No', 'Phone', 'Opening balance', 'Invoices', 'Payments', 'Closing balance'],
+                function () use ($exportTenants, $formulas) {
+                    foreach ($exportTenants as $tenant) {
+                        yield [
+                            (string) $tenant->name,
+                            (string) ($tenant->account_number ?? ''),
+                            (string) ($tenant->phone ?? ''),
+                            '0.00',
+                            (string) (int) ($tenant->invoices_count ?? 0),
+                            number_format($formulas->tenantCollectionsTotal((int) $tenant->id), 2, '.', ''),
+                            number_format($formulas->tenantStatementClosingBalance((int) $tenant->id), 2, '.', ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Tenant statements',
+                    'subtitle' => $exportTenants->count().' tenant'.($exportTenants->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
+
+        $tenants = $tenantQuery
             ->paginate(50)
             ->withQueryString();
 
@@ -2683,14 +2796,16 @@ class PropertyAccountingController extends Controller
         return property_view('property.agent.accounting.receivables_tenant_statements', [
             'tenants' => $tenants,
             'statementRows' => $statementRows,
+            'filters' => ['q' => $q, 'property_id' => $propertyId],
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
-    public function landlordPayables(Request $request): View
+    public function landlordPayables(Request $request): View|StreamedResponse
     {
         $propertyId = (int) $request->integer('property_id');
         $landlord = trim($request->string('landlord')->toString());
-        $rows = PmLandlordLedgerEntry::query()
+        $query = PmLandlordLedgerEntry::query()
             ->selectRaw('user_id, property_id')
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END),0) - COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END),0) as amount_due")
             ->when($propertyId > 0, fn ($q) => $q->where('property_id', $propertyId))
@@ -2698,9 +2813,38 @@ class PropertyAccountingController extends Controller
             ->havingRaw('amount_due > 0')
             ->with(['user', 'property'])
             ->when($landlord !== '', fn ($q) => $q->whereHas('user', fn ($uq) => $uq->where('name', 'like', '%'.$landlord.'%')))
-            ->orderByDesc('amount_due')
-            ->paginate(50)
-            ->withQueryString();
+            ->orderByDesc('amount_due');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+            $exportRows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'landlord-payables-'.now()->format('Ymd_His'),
+                ['Landlord', 'Property', 'Amount due', 'Commission', 'Net payable'],
+                function () use ($exportRows, $commissionPct) {
+                    foreach ($exportRows as $row) {
+                        $due = (float) $row->amount_due;
+                        $commission = $due * ($commissionPct / 100);
+                        yield [
+                            (string) ($row->user?->name ?? ''),
+                            (string) ($row->property?->name ?? ''),
+                            number_format($due, 2, '.', ''),
+                            number_format($commission, 2, '.', ''),
+                            number_format(max(0, $due - $commission), 2, '.', ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Landlord payables',
+                    'subtitle' => $exportRows->count().' balance'.($exportRows->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
+
+        $rows = $query->paginate(50)->withQueryString();
 
         return property_view('property.agent.accounting.payables_landlord', [
             'rows' => $rows,

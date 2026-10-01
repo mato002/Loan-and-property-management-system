@@ -4,7 +4,8 @@
     <x-property.page title="Landlord remittance instructions">
         <p class="text-sm text-slate-600 mb-4">Instructions from the landlord portal. Mark paid after you remit funds manually outside the system.</p>
 
-        <form method="get" class="mb-4 flex gap-2">
+        <form method="get" class="mb-4 flex flex-wrap items-center gap-2">
+            <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Landlord, destination, or reference" class="min-w-[16rem] rounded-lg border px-3 py-2 text-sm">
             <select name="status" class="rounded-lg border px-3 py-2 text-sm">
                 <option value="">All statuses</option>
                 @foreach (['pending', 'acknowledged', 'paid', 'cancelled'] as $s)
@@ -12,6 +13,10 @@
                 @endforeach
             </select>
             <button type="submit" class="rounded-lg border px-3 py-2 text-sm">Filter</button>
+            @include('property.agent.partials.export_dropdown', [
+                'route' => 'property.accounting.payables.landlord_remittances',
+                'query' => request()->except(['export', 'page']),
+            ])
         </form>
 
         <div class="overflow-x-auto rounded-2xl border">

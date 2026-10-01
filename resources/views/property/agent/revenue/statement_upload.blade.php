@@ -57,7 +57,20 @@
     </div>
 
     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 class="text-sm font-semibold text-slate-900">Recent uploads</h2>
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <h2 class="text-sm font-semibold text-slate-900">Recent uploads</h2>
+            <form method="get" action="{{ route('property.revenue.statements.index', false) }}" class="flex flex-wrap items-center gap-2">
+                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Bank, account, or file" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Filter</button>
+                @if (($filters['q'] ?? '') !== '')
+                    <a href="{{ route('property.revenue.statements.index', false) }}" class="text-sm font-medium text-slate-600 hover:underline">Clear</a>
+                @endif
+                @include('property.agent.partials.export_dropdown', [
+                    'route' => 'property.revenue.statements.index',
+                    'query' => request()->except(['export', 'page']),
+                ])
+            </form>
+        </div>
         <div class="mt-3 overflow-x-auto">
             <table class="min-w-full text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -90,5 +103,8 @@
                 </tbody>
             </table>
         </div>
+        @if (method_exists($statements, 'links'))
+            <div class="mt-3">{{ $statements->links() }}</div>
+        @endif
     </div>
 </x-property.workspace>

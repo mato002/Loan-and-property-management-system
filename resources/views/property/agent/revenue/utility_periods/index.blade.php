@@ -9,9 +9,23 @@
     </x-slot>
 
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div class="border-b border-slate-200 px-4 py-3 bg-slate-50">
-            <h2 class="text-sm font-semibold text-slate-800">Billing periods (last 18 months)</h2>
-            <p class="text-xs text-slate-500 mt-0.5">Closed periods block readings, invoice reversals, allocation changes, and penalty edits unless a supervisor override is approved.</p>
+        <div class="border-b border-slate-200 px-4 py-3 bg-slate-50 flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-800">Billing periods (last 18 months)</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Closed periods block readings, invoice reversals, allocation changes, and penalty edits unless a supervisor override is approved.</p>
+            </div>
+            <form method="get" action="{{ route('property.revenue.utilities.periods', false) }}" class="flex flex-wrap items-center gap-2">
+                <select name="status" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <option value="">All statuses</option>
+                    <option value="open" @selected(($filters['status'] ?? '') === 'open')>Open</option>
+                    <option value="closed" @selected(($filters['status'] ?? '') === 'closed')>Closed</option>
+                </select>
+                <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium">Filter</button>
+                @include('property.agent.partials.export_dropdown', [
+                    'route' => 'property.revenue.utilities.periods',
+                    'query' => request()->except(['export', 'page']),
+                ])
+            </form>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">

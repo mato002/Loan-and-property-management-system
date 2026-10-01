@@ -148,8 +148,29 @@
     </x-slot>
 
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <div class="px-4 py-3 border-b border-slate-100">
-            <h3 class="text-sm font-semibold text-slate-900">Transaction history</h3>
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <h3 class="text-sm font-semibold text-slate-900">Transaction history</h3>
+                <p class="text-xs text-slate-500">Export includes every matching line, not only this page.</p>
+            </div>
+            <form method="get" action="{{ route('property.tenants.credit.ledger', $tenant, false) }}" class="flex flex-wrap items-end gap-2" data-turbo-frame="property-main">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500">Type</label>
+                    <select name="type" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                        <option value="">All types</option>
+                        @foreach (['credit_created' => 'Advance created', 'credit_applied' => 'Applied to invoice', 'credit_refunded' => 'Refunded', 'credit_reversed' => 'Reversed', 'manual_adjustment' => 'Manual adjustment'] as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['type'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white">Filter</button>
+                @include('property.agent.partials.export_dropdown', [
+                    'csvUrl' => route('property.tenants.credit.ledger', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'csv']), false),
+                    'xlsUrl' => route('property.tenants.credit.ledger', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'xls']), false),
+                    'pdfUrl' => route('property.tenants.credit.ledger', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'pdf']), false),
+                    'wordUrl' => route('property.tenants.credit.ledger', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'word']), false),
+                ])
+            </form>
         </div>
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

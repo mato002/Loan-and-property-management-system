@@ -4,6 +4,7 @@
         <div class="flex flex-wrap gap-2">
             <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubInvoiceForm" @click="showHubInvoiceForm = true">Create invoice</button>
             <a href="{{ route('property.revenue.invoices', ['tenant_id' => $tenant->id, 'q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-600 hover:underline self-center">Invoice register</a>
+            <a href="{{ route('property.tenants.statement', ['tenant' => $tenant->id, 'export' => 'pdf'], false) }}" data-turbo="false" class="text-xs font-semibold text-slate-700 hover:underline self-center">Statement PDF</a>
         </div>
     </div>
     <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">

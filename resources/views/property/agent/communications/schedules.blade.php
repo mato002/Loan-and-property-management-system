@@ -15,6 +15,13 @@
             </div>
         @endif
 
+        <div class="mb-3 flex justify-end">
+            @include('property.agent.partials.export_dropdown', [
+                'route' => 'property.communications.schedules',
+                'query' => request()->except(['export', 'page']),
+            ])
+        </div>
+
         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table class="min-w-full text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -31,10 +31,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmPaymentController extends Controller
 {
-    public function mpesaInbox(Request $request): View
+    public function mpesaInbox(Request $request): View|StreamedResponse
     {
         $channel = strtolower(trim((string) $request->query('channel', '')));
         $status = strtolower(trim((string) $request->query('status', '')));
+        $q = trim((string) $request->query('q', ''));
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
         $allowedChannels = ['mpesa_stk', 'mpesa_sms_ingest', 'mpesa_c2b', 'mpesa'];
 
         $query = PmPayment::query()
@@ -42,7 +45,49 @@ class PmPaymentController extends Controller
             ->whereIn('channel', $allowedChannels)
             ->when($channel !== '' && in_array($channel, $allowedChannels, true), fn ($q) => $q->where('channel', $channel))
             ->when(in_array($status, ['pending', 'completed', 'failed'], true), fn ($q) => $q->where('status', $status))
+            ->when($from !== '', fn ($builder) => $builder->whereDate('paid_at', '>=', $from))
+            ->when($to !== '', fn ($builder) => $builder->whereDate('paid_at', '<=', $to))
+            ->when($q !== '', function ($builder) use ($q): void {
+                $builder->where(function ($w) use ($q): void {
+                    $w->where('external_ref', 'like', '%'.$q.'%')
+                        ->orWhereHas('tenant', function ($tenant) use ($q): void {
+                            $tenant->where('name', 'like', '%'.$q.'%')
+                                ->orWhere('phone', 'like', '%'.$q.'%')
+                                ->orWhere('account_number', 'like', '%'.$q.'%');
+                        });
+                });
+            })
             ->orderByDesc('id');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $exportRows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'mpesa-inbox-'.now()->format('Ymd_His'),
+                ['When', 'Tenant', 'Account', 'Phone', 'Channel', 'Amount', 'Status', 'Receipt'],
+                function () use ($exportRows) {
+                    foreach ($exportRows as $payment) {
+                        $tenant = $payment->tenant;
+                        yield [
+                            optional($payment->paid_at ?? $payment->created_at)->format('Y-m-d H:i') ?? '',
+                            (string) ($tenant?->name ?? ''),
+                            (string) ($tenant?->account_number ?? ''),
+                            (string) ($tenant?->phone ?? ''),
+                            str_replace('_', ' ', (string) ($payment->channel ?? '')),
+                            number_format((float) $payment->amount, 2, '.', ''),
+                            (string) ($payment->status ?? ''),
+                            (string) ($payment->external_ref ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'M-Pesa inbox',
+                    'subtitle' => $exportRows->count().' payment'.($exportRows->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
 
         $rows = $query->paginate(40)->withQueryString();
 
@@ -58,7 +103,7 @@ class PmPaymentController extends Controller
 
         return property_view('property.agent.revenue.mpesa_inbox', [
             'rows' => $rows,
-            'filters' => compact('channel', 'status'),
+            'filters' => compact('channel', 'status', 'q', 'from', 'to'),
             'todaySum' => $todaySum,
             'pendingCount' => $pendingCount,
             'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),

@@ -40,6 +40,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyCommunicationsWebController extends Controller
 {
@@ -2122,13 +2123,38 @@ class PropertyCommunicationsWebController extends Controller
         return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
     }
 
-    public function schedules(): View
+    public function schedules(Request $request): View|StreamedResponse
     {
         $envOverride = PropertyPortalSetting::workflowAutomationEnvOverride();
+        $jobs = PropertyPortalSetting::scheduledAutomationCatalog();
+        $envForcesOff = $envOverride === false;
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            return TabularExport::stream(
+                'message-schedules-'.now()->format('Ymd_His'),
+                ['Group', 'Job', 'Command', 'When', 'Sends', 'Status'],
+                function () use ($jobs, $envForcesOff) {
+                    foreach ($jobs as $job) {
+                        $on = (bool) ($job['enabled'] ?? false) && ! $envForcesOff;
+                        yield [
+                            (string) ($job['group'] ?? ''),
+                            (string) ($job['label'] ?? ''),
+                            (string) ($job['command'] ?? ''),
+                            (string) ($job['when'] ?? ''),
+                            (string) ($job['sends'] ?? ''),
+                            $on ? 'On' : 'Off',
+                        ];
+                    }
+                },
+                $export,
+                ['title' => 'Message schedules'],
+            );
+        }
 
         return property_view('property.agent.communications.schedules', [
-            'jobs' => PropertyPortalSetting::scheduledAutomationCatalog(),
-            'envForcesOff' => $envOverride === false,
+            'jobs' => $jobs,
+            'envForcesOff' => $envForcesOff,
             'timezone' => (string) config('app.timezone'),
         ]);
     }

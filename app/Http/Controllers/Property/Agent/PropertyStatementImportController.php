@@ -7,21 +7,67 @@ use App\Models\PmBankStatement;
 use App\Models\PmBankStatementLine;
 use App\Services\Property\PropertyStatementMissingPaymentRecoveryService;
 use App\Services\Property\PropertyStatementUploadService;
+use App\Support\TabularExport;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyStatementImportController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|StreamedResponse
     {
+        $q = trim((string) $request->query('q', ''));
+        $query = PmBankStatement::query()->orderByDesc('id');
+        if ($q !== '') {
+            $query->where(function (Builder $w) use ($q): void {
+                $w->where('bank_name', 'like', '%'.$q.'%')
+                    ->orWhere('account_no', 'like', '%'.$q.'%')
+                    ->orWhere('account_name', 'like', '%'.$q.'%')
+                    ->orWhere('source_filename', 'like', '%'.$q.'%');
+            });
+        }
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (Schema::hasTable('pm_bank_statements') && in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $rows = (clone $query)->limit(2000)->get();
+
+            return TabularExport::stream(
+                'bank-statements-'.now()->format('Ymd_His'),
+                ['Bank', 'Account', 'Account name', 'Period from', 'Period to', 'Opening', 'Closing', 'Debits', 'Credits', 'File'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield [
+                            (string) $row->bank_name,
+                            (string) ($row->account_no ?? ''),
+                            (string) ($row->account_name ?? ''),
+                            $row->period_from?->format('Y-m-d') ?? '',
+                            $row->period_to?->format('Y-m-d') ?? '',
+                            number_format((float) $row->opening_balance, 2, '.', ''),
+                            number_format((float) $row->closing_balance, 2, '.', ''),
+                            number_format((float) $row->total_debit, 2, '.', ''),
+                            number_format((float) $row->total_credit, 2, '.', ''),
+                            (string) ($row->source_filename ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Uploaded bank statements',
+                    'subtitle' => $rows->count().' statement'.($rows->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
+
         $statements = Schema::hasTable('pm_bank_statements')
-            ? PmBankStatement::query()->orderByDesc('id')->limit(30)->get()
+            ? $query->paginate(30)->withQueryString()
             : collect();
 
         return property_view('property.agent.revenue.statement_upload', [
             'statements' => $statements,
+            'filters' => ['q' => $q],
             'providers' => [
                 PropertyStatementUploadService::PROVIDER_AUTO => 'Auto-detect',
                 PropertyStatementUploadService::PROVIDER_COOP => 'Co-operative Bank statement',
@@ -77,22 +123,73 @@ class PropertyStatementImportController extends Controller
             ->with('status', $msg);
     }
 
-    public function show(Request $request, PmBankStatement $statement): View
+    public function show(Request $request, PmBankStatement $statement): View|StreamedResponse
     {
         $this->authorizeStatement($request, $statement);
 
         $status = trim((string) $request->query('status', ''));
-        $lines = PmBankStatementLine::query()
+        $q = trim((string) $request->query('q', ''));
+        $allowed = [
+            PmBankStatementLine::MATCH_MATCHED,
+            PmBankStatementLine::MATCH_UNMATCHED,
+            PmBankStatementLine::MATCH_BANK_ONLY,
+        ];
+        if (! in_array($status, $allowed, true)) {
+            $status = '';
+        }
+
+        $linesQuery = PmBankStatementLine::query()
             ->with([
                 'ezenReceipt.tenant',
                 'payment.tenant',
             ])
             ->where('pm_bank_statement_id', $statement->id)
-            ->when($status !== '', fn ($q) => $q->where('match_status', $status))
+            ->when($status !== '', fn (Builder $query) => $query->where('match_status', $status))
+            ->when($q !== '', function (Builder $query) use ($q): void {
+                $query->where(function (Builder $w) use ($q): void {
+                    $w->where('reference', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%')
+                        ->orWhere('counterparty', 'like', '%'.$q.'%')
+                        ->orWhere('narration', 'like', '%'.$q.'%');
+                });
+            })
             ->orderByDesc('txn_date')
-            ->orderByDesc('id')
-            ->paginate(50)
-            ->withQueryString();
+            ->orderByDesc('id');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $rows = (clone $linesQuery)->limit(8000)->get();
+
+            return TabularExport::stream(
+                'bank-statement-'.$statement->id.'-'.now()->format('Ymd_His'),
+                ['Date', 'Reference', 'Phone', 'Payer', 'Tenant account', 'Tenant', 'Unit', 'Direction', 'Amount', 'Status', 'Match reason', 'Narration'],
+                function () use ($rows) {
+                    foreach ($rows as $line) {
+                        yield [
+                            $line->txn_date?->format('Y-m-d') ?? '',
+                            (string) ($line->reference ?? ''),
+                            $line->displayPhone(),
+                            (string) ($line->counterparty ?? ''),
+                            $line->matchedTenantAccount(),
+                            $line->matchedTenantName(),
+                            $line->matchedUnitLabel(),
+                            (string) ($line->direction ?? ''),
+                            number_format((float) $line->amount, 2, '.', ''),
+                            $line->displayMatchStatus(),
+                            $line->matchReason(),
+                            (string) ($line->narration ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Statement · '.$statement->bank_name,
+                    'subtitle' => trim($statement->account_name.' · '.$statement->periodLabel()),
+                ],
+            );
+        }
+
+        $lines = $linesQuery->paginate(50)->withQueryString();
 
         $counts = [
             'matched' => PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id)->where('match_status', 'matched')->count(),
@@ -105,6 +202,7 @@ class PropertyStatementImportController extends Controller
             'lines' => $lines,
             'counts' => $counts,
             'status' => $status,
+            'filters' => ['q' => $q, 'status' => $status],
         ]);
     }
 

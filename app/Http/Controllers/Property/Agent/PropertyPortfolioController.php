@@ -1115,7 +1115,10 @@ class PropertyPortfolioController extends Controller
         $hasChargeTemplates = $request->boolean('utility_templates_save') || $request->has('charge_templates');
         $hasExpenseDefinitions = $request->has('expense_definitions');
         $hasDepositDefinitions = $request->boolean('deposit_rules_save') || $request->has('deposit_definitions');
-        $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
+        $chargeTemplates = $this->appendBilledUtilityTemplates(
+            (int) $property->id,
+            $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? [])),
+        );
         $expenseDefinitions = $this->normalizePropertyExpenseDefinitions((int) $property->id, (array) ($data['expense_definitions'] ?? []));
         $depositDefinitions = $this->normalizePropertyDepositDefinitions((int) $property->id, (array) ($data['deposit_definitions'] ?? []));
         if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
@@ -3928,8 +3931,57 @@ class PropertyPortfolioController extends Controller
         $all = json_decode($raw, true);
         $all = is_array($all) ? $all : [];
         $rows = $all[(string) $propertyId] ?? [];
+        $normalized = $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
+        $merged = $this->appendBilledUtilityTemplates($propertyId, $normalized);
+        if ($merged !== $normalized) {
+            $this->setPropertyChargeTemplates($propertyId, $merged);
+        }
 
-        return $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
+        return $merged;
+    }
+
+    /**
+     * Metered types billed on this property (invoices / posted lines) that have no template yet.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function appendBilledUtilityTemplates(int $propertyId, array $rows): array
+    {
+        $have = [];
+        foreach ($rows as $row) {
+            $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+            if ($type !== '') {
+                $have[$type] = true;
+            }
+        }
+
+        $billed = $this->chargeTypeLabelsByPropertyId(
+            [$propertyId],
+            [(string) $propertyId => []],
+        );
+        $extra = [];
+        foreach ($billed[(string) $propertyId] ?? [] as $label) {
+            $type = $this->normalizeUtilityChargeType($label);
+            if ($type === '' || isset($have[$type])) {
+                continue;
+            }
+            if (! in_array($type, ['water', 'electricity'], true)) {
+                continue;
+            }
+            $extra[] = [
+                'property_unit_id' => null,
+                'charge_type' => $type,
+                'label' => $label,
+                'amount_mode' => 'variable',
+                'rate_per_unit' => 0.0,
+                'fixed_charge' => 0.0,
+                'notes' => '',
+            ];
+            $have[$type] = true;
+        }
+
+        return $extra === [] ? $rows : array_values(array_merge($extra, $rows));
     }
 
     /**
