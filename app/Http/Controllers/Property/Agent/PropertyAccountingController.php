@@ -3051,14 +3051,75 @@ class PropertyAccountingController extends Controller
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
 
+        $paidFromAccounts = $this->voucherAccountOptions(cash: true);
+        if ($paidFromAccounts === []) {
+            $paidFromAccounts = ['Cash account', 'Co-operative Bank', 'M-Pesa', 'Equity Bank', 'KCB Bank'];
+        }
+
+        $serviceAccounts = $this->voucherAccountOptions(cash: false);
+        foreach (['Water', 'Electricity', 'Garbage', 'Service charge', 'Security', 'Airtime', 'Repairs'] as $fallback) {
+            if (! in_array($fallback, $serviceAccounts, true)) {
+                $serviceAccounts[] = $fallback;
+            }
+        }
+
         return [
             'inPropertyFormModal' => \App\Support\Property\PropertyFormModal::wants($request),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
             'landlords' => $landlords,
             'expenseGroups' => PmEzenPaymentVoucher::EXPENSE_GROUPS,
             'methods' => PmEzenPaymentVoucher::PAYMENT_METHODS,
-            'paidFromAccounts' => ['Cash account', 'Co-operative Bank', 'M-Pesa', 'Equity Bank', 'KCB Bank'],
+            'paidFromAccounts' => $paidFromAccounts,
+            'serviceAccounts' => $serviceAccounts,
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function voucherAccountOptions(bool $cash): array
+    {
+        if (! Schema::hasTable('accounting_chart_accounts')) {
+            return [];
+        }
+
+        $query = AccountingChartAccount::query()->orderBy('code')->orderBy('name');
+        if (Schema::hasColumn('accounting_chart_accounts', 'is_active')) {
+            $query->where('is_active', true);
+        }
+        if ($cash) {
+            $query->where(function ($inner): void {
+                if (Schema::hasColumn('accounting_chart_accounts', 'is_cash_account')) {
+                    $inner->where('is_cash_account', true);
+                }
+                $inner->orWhere('name', 'like', '%bank%')
+                    ->orWhere('name', 'like', '%cash%')
+                    ->orWhere('name', 'like', '%mpesa%')
+                    ->orWhere('name', 'like', '%m-pesa%');
+            });
+        } elseif (Schema::hasColumn('accounting_chart_accounts', 'type')) {
+            $query->where('type', AccountingChartAccount::TYPE_EXPENSE);
+            if (Schema::hasColumn('accounting_chart_accounts', 'account_class')) {
+                $query->where(function ($inner): void {
+                    $inner->whereNull('account_class')
+                        ->orWhere('account_class', AccountingChartAccount::CLASS_DETAIL);
+                });
+            }
+        } else {
+            return [];
+        }
+
+        return $query->get(['code', 'name'])
+            ->map(function (AccountingChartAccount $account): string {
+                $code = trim((string) $account->code);
+                $name = trim((string) $account->name);
+
+                return $code !== '' ? $code.' '.$name : $name;
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function batchLandlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): RedirectResponse
