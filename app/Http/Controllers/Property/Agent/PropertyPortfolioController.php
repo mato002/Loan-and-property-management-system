@@ -3645,8 +3645,9 @@ class PropertyPortfolioController extends Controller
             $waterAmount = (! $isVariable && $chargeType === 'water' && is_numeric($row['water_amount'] ?? null))
                 ? max(0.0, (float) $row['water_amount'])
                 : null;
-            if ($waterAmount !== null) {
-                $fixed = round($waterAmount + $maintenance, 2);
+            if ($chargeType === 'water' && $waterAmount !== null) {
+                $rate = $waterAmount;
+                $fixed = round($maintenance, 2);
             }
             $notes = trim((string) ($row['notes'] ?? ''));
             if (! $isVariable && $label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
@@ -3663,8 +3664,10 @@ class PropertyPortfolioController extends Controller
                 'escalates_with_rent' => in_array($row['escalates_with_rent'] ?? 0, [1, '1', true, 'true'], true),
                 'notes' => Str::limit($notes, 500, ''),
             ];
-            if ($waterAmount !== null && $maintenance > 0.009) {
+            if ($chargeType === 'water' && $waterAmount !== null && $waterAmount > 0.009) {
                 $entry['water_amount'] = round($waterAmount, 2);
+            }
+            if ($chargeType === 'water' && $maintenance > 0.009) {
                 $entry['maintenance_fee'] = round($maintenance, 2);
             }
             $normalized[] = $entry;
@@ -3749,12 +3752,10 @@ class PropertyPortfolioController extends Controller
             }
 
             $label = trim((string) ($template['label'] ?? ''));
-            $maintenance = is_numeric($template['maintenance_fee'] ?? null) ? max(0.0, (float) $template['maintenance_fee']) : 0.0;
-            if ($maintenance > 0.009) {
-                $waterPart = is_numeric($template['water_amount'] ?? null) ? (float) $template['water_amount'] : max(0.0, (float) ($template['fixed_charge'] ?? 0) - $maintenance);
-                $label = trim($label.' ('.number_format($waterPart, 2, '.', '').' + '.number_format($maintenance, 2, '.', '').' maintenance)');
-            }
             $rate = is_numeric($template['rate_per_unit'] ?? null) ? max(0.0, (float) $template['rate_per_unit']) : 0.0;
+            if ($chargeKey === 'water' && $rate > 0.009) {
+                continue;
+            }
             $fixed = is_numeric($template['fixed_charge'] ?? null) ? max(0.0, (float) $template['fixed_charge']) : 0.0;
             $isRatePerUnit = $rate > 0.0 && $fixed <= 0.0;
             $defaultAmount = $isRatePerUnit ? $rate : $fixed;
@@ -3796,9 +3797,19 @@ class PropertyPortfolioController extends Controller
 
         $defaults = [];
         $byUnit = [];
+        $variableUnits = [];
         foreach ($templates as $row) {
             $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+            $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
+                ? (int) $row['property_unit_id']
+                : 0;
+            if ($type !== '' && $unitId > 0 && $this->isVariableChargeTemplate($row)) {
+                $variableUnits[$unitId][$type] = true;
+            }
             if ($type === '' || $this->isVariableChargeTemplate($row)) {
+                continue;
+            }
+            if ($type === 'water' && (float) ($row['rate_per_unit'] ?? 0) > 0.009) {
                 continue;
             }
             $amount = $this->templateStandingAmount($row);
@@ -3816,9 +3827,6 @@ class PropertyPortfolioController extends Controller
                 $payload['water_amount'] = number_format((float) ($row['water_amount'] ?? 0), 2, '.', '');
                 $payload['maintenance_fee'] = number_format($maintenanceFee, 2, '.', '');
             }
-            $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
-                ? (int) $row['property_unit_id']
-                : 0;
             if ($unitId > 0) {
                 $byUnit[$unitId][$type] = $payload;
             } else {
@@ -3837,6 +3845,9 @@ class PropertyPortfolioController extends Controller
             $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->all();
             $applied = $defaults;
             foreach ($unitIds as $unitId) {
+                foreach ($variableUnits[$unitId] ?? [] as $type => $_) {
+                    unset($applied[$type]);
+                }
                 foreach ($byUnit[$unitId] ?? [] as $type => $payload) {
                     $applied[$type] = $payload;
                 }

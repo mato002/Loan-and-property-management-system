@@ -15,6 +15,12 @@ class SendLandlordPortalAlertsCommand extends Command
 
     public function handle(LandlordPortalAlertService $alerts): int
     {
+        if (! \App\Models\PropertyPortalSetting::isLandlordAlertAutomationEnabled()) {
+            $this->info('Landlord portal alerts are off (Communications → Schedules). Skipping.');
+
+            return self::SUCCESS;
+        }
+
         $query = User::query()->where('property_portal_role', 'landlord');
         if ($this->option('user')) {
             $query->where('id', (int) $this->option('user'));

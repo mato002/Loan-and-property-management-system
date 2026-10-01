@@ -29,10 +29,13 @@
             'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? (string) $row['fixed_charge'] : '',
             'vat_rate' => is_numeric($row['vat_rate'] ?? null) ? (string) $row['vat_rate'] : '',
             'escalates_with_rent' => ! empty($row['escalates_with_rent']),
+            'water_amount' => is_numeric($row['water_amount'] ?? null) ? (string) $row['water_amount'] : '',
+            'maintenance_fee' => is_numeric($row['maintenance_fee'] ?? null) ? (string) $row['maintenance_fee'] : '',
             'notes' => (string) ($row['notes'] ?? ''),
         ];
     }, $seedChargeTemplates));
     $unitLabelMap = collect($units ?? [])->mapWithKeys(fn ($u) => [(string) $u->id => (string) $u->label])->all();
+    $unitOptions = collect($units ?? [])->map(fn ($u) => ['id' => (string) $u->id, 'label' => (string) $u->label])->values()->all();
 @endphp
 <form
     method="post"
@@ -41,17 +44,91 @@
         formOpen: false,
         chargeTypeOptions: ['water', 'garbage', 'service_charge', 'other'],
         unitLabels: @js($unitLabelMap),
+        units: @js($unitOptions),
         charges: @js($seedChargeTemplates),
         editingIndex: null,
-        draft: { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', vat_rate: '', escalates_with_rent: false, notes: '' },
+        scopeMode: 'property',
+        unitDrafts: {},
+        fillAllAmount: '',
+        fillAllMaintenance: '',
+        draft: { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' },
         emptyDraft() {
-            return { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', vat_rate: '', escalates_with_rent: false, notes: '' };
+            return { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' };
         },
         init() {
+            this.resetUnitDrafts();
             this.charges.forEach((charge) => {
                 const type = String(charge?.charge_type || '').trim().toLowerCase();
                 if (type !== '' && !this.chargeTypeOptions.includes(type)) this.chargeTypeOptions.push(type);
             });
+        },
+        resetUnitDrafts() {
+            const next = {};
+            this.units.forEach((unit) => {
+                next[unit.id] = { mode: 'exclude', amount: '', maintenance: '' };
+            });
+            this.unitDrafts = next;
+            this.fillAllAmount = '';
+            this.fillAllMaintenance = '';
+        },
+        isWaterType() {
+            return String(this.draft.charge_type || '').toLowerCase() === 'water';
+        },
+        isWaterFixed() {
+            return this.isWaterType() && String(this.draft.amount_mode || '') !== 'variable';
+        },
+        onScopeChange() {
+            if (this.scopeMode === 'units') this.loadUnitDrafts();
+        },
+        onChargeTypeChange() {
+            if (this.showUnitGrid()) this.loadUnitDrafts();
+        },
+        draftFromCharge(charge) {
+            const mode = String(charge?.amount_mode || '') === 'variable' ? 'variable' : 'fixed';
+            const isWater = String(charge?.charge_type || '').toLowerCase() === 'water';
+            const amount = mode !== 'fixed'
+                ? ''
+                : (isWater
+                    ? String((charge?.water_amount !== '' && charge?.water_amount != null) ? charge.water_amount : (charge?.rate_per_unit || ''))
+                    : String(charge?.fixed_charge || charge?.rate_per_unit || ''));
+            return {
+                mode,
+                amount,
+                maintenance: mode === 'fixed' ? String(charge?.maintenance_fee || '') : '',
+            };
+        },
+        loadUnitDrafts() {
+            const type = String(this.draft.charge_type || '').trim().toLowerCase();
+            const propertyRow = this.charges.find((charge) => String(charge.charge_type || '').toLowerCase() === type && String(charge.property_unit_id || '') === '');
+            const next = {};
+            this.units.forEach((unit) => {
+                const specific = this.charges.find((charge) => String(charge.charge_type || '').toLowerCase() === type && String(charge.property_unit_id || '') === String(unit.id));
+                next[unit.id] = specific
+                    ? this.draftFromCharge(specific)
+                    : (propertyRow ? this.draftFromCharge(propertyRow) : { mode: 'exclude', amount: '', maintenance: '' });
+            });
+            this.unitDrafts = next;
+        },
+        setAllMode(mode) {
+            this.units.forEach((unit) => {
+                const current = this.unitDrafts[unit.id] || { mode: 'exclude', amount: '', maintenance: '' };
+                current.mode = mode;
+                if (mode !== 'fixed') {
+                    current.amount = '';
+                    current.maintenance = '';
+                }
+                this.unitDrafts[unit.id] = current;
+            });
+        },
+        dropChargeRows(type, unitId) {
+            const wanted = String(type || '').toLowerCase();
+            this.charges = this.charges.filter((charge) => {
+                if (String(charge.charge_type || '').toLowerCase() !== wanted) return true;
+                return String(charge.property_unit_id || '') !== String(unitId || '');
+            });
+        },
+        showUnitGrid() {
+            return this.editingIndex === null && this.scopeMode === 'units';
         },
         typeLabel(type) {
             return String(type || 'other').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -63,48 +140,144 @@
         },
         resetDraft() {
             this.editingIndex = null;
+            this.scopeMode = 'property';
             this.draft = this.emptyDraft();
+            this.resetUnitDrafts();
             this.formOpen = false;
         },
         openAdd() {
             this.editingIndex = null;
+            this.scopeMode = 'property';
             this.draft = this.emptyDraft();
+            this.resetUnitDrafts();
             this.formOpen = true;
         },
         billingLabel(charge) {
-            const type = String(charge?.charge_type || '').trim().toLowerCase();
             const mode = String(charge?.amount_mode || '').trim().toLowerCase();
-            if (type === 'water') return 'Meter reading';
-            return mode === 'variable' ? 'Enter monthly' : 'Fixed';
+            const type = String(charge?.charge_type || '').trim().toLowerCase();
+            if (mode === 'variable') return type === 'water' ? 'Meter reading' : 'Enter monthly';
+            return 'Fixed';
         },
-        onDraftTypeChange() {
-            if (String(this.draft.charge_type || '').toLowerCase() === 'water' && this.draft.amount_mode === 'fixed' && !this.draft.fixed_charge) {
-                this.draft.amount_mode = 'variable';
+        amountText(charge) {
+            if (this.billingLabel(charge) !== 'Fixed') return '—';
+            const maintenance = Number(charge.maintenance_fee || 0);
+            const rate = Number(charge.rate_per_unit || charge.water_amount || 0);
+            if (String(charge?.charge_type || '').toLowerCase() === 'water' && (rate > 0.009 || maintenance > 0.009)) {
+                if (rate > 0.009 && maintenance > 0.009) return rate.toFixed(2) + ' per unit + ' + maintenance.toFixed(2) + ' fee';
+                if (rate > 0.009) return rate.toFixed(2) + ' per unit';
+                return maintenance.toFixed(2) + ' fee';
             }
+            return Number(charge.fixed_charge || charge.rate_per_unit || 0).toFixed(2);
+        },
+        waterPreview() {
+            const rate = Number(this.draft.water_amount || 0);
+            const fee = Number(this.draft.maintenance_fee || 0);
+            return {
+                water: (3 * rate).toFixed(2),
+                fee: fee.toFixed(2),
+                total: ((3 * rate) + fee).toFixed(2),
+            };
+        },
+        warnAmount(text) {
+            if (window.Swal) {
+                window.Swal.fire({ icon: 'warning', title: 'Amount required', text: text });
+            }
+        },
+        makeRow(unitId, mode, fixedCharge, waterAmount, maintenanceFee) {
+            const isWater = String(this.draft.charge_type || '').toLowerCase() === 'water';
+            const maintenance = mode === 'fixed' ? Number(maintenanceFee || 0) : 0;
+            const rate = mode === 'fixed' && isWater ? Number(waterAmount || 0) : 0;
+            return {
+                property_unit_id: String(unitId || ''),
+                charge_type: String(this.draft.charge_type || '').trim(),
+                label: String(this.draft.label || ''),
+                amount_mode: mode,
+                rate_per_unit: mode === 'variable' ? '' : (isWater ? (rate > 0 ? String(rate) : '') : this.draft.rate_per_unit),
+                fixed_charge: mode === 'variable' ? '' : (isWater ? (maintenance > 0 ? String(maintenance) : '') : String(fixedCharge ?? '')),
+                water_amount: isWater && rate > 0 ? String(rate) : '',
+                maintenance_fee: isWater && maintenance > 0.009 ? String(maintenance) : '',
+                vat_rate: this.draft.vat_rate,
+                escalates_with_rent: !!this.draft.escalates_with_rent,
+                notes: String(this.draft.notes || ''),
+            };
+        },
+        upsertRow(row) {
+            const idx = this.charges.findIndex((charge) => String(charge.charge_type || '') === String(row.charge_type || '') && String(charge.property_unit_id || '') === String(row.property_unit_id || ''));
+            if (idx >= 0) this.charges.splice(idx, 1, row);
+            else this.charges.push(row);
+        },
+        applyFillAll() {
+            this.units.forEach((unit) => {
+                const current = this.unitDrafts[unit.id] || { mode: 'exclude', amount: '', maintenance: '' };
+                if (current.mode !== 'fixed') return;
+                current.amount = this.fillAllAmount;
+                current.maintenance = this.isWaterType() ? this.fillAllMaintenance : '';
+                this.unitDrafts[unit.id] = current;
+            });
         },
         addOrUpdateCharge() {
             const type = String(this.draft.charge_type || '').trim();
             if (!type) return;
             const mode = String(this.draft.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed';
-            if (mode === 'fixed' && !(Number(this.draft.fixed_charge || 0) > 0) && !(Number(this.draft.rate_per_unit || 0) > 0)) {
-                if (window.Swal) {
-                    window.Swal.fire({ icon: 'warning', title: 'Amount required', text: 'Enter a fixed monthly amount, or switch billing to “Enter each month”.' });
+            if (this.showUnitGrid()) {
+                const rows = [];
+                let missingAmount = false;
+                this.units.forEach((unit) => {
+                    const entry = this.unitDrafts[unit.id] || { mode: 'exclude' };
+                    const unitMode = entry.mode === 'variable' ? 'variable' : (entry.mode === 'fixed' ? 'fixed' : 'exclude');
+                    if (unitMode === 'exclude') return;
+                    if (unitMode === 'variable') {
+                        rows.push(this.makeRow(unit.id, 'variable', '', '', ''));
+                        return;
+                    }
+                    const water = Number(entry.amount || 0);
+                    const maintenance = this.isWaterType() ? Number(entry.maintenance || 0) : 0;
+                    if (!(water > 0) && !(maintenance > 0)) {
+                        missingAmount = true;
+                        return;
+                    }
+                    rows.push(this.makeRow(unit.id, 'fixed', this.isWaterType() ? maintenance : water, this.isWaterType() ? water : '', maintenance));
+                });
+                if (missingAmount) {
+                    this.warnAmount('Enter an amount for every unit set to Fixed, or mark that unit Excluded.');
+                    return;
                 }
+                const hadType = this.charges.some((charge) => String(charge.charge_type || '').toLowerCase() === type.toLowerCase());
+                if (rows.length === 0 && !hadType) {
+                    this.warnAmount('Set at least one unit to Fixed or Variable. Excluded units are left out.');
+                    return;
+                }
+                this.charges = this.charges.filter((charge) => String(charge.charge_type || '').toLowerCase() !== type.toLowerCase());
+                const sameFixed = rows.length === this.units.length
+                    && rows.every((row) => row.amount_mode === 'fixed' && row.fixed_charge === rows[0].fixed_charge && String(row.rate_per_unit || '') === String(rows[0].rate_per_unit || '') && String(row.maintenance_fee || '') === String(rows[0].maintenance_fee || ''));
+                if (sameFixed) {
+                    this.charges.push(this.makeRow('', 'fixed', rows[0].fixed_charge, rows[0].water_amount, rows[0].maintenance_fee));
+                } else {
+                    rows.forEach((row) => this.charges.push(row));
+                }
+                this.resetDraft();
                 return;
             }
-            const row = {
-                property_unit_id: String(this.draft.property_unit_id || ''),
-                charge_type: type,
-                label: String(this.draft.label || ''),
-                amount_mode: mode,
-                rate_per_unit: mode === 'variable' ? '' : this.draft.rate_per_unit,
-                fixed_charge: mode === 'variable' ? '' : this.draft.fixed_charge,
-                vat_rate: this.draft.vat_rate,
-                escalates_with_rent: !!this.draft.escalates_with_rent,
-                notes: String(this.draft.notes || ''),
-            };
-            if (this.editingIndex === null) {
+            let fixedCharge = this.draft.fixed_charge;
+            let waterAmount = '';
+            let maintenanceFee = '';
+            if (mode === 'fixed' && String(type).toLowerCase() === 'water') {
+                waterAmount = this.draft.water_amount;
+                maintenanceFee = this.draft.maintenance_fee;
+                if (!(Number(waterAmount || 0) > 0) && !(Number(maintenanceFee || 0) > 0)) {
+                    this.warnAmount('Enter the water rate per unit, the maintenance fee, or both.');
+                    return;
+                }
+            } else if (mode === 'fixed' && !(Number(fixedCharge || 0) > 0) && !(Number(this.draft.rate_per_unit || 0) > 0)) {
+                this.warnAmount('Enter a fixed monthly amount, or switch billing to “Enter each month”.');
+                return;
+            }
+            const row = this.makeRow(this.draft.property_unit_id, mode, fixedCharge, waterAmount, maintenanceFee);
+            if (this.editingIndex === null && String(row.property_unit_id || '') === '') {
+                this.charges = this.charges.filter((charge) => String(charge.charge_type || '').toLowerCase() !== type.toLowerCase());
                 this.charges.push(row);
+            } else if (this.editingIndex === null) {
+                this.upsertRow(row);
             } else {
                 this.charges.splice(this.editingIndex, 1, row);
             }
@@ -121,6 +294,10 @@
                 amount_mode: String(charge.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed',
                 rate_per_unit: charge.rate_per_unit ?? '',
                 fixed_charge: charge.fixed_charge ?? '',
+                water_amount: String(charge.charge_type || '').toLowerCase() === 'water' && String(charge.amount_mode || '') !== 'variable'
+                    ? String((charge.water_amount !== '' && charge.water_amount != null) ? charge.water_amount : (charge.rate_per_unit || ''))
+                    : '',
+                maintenance_fee: charge.maintenance_fee ?? '',
                 vat_rate: charge.vat_rate ?? '',
                 escalates_with_rent: !!charge.escalates_with_rent,
                 notes: String(charge.notes || ''),
@@ -178,6 +355,8 @@
             <input type="hidden" :name="`charge_templates[${index}][amount_mode]`" :value="charge.amount_mode || 'fixed'" />
             <input type="hidden" :name="`charge_templates[${index}][rate_per_unit]`" :value="charge.rate_per_unit" />
             <input type="hidden" :name="`charge_templates[${index}][fixed_charge]`" :value="charge.fixed_charge" />
+            <input type="hidden" :name="`charge_templates[${index}][water_amount]`" :value="charge.water_amount" />
+            <input type="hidden" :name="`charge_templates[${index}][maintenance_fee]`" :value="charge.maintenance_fee" />
             <input type="hidden" :name="`charge_templates[${index}][vat_rate]`" :value="charge.vat_rate" />
             <input type="hidden" :name="`charge_templates[${index}][escalates_with_rent]`" :value="charge.escalates_with_rent ? 1 : 0" />
             <input type="hidden" :name="`charge_templates[${index}][notes]`" :value="charge.notes" />
@@ -222,7 +401,7 @@
                                   :class="billingLabel(charge) === 'Fixed' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'"
                                   x-text="billingLabel(charge)"></span>
                         </td>
-                        <td class="px-4 py-3 tabular-nums" x-text="billingLabel(charge) === 'Fixed' ? Number(charge.fixed_charge || charge.rate_per_unit || 0).toFixed(2) : '—'"></td>
+                        <td class="px-4 py-3 tabular-nums" x-text="amountText(charge)"></td>
                         <td class="px-4 py-3 text-slate-600" x-text="charge.notes || '—'"></td>
                         <td class="px-4 py-3 text-right" data-row-ignore-click>
                             <x-property.action-menu width="w-40">
@@ -237,17 +416,26 @@
         <p x-show="charges.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">No saved utility templates yet for this property.</p>
     </div>
 
-    <x-property.modal show="formOpen" close="resetDraft()" title="" teleport="false" max-width="lg" :close-on-escape="true">
+    <x-property.modal show="formOpen" close="resetDraft()" title="" teleport="false" max-width="3xl" :close-on-escape="true">
         <x-slot:header>
             <h2 class="text-base font-semibold text-slate-900" x-text="editingIndex === null ? 'Add charge' : 'Edit charge'"></h2>
         </x-slot:header>
         <div class="space-y-3">
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Scope <span class="font-normal text-slate-400">(optional)</span></label>
+            <div x-show="editingIndex === null">
+                <label class="block text-xs font-medium text-slate-600">Applies to</label>
+                <select x-model="scopeMode" @change="onScopeChange()" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                    <option value="property">Whole property</option>
+                    <option value="units">Selected units</option>
+                </select>
+                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'property'">One billing rule for every unit. This replaces any unit-by-unit setup for this charge.</p>
+                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'units'">Set each unit to fixed, variable, or excluded. A mix is allowed on the same charge.</p>
+            </div>
+            <div x-show="editingIndex !== null">
+                <label class="block text-xs font-medium text-slate-600">Scope</label>
                 <select x-model="draft.property_unit_id" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="">Property default</option>
+                    <option value="">Whole property</option>
                     @foreach(($units ?? []) as $u)
-                        <option value="{{ $u->id }}">{{ $u->label }} (Unit)</option>
+                        <option value="{{ $u->id }}">{{ $u->label }}</option>
                     @endforeach
                 </select>
             </div>
@@ -256,7 +444,7 @@
                     <label class="block text-xs font-medium text-slate-600">Charge type <span class="text-red-600">*</span></label>
                     <button type="button" @click="addChargeType()" class="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">+</button>
                 </div>
-                <select x-model="draft.charge_type" @change="onDraftTypeChange()" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                <select x-model="draft.charge_type" @change="onChargeTypeChange()" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <template x-for="type in chargeTypeOptions" :key="'draft-type-'+type">
                         <option :value="type" x-text="typeLabel(type)"></option>
                     </template>
@@ -266,7 +454,7 @@
                 <label class="block text-xs font-medium text-slate-600">Label <span class="font-normal text-slate-400">(optional)</span></label>
                 <input x-model="draft.label" type="text" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Water bill" />
             </div>
-            <div>
+            <div x-show="!showUnitGrid()">
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
                 <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <option value="fixed">Fixed monthly amount</option>
@@ -274,11 +462,72 @@
                 </select>
                 <p class="mt-1 text-xs text-slate-500" x-show="draft.amount_mode === 'variable'">This will not auto-bill. The agent must post this charge (or a meter reading for water) every month for each occupied unit.</p>
             </div>
-            <div x-show="draft.amount_mode !== 'variable'">
+            <div x-show="showUnitGrid()" class="rounded-xl border border-slate-200">
+                <div class="flex flex-wrap items-end gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
+                    <button type="button" @click="setAllMode('fixed')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All fixed</button>
+                    <button type="button" @click="setAllMode('variable')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All variable</button>
+                    <button type="button" @click="setAllMode('exclude')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All excluded</button>
+                    <div>
+                        <label class="block text-[11px] font-medium text-slate-500" x-text="isWaterType() ? 'Rate for fixed units' : 'Amount for fixed units'"></label>
+                        <input x-model="fillAllAmount" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
+                    </div>
+                    <div x-show="isWaterType()">
+                        <label class="block text-[11px] font-medium text-slate-500">Maintenance for fixed units</label>
+                        <input x-model="fillAllMaintenance" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
+                    </div>
+                    <button type="button" @click="applyFillAll()" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Fill fixed units</button>
+                </div>
+                <div class="max-h-64 overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead class="sticky top-0 z-10 bg-white text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            <tr>
+                                <th class="px-3 py-2">Unit</th>
+                                <th class="px-3 py-2">Billing</th>
+                                <th class="px-3 py-2" x-text="isWaterType() ? 'Rate / unit' : 'Amount'"></th>
+                                <th class="px-3 py-2" x-show="isWaterType()">Fee</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="unit in units" :key="'unit-draft-'+unit.id">
+                                <tr class="border-t border-slate-100">
+                                    <td class="px-3 py-2 font-medium text-slate-800" x-text="unit.label"></td>
+                                    <td class="px-3 py-2">
+                                        <select x-model="unitDrafts[unit.id].mode" class="rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5">
+                                            <option value="exclude">Excluded</option>
+                                            <option value="fixed">Fixed</option>
+                                            <option value="variable">Variable</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <input type="number" min="0" step="0.01" class="w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" x-model="unitDrafts[unit.id].amount" x-show="unitDrafts[unit.id].mode === 'fixed'" />
+                                        <span class="text-xs text-slate-400" x-show="unitDrafts[unit.id].mode !== 'fixed'" x-text="unitDrafts[unit.id].mode === 'variable' ? 'Enter each month' : '—'"></span>
+                                    </td>
+                                    <td class="px-3 py-2" x-show="isWaterType()">
+                                        <input type="number" min="0" step="0.01" class="w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" x-model="unitDrafts[unit.id].maintenance" x-show="unitDrafts[unit.id].mode === 'fixed'" />
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">Fixed units bill the amount you enter. For water, the rate is multiplied by units used and the maintenance fee is added once. Variable units are entered each month. Excluded units do not get this charge.</p>
+            </div>
+            <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && isWaterFixed()" class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Rate per unit</label>
+                    <input x-model="draft.water_amount" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 200" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Maintenance fee <span class="font-normal text-slate-400">(added once)</span></label>
+                    <input x-model="draft.maintenance_fee" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 100" />
+                </div>
+                <p class="sm:col-span-2 text-xs text-slate-500">The rate is multiplied by units used. The fee is added after that. Example: 3 units × <span class="tabular-nums" x-text="Number(draft.water_amount || 0).toFixed(2)"></span> = <span class="tabular-nums" x-text="waterPreview().water"></span> water, plus <span class="tabular-nums" x-text="waterPreview().fee"></span> fee = <span class="font-semibold tabular-nums text-slate-800" x-text="waterPreview().total"></span>.</p>
+            </div>
+            <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && !isWaterFixed()">
                 <label class="block text-xs font-medium text-slate-600">Fixed charge <span class="text-red-600">*</span></label>
                 <input x-model="draft.fixed_charge" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
             </div>
-            <div x-show="draft.amount_mode !== 'variable'">
+            <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && !isWaterFixed()">
                 <label class="block text-xs font-medium text-slate-600">Per area / measure (optional)</label>
                 <input x-model="draft.rate_per_unit" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
             </div>
@@ -300,7 +549,7 @@
         <x-slot:footer>
             <div class="flex justify-end gap-2">
                 <button type="button" @click="resetDraft()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button type="button" @click="addOrUpdateCharge()" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700" x-text="editingIndex === null ? 'Add charge' : 'Update charge'"></button>
+                <button type="button" @click="addOrUpdateCharge()" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700" x-text="editingIndex !== null ? 'Update charge' : (scopeMode === 'units' ? 'Add unit charges' : 'Add charge')"></button>
             </div>
         </x-slot:footer>
     </x-property.modal>

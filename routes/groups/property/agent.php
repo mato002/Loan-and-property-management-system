@@ -548,6 +548,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/communications/templates', [PropertyCommunicationsWebController::class, 'templates'])->name('communications.templates');
     Route::post('/communications/templates', [PropertyCommunicationsWebController::class, 'storeTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.store');
     Route::delete('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'destroyTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.destroy');
+    Route::get('/communications/schedules', [PropertyCommunicationsWebController::class, 'schedules'])->name('communications.schedules');
+    Route::post('/communications/schedules', [PropertyCommunicationsWebController::class, 'updateSchedule'])->middleware('property.permission:communications.manage')->name('communications.schedules.update');
     Route::get('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'rentTemplates'])->name('communications.rent_templates');
     Route::post('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'saveRentTemplateMessages'])->middleware('property.permission:communications.manage')->name('communications.rent_templates.store');
     Route::post('/communications/rent-templates/preview', [PropertyCommunicationsWebController::class, 'previewRentTemplatesJson'])->name('communications.rent_templates.preview');

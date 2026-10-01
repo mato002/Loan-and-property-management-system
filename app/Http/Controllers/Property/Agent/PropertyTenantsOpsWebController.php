@@ -14,6 +14,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyCommunicationService;
 use App\Support\CsvExport;
+use App\Support\Property\TenantNoticeTypes;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -524,6 +525,11 @@ class PropertyTenantsOpsWebController extends Controller
             'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        $data['notice_type'] = TenantNoticeTypes::normalize((string) ($data['notice_type'] ?? ''));
+        if ($data['notice_type'] === '') {
+            return back()->withErrors(['notice_type' => 'Enter a notice type.'])->withInput();
+        }
 
         if ($this->isLegalNoticeType((string) ($data['notice_type'] ?? ''))) {
             if (

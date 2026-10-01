@@ -308,6 +308,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'bulk', 'label' => 'Bulk messaging', 'route' => 'property.communications.bulk', 'active' => ['property.communications.bulk', 'property.communications.bulk.*', 'property.communications.recipients']],
                 ['key' => 'templates', 'label' => 'Templates', 'route' => 'property.communications.templates', 'active' => ['property.communications.templates', 'property.communications.templates.*']],
                 ['key' => 'rent_templates', 'label' => 'Rent templates', 'route' => 'property.communications.rent_templates', 'active' => ['property.communications.rent_templates', 'property.communications.rent_templates.*']],
+                ['key' => 'schedules', 'label' => 'Schedules', 'route' => 'property.communications.schedules', 'active' => ['property.communications.schedules', 'property.communications.schedules.*']],
                 ['key' => 'conversations', 'label' => 'Conversations', 'route' => 'property.communications.conversations', 'active' => ['property.communications.conversations', 'property.communications.conversations.*']],
             ],
             'financials' => [

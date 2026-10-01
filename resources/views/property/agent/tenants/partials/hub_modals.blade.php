@@ -264,9 +264,7 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Type</label>
-                <input type="text" name="notice_type" value="{{ old('notice_type', 'vacate') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="vacate, rent_increase…" />
-                @error('notice_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @include('property.agent.tenants.partials.notice_type_field')
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>

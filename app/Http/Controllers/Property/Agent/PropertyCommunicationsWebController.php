@@ -13,6 +13,7 @@ use App\Models\PmConversation;
 use App\Models\PmConversationMessage;
 use App\Models\PmTenant;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyCommunicationService;
@@ -2119,6 +2120,35 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
+    }
+
+    public function schedules(): View
+    {
+        $envOverride = PropertyPortalSetting::workflowAutomationEnvOverride();
+
+        return property_view('property.agent.communications.schedules', [
+            'jobs' => PropertyPortalSetting::scheduledAutomationCatalog(),
+            'envForcesOff' => $envOverride === false,
+            'timezone' => (string) config('app.timezone'),
+        ]);
+    }
+
+    public function updateSchedule(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'key' => ['required', 'string'],
+            'enabled' => ['required', 'in:0,1'],
+        ]);
+
+        $key = (string) $data['key'];
+        if (! in_array($key, PropertyPortalSetting::scheduledAutomationKeys(), true)) {
+            return back()->withErrors(['key' => 'Unknown scheduler.']);
+        }
+
+        PropertyPortalSetting::setValue($key, (string) $data['enabled']);
+        $label = collect(PropertyPortalSetting::scheduledAutomationCatalog())->firstWhere('key', $key)['label'] ?? $key;
+
+        return back()->with('success', ($data['enabled'] === '1' ? 'Turned on: ' : 'Turned off: ').$label.'.');
     }
 
     private function logExportAudit(Request $request, string $reportType, string $format, int $rowCount, array $filters): void

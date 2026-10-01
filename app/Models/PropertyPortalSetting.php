@@ -126,6 +126,9 @@ class PropertyPortalSetting extends Model
             'workflow_auto_water_penalties',
             'workflow_auto_attached_utility_charges',
             'workflow_auto_invoice_delivery',
+            'workflow_auto_scheduled_dispatch',
+            'workflow_auto_sms_retry',
+            'workflow_auto_landlord_alerts',
         ] as $key) {
             $query = static::query()->where('key', $key)->where('value', '1');
             if (Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
@@ -142,8 +145,8 @@ class PropertyPortalSetting extends Model
     private static function granularAutomationEnabled(string $granularKey): bool
     {
         $env = self::workflowAutomationEnvOverride();
-        if ($env !== null) {
-            return $env;
+        if ($env === false) {
+            return false;
         }
 
         $existsQuery = static::query()->where('key', $granularKey);
@@ -152,6 +155,10 @@ class PropertyPortalSetting extends Model
         }
         if ($existsQuery->exists()) {
             return static::getGlobalValue($granularKey, '0') === '1';
+        }
+
+        if ($env === true) {
+            return true;
         }
 
         return static::getGlobalValue('workflow_auto_reminders', '0') === '1';
@@ -185,5 +192,48 @@ class PropertyPortalSetting extends Model
     public static function isInvoiceDeliveryAutomationEnabled(): bool
     {
         return self::granularAutomationEnabled('workflow_auto_invoice_delivery');
+    }
+
+    public static function isScheduledDispatchAutomationEnabled(): bool
+    {
+        return self::granularAutomationEnabled('workflow_auto_scheduled_dispatch');
+    }
+
+    public static function isSmsRetryAutomationEnabled(): bool
+    {
+        return self::granularAutomationEnabled('workflow_auto_sms_retry');
+    }
+
+    public static function isLandlordAlertAutomationEnabled(): bool
+    {
+        return self::granularAutomationEnabled('workflow_auto_landlord_alerts');
+    }
+
+    /**
+     * Schedulers the operator can turn on or off from Communications → Schedules.
+     *
+     * @return list<array{key: string, group: string, label: string, command: string, when: string, sends: string, enabled: bool}>
+     */
+    public static function scheduledAutomationCatalog(): array
+    {
+        $rows = [
+            ['key' => 'workflow_auto_rent_reminders', 'group' => 'Messages', 'label' => 'Rent reminders', 'command' => 'rent:send-reminders', 'when' => 'Daily 08:00', 'sends' => 'SMS and email by due-date stage (3 days before, 1 day before, due today, overdue).', 'enabled' => self::isRentReminderAutomationEnabled()],
+            ['key' => 'workflow_auto_invoice_delivery', 'group' => 'Messages', 'label' => 'Invoice delivery', 'command' => 'invoices:deliver-pending', 'when' => 'Daily 08:30', 'sends' => 'Email and SMS for issued invoices that have not been delivered yet.', 'enabled' => self::isInvoiceDeliveryAutomationEnabled()],
+            ['key' => 'workflow_auto_scheduled_dispatch', 'group' => 'Messages', 'label' => 'Scheduled campaigns', 'command' => 'communications:dispatch-scheduled', 'when' => 'Every 5 minutes', 'sends' => 'Releases bulk SMS and email that were scheduled for a later time.', 'enabled' => self::isScheduledDispatchAutomationEnabled()],
+            ['key' => 'workflow_auto_sms_retry', 'group' => 'Messages', 'label' => 'Failed SMS retry', 'command' => 'communications:retry-failed-sms', 'when' => 'Every 15 minutes', 'sends' => 'Retries SMS that failed because the wallet was empty or the provider was busy.', 'enabled' => self::isSmsRetryAutomationEnabled()],
+            ['key' => 'workflow_auto_landlord_alerts', 'group' => 'Messages', 'label' => 'Landlord portal alerts', 'command' => 'landlord:send-portal-alerts', 'when' => 'Daily 07:00', 'sends' => 'Email and SMS digest to landlords who opted in.', 'enabled' => self::isLandlordAlertAutomationEnabled()],
+            ['key' => 'workflow_auto_rent_invoices', 'group' => 'Billing', 'label' => 'Rent invoices', 'command' => 'rent:generate-invoices', 'when' => 'Daily 00:15', 'sends' => 'Creates the month’s rent invoices. Delivery is a separate switch.', 'enabled' => self::isRentInvoiceAutomationEnabled()],
+            ['key' => 'workflow_auto_water_invoices', 'group' => 'Billing', 'label' => 'Water invoices', 'command' => 'water:generate-invoices', 'when' => 'Daily 00:25', 'sends' => 'Creates water invoices from readings.', 'enabled' => self::isWaterInvoiceAutomationEnabled()],
+            ['key' => 'workflow_auto_attached_utility_charges', 'group' => 'Billing', 'label' => 'Attached charges', 'command' => 'utility:materialize-attached-charges', 'when' => 'Daily 00:22', 'sends' => 'Creates garbage, service charge, and similar monthly lines.', 'enabled' => self::isAttachedUtilityChargeAutomationEnabled()],
+            ['key' => 'workflow_auto_water_penalties', 'group' => 'Billing', 'label' => 'Water penalties', 'command' => 'water:apply-penalties', 'when' => 'Daily 00:40', 'sends' => 'Adds penalties on overdue water balances.', 'enabled' => self::isWaterPenaltyAutomationEnabled()],
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<string> */
+    public static function scheduledAutomationKeys(): array
+    {
+        return array_column(self::scheduledAutomationCatalog(), 'key');
     }
 }

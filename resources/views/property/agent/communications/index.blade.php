@@ -13,6 +13,7 @@
             ['route' => 'property.communications.bulk', 'title' => 'Bulk messaging', 'description' => 'Segmented campaigns.'],
             ['route' => 'property.communications.templates', 'title' => 'Templates', 'description' => 'Merge fields and compliance text.'],
             ['route' => 'property.communications.rent_templates', 'title' => 'Rent templates', 'description' => 'Stage wording, preview, and SMS cost estimate.'],
+            ['route' => 'property.communications.schedules', 'title' => 'Schedules', 'description' => 'Turn automatic SMS, email, and billing jobs on or off.'],
             ['route' => 'property.communications.conversations', 'title' => 'Conversations', 'description' => 'Inbound and reply threads.'],
         ]" />
     </x-property.page>

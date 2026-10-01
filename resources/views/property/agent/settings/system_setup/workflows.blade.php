@@ -11,14 +11,14 @@
             <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">
                 When enabled below (or via <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">PROPERTY_WORKFLOW_AUTOMATION_ENABLED</code> in <code class="rounded bg-white px-1 py-0.5">.env</code>),
                 the server must run <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">php artisan schedule:run</code> every minute (see <code class="rounded bg-white px-1 py-0.5">deploy/laravel-scheduler.cron.example</code>).
-                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>invoice delivery</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. Until you save this form once per environment, each switch follows the legacy “master” checkbox.
+                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>invoice delivery</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. The same switches are on <a href="{{ route('property.communications.schedules', false) }}" class="font-semibold underline">Communications → Schedules</a>. Saving a switch here controls that job even when <code class="rounded bg-white px-1 py-0.5">PROPERTY_WORKFLOW_AUTOMATION_ENABLED=true</code>. Setting that variable to <code class="rounded bg-white px-1 py-0.5">false</code> forces every job off.
             </p>
             <p class="mt-2 text-xs font-medium {{ ($workflowAutomationEffective ?? false) ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-300' }}">
                 Automation is currently <strong>{{ ($workflowAutomationEffective ?? false) ? 'ON' : 'OFF' }}</strong> for scheduled commands.
             </p>
-            @if (!empty($workflowAutomationEnvIsSet))
+            @if (($workflowAutomationEnvIsSet ?? false) && ! ($workflowAutomationEffective ?? false))
                 <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                    <code class="rounded bg-white px-1 py-0.5 dark:bg-slate-800">PROPERTY_WORKFLOW_AUTOMATION_ENABLED</code> is set in the environment and <strong>overrides</strong> the checkbox for scheduled commands.
+                    <code class="rounded bg-white px-1 py-0.5 dark:bg-slate-800">PROPERTY_WORKFLOW_AUTOMATION_ENABLED=false</code> is forcing every scheduled job off.
                 </p>
             @endif
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-500">CLI check: <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800">php artisan property:workflow-automation-status</code></p>

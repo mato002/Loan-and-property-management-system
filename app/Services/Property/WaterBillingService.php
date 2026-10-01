@@ -796,9 +796,17 @@ class WaterBillingService
                 if (strtolower(trim((string) ($row['charge_type'] ?? ''))) !== 'water') {
                     continue;
                 }
+                $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
+                $fixed = is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0;
+                $waterRate = is_numeric($row['water_amount'] ?? null) ? (float) $row['water_amount'] : 0.0;
+                $maintenanceFee = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+                if ($waterRate > 0.009) {
+                    $rate = $waterRate;
+                    $fixed = $maintenanceFee;
+                }
                 $byUnit[(string) $unit->id] = [
-                    'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0,
-                    'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0,
+                    'rate_per_unit' => $rate,
+                    'fixed_charge' => $fixed,
                     'label' => trim((string) ($row['label'] ?? '')),
                 ];
             }
