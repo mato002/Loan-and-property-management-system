@@ -1823,7 +1823,7 @@ class PropertyPortfolioController extends Controller
             $propertyLinksQuery->where('pl.property_id', $propertyId);
         }
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertyLinksQuery->where('p.agent_user_id', (int) Auth::id());
+            $propertyLinksQuery->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
         }
         $propertyLinks = $propertyLinksQuery->get();
 
@@ -2284,7 +2284,7 @@ class PropertyPortfolioController extends Controller
         }
 
         $linkableProperties = Property::query()
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->whereDoesntHave('landlords')
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -2462,7 +2462,7 @@ class PropertyPortfolioController extends Controller
             ->where('pl.user_id', $landlord->id)
             ->where('pl.property_id', $propertyId);
         if (AgentWorkspaceScope::shouldApply()) {
-            $query->where('p.agent_user_id', (int) Auth::id());
+            $query->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
         }
 
         return $query->exists();
@@ -2484,7 +2484,7 @@ class PropertyPortfolioController extends Controller
             $propertyIdsQuery->where('pl.property_id', $propertyId);
         }
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
+            $propertyIdsQuery->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
         }
 
         $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();

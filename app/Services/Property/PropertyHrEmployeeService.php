@@ -717,8 +717,8 @@ class PropertyHrEmployeeService
             ->when(
                 $this->shouldScopeToAgent($user),
                 fn (Builder $q) => $q->where(function (Builder $inner) use ($user) {
-                    $inner->where('agent_user_id', (int) $user->id)
-                        ->orWhereNull('agent_user_id');
+                    $companyId = AgentWorkspaceScope::currentAgentUserId() ?? (int) $user->id;
+                    $inner->where('agent_user_id', $companyId);
                 })
             )
             ->orderBy('last_name')
@@ -728,10 +728,34 @@ class PropertyHrEmployeeService
     public function resolveAgentUserIdForStore(Request $request): int
     {
         if (AgentWorkspaceScope::shouldApply()) {
-            return (int) $request->user()->id;
+            return AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id;
         }
 
-        return (int) $request->input('agent_user_id', $request->user()->id);
+        $selected = (int) $request->input('agent_user_id', 0);
+        if ($selected <= 0) {
+            throw ValidationException::withMessages([
+                'agent_user_id' => 'Select the company this employee belongs to.',
+            ]);
+        }
+
+        $allowed = User::query()
+            ->where(function ($q) {
+                $q->where('property_portal_role', 'agent')
+                    ->orWhereIn('id', function ($sub) {
+                        $sub->select('agent_user_id')->from('properties')->whereNotNull('agent_user_id');
+                    });
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (! in_array($selected, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'agent_user_id' => 'Select a valid company workspace.',
+            ]);
+        }
+
+        return $selected;
     }
 
     public function generateNextEmployeeNumber(): string

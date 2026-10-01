@@ -53,7 +53,7 @@ class PmLandlordLedgerEntry extends Model
                 return;
             }
 
-            $userId = (int) \Illuminate\Support\Facades\Auth::id();
+            $userId = AgentWorkspaceScope::currentAgentUserId() ?? (int) \Illuminate\Support\Facades\Auth::id();
 
             $query->where(function (Builder $scope) use ($userId) {
                 $scope->where('pm_landlord_ledger_entries.agent_user_id', $userId)

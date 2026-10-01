@@ -45,8 +45,9 @@ final class PropertyDashboardOverview
      */
     public static function lightForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::lightKey($userId, $scoped);
 
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildLightForAgent());
@@ -59,8 +60,9 @@ final class PropertyDashboardOverview
      */
     public static function metricsForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped).':metrics';
 
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildMetricsForAgent());
@@ -73,8 +75,9 @@ final class PropertyDashboardOverview
      */
     public static function heavyForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped);
 
         return Cache::remember($cacheKey, self::HEAVY_CACHE_TTL_SECONDS, static fn () => self::buildHeavyForAgent());
@@ -109,7 +112,7 @@ final class PropertyDashboardOverview
         $maintInProgress = PmMaintenanceRequest::query()->where('status', 'in_progress')->count();
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
-        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $agentUserId = $applyAgentFilter ? AgentWorkspaceScope::currentAgentUserId() : null;
         $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
 
         $linkedLandlordsQuery = DB::table('property_landlord as pl')
@@ -399,7 +402,7 @@ final class PropertyDashboardOverview
         );
 
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
-        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $agentUserId = $applyAgentFilter ? AgentWorkspaceScope::currentAgentUserId() : null;
         $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
 
         $financialKpis = [

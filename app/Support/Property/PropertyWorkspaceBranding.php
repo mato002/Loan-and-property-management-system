@@ -90,7 +90,7 @@ final class PropertyWorkspaceBranding
         $role = strtolower(trim((string) ($user->property_portal_role ?? '')));
 
         if ($role === 'agent') {
-            return (int) $user->id;
+            return \App\Models\Concerns\AgentWorkspaceScope::currentAgentUserId() ?? (int) $user->id;
         }
 
         if ($role === 'tenant') {

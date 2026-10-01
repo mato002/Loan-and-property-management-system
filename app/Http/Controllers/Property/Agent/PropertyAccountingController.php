@@ -2760,7 +2760,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -2824,7 +2824,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -2932,7 +2932,7 @@ class PropertyAccountingController extends Controller
 
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3046,7 +3046,7 @@ class PropertyAccountingController extends Controller
     {
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3566,7 +3566,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3654,7 +3654,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3987,7 +3987,7 @@ class PropertyAccountingController extends Controller
             return property_view('property.agent.accounting.reports.aged_payables', ['rows' => $rows]);
         }
 
-        $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
+        $agentId = AgentWorkspaceScope::currentAgentUserId();
         $rows = Schema::hasTable('pm_supplier_invoices')
             ? DB::table('pm_supplier_invoices as i')
                 ->leftJoin('pm_suppliers as s', 's.id', '=', 'i.supplier_id')
@@ -4001,7 +4001,7 @@ class PropertyAccountingController extends Controller
 
     public function depositLiabilityReport(Request $request): View
     {
-        $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
+        $agentId = AgentWorkspaceScope::currentAgentUserId();
         $rows = Schema::hasTable('pm_tenant_deposits')
             ? DB::table('pm_tenant_deposits as d')
                 ->leftJoin('pm_tenants as t', 't.id', '=', 'd.tenant_id')

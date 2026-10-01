@@ -55,7 +55,7 @@ class PmEzenReceiptRegister extends Model
                 return;
             }
 
-            $query->where('pm_ezen_receipt_register.agent_user_id', (int) auth()->id());
+            $query->where('pm_ezen_receipt_register.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
         });
     }
 

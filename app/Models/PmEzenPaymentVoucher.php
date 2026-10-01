@@ -102,7 +102,7 @@ class PmEzenPaymentVoucher extends Model
                 return;
             }
 
-            $query->where('pm_ezen_payment_vouchers.agent_user_id', (int) auth()->id());
+            $query->where('pm_ezen_payment_vouchers.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
         });
     }
 

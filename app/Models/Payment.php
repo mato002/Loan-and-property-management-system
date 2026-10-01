@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Support\Facades\Schema;
 
 class Payment extends Model
@@ -45,27 +45,24 @@ class Payment extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || ($user->is_super_admin ?? false) === true) {
-                return;
-            }
-            if ((string) ($user->property_portal_role ?? '') !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
 
             $hasAgentColumn = Schema::hasColumn('payments', 'agent_user_id');
             $hasTenantAgent = Schema::hasColumn('pm_tenants', 'agent_user_id');
 
-            $query->where(function (Builder $scope) use ($user, $hasAgentColumn, $hasTenantAgent) {
+            $query->where(function (Builder $scope) use ($agentId, $hasAgentColumn, $hasTenantAgent) {
                 if ($hasAgentColumn) {
-                    $scope->where('payments.agent_user_id', $user->id);
+                    $scope->where('payments.agent_user_id', $agentId);
                 }
                 if ($hasTenantAgent) {
-                    $scope->orWhereExists(function ($sub) use ($user) {
+                    $scope->orWhereExists(function ($sub) use ($agentId) {
                         $sub->selectRaw('1')
                             ->from('pm_tenants as t')
                             ->whereColumn('t.id', 'payments.tenant_id')
-                            ->where('t.agent_user_id', $user->id);
+                            ->where('t.agent_user_id', $agentId);
                     });
                 }
                 if (! $hasAgentColumn && ! $hasTenantAgent) {

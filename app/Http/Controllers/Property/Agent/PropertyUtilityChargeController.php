@@ -183,7 +183,7 @@ class PropertyUtilityChargeController extends Controller
         if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
             $waterChargePropertyIdsQuery
                 ->join('properties as wp', 'wp.id', '=', 'units.property_id')
-                ->where('wp.agent_user_id', (int) auth()->id());
+                ->where('wp.agent_user_id', \App\Models\Concerns\AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
         }
         $waterChargePropertyIds = $waterChargePropertyIdsQuery
             ->pluck('units.property_id')

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
+use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
@@ -14,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -327,6 +329,7 @@ class PropertyHrEmployeesController extends Controller
         return property_view('property.agent.hr.employees.edit', array_merge([
             'employee' => $employee,
             'agents' => $this->agentOptionsForForm($request),
+            'defaultAgentUserId' => (int) ($employee->agent_user_id ?: $this->defaultAgentUserId($request)),
             'departments' => PropertyHrEmployeeService::DEPARTMENTS,
             'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
             'isFieldOfficer' => (bool) $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title),
@@ -340,7 +343,7 @@ class PropertyHrEmployeesController extends Controller
     {
         $agentUserId = AgentWorkspaceScope::shouldApply()
             ? (int) ($employee->agent_user_id ?: $request->user()->id)
-            : (int) $request->input('agent_user_id', $employee->agent_user_id ?: $request->user()->id);
+            : $this->hr->resolveAgentUserIdForStore($request);
 
         $validated = $this->validateEmployee($request, $employee, $agentUserId);
         $provision = null;
@@ -599,7 +602,9 @@ class PropertyHrEmployeesController extends Controller
             'provision_login' => ['nullable', 'boolean'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['nullable', 'integer', 'exists:pm_roles,id'],
-            'agent_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'agent_user_id' => AgentWorkspaceScope::shouldApply()
+                ? ['nullable', 'integer', 'exists:users,id']
+                : ['required', 'integer', 'exists:users,id'],
         ]);
 
         $isFieldOfficer = $request->boolean('is_field_officer')
@@ -655,7 +660,7 @@ class PropertyHrEmployeesController extends Controller
             return [];
         }
 
-        return User::query()
+        $users = User::query()
             ->where(function ($q) {
                 $q->where('property_portal_role', 'agent')
                     ->orWhereIn('id', function ($sub) {
@@ -663,8 +668,29 @@ class PropertyHrEmployeesController extends Controller
                     });
             })
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (User $u) => ['id' => (int) $u->id, 'name' => (string) $u->name])
+            ->get(['id', 'name']);
+
+        $counts = [];
+        if (Schema::hasTable('properties') && Schema::hasColumn('properties', 'agent_user_id')) {
+            $counts = Property::query()
+                ->withoutGlobalScopes()
+                ->selectRaw('agent_user_id, COUNT(*) as property_count')
+                ->whereNotNull('agent_user_id')
+                ->groupBy('agent_user_id')
+                ->pluck('property_count', 'agent_user_id')
+                ->all();
+        }
+
+        return $users
+            ->map(function (User $u) use ($counts) {
+                $count = (int) ($counts[$u->id] ?? 0);
+                $label = (string) $u->name;
+                if ($count > 0) {
+                    $label .= ' ('.$count.' '.($count === 1 ? 'property' : 'properties').')';
+                }
+
+                return ['id' => (int) $u->id, 'name' => $label, 'property_count' => $count, 'raw_name' => (string) $u->name];
+            })
             ->values()
             ->all();
     }
@@ -687,7 +713,15 @@ class PropertyHrEmployeesController extends Controller
         }
 
         $agents = $this->agentOptionsForForm($request);
+        $preferred = collect($agents)->first(function (array $agent): bool {
+            return str_contains(strtoupper((string) ($agent['raw_name'] ?? $agent['name'] ?? '')), 'PASSION');
+        });
+        if ($preferred) {
+            return (int) $preferred['id'];
+        }
 
-        return (int) ($agents[0]['id'] ?? $request->user()->id);
+        $richest = collect($agents)->sortByDesc('property_count')->first();
+
+        return (int) ($richest['id'] ?? $request->user()->id);
     }
 }

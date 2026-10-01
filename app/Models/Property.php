@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
 class Property extends Model
@@ -186,15 +187,15 @@ class Property extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function ($query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where('properties.agent_user_id', $user->id);
+            $query->where('properties.agent_user_id', $agentId);
         });
     }
 

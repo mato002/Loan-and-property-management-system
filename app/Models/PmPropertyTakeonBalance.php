@@ -37,7 +37,7 @@ class PmPropertyTakeonBalance extends Model
                 return;
             }
 
-            $userId = (int) auth()->id();
+            $userId = AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id();
             $query->where(function (Builder $scope) use ($userId): void {
                 $scope->where('pm_property_takeon_balances.agent_user_id', $userId)
                     ->orWhereIn('pm_property_takeon_balances.property_id', function ($sub) use ($userId): void {

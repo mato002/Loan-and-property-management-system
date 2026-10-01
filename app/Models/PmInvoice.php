@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\InvoiceStateIntegrityService;
@@ -426,23 +427,23 @@ class PmInvoice extends Model
         });
 
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where(function (Builder $q) use ($user) {
+            $query->where(function (Builder $q) use ($agentId) {
                 if (Schema::hasColumn('pm_invoices', 'agent_user_id')) {
-                    $q->where('pm_invoices.agent_user_id', $user->id);
+                    $q->where('pm_invoices.agent_user_id', $agentId);
                 }
-                $q->orWhereIn('property_unit_id', function ($sub) use ($user) {
+                $q->orWhereIn('property_unit_id', function ($sub) use ($agentId) {
                     $sub->select('pu.id')
                         ->from('property_units as pu')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                        ->where('p.agent_user_id', $user->id);
+                        ->where('p.agent_user_id', $agentId);
                 });
             });
         });

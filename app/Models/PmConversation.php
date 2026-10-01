@@ -44,18 +44,19 @@ class PmConversation extends Model
                 return;
             }
 
-            $userId = (int) Auth::id();
+            $staffId = (int) Auth::id();
+            $agentId = AgentWorkspaceScope::currentAgentUserId() ?? $staffId;
             $hasTenantAgent = Schema::hasColumn('pm_tenants', 'agent_user_id');
 
-            $query->where(function (Builder $scope) use ($userId, $hasTenantAgent) {
-                $scope->where('pm_conversations.assigned_to_user_id', $userId);
+            $query->where(function (Builder $scope) use ($staffId, $agentId, $hasTenantAgent) {
+                $scope->where('pm_conversations.assigned_to_user_id', $staffId);
 
                 if ($hasTenantAgent) {
-                    $scope->orWhereExists(function ($t) use ($userId) {
+                    $scope->orWhereExists(function ($t) use ($agentId) {
                         $t->selectRaw('1')
                             ->from('pm_tenants as ct')
                             ->whereColumn('ct.id', 'pm_conversations.pm_tenant_id')
-                            ->where('ct.agent_user_id', $userId);
+                            ->where('ct.agent_user_id', $agentId);
                     });
                 }
             });

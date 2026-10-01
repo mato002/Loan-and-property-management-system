@@ -44,9 +44,12 @@ class SuperAdminAgentWorkspaceController extends Controller
         $q = trim((string) $request->query('q', ''));
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
 
+        $staffIds = \App\Models\Concerns\AgentWorkspaceScope::staffUserIds();
+
         $agents = User::query()
             ->with(['moduleAccesses' => fn ($q) => $q->where('module', 'property')])
             ->where('property_portal_role', 'agent')
+            ->when($staffIds !== [], fn ($builder) => $builder->whereNotIn('id', $staffIds))
             ->when($q !== '', fn ($builder) => $builder->where(function ($b) use ($q) {
                 $b->where('name', 'like', '%'.$q.'%')
                     ->orWhere('email', 'like', '%'.$q.'%');
@@ -95,6 +98,7 @@ class SuperAdminAgentWorkspaceController extends Controller
 
         $otherAgents = User::query()
             ->where('property_portal_role', 'agent')
+            ->when($staffIds !== [], fn ($builder) => $builder->whereNotIn('id', $staffIds))
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
@@ -129,9 +133,11 @@ class SuperAdminAgentWorkspaceController extends Controller
         $summary = $this->workspaces->summarizeAgents(collect([$agent]))[(int) $agent->id] ?? [];
         $subscription = $this->workspaces->latestSubscription($agent);
 
+        $staffIds = \App\Models\Concerns\AgentWorkspaceScope::staffUserIds();
         $otherAgents = User::query()
             ->where('property_portal_role', 'agent')
             ->where('id', '!=', $agent->id)
+            ->when($staffIds !== [], fn ($builder) => $builder->whereNotIn('id', $staffIds))
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
@@ -165,8 +171,10 @@ class SuperAdminAgentWorkspaceController extends Controller
             }
         }
 
+        $staffIds = \App\Models\Concerns\AgentWorkspaceScope::staffUserIds();
         $agents = User::query()
             ->where('property_portal_role', 'agent')
+            ->when($staffIds !== [], fn ($builder) => $builder->whereNotIn('id', $staffIds))
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
@@ -191,8 +199,10 @@ class SuperAdminAgentWorkspaceController extends Controller
     {
         abort_unless((string) ($agent->property_portal_role ?? '') === 'agent', 404);
 
+        $staffIds = \App\Models\Concerns\AgentWorkspaceScope::staffUserIds();
         $agents = User::query()
             ->where('property_portal_role', 'agent')
+            ->when($staffIds !== [], fn ($builder) => $builder->whereNotIn('id', $staffIds))
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 

@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 
 class PmTenant extends Model
@@ -88,40 +88,40 @@ class PmTenant extends Model
                 return;
             }
 
-            $user = Auth::user();
-            if ($user && ! ($user->is_super_admin ?? false) && (string) $user->property_portal_role === 'agent') {
-                $tenant->agent_user_id = (int) $user->id;
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId !== null) {
+                $tenant->agent_user_id = $agentId;
             }
         });
 
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
 
             if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-                $query->where('pm_tenants.agent_user_id', $user->id);
+                $query->where('pm_tenants.agent_user_id', $agentId);
 
                 return;
             }
 
-            $query->where(function (Builder $tenantQuery) use ($user) {
-                $tenantQuery->whereExists(function ($sub) use ($user) {
+            $query->where(function (Builder $tenantQuery) use ($agentId) {
+                $tenantQuery->whereExists(function ($sub) use ($agentId) {
                     $sub->selectRaw('1')
                         ->from('pm_invoices as i')
                         ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('i.pm_tenant_id', 'pm_tenants.id')
-                        ->where('p.agent_user_id', $user->id);
-                })->orWhereExists(function ($sub) use ($user) {
+                        ->where('p.agent_user_id', $agentId);
+                })->orWhereExists(function ($sub) use ($agentId) {
                     $sub->selectRaw('1')
                         ->from('pm_leases as l')
                         ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
                         ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('l.pm_tenant_id', 'pm_tenants.id')
-                        ->where('p.agent_user_id', $user->id);
+                        ->where('p.agent_user_id', $agentId);
                 });
             });
         });

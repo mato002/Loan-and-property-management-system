@@ -11,12 +11,14 @@
 
 @if (($agents ?? []) !== [])
     <div>
-        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agent workspace</label>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Company / agency <span class="text-rose-600">*</span></label>
         <select name="agent_user_id" required class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+            <option value="">Select company</option>
             @foreach ($agents as $agent)
                 <option value="{{ $agent['id'] }}" @selected((int) old('agent_user_id', $employeeModel->agent_user_id ?? $defaultAgentUserId ?? 0) === (int) $agent['id'])>{{ $agent['name'] }}</option>
             @endforeach
         </select>
+        <p class="mt-1 text-xs text-slate-500">This staff member will see properties, tenants, and invoices for the selected company — not the super-admin account.</p>
         @error('agent_user_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
     </div>
 @endif

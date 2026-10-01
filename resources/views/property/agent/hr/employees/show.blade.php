@@ -95,6 +95,7 @@
                 <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Profile</h3>
                     <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
+                        <p><span class="text-slate-500">Company:</span> {{ $employee->agentUser?->name ?: '—' }}</p>
                         <p><span class="text-slate-500">Name:</span> {{ $employee->full_name }}</p>
                         <p><span class="text-slate-500">Email:</span> {{ $employee->email ?: '—' }}</p>
                         <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$employee->phone" /></p>
