@@ -409,7 +409,7 @@ class PropertyPortfolioController extends Controller
 
         return TabularExport::stream(
             'properties_'.now()->format('Ymd_His'),
-            ['ID', 'Name', 'Code', 'Address', 'City', 'Total Units', 'Occupied Units', 'Vacant Units', 'Utility charges', 'Landlords', 'Status'],
+            ['Name', 'Code', 'Address', 'City', 'Units', 'Occupied', 'Vacant', 'Utility charges', 'Landlords', 'Management', 'Occupancy'],
             function () use ($rows, $propertyChargeTemplatesByPropertyId) {
                 foreach ($rows as $p) {
                     $status = $p->units_count === 0
@@ -419,7 +419,6 @@ class PropertyPortfolioController extends Controller
                     $chargeSummary = implode('; ', $this->uniqueChargeTypeLabels($chargeTemplates));
 
                     yield [
-                        $p->id,
                         $p->name,
                         $p->code,
                         $p->address_line,
@@ -429,11 +428,13 @@ class PropertyPortfolioController extends Controller
                         $p->vacant_units_count,
                         $chargeSummary,
                         $p->landlords->pluck('name')->join(', '),
+                        $p->managementStatusLabel(),
                         $status,
                     ];
                 }
             },
             $format,
+            ['title' => 'Properties'],
         );
     }
 
@@ -1075,6 +1076,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
             'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -3294,6 +3297,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
             'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -3378,6 +3383,8 @@ class PropertyPortfolioController extends Controller
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
             'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -3634,11 +3641,18 @@ class PropertyPortfolioController extends Controller
             $isVariable = $amountMode === 'variable';
             $rate = $isVariable ? 0.0 : (is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0);
             $fixed = $isVariable ? 0.0 : (is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0);
+            $maintenance = $isVariable ? 0.0 : (is_numeric($row['maintenance_fee'] ?? null) ? max(0.0, (float) $row['maintenance_fee']) : 0.0);
+            $waterAmount = (! $isVariable && $chargeType === 'water' && is_numeric($row['water_amount'] ?? null))
+                ? max(0.0, (float) $row['water_amount'])
+                : null;
+            if ($waterAmount !== null) {
+                $fixed = round($waterAmount + $maintenance, 2);
+            }
             $notes = trim((string) ($row['notes'] ?? ''));
             if (! $isVariable && $label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
                 continue;
             }
-            $normalized[] = [
+            $entry = [
                 'property_unit_id' => $propertyUnitId,
                 'charge_type' => $chargeType,
                 'label' => $label !== '' ? $label : ucfirst(str_replace('_', ' ', $chargeType)),
@@ -3649,6 +3663,11 @@ class PropertyPortfolioController extends Controller
                 'escalates_with_rent' => in_array($row['escalates_with_rent'] ?? 0, [1, '1', true, 'true'], true),
                 'notes' => Str::limit($notes, 500, ''),
             ];
+            if ($waterAmount !== null && $maintenance > 0.009) {
+                $entry['water_amount'] = round($waterAmount, 2);
+                $entry['maintenance_fee'] = round($maintenance, 2);
+            }
+            $normalized[] = $entry;
         }
 
         return array_slice($normalized, 0, 200);
@@ -3730,6 +3749,11 @@ class PropertyPortfolioController extends Controller
             }
 
             $label = trim((string) ($template['label'] ?? ''));
+            $maintenance = is_numeric($template['maintenance_fee'] ?? null) ? max(0.0, (float) $template['maintenance_fee']) : 0.0;
+            if ($maintenance > 0.009) {
+                $waterPart = is_numeric($template['water_amount'] ?? null) ? (float) $template['water_amount'] : max(0.0, (float) ($template['fixed_charge'] ?? 0) - $maintenance);
+                $label = trim($label.' ('.number_format($waterPart, 2, '.', '').' + '.number_format($maintenance, 2, '.', '').' maintenance)');
+            }
             $rate = is_numeric($template['rate_per_unit'] ?? null) ? max(0.0, (float) $template['rate_per_unit']) : 0.0;
             $fixed = is_numeric($template['fixed_charge'] ?? null) ? max(0.0, (float) $template['fixed_charge']) : 0.0;
             $isRatePerUnit = $rate > 0.0 && $fixed <= 0.0;
@@ -3761,7 +3785,7 @@ class PropertyPortfolioController extends Controller
         $managedTypes = [];
         foreach (array_merge($previous, $templates) as $row) {
             $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
-            if ($type === '' || $type === 'water') {
+            if ($type === '' || ($type === 'water' && $this->isVariableChargeTemplate($row))) {
                 continue;
             }
             $managedTypes[$type] = $type;
@@ -3774,7 +3798,7 @@ class PropertyPortfolioController extends Controller
         $byUnit = [];
         foreach ($templates as $row) {
             $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
-            if ($type === '' || $type === 'water' || $this->isVariableChargeTemplate($row)) {
+            if ($type === '' || $this->isVariableChargeTemplate($row)) {
                 continue;
             }
             $amount = $this->templateStandingAmount($row);
@@ -3787,6 +3811,11 @@ class PropertyPortfolioController extends Controller
                 'fixed_charge' => number_format($amount, 2, '.', ''),
                 'label' => (string) ($row['label'] ?? ''),
             ];
+            $maintenanceFee = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+            if ($type === 'water' && $maintenanceFee > 0.009) {
+                $payload['water_amount'] = number_format((float) ($row['water_amount'] ?? 0), 2, '.', '');
+                $payload['maintenance_fee'] = number_format($maintenanceFee, 2, '.', '');
+            }
             $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
                 ? (int) $row['property_unit_id']
                 : 0;

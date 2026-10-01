@@ -612,18 +612,21 @@ class PmInvoiceController extends Controller
             $items = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'invoices-'.now()->format('Ymd_His'),
-                ['Invoice #', 'Charge', 'Charge detail', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Balance', 'Issued', 'Due', 'Status'],
+                ['Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status'],
                 function () use ($items) {
                     foreach ($items as $i) {
+                        $charge = (string) $i->chargeCategoryLabel();
+                        $detail = trim((string) ($i->chargeDetailHint() ?? ''));
+                        if ($detail !== '') {
+                            $charge .= ' — '.$detail;
+                        }
                         yield [
                             (string) $i->invoice_no,
-                            $i->chargeCategoryLabel(),
-                            (string) ($i->chargeDetailHint() ?? ''),
+                            $charge,
                             (string) ($i->tenant->name ?? ''),
                             (string) (($i->unit->property->name ?? '').'/'.($i->unit->label ?? '')),
                             $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? ''),
                             number_format((float) $i->amount, 2, '.', ''),
-                            number_format((float) $i->amount_paid, 2, '.', ''),
                             number_format(max(0, (float) $i->amount - (float) $i->amount_paid), 2, '.', ''),
                             $i->issue_date?->format('Y-m-d') ?? '',
                             $i->due_date?->format('Y-m-d') ?? '',
@@ -631,7 +634,8 @@ class PmInvoiceController extends Controller
                         ];
                     }
                 },
-                $export
+                $export,
+                ['title' => 'Invoices'],
             );
         }
 

@@ -39,11 +39,12 @@ class TabularExport
     public static function stream(string $filenameBase, array $headers, Closure $rows, string $format, array $options = []): StreamedResponse
     {
         $format = strtolower(trim($format));
+        $options = self::withDocumentContext($filenameBase, $options);
 
         return match ($format) {
             self::FORMAT_PDF => self::streamPdf($filenameBase.'.pdf', $headers, $rows, $options),
             self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows, $options),
-            self::FORMAT_XLS, 'xlsx' => self::streamSpreadsheetMl($filenameBase.'.xls', $headers, $rows),
+            self::FORMAT_XLS, 'xlsx' => self::streamSpreadsheetMl($filenameBase.'.xls', $headers, $rows, $options),
             default => CsvExport::stream($filenameBase.'.csv', $headers, $rows),
         };
     }
@@ -130,28 +131,61 @@ class TabularExport
     }
 
     /**
-     * Excel-openable SpreadsheetML (.xls) so migration copies are not CSV renamed as Excel.
-     *
      * @param  list<string>  $headers
      * @param  Closure(): iterable<array<int, scalar|null>>  $rows
+     * @param  array<string,mixed>  $options
      */
-    private static function streamSpreadsheetMl(string $filename, array $headers, Closure $rows): StreamedResponse
+    private static function streamSpreadsheetMl(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
     {
         $esc = static fn ($v): string => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_XML1, 'UTF-8');
-        $cell = static function (mixed $value) use ($esc): string {
+        $cell = static function (mixed $value, string $style = '') use ($esc): string {
+            $styleAttr = $style !== '' ? ' ss:StyleID="'.$style.'"' : '';
             $raw = trim((string) ($value ?? ''));
-            if ($raw !== '' && preg_match('/^-?\d+(\.\d+)?$/', $raw) === 1) {
-                return '<Cell><Data ss:Type="Number">'.$esc($raw).'</Data></Cell>';
+            if ($style === '' && $raw !== '' && preg_match('/^-?\d+(\.\d+)?$/', $raw) === 1) {
+                return '<Cell'.$styleAttr.'><Data ss:Type="Number">'.$esc($raw).'</Data></Cell>';
             }
 
-            return '<Cell><Data ss:Type="String">'.$esc($raw).'</Data></Cell>';
+            return '<Cell'.$styleAttr.'><Data ss:Type="String">'.$esc($raw).'</Data></Cell>';
         };
+        $span = max(0, count($headers) - 1);
+        $banner = static function (string $text, string $style) use ($esc, $span): string {
+            return '<Row><Cell ss:MergeAcross="'.$span.'" ss:StyleID="'.$style.'"><Data ss:Type="String">'.$esc($text).'</Data></Cell></Row>';
+        };
+
+        $agentUserId = isset($options['agent_user_id']) && (int) $options['agent_user_id'] > 0
+            ? (int) $options['agent_user_id']
+            : PropertyWorkspaceBranding::resolveViewerAgentUserId();
+        $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
+        $brandName = self::brandName($doc);
+        $title = trim((string) ($options['title'] ?? 'Report'));
+        $subtitle = trim((string) ($options['subtitle'] ?? ''));
+        $contact = implode(' · ', array_values(array_filter([
+            trim((string) ($doc['contact_phone'] ?? '')),
+            trim((string) ($doc['contact_email_primary'] ?? '')),
+            trim((string) ($doc['contact_address'] ?? '')),
+        ])));
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
         $xml .= '<?mso-application progid="Excel.Sheet"?>'."\n";
         $xml .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+        $xml .= '<Styles>'
+            .'<Style ss:ID="brand"><Font ss:Bold="1" ss:Size="16" ss:Color="#0F766E"/></Style>'
+            .'<Style ss:ID="title"><Font ss:Bold="1" ss:Size="13"/></Style>'
+            .'<Style ss:ID="meta"><Font ss:Size="10" ss:Color="#444444"/></Style>'
+            .'<Style ss:ID="head"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/></Style>'
+            .'</Styles>';
         $xml .= '<Worksheet ss:Name="Export"><Table>';
-        $xml .= '<Row>'.implode('', array_map($cell, $headers)).'</Row>';
+        $xml .= $banner($brandName, 'brand');
+        if ($contact !== '') {
+            $xml .= $banner($contact, 'meta');
+        }
+        $xml .= $banner($title, 'title');
+        if ($subtitle !== '') {
+            $xml .= $banner($subtitle, 'meta');
+        }
+        $xml .= $banner('Generated '.now()->format('d M Y, h:i A'), 'meta');
+        $xml .= '<Row></Row>';
+        $xml .= '<Row>'.implode('', array_map(fn ($header) => $cell($header, 'head'), $headers)).'</Row>';
         foreach ($rows() as $row) {
             $xml .= '<Row>';
             foreach ($row as $value) {
@@ -166,6 +200,76 @@ class TabularExport
         }, $filename, [
             'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    private static function withDocumentContext(string $filenameBase, array $options): array
+    {
+        $options['filename_base'] = $filenameBase;
+        if (trim((string) ($options['title'] ?? '')) === '') {
+            $base = (string) preg_replace('/-\d{8}(?:[_-]?\d{4,6})?$/', '', $filenameBase);
+            $options['title'] = Str::headline(str_replace(['-', '_'], ' ', $base));
+        }
+
+        $filterNote = self::activeFilterNote();
+        $subtitle = trim((string) ($options['subtitle'] ?? ''));
+        if ($filterNote !== '') {
+            $options['subtitle'] = ($subtitle !== '' ? $subtitle.' · ' : '').'Filtered · '.$filterNote;
+        } elseif ($subtitle === '') {
+            $options['subtitle'] = 'All records — no list filters applied';
+        }
+
+        return $options;
+    }
+
+    public static function activeFilterNote(): string
+    {
+        if (! app()->bound('request')) {
+            return '';
+        }
+
+        $ignore = ['export', 'format', 'page', 'per_page', 'sort', 'dir', 'export_scope', '_token', 'print'];
+        $parts = [];
+        foreach (request()->query() as $key => $value) {
+            if (in_array((string) $key, $ignore, true)) {
+                continue;
+            }
+            if (is_array($value)) {
+                $value = implode(', ', array_filter(array_map(static fn ($item) => trim((string) $item), $value)));
+            }
+            $value = trim((string) $value);
+            if ($value === '' || in_array(strtolower($value), ['0', 'all', 'any'], true)) {
+                continue;
+            }
+            $parts[] = Str::headline(str_replace('_', ' ', (string) $key)).': '.str_replace('_', ' ', $value);
+            if (count($parts) >= 8) {
+                break;
+            }
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /**
+     * @param  array<string, mixed>  $doc
+     */
+    private static function brandName(array $doc): string
+    {
+        $brandName = trim((string) ($doc['company_name'] ?? ''));
+        if ($brandName === '' || strtolower($brandName) === 'laravel' || strtolower($brandName) === 'property manager') {
+            $appName = trim((string) config('app.name', 'Property Management System'));
+            if ($appName !== '' && strtolower($appName) !== 'laravel') {
+                return $appName;
+            }
+            if ($brandName === '' || strtolower($brandName) === 'laravel') {
+                return 'Property Management System';
+            }
+        }
+
+        return $brandName;
     }
 
     /**
@@ -184,15 +288,7 @@ class TabularExport
             ? (int) $options['agent_user_id']
             : PropertyWorkspaceBranding::resolveViewerAgentUserId();
         $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
-        $brandName = trim((string) ($doc['company_name'] ?? ''));
-        if ($brandName === '' || strtolower($brandName) === 'laravel' || strtolower($brandName) === 'property manager') {
-            $appName = trim((string) config('app.name', 'Property Management System'));
-            if ($appName !== '' && strtolower($appName) !== 'laravel') {
-                $brandName = $appName;
-            } elseif ($brandName === '' || strtolower($brandName) === 'laravel') {
-                $brandName = 'Property Management System';
-            }
-        }
+        $brandName = self::brandName($doc);
         $brandTagline = Schema::hasTable('property_portal_settings')
             ? trim((string) (PropertyPortalSetting::getValue('company_tagline', '') ?? ''))
             : '';
@@ -252,7 +348,8 @@ class TabularExport
             .meta{font-size:10px;color:#555;margin:6px 0 10px;}
             table{width:100%;border-collapse:collapse;table-layout:fixed;}
             th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-break:break-word;}
-            th{background:#f3f4f6;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;}
+            th{background:'.$esc($accent).';color:#fff;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.02em;}
+            tr:nth-child(even) td{background:#f8fafc;}
             .summary-wrap{margin-top:12px;display:flex;justify-content:flex-end;}
             .summary-table{width:48%;border-collapse:collapse;}
             .summary-table th,.summary-table td{border:1px solid #ddd;padding:6px;font-size:11px;}

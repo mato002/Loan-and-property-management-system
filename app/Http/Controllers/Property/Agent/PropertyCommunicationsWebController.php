@@ -698,27 +698,34 @@ class PropertyCommunicationsWebController extends Controller
 
         return TabularExport::stream(
             'communications-messages',
-            ['ID', 'When', 'Channel', 'Internal Stage', 'Display Label', 'Status', 'To', 'Subject', 'Body', 'Delivery Error', 'Sent At', 'By'],
+            ['When', 'Channel', 'Internal stage', 'Display label', 'Status', 'To', 'Subject', 'Preview / error', 'By'],
             function () use ($rows, $canViewBody) {
+                $presenter = app(SmsDeliveryErrorPresenter::class);
                 foreach ($rows as $l) {
                     $parsed = app(TenantCommunicationStageService::class)->parseStaffSubject($l->subject);
+                    $preview = trim((string) ($l->delivery_error ?? ''));
+                    if ($preview !== '') {
+                        $preview = $presenter->forChannel((string) $l->channel, $preview);
+                    } elseif ($canViewBody) {
+                        $preview = trim(strip_tags((string) $l->body));
+                    } else {
+                        $preview = '';
+                    }
                     yield [
-                        $l->id,
-                        optional($l->created_at)->format('Y-m-d H:i:s'),
+                        optional($l->created_at)->format('Y-m-d H:i'),
                         strtoupper((string) $l->channel),
                         (string) ($l->internal_stage ?: ($parsed['internal_stage'] ?? '')),
                         (string) ($l->display_stage ?: ($parsed['display_label'] ?? '')),
                         strtoupper((string) ($l->delivery_status ?? 'unknown')),
                         $this->maskAddress((string) $l->to_address),
                         (string) ($l->subject ?? ''),
-                        $canViewBody ? strip_tags((string) $l->body) : '[MASKED]',
-                        (string) ($l->delivery_error ?? ''),
-                        optional($l->sent_at)->format('Y-m-d H:i:s') ?? '',
+                        $preview,
                         (string) ($l->user?->name ?? 'System'),
                     ];
                 }
             },
-            $format
+            $format,
+            ['title' => 'Emails and SMS'],
         );
     }
 

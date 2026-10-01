@@ -195,7 +195,8 @@ class PmPaymentController extends Controller
                         ];
                     }
                 },
-                $export
+                $export,
+                ['title' => 'Payments'],
             );
         }
 

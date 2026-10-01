@@ -643,12 +643,16 @@ SQL;
 
         return [
             (string) $lease->id,
+            $units !== '' ? $units : '',
+            (string) ($lease->pmTenant?->account_number ?? ''),
             (string) ($lease->pmTenant?->name ?? ''),
-            $units !== '' ? $units : '—',
+            (string) ($lease->pmTenant?->phone ?? ''),
+            (string) ($lease->pmTenant?->email ?? ''),
+            number_format((float) $lease->monthly_rent, 2, '.', ''),
+            number_format((float) ($lease->pmTenant?->opening_arrears_amount ?? 0), 2, '.', ''),
             $lease->start_date?->format('Y-m-d') ?? '',
             $lease->end_date?->format('Y-m-d') ?? 'Open-ended',
-            number_format((float) $lease->monthly_rent, 2, '.', ''),
-            number_format((float) $lease->deposit_amount, 2, '.', ''),
+            (string) ($lease->lease_variation_type ?? ''),
             ucfirst((string) $lease->status),
         ];
     }
@@ -677,13 +681,14 @@ SQL;
 
         return TabularExport::stream(
             $filename.'-'.now()->format('Ymd_His'),
-            ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent (KES)', 'Deposit (KES)', 'Status'],
+            ['Lease #', 'Unit(s)', 'Ac/No', 'Tenant', 'Phone', 'Email', 'Rent', 'A/c balance', 'Start', 'End', 'Variation', 'Status'],
             function () use ($leaseQuery): \Generator {
-                foreach ($leaseQuery->limit(5000)->cursor() as $lease) {
+                foreach ($leaseQuery->with(['pmTenant', 'units.property'])->limit(5000)->cursor() as $lease) {
                     yield $this->mapLeaseExportRow($lease);
                 }
             },
-            $export
+            $export,
+            ['title' => $activeTab === 'expiry' ? 'Lease expiry' : 'Leases'],
         );
     }
 

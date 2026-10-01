@@ -125,22 +125,23 @@ class PmMaintenanceWebController extends Controller
 
         return TabularExport::stream(
             'maintenance_requests_'.now()->format('Ymd_His'),
-            ['ID', 'Unit', 'Category', 'Description', 'Urgency', 'Status', 'Reported By', 'Created At'],
+            ['ID', 'Unit', 'Category', 'Summary', 'Reported', 'Priority', 'Status', 'Assignee'],
             function () use ($rows) {
                 foreach ($rows as $r) {
                     yield [
-                        $r->id,
-                        $r->unit->property->name.'/'.$r->unit->label,
+                        '#'.$r->id,
+                        ($r->unit?->property?->name ?? '').'/'.($r->unit?->label ?? ''),
                         $r->category,
                         $r->description,
-                        $r->urgency,
-                        $r->status,
-                        $r->reportedBy?->name,
-                        optional($r->created_at)->format('Y-m-d H:i:s'),
+                        optional($r->created_at)->format('Y-m-d'),
+                        ucfirst((string) $r->urgency),
+                        ucfirst(str_replace('_', ' ', (string) $r->status)),
+                        $r->reportedBy?->name ?? '',
                     ];
                 }
             },
             $format,
+            ['title' => 'Maintenance requests'],
         );
     }
 
