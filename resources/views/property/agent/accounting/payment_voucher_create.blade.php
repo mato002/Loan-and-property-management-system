@@ -1,4 +1,5 @@
-<x-property.workspace
+<x-property.crud-shell
+    :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Record payment voucher"
     subtitle="Outgoing payment. The voucher number is assigned when you save. Line totals must equal the control amount."
     back-route="property.accounting.payables.payment_vouchers"
@@ -145,4 +146,4 @@
             <a href="{{ route('property.accounting.payables.payment_vouchers', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">Cancel</a>
         </div>
     </form>
-</x-property.workspace>
+</x-property.crud-shell>

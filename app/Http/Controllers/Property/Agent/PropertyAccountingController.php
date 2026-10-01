@@ -3019,6 +3019,12 @@ class PropertyAccountingController extends Controller
             $data['lines'],
         );
 
+        if (\App\Support\Property\PropertyFormModal::fromModal($request)) {
+            return response()->view('property.agent.partials.form_modal_success', [
+                'message' => 'Voucher '.$voucher->ezen_voucher_no.' recorded.',
+            ]);
+        }
+
         return redirect()
             ->route('property.accounting.payables.payment_vouchers.show', $voucher)
             ->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded.');
@@ -3046,6 +3052,7 @@ class PropertyAccountingController extends Controller
             ->get(['u.id', 'u.name']);
 
         return [
+            'inPropertyFormModal' => \App\Support\Property\PropertyFormModal::wants($request),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
             'landlords' => $landlords,
             'expenseGroups' => PmEzenPaymentVoucher::EXPENSE_GROUPS,
