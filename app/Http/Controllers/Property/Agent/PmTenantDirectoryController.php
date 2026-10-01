@@ -71,40 +71,92 @@ class PmTenantDirectoryController extends Controller
         $tenants = $this->buildTenantDirectoryQuery($request)
             ->with(['leases' => function ($query): void {
                 $query->where('status', PmLease::STATUS_ACTIVE)
+                    ->with(['units.property'])
                     ->orderByDesc('start_date');
             }])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
         $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        $statementLedger = app(TenantStatementLedgerService::class);
+        $stats = $this->tenantDirectoryStatsFromQuery($request);
 
         return TabularExport::stream(
             'tenant_directory_'.now()->format('Ymd_His'),
-            ['name', 'phone', 'email', 'national_id', 'profile_status', 'risk_level', 'portal_login', 'leases_count', 'lease_end', 'charges'],
-            function () use ($tenants): \Generator {
+            ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk'],
+            function () use ($tenants, $statementLedger): \Generator {
                 foreach ($tenants as $tenant) {
+                    $activeLease = $tenant->leases->first();
+                    $activeUnit = $activeLease?->units->first();
+                    $unitLabel = $activeUnit
+                        ? trim((string) (($activeUnit->property->name ?? '').' / '.$activeUnit->label), ' /')
+                        : '';
+                    $balance = $statementLedger->closingBalance($tenant);
+                    $balanceText = abs($balance) <= 0.009
+                        ? '0.00'
+                        : ($balance < 0 ? 'CR '.number_format(abs($balance), 2) : number_format($balance, 2));
                     $leaseEnd = $tenant->leases_max_end_date
                         ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
                         : '';
                     $status = TenantProfileStatus::forTenant($tenant);
-                    $activeLease = $tenant->leases->first();
 
                     yield [
                         (string) $tenant->name,
+                        (string) ($tenant->account_number ?? ''),
                         (string) ($tenant->phone ?? ''),
                         (string) ($tenant->email ?? ''),
-                        (string) ($tenant->national_id ?? ''),
-                        (string) $status['label'],
-                        (string) ($tenant->risk_level ?? 'normal'),
-                        $tenant->user_id ? 'yes' : 'no',
-                        (string) ($tenant->leases_count ?? 0),
-                        $leaseEnd,
+                        $unitLabel,
+                        $balanceText,
+                        $activeLease?->monthly_rent !== null ? number_format((float) $activeLease->monthly_rent, 2) : '',
                         LeaseStandingCharges::exportText($activeLease),
+                        $activeLease?->start_date?->format('Y-m-d') ?? '',
+                        $leaseEnd,
+                        (string) ($tenant->leases_count ?? 0),
+                        (string) ($status['label'] ?? ''),
+                        ucfirst((string) ($tenant->risk_level ?? 'normal')),
                     ];
                 }
             },
             $format,
+            [
+                'title' => 'Tenant directory',
+                'subtitle' => 'Same columns as the tenant list'.($this->directoryExportFilterNote($request) !== '' ? ' · '.$this->directoryExportFilterNote($request) : ''),
+                'summary' => [
+                    'Tenants' => (string) ($stats[0]['value'] ?? $tenants->count()),
+                    'Active' => (string) ($stats[1]['value'] ?? ''),
+                    'Not active' => (string) ($stats[2]['value'] ?? ''),
+                ],
+            ],
         );
+    }
+
+    private function directoryExportFilterNote(Request $request): string
+    {
+        $parts = [];
+        $search = trim((string) $request->string('q'));
+        if ($search !== '') {
+            $parts[] = 'Search: '.$search;
+        }
+        $status = trim((string) $request->string('status'));
+        if ($status !== '') {
+            $parts[] = 'Status: '.str_replace('_', ' ', $status);
+        }
+        $balance = trim((string) $request->string('balance'));
+        if ($balance !== '') {
+            $parts[] = 'Balance: '.str_replace('_', ' ', $balance);
+        }
+        $risk = trim((string) $request->string('risk'));
+        if ($risk !== '') {
+            $parts[] = 'Risk: '.$risk;
+        }
+        if ((int) $request->integer('property_id') > 0) {
+            $parts[] = 'Property filter on';
+        }
+        if ((int) $request->integer('unit_id') > 0) {
+            $parts[] = 'Unit filter on';
+        }
+
+        return implode(' · ', $parts);
     }
 
     public function importForm(): View
