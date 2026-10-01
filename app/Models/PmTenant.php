@@ -95,33 +95,34 @@ class PmTenant extends Model
         });
 
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId === null) {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
 
-            if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-                $query->where('pm_tenants.agent_user_id', $agentId);
+            $query->where(function (Builder $tenantQuery) use ($ownerIds) {
+                if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                    $tenantQuery->where(function (Builder $owned) use ($ownerIds) {
+                        $owned->whereIn('pm_tenants.agent_user_id', $ownerIds)
+                            ->orWhereNull('pm_tenants.agent_user_id');
+                    });
+                }
 
-                return;
-            }
-
-            $query->where(function (Builder $tenantQuery) use ($agentId) {
-                $tenantQuery->whereExists(function ($sub) use ($agentId) {
+                $tenantQuery->orWhereExists(function ($sub) use ($ownerIds) {
                     $sub->selectRaw('1')
                         ->from('pm_invoices as i')
                         ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('i.pm_tenant_id', 'pm_tenants.id')
-                        ->where('p.agent_user_id', $agentId);
-                })->orWhereExists(function ($sub) use ($agentId) {
+                        ->whereIn('p.agent_user_id', $ownerIds);
+                })->orWhereExists(function ($sub) use ($ownerIds) {
                     $sub->selectRaw('1')
                         ->from('pm_leases as l')
                         ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
                         ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('l.pm_tenant_id', 'pm_tenants.id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', $ownerIds);
                 });
             });
         });

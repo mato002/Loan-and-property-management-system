@@ -52,7 +52,7 @@ class UnassignedPayment extends Model
 
             $query->where(function (Builder $scope) use ($agentId, $hasAgentColumn, $hasTenantAgent) {
                 if ($hasAgentColumn) {
-                    $scope->where('unassigned_payments.agent_user_id', $agentId);
+                    $scope->whereIn('unassigned_payments.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 }
                 if ($hasTenantAgent) {
                     // Legacy rows (agent_user_id NULL) — claim by phone/account match.
@@ -63,7 +63,7 @@ class UnassignedPayment extends Model
                         $legacy->whereExists(function ($sub) use ($agentId) {
                             $sub->selectRaw('1')
                                 ->from('pm_tenants as t')
-                                ->where('t.agent_user_id', $agentId)
+                                ->whereIn('t.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds())
                                 ->where(function ($cmp) {
                                     $cmp->whereColumn('t.phone', 'unassigned_payments.phone')
                                         ->orWhereColumn('t.account_number', 'unassigned_payments.account_number');

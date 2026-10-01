@@ -2142,6 +2142,18 @@
     @apply w-full min-w-0;
   }
 
+  .property-erp-header__actions > button,
+  .property-erp-header__actions > a,
+  .property-erp-header__actions > select {
+    width: auto !important;
+    max-width: 100%;
+  }
+
+  .property-export-select {
+    width: auto !important;
+    max-width: 9.5rem;
+  }
+
   @media (min-width: 768px) {
     .property-workspace-toolbar-host,
     .property-filter-toolbar.property-workspace-toolbar-host {
@@ -2360,6 +2372,10 @@ html[data-pwa-context='portal'] {
   background-color: var(--brand-navy);
 }
 
+html[data-brand-palette='passion-homes'][data-pwa-context='portal'] {
+  background-color: #f8fafc;
+}
+
 html[data-pwa-context='portal'] .property-topbar > .bg-gradient-to-r {
   background-color: var(--brand-primary);
   background-image: linear-gradient(
@@ -2443,15 +2459,79 @@ html[data-brand-palette='passion-homes'] .property-topbar .bg-emerald-50 {
   color: var(--brand-accent, #1b75bc) !important;
 }
 
-html[data-brand-palette='passion-homes'] .property-sidebar [aria-current='page'] {
-  background-color: var(--brand-navy-hover, #1e293b) !important;
-  border-color: var(--brand-primary, #c0392b) !important;
-  color: #ffffff !important;
+html[data-brand-palette='passion-homes'][data-pwa-context='portal'] .property-sidebar {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+  box-shadow: none !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar a,
+html[data-brand-palette='passion-homes'] .property-sidebar button,
+html[data-brand-palette='passion-homes'] .property-sidebar span,
+html[data-brand-palette='passion-homes'] .property-sidebar i {
+  color: #334155;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar [class*='border-[#406866]'],
+html[data-brand-palette='passion-homes'] .property-sidebar [class*='border-[#264040]'],
+html[data-brand-palette='passion-homes'] .property-sidebar [class*='border-[#5a8583]'] {
+  border-color: #e2e8f0 !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar [class*=' bg-[#243d3d]'],
+html[data-brand-palette='passion-homes'] .property-sidebar [class*=' bg-[#406866]'],
+html[data-brand-palette='passion-homes'] .property-sidebar [class*=' bg-[#2f4f4f]'] {
+  background-color: #f8fafc !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar-brand-logo,
+html[data-brand-palette='passion-homes'] .property-sidebar-avatar {
+  background-color: #ebf5fb !important;
+  color: #1b75bc !important;
+  border-color: #bfdbfe !important;
+  box-shadow: none !important;
 }
 
 html[data-brand-palette='passion-homes'] .property-sidebar a:hover,
 html[data-brand-palette='passion-homes'] .property-sidebar button:hover {
-  background-color: rgb(30 41 59 / 0.85);
+  background-color: #f8fafc !important;
+  color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar a:hover span,
+html[data-brand-palette='passion-homes'] .property-sidebar a:hover i,
+html[data-brand-palette='passion-homes'] .property-sidebar button:hover span,
+html[data-brand-palette='passion-homes'] .property-sidebar button:hover i {
+  color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar a[aria-current='page'],
+html[data-brand-palette='passion-homes'] .property-sidebar a[aria-current='page']:hover,
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle,
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle:hover {
+  background-color: #f0f9ff !important;
+  border-left-color: #1b75bc !important;
+  border-left-width: 4px !important;
+  color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar a[aria-current='page'] span,
+html[data-brand-palette='passion-homes'] .property-sidebar a[aria-current='page'] i,
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle span,
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle i {
+  color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle [class*=' bg-[#406866]'] {
+  background-color: #e0f2fe !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-sidebar a[aria-current='page'] span[class*='bg-emerald-500'],
+html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active] > .property-section-toggle span[class*='bg-emerald-500'] {
+  background-color: #fdedec !important;
+  color: #c0392b !important;
+  box-shadow: none !important;
 }
 
 html[data-brand-palette='passion-homes'] .property-workspace-tab[aria-current='page'] {
@@ -2461,9 +2541,31 @@ html[data-brand-palette='passion-homes'] .property-workspace-tab[aria-current='p
 }
 
 html[data-brand-palette='passion-homes'] .property-workspace-subtab[aria-current='page'] {
-  background-color: var(--brand-primary-soft, #fdedec) !important;
-  border-color: #e6b0aa !important;
-  color: var(--brand-primary-dark, #7b1e16) !important;
+  background-color: #f0f9ff !important;
+  border-color: #1b75bc !important;
+  color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] a.bg-indigo-600 {
+  background-color: #1b75bc !important;
+}
+
+html[data-brand-palette='passion-homes'] a.hover\:bg-indigo-700:hover {
+  background-color: #155f96 !important;
+}
+
+html[data-brand-palette='passion-homes'] button.bg-indigo-600,
+html[data-brand-palette='passion-homes'] button.bg-emerald-600,
+html[data-brand-palette='passion-homes'] button.bg-emerald-700,
+html[data-brand-palette='passion-homes'] a.bg-emerald-600,
+html[data-brand-palette='passion-homes'] a.bg-emerald-700 {
+  background-color: var(--brand-primary, #c0392b) !important;
+}
+
+html[data-brand-palette='passion-homes'] button.hover\:bg-indigo-700:hover,
+html[data-brand-palette='passion-homes'] button.hover\:bg-emerald-700:hover,
+html[data-brand-palette='passion-homes'] a.hover\:bg-emerald-700:hover {
+  background-color: var(--brand-primary-hover, #922b21) !important;
 }
 
 html[data-brand-palette='passion-homes'] body[data-property-nav-mode='workspace'] .property-workspace-tabs,

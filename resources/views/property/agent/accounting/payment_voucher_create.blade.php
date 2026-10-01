@@ -84,67 +84,80 @@
 
         <div id="voucher-lines">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Lines</h3>
-            <p class="mt-1 text-xs text-slate-500">Each line needs the ledger or property, the service or utility account being paid, and the amount. Tax and line total update as you type. Leave unused lines blank.</p>
+            <p class="mt-1 text-xs text-slate-500">Leave a row blank if you are not using it. Tax and line total fill in from the amount and tax rate.</p>
             @error('lines')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            <div class="mt-3 space-y-3">
-                @for ($i = 0; $i < 6; $i++)
-                    <div data-voucher-line class="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-                        <p class="text-xs font-semibold text-slate-500">Line {{ $i + 1 }}</p>
-                        <div class="grid gap-2 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ledger / property</label>
-                                <select name="lines[{{ $i }}][property_id]" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2">
-                                    <option value="">Select property…</option>
-                                    @foreach ($properties as $property)
-                                        <option value="{{ $property->id }}" @selected((string) old('lines.'.$i.'.property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Expense group</label>
-                                <select name="lines[{{ $i }}][expense_group]" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2">
-                                    <option value="">Use default</option>
-                                    @foreach ($expenseGroups as $value => $group)
-                                        <option value="{{ $value }}" @selected(old('lines.'.$i.'.expense_group') === $value)>{{ $group['label'] }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Svc / utility account</label>
-                                <select name="lines[{{ $i }}][utility_account]" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2">
-                                    <option value="">Select the account this line is paid to…</option>
-                                    @foreach ($serviceAccounts as $account)
-                                        <option value="{{ $account }}" @selected(old('lines.'.$i.'.utility_account') === $account)>{{ $account }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Description</label>
-                                <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description') }}" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2" />
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount</label>
-                                <input type="number" data-amount name="lines[{{ $i }}][amount]" min="0" step="0.01" value="{{ old('lines.'.$i.'.amount') }}" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2" />
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tax rate %</label>
-                                <input type="number" data-rate name="lines[{{ $i }}][tax_rate]" min="0" max="100" step="0.01" value="{{ old('lines.'.$i.'.tax_rate') }}" class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2" />
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tax</label>
-                                <input type="text" data-tax readonly class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 bg-slate-50 text-sm px-2" />
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Line total</label>
-                                <input type="text" data-line-total readonly class="mt-1 w-full min-h-[40px] rounded-lg border border-slate-200 bg-slate-50 text-sm px-2 font-semibold" />
-                            </div>
-                        </div>
-                    </div>
-                @endfor
-            </div>
-            <div class="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
-                <p class="rounded-lg border border-slate-200 px-3 py-2"><span class="text-slate-500">Line totals:</span> <strong id="voucher-line-totals">0.00</strong></p>
-                <p class="rounded-lg border border-slate-200 px-3 py-2"><span class="text-slate-500">Control balance:</span> <strong id="voucher-control-balance">0.00</strong></p>
+            <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                <table class="min-w-[920px] w-full text-xs">
+                    <thead class="bg-slate-50 dark:bg-slate-900/40 text-left text-slate-500">
+                        <tr>
+                            <th class="px-2 py-2 font-medium">Ledger / property</th>
+                            <th class="px-2 py-2 font-medium">Expense group</th>
+                            <th class="px-2 py-2 font-medium">Svc / utility account</th>
+                            <th class="px-2 py-2 font-medium">Description</th>
+                            <th class="px-2 py-2 font-medium">Amount</th>
+                            <th class="px-2 py-2 font-medium">Tax rate</th>
+                            <th class="px-2 py-2 font-medium">Tax</th>
+                            <th class="px-2 py-2 font-medium">Line total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for ($i = 0; $i < 6; $i++)
+                            <tr data-voucher-line class="border-t border-slate-100 dark:border-slate-800">
+                                <td class="px-1 py-1">
+                                    <select name="lines[{{ $i }}][property_id]" class="w-40 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
+                                        <option value="">—</option>
+                                        @foreach ($properties as $property)
+                                            <option value="{{ $property->id }}" @selected((string) old('lines.'.$i.'.property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td class="px-1 py-1">
+                                    <select name="lines[{{ $i }}][expense_group]" class="w-32 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
+                                        <option value="">Default</option>
+                                        @foreach ($expenseGroups as $value => $group)
+                                            <option value="{{ $value }}" @selected(old('lines.'.$i.'.expense_group') === $value)>{{ $group['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td class="px-1 py-1">
+                                    <select name="lines[{{ $i }}][utility_account]" class="w-40 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
+                                        <option value="">—</option>
+                                        @foreach ($serviceAccounts as $account)
+                                            <option value="{{ $account }}" @selected(old('lines.'.$i.'.utility_account') === $account)>{{ $account }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td class="px-1 py-1">
+                                    <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description') }}" class="w-36 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                </td>
+                                <td class="px-1 py-1">
+                                    <input type="number" data-amount name="lines[{{ $i }}][amount]" min="0" step="0.01" value="{{ old('lines.'.$i.'.amount') }}" class="w-24 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                </td>
+                                <td class="px-1 py-1">
+                                    <input type="number" data-rate name="lines[{{ $i }}][tax_rate]" min="0" max="100" step="0.01" value="{{ old('lines.'.$i.'.tax_rate') }}" class="w-16 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                </td>
+                                <td class="px-1 py-1">
+                                    <input type="text" data-tax readonly class="w-20 min-h-[34px] rounded border border-slate-200 bg-slate-50 px-2" />
+                                </td>
+                                <td class="px-1 py-1">
+                                    <input type="text" data-line-total readonly class="w-24 min-h-[34px] rounded border border-slate-200 bg-slate-50 px-2 font-semibold" />
+                                </td>
+                            </tr>
+                        @endfor
+                    </tbody>
+                    <tfoot>
+                        <tr class="border-t border-slate-200 bg-slate-50 dark:bg-slate-900/40">
+                            <td colspan="6"></td>
+                            <td class="px-2 py-2 text-right font-medium text-slate-500">Line totals</td>
+                            <td class="px-2 py-2 font-semibold" id="voucher-line-totals">0.00</td>
+                        </tr>
+                        <tr>
+                            <td colspan="6"></td>
+                            <td class="px-2 py-2 text-right font-medium text-slate-500">Control balance</td>
+                            <td class="px-2 py-2 font-semibold" id="voucher-control-balance">0.00</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
         </div>
 

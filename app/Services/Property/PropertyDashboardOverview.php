@@ -117,8 +117,9 @@ final class PropertyDashboardOverview
 
         $linkedLandlordsQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id');
-        if ($applyAgentFilter && $agentUserId) {
-            $linkedLandlordsQuery->where('p.agent_user_id', $agentUserId);
+        $ownerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+        if ($ownerIds !== []) {
+            $linkedLandlordsQuery->whereIn('p.agent_user_id', $ownerIds);
         }
         $linkedLandlords = (int) $linkedLandlordsQuery->distinct('pl.user_id')->count('pl.user_id');
 
@@ -618,8 +619,9 @@ final class PropertyDashboardOverview
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->orderByDesc('pl.id')
             ->limit(6);
-        if ($applyAgentFilter) {
-            $recentLandlordLinksQuery->where('p.agent_user_id', $agentUserId);
+        $recentOwnerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+        if ($recentOwnerIds !== []) {
+            $recentLandlordLinksQuery->whereIn('p.agent_user_id', $recentOwnerIds);
         }
         $recentLandlordLinks = $recentLandlordLinksQuery
             ->get([
@@ -707,8 +709,9 @@ final class PropertyDashboardOverview
         $landlordUsers = (int) (clone $landlordsQuery)->count();
 
         $linkedQuery = (clone $landlordsQuery)->whereHas('landlordProperties', function ($q) use ($applyAgentFilter, $agentUserId) {
-            if ($applyAgentFilter && $agentUserId) {
-                $q->where('properties.agent_user_id', $agentUserId);
+            $ownerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+            if ($ownerIds !== []) {
+                $q->whereIn('properties.agent_user_id', $ownerIds);
             }
         });
         $linkedLandlordUsers = (int) $linkedQuery->count();

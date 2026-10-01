@@ -55,14 +55,14 @@ class Payment extends Model
 
             $query->where(function (Builder $scope) use ($agentId, $hasAgentColumn, $hasTenantAgent) {
                 if ($hasAgentColumn) {
-                    $scope->where('payments.agent_user_id', $agentId);
+                    $scope->whereIn('payments.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 }
                 if ($hasTenantAgent) {
                     $scope->orWhereExists(function ($sub) use ($agentId) {
                         $sub->selectRaw('1')
                             ->from('pm_tenants as t')
                             ->whereColumn('t.id', 'payments.tenant_id')
-                            ->where('t.agent_user_id', $agentId);
+                            ->whereIn('t.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                     });
                 }
                 if (! $hasAgentColumn && ! $hasTenantAgent) {

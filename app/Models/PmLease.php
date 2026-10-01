@@ -68,21 +68,24 @@ class PmLease extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId === null) {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->whereExists(function ($sub) use ($agentId) {
+            $query->whereExists(function ($sub) use ($ownerIds) {
                 $sub->selectRaw('1')
                     ->from('pm_lease_unit as lu')
                     ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
                     ->whereColumn('lu.pm_lease_id', 'pm_leases.id')
-                    ->where('p.agent_user_id', $agentId);
+                    ->where(function ($owned) use ($ownerIds) {
+                        $owned->whereIn('p.agent_user_id', $ownerIds)
+                            ->orWhereNull('p.agent_user_id');
+                    });
             });
         });
     }

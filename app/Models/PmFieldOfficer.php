@@ -42,7 +42,7 @@ class PmFieldOfficer extends Model
                 return;
             }
 
-            $query->where('pm_field_officers.agent_user_id', $agentId);
+            AgentWorkspaceScope::whereWorkspaceOwner($query, 'pm_field_officers.agent_user_id');
         });
     }
 

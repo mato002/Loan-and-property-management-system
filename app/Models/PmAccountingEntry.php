@@ -60,7 +60,7 @@ class PmAccountingEntry extends Model
 
             $query->where(function (Builder $scope) use ($agentId, $staffId) {
                 $scope->whereIn('pm_accounting_entries.property_id', function ($sub) use ($agentId) {
-                    $sub->select('id')->from('properties')->where('agent_user_id', $agentId);
+                    $sub->select('id')->from('properties')->whereIn('agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [$agentId]);
                 })->orWhere(function (Builder $owned) use ($staffId, $agentId) {
                     $owned->whereNull('pm_accounting_entries.property_id')
                         ->whereIn('pm_accounting_entries.recorded_by_user_id', array_values(array_unique([$staffId, $agentId])));

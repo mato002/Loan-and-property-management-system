@@ -49,7 +49,7 @@ class PmEzenLandlordInvoice extends Model
                 return;
             }
 
-            $query->where('pm_ezen_landlord_invoices.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
+            AgentWorkspaceScope::whereWorkspaceOwner($query, 'pm_ezen_landlord_invoices.agent_user_id');
         });
     }
 

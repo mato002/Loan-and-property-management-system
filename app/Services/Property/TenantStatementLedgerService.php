@@ -49,10 +49,29 @@ final class TenantStatementLedgerService
         // Residual B/F kept beside a rent-only EZEN listing replay (late fees / DBNs not imported).
         // A full tenant-statement import already has the real charge lines — do not hide them
         // and do not keep the take-on snapshot as a second debit.
-        $residualBfWithEzenRentHistory = $openingArrears > 0.009 && $hasRentalInvoiceReplay && ! $hasStatementImport;
+        // A full rent-invoice history already is the charge list. Keep those lines
+        // (a vacated tenant's Jan–Aug rent) and drop the take-on snapshot so it is
+        // not a second debit. A thin replay still sits beside residual B/F, but only
+        // invoices already inside the snapshot date are hidden.
+        $replayReplacesOpeningArrears = $hasRentalInvoiceReplay
+            && ! $hasStatementImport
+            && app(CarryForwardConsolidationService::class)->tenantEzenInvoicesReplaceOpeningArrears($tenant);
+        $residualBfWithEzenRentHistory = $openingArrears > 0.009
+            && $hasRentalInvoiceReplay
+            && ! $hasStatementImport
+            && ! $replayReplacesOpeningArrears;
         if ($residualBfWithEzenRentHistory) {
             $invoices = $invoices
-                ->reject(fn (PmInvoice $invoice): bool => $this->isEzenRentalInvoiceReplay($invoice))
+                ->reject(function (PmInvoice $invoice) use ($openingArrearsAsOf): bool {
+                    if (! $this->isEzenRentalInvoiceReplay($invoice)) {
+                        return false;
+                    }
+                    if ($openingArrearsAsOf === null || $invoice->issue_date === null) {
+                        return true;
+                    }
+
+                    return $invoice->issue_date->copy()->startOfDay()->lt($openingArrearsAsOf);
+                })
                 ->values();
         }
 
@@ -76,6 +95,13 @@ final class TenantStatementLedgerService
         } elseif ($hasEzenInvoiceHistory) {
             $payments = $this->dedupeInvoiceImportsAgainstReceiptImports($payments);
         }
+
+        // Applying wallet credit creates a second completed payment (channel
+        // tenant_credit). The cash was already credited on the source payment,
+        // so counting this line again leaves a fake CR after the invoice is paid.
+        $payments = $payments
+            ->reject(fn (PmPayment $payment): bool => $this->isWalletReallocationPayment($payment))
+            ->values();
 
         $registerReceipts = $suppressRegisterCredits
             ? collect()
@@ -109,7 +135,11 @@ final class TenantStatementLedgerService
 
             $openingPaymentsQuery = PmPayment::query()
                 ->whereIn('id', $openingPaymentIds)
-                ->where('status', PmPayment::STATUS_COMPLETED);
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->where(function ($query): void {
+                    $query->whereNull('channel')
+                        ->orWhere('channel', '!=', 'tenant_credit');
+                });
             if ($snapshotBfMode) {
                 $openingPaymentsQuery->where(function ($query): void {
                     $query->whereNull('meta->source')
@@ -174,7 +204,7 @@ final class TenantStatementLedgerService
             ]);
         }
 
-        if ($openingArrears > 0 && ! $hasStatementImport) {
+        if ($openingArrears > 0 && ! $hasStatementImport && ! $replayReplacesOpeningArrears) {
             $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
             $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
             $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
@@ -313,8 +343,14 @@ final class TenantStatementLedgerService
                     if ($unitIds === []) {
                         continue;
                     }
-                    $query->orWhere(function ($inner) use ($unitIds, $lease): void {
-                        $inner->whereIn('property_unit_id', $unitIds);
+                    // Same unit can be re-let after a tenant vacates. Only pick up
+                    // invoices that are still hers (or unassigned), not the next occupant's.
+                    $query->orWhere(function ($inner) use ($unitIds, $lease, $tenant): void {
+                        $inner->whereIn('property_unit_id', $unitIds)
+                            ->where(function ($owner) use ($tenant): void {
+                                $owner->where('pm_tenant_id', $tenant->id)
+                                    ->orWhereNull('pm_tenant_id');
+                            });
                         if ($lease->start_date) {
                             $inner->whereDate('issue_date', '>=', $lease->start_date->toDateString());
                         }
@@ -537,6 +573,11 @@ final class TenantStatementLedgerService
         }
 
         return $digits;
+    }
+
+    private function isWalletReallocationPayment(PmPayment $payment): bool
+    {
+        return (string) $payment->channel === 'tenant_credit';
     }
 
     private function isEzenRentReceiptImportPayment(PmPayment $payment): bool

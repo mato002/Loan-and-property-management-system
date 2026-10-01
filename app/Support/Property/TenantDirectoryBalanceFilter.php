@@ -73,7 +73,11 @@ final class TenantDirectoryBalanceFilter
 
             $paid = DB::table('pm_payments as p')
                 ->select('p.pm_tenant_id', DB::raw('COALESCE(SUM(p.amount), 0) as paid'))
-                ->where('p.status', PmPayment::STATUS_COMPLETED);
+                ->where('p.status', PmPayment::STATUS_COMPLETED)
+                ->where(function ($inner): void {
+                    $inner->whereNull('p.channel')
+                        ->orWhere('p.channel', '!=', 'tenant_credit');
+                });
             if (Schema::hasColumn('pm_payments', 'reversal_status')) {
                 $paid->where(function ($inner): void {
                     $inner->whereNull('p.reversal_status')

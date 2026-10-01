@@ -438,7 +438,7 @@ class PropertyTenantsOpsWebController extends Controller
             ->groupBy('i.pm_tenant_id', 'i.property_unit_id')
             ->orderByDesc('latest_date');
         if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
-            $tenantUnitMapQuery->where('t.agent_user_id', \App\Models\Concerns\AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
+            $tenantUnitMapQuery->whereIn('t.agent_user_id', \App\Models\Concerns\AgentWorkspaceScope::workspaceOwnerIds());
         }
         $tenantUnitMap = $tenantUnitMapQuery
             ->get()

@@ -171,7 +171,12 @@ final class EzenRentalInvoicesImportService
         }
 
         $units = $unitsByProperty[$propertyCode] ?? collect();
-        $resolved = $this->resolveUnitAndTenant($property, $units, (string) ($row['header_tail'] ?? ''));
+        $resolved = $this->resolveUnitAndTenant(
+            $property,
+            $units,
+            (string) ($row['header_tail'] ?? ''),
+            (string) ($row['issue_date'] ?? ''),
+        );
         if ($resolved === null) {
             $warnings[] = 'Row '.$rowNum.' '.$ezenNo.': could not match unit/tenant on '.$propertyCode.' — skipped.';
 
@@ -186,9 +191,9 @@ final class EzenRentalInvoicesImportService
         }
 
         ['unit' => $unit, 'tenant_name' => $tenantName, 'lease' => $lease] = $resolved;
-        if (! $this->namesLooselyMatch($tenantName, (string) $lease->pmTenant?->name)) {
-            $warnings[] = 'Row '.$rowNum.' '.$ezenNo.': tenant "'.$tenantName.'" vs system "'
-                .$lease->pmTenant?->name.'" on '.$unit->label.' — skipped (previous occupant).';
+        if (! $lease instanceof PmLease) {
+            $warnings[] = 'Row '.$rowNum.' '.$ezenNo.': tenant "'.$tenantName.'" on '.$unit->label
+                .' has no lease on file — skipped.';
 
             return [
                 'imported' => false,
@@ -408,9 +413,9 @@ final class EzenRentalInvoicesImportService
 
     /**
      * @param  Collection<int, PropertyUnit>  $units
-     * @return array{unit: PropertyUnit, tenant_name: string, lease: PmLease}|null
+     * @return array{unit: PropertyUnit, tenant_name: string, lease: ?PmLease}|null
      */
-    private function resolveUnitAndTenant(Property $property, Collection $units, string $headerTail): ?array
+    private function resolveUnitAndTenant(Property $property, Collection $units, string $headerTail, string $issueDate = ''): ?array
     {
         $haystack = strtoupper(preg_replace('/\s+/', ' ', $headerTail) ?? '');
         if ($haystack === '') {
@@ -452,32 +457,57 @@ final class EzenRentalInvoicesImportService
             return null;
         }
 
-        $lease = PmLease::query()
+        $leases = PmLease::query()
             ->withoutGlobalScopes()
-            ->where('status', PmLease::STATUS_ACTIVE)
             ->whereHas('units', fn ($q) => $q->where('property_units.id', $matchedUnit->id))
             ->with('pmTenant')
             ->orderByDesc('start_date')
-            ->first();
+            ->orderByDesc('id')
+            ->get();
 
-        if ($lease === null) {
-            $lease = PmLease::query()
-                ->withoutGlobalScopes()
-                ->whereHas('units', fn ($q) => $q->where('property_units.id', $matchedUnit->id))
-                ->with('pmTenant')
-                ->orderByDesc('start_date')
-                ->first();
-        }
-
-        if ($lease === null) {
-            return null;
-        }
+        $named = $leases
+            ->filter(fn (PmLease $lease): bool => $this->namesLooselyMatch($tenantName, (string) ($lease->pmTenant?->name ?? '')))
+            ->values();
 
         return [
             'unit' => $matchedUnit,
             'tenant_name' => $tenantName,
-            'lease' => $lease,
+            'lease' => $this->pickLeaseForInvoiceDate($named, $issueDate),
         ];
+    }
+
+    /**
+     * Prefer the occupancy that actually covers the invoice date, including a vacated lease.
+     *
+     * @param  Collection<int, PmLease>  $leases
+     */
+    private function pickLeaseForInvoiceDate(Collection $leases, string $issueDate): ?PmLease
+    {
+        if ($leases->isEmpty()) {
+            return null;
+        }
+
+        $issueDate = trim($issueDate);
+        if ($issueDate !== '') {
+            $covering = $leases->first(function (PmLease $lease) use ($issueDate): bool {
+                $start = $lease->start_date?->toDateString();
+                $end = $lease->end_date?->toDateString();
+                if ($start !== null && $issueDate < $start) {
+                    return false;
+                }
+                if ($end !== null && $issueDate > $end) {
+                    return false;
+                }
+
+                return true;
+            });
+            if ($covering instanceof PmLease) {
+                return $covering;
+            }
+        }
+
+        return $leases->first(fn (PmLease $lease): bool => $lease->status === PmLease::STATUS_ACTIVE)
+            ?? $leases->first();
     }
 
     /**

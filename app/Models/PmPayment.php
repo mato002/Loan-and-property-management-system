@@ -71,7 +71,7 @@ class PmPayment extends Model
                         ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('a.pm_payment_id', 'pm_payments.id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 })->orWhereExists(function ($sub) use ($agentId) {
                     $sub->selectRaw('1')
                         ->from('pm_leases as l')
@@ -79,7 +79,7 @@ class PmPayment extends Model
                         ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('l.pm_tenant_id', 'pm_payments.pm_tenant_id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 });
 
                 $paymentQuery->orWhereExists(function ($sub) use ($agentId) {
@@ -88,7 +88,7 @@ class PmPayment extends Model
                         ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
                         ->whereColumn('i.pm_tenant_id', 'pm_payments.pm_tenant_id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 });
 
                 if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
@@ -96,7 +96,7 @@ class PmPayment extends Model
                         $sub->selectRaw('1')
                             ->from('pm_tenants as t')
                             ->whereColumn('t.id', 'pm_payments.pm_tenant_id')
-                            ->where('t.agent_user_id', $agentId);
+                            ->whereIn('t.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                     });
                 }
             });

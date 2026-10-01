@@ -56,7 +56,7 @@ class PmConversation extends Model
                         $t->selectRaw('1')
                             ->from('pm_tenants as ct')
                             ->whereColumn('ct.id', 'pm_conversations.pm_tenant_id')
-                            ->where('ct.agent_user_id', $agentId);
+                            ->whereIn('ct.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [$agentId]);
                     });
                 }
             });

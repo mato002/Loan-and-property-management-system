@@ -427,23 +427,23 @@ class PmInvoice extends Model
         });
 
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId === null) {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where(function (Builder $q) use ($agentId) {
+            $query->where(function (Builder $q) use ($ownerIds) {
                 if (Schema::hasColumn('pm_invoices', 'agent_user_id')) {
-                    $q->where('pm_invoices.agent_user_id', $agentId);
+                    $q->whereIn('pm_invoices.agent_user_id', $ownerIds);
                 }
-                $q->orWhereIn('property_unit_id', function ($sub) use ($agentId) {
+                $q->orWhereIn('property_unit_id', function ($sub) use ($ownerIds) {
                     $sub->select('pu.id')
                         ->from('property_units as pu')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', $ownerIds);
                 });
             });
         });

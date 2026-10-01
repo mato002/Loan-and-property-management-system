@@ -35,8 +35,8 @@
         <x-property.workspace-tabs :workspace="$resolvedWorkspaceKey" />
     @endif
 
-    <header @class(['property-erp-header property-print-hide print-hide', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <header @class(['property-erp-header property-print-hide print-hide', $compactList ? '' : 'space-y-2 sm:space-y-3'])>
+        <div class="flex items-start gap-x-3 gap-y-1">
             <div class="min-w-0 flex-1">
                 <h1 @class([
                     'font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight',
@@ -51,7 +51,7 @@
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="print-hide flex flex-wrap items-center justify-end gap-1.5 w-full sm:w-auto sm:ml-auto sm:max-w-[58%] [&>button]:min-h-0 [&>a]:min-h-0">
+                    <div class="property-erp-header__actions print-hide ml-auto flex w-auto max-w-[70%] shrink-0 flex-wrap items-center justify-end gap-1.5">
                         {{ $actions }}
                     </div>
                 @endif

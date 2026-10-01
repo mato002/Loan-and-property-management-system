@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Schema;
  *  - non-agent property portal users (e.g. guest, landlord, tenant) are
  *    not subjected to this scope (their own scopes apply elsewhere);
  *  - only an authenticated user with property_portal_role='agent' is
- *    restricted to rows that belong to a property they own
- *    (`properties.agent_user_id = auth()->id()`).
+ *    restricted to the company workspace they belong to
+ *    (HR staff use `employees.agent_user_id`; agency owners use their own id).
  *
  * Each public helper returns silently when no agent restriction applies,
  * so callers can drop the helper into a model `booted()` block without
@@ -27,6 +27,9 @@ final class AgentWorkspaceScope
 {
     /** @var array<int, int> */
     private static array $resolvedAgentIds = [];
+
+    /** @var array<int, list<int>> */
+    private static array $workspaceOwnerIds = [];
 
     /**
      * Restrict a query to rows whose `property_unit_id` belongs to a property
@@ -42,17 +45,17 @@ final class AgentWorkspaceScope
             return;
         }
 
-        $userId = self::scopedAgentId();
-        if ($userId === null) {
+        $ownerIds = self::workspaceOwnerIds();
+        if ($ownerIds === []) {
             return;
         }
         $qualifiedColumn = $tableName.'.'.$unitColumn;
 
-        $query->whereIn($qualifiedColumn, function ($sub) use ($userId) {
+        $query->whereIn($qualifiedColumn, function ($sub) use ($ownerIds) {
             $sub->select('pu.id')
                 ->from('property_units as pu')
                 ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                ->where('p.agent_user_id', $userId);
+                ->whereIn('p.agent_user_id', $ownerIds);
         });
     }
 
@@ -69,14 +72,14 @@ final class AgentWorkspaceScope
             return;
         }
 
-        $userId = self::scopedAgentId();
-        if ($userId === null) {
+        $ownerIds = self::workspaceOwnerIds();
+        if ($ownerIds === []) {
             return;
         }
         $qualifiedColumn = $tableName.'.'.$propertyColumn;
 
-        $query->whereIn($qualifiedColumn, function ($sub) use ($userId) {
-            $sub->select('id')->from('properties')->where('agent_user_id', $userId);
+        $query->whereIn($qualifiedColumn, function ($sub) use ($ownerIds) {
+            $sub->select('id')->from('properties')->whereIn('agent_user_id', $ownerIds);
         });
     }
 
@@ -93,14 +96,14 @@ final class AgentWorkspaceScope
             return;
         }
 
-        $userId = self::scopedAgentId();
-        if ($userId === null) {
+        $ownerIds = self::workspaceOwnerIds();
+        if ($ownerIds === []) {
             return;
         }
         $qualifiedColumn = $tableName.'.'.$tenantColumn;
 
-        $query->whereIn($qualifiedColumn, function ($sub) use ($userId) {
-            $sub->select('id')->from('pm_tenants')->where('agent_user_id', $userId);
+        $query->whereIn($qualifiedColumn, function ($sub) use ($ownerIds) {
+            $sub->select('id')->from('pm_tenants')->whereIn('agent_user_id', $ownerIds);
         });
     }
 
@@ -115,10 +118,15 @@ final class AgentWorkspaceScope
             return;
         }
 
-        $userId = $creatorColumn === 'agent_user_id'
-            ? (self::scopedAgentId() ?? (int) Auth::id())
-            : (int) Auth::id();
-        $query->where($tableName.'.'.$creatorColumn, $userId);
+        $ownerIds = self::workspaceOwnerIds();
+        if ($ownerIds === []) {
+            $ownerIds = [(int) Auth::id()];
+        }
+        if ($creatorColumn !== 'agent_user_id') {
+            $ownerIds[] = (int) Auth::id();
+            $ownerIds = array_values(array_unique(array_filter($ownerIds)));
+        }
+        $query->whereIn($tableName.'.'.$creatorColumn, $ownerIds);
     }
 
     /**
@@ -170,28 +178,31 @@ final class AgentWorkspaceScope
      */
     public static function constrainAgentTenantAlias($query, string $alias, int $agentUserId): void
     {
-        if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-            $query->where($alias.'.agent_user_id', $agentUserId);
-
-            return;
+        $ownerIds = self::workspaceOwnerIds();
+        if ($ownerIds === []) {
+            $ownerIds = [$agentUserId];
         }
 
-        $query->where(function ($tenantQuery) use ($alias, $agentUserId) {
-            $tenantQuery->whereExists(function ($sub) use ($alias, $agentUserId) {
+        $query->where(function ($tenantQuery) use ($alias, $ownerIds) {
+            if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                $tenantQuery->whereIn($alias.'.agent_user_id', $ownerIds);
+            }
+
+            $tenantQuery->orWhereExists(function ($sub) use ($alias, $ownerIds) {
                 $sub->selectRaw('1')
                     ->from('pm_invoices as i')
                     ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
                     ->whereColumn('i.pm_tenant_id', $alias.'.id')
-                    ->where('p.agent_user_id', $agentUserId);
-            })->orWhereExists(function ($sub) use ($alias, $agentUserId) {
+                    ->whereIn('p.agent_user_id', $ownerIds);
+            })->orWhereExists(function ($sub) use ($alias, $ownerIds) {
                 $sub->selectRaw('1')
                     ->from('pm_leases as l')
                     ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
                     ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
                     ->whereColumn('l.pm_tenant_id', $alias.'.id')
-                    ->where('p.agent_user_id', $agentUserId);
+                    ->whereIn('p.agent_user_id', $ownerIds);
             });
         });
     }
@@ -252,7 +263,7 @@ final class AgentWorkspaceScope
                             $t->selectRaw('1')
                                 ->from('pm_tenants as ct')
                                 ->whereColumn('ct.id', 'pm_conversations.pm_tenant_id')
-                                ->where('ct.agent_user_id', $agentId);
+                                ->whereIn('ct.agent_user_id', self::workspaceOwnerIds() ?: [$agentId]);
                         });
                     }
                 });
@@ -393,6 +404,58 @@ final class AgentWorkspaceScope
             $linked,
             array_values(array_diff($byEmail, $companyIds)),
         )));
+    }
+
+    /**
+     * User ids that own the current company workspace.
+     * Super admins record Passion Homes data under their own user id, so an
+     * agent login must also see those rows — not only tenants they created.
+     *
+     * @return list<int>
+     */
+    public static function workspaceOwnerIds(): array
+    {
+        $agentId = self::currentAgentUserId();
+        if ($agentId === null) {
+            return [];
+        }
+        if (isset(self::$workspaceOwnerIds[$agentId])) {
+            return self::$workspaceOwnerIds[$agentId];
+        }
+
+        $ids = [$agentId];
+        if (Schema::hasTable('users') && Schema::hasColumn('users', 'is_super_admin')) {
+            $superIds = DB::table('users')
+                ->where('is_super_admin', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            foreach ($superIds as $superId) {
+                if ($superId > 0) {
+                    $ids[] = $superId;
+                }
+            }
+        }
+
+        return self::$workspaceOwnerIds[$agentId] = array_values(array_unique($ids));
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereWorkspaceOwner($query, string $column): void
+    {
+        $ids = self::workspaceOwnerIds();
+        if ($ids === []) {
+            $fallback = (int) (self::currentAgentUserId() ?? Auth::id());
+            if ($fallback > 0) {
+                $query->where($column, $fallback);
+            }
+
+            return;
+        }
+
+        $query->whereIn($column, $ids);
     }
 
     private static function scopedAgentId(): ?int

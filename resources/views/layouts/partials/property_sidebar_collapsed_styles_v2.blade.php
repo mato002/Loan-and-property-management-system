@@ -95,6 +95,20 @@
             box-shadow: 0 0 0 1px rgb(110 231 183 / 0.45);
         }
 
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] .property-workspace-rail-item > a[aria-current="page"],
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] .property-workspace-rail-item[data-section-active] > a {
+            border-left-color: #1b75bc !important;
+            background-color: #f0f9ff !important;
+            color: #1b75bc !important;
+        }
+
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] .property-workspace-rail-item > a[aria-current="page"] .property-workspace-icon-wrap,
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] .property-workspace-rail-item[data-section-active] > a .property-workspace-icon-wrap {
+            background-color: #e0f2fe !important;
+            box-shadow: 0 0 0 1px #1b75bc;
+            color: #1b75bc !important;
+        }
+
         .property-sidebar[data-collapsed="1"] .property-workspace-icon-wrap {
             margin-left: auto;
             margin-right: auto;

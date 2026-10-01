@@ -476,7 +476,7 @@ class PropertyHrEmployeesController extends Controller
         }
 
         return redirect()
-            ->route('property.hr.employees.show', $employee)
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'lifecycle'])
             ->with('status', $employee->full_name.' is now active.');
     }
 
@@ -501,7 +501,7 @@ class PropertyHrEmployeesController extends Controller
         ], $request->user());
 
         return redirect()
-            ->route('property.hr.employees.show', $employee)
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'offboard'])
             ->with('status', $employee->full_name.' has been offboarded.');
     }
 

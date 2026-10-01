@@ -1495,7 +1495,7 @@ class PropertyPortfolioController extends Controller
                 'p.name as property_name',
             ]);
         if ($actor && $this->isAgentActor($actor)) {
-            $linksQuery->where('p.agent_user_id', (int) $actor->id);
+            $linksQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $actor->id]);
         }
         $links = $linksQuery->get();
 
@@ -1823,7 +1823,7 @@ class PropertyPortfolioController extends Controller
             $propertyLinksQuery->where('pl.property_id', $propertyId);
         }
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertyLinksQuery->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
+            $propertyLinksQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
         }
         $propertyLinks = $propertyLinksQuery->get();
 
@@ -2284,7 +2284,7 @@ class PropertyPortfolioController extends Controller
         }
 
         $linkableProperties = Property::query()
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->whereIn('agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->whereDoesntHave('landlords')
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -2462,7 +2462,7 @@ class PropertyPortfolioController extends Controller
             ->where('pl.user_id', $landlord->id)
             ->where('pl.property_id', $propertyId);
         if (AgentWorkspaceScope::shouldApply()) {
-            $query->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
+            $query->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
         }
 
         return $query->exists();
@@ -2484,7 +2484,7 @@ class PropertyPortfolioController extends Controller
             $propertyIdsQuery->where('pl.property_id', $propertyId);
         }
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertyIdsQuery->where('p.agent_user_id', (int) (AgentWorkspaceScope::currentAgentUserId() ?? Auth::id()));
+            $propertyIdsQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
         }
 
         $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();

@@ -53,7 +53,7 @@ class PmBankStatementLine extends Model
                 return;
             }
 
-            $query->where('pm_bank_statement_lines.agent_user_id', AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
+            AgentWorkspaceScope::whereWorkspaceOwner($query, 'pm_bank_statement_lines.agent_user_id');
         });
     }
 

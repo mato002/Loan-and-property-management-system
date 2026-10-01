@@ -51,7 +51,7 @@ class PmMaintenanceJob extends Model
                     ->join('property_units as pu', 'pu.id', '=', 'r.property_unit_id')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
                     ->whereColumn('r.id', 'pm_maintenance_jobs.pm_maintenance_request_id')
-                    ->where('p.agent_user_id', $agentId);
+                    ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
             });
         });
     }

@@ -187,15 +187,18 @@ class Property extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function ($query) {
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId === null) {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where('properties.agent_user_id', $agentId);
+            $query->where(function ($scope) use ($ownerIds) {
+                $scope->whereIn('properties.agent_user_id', $ownerIds)
+                    ->orWhereNull('properties.agent_user_id');
+            });
         });
     }
 

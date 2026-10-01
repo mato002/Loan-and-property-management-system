@@ -56,11 +56,12 @@ class PmLandlordLedgerEntry extends Model
             $userId = AgentWorkspaceScope::currentAgentUserId() ?? (int) \Illuminate\Support\Facades\Auth::id();
 
             $query->where(function (Builder $scope) use ($userId) {
-                $scope->where('pm_landlord_ledger_entries.agent_user_id', $userId)
-                    ->orWhere(function (Builder $legacy) use ($userId) {
+                $ownerIds = AgentWorkspaceScope::workspaceOwnerIds() ?: [$userId];
+                $scope->whereIn('pm_landlord_ledger_entries.agent_user_id', $ownerIds)
+                    ->orWhere(function (Builder $legacy) use ($ownerIds) {
                         $legacy->whereNull('pm_landlord_ledger_entries.agent_user_id')
-                            ->whereIn('pm_landlord_ledger_entries.property_id', function ($sub) use ($userId) {
-                                $sub->select('id')->from('properties')->where('agent_user_id', $userId);
+                            ->whereIn('pm_landlord_ledger_entries.property_id', function ($sub) use ($ownerIds) {
+                                $sub->select('id')->from('properties')->whereIn('agent_user_id', $ownerIds);
                             });
                     });
             });

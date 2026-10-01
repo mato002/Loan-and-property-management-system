@@ -41,7 +41,7 @@ class PmVendor extends Model
                 $vendorQuery->whereRaw('0 = 1');
 
                 if (Schema::hasColumn('pm_vendors', 'agent_user_id')) {
-                    $vendorQuery->orWhere('pm_vendors.agent_user_id', $agentId);
+                    $vendorQuery->orWhereIn('pm_vendors.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 }
 
                 $vendorQuery
@@ -57,7 +57,7 @@ class PmVendor extends Model
                             ->join('property_units as pu', 'pu.id', '=', 'r.property_unit_id')
                             ->join('properties as p', 'p.id', '=', 'pu.property_id')
                             ->whereColumn('j.pm_vendor_id', 'pm_vendors.id')
-                            ->where('p.agent_user_id', $agentId);
+                            ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                     });
             });
         });

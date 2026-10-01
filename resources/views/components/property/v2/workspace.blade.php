@@ -193,7 +193,11 @@
         @endif
 
         @if ($hasToolbar || $hasTable || ($slotHasContent && ! $hasTable))
-            <div class="property-ws-wrap property-erp-surface w-full min-w-0 space-y-2.5 md:space-y-3">
+            <div @class([
+                'property-ws-wrap property-erp-surface w-full min-w-0',
+                'space-y-2' => $compactList,
+                'space-y-2.5 md:space-y-3' => ! $compactList,
+            ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
                     <div @class([
                         'print-hide w-full min-w-0',

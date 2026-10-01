@@ -38,7 +38,7 @@ class PmMaintenanceRequest extends Model
                 $sub->select('pu.id')
                     ->from('property_units as pu')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                    ->where('p.agent_user_id', $agentId);
+                    ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
             });
         });
     }

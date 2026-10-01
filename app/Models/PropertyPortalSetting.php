@@ -24,7 +24,14 @@ class PropertyPortalSetting extends Model
     public static function getValue(string $key, ?string $default = null): ?string
     {
         if (PropertyWorkspaceBranding::isBrandingKey($key) && Auth::check()) {
-            return PropertyWorkspaceBranding::get($key, $default);
+            $value = PropertyWorkspaceBranding::get($key, $default);
+            if (in_array($key, ['company_logo_url', 'site_favicon_url'], true)) {
+                $resolved = PropertyWorkspaceBranding::resolveAssetUrl($value);
+
+                return $resolved !== '' ? $resolved : $default;
+            }
+
+            return $value;
         }
 
         return static::getGlobalValue($key, $default);
