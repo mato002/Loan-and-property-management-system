@@ -105,7 +105,7 @@
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
                 <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Unit, property, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, account, phone, unit..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>

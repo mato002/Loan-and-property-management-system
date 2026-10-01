@@ -7,6 +7,23 @@
     $hasExport = isset($export) && ! $export->isEmpty();
     $hasActions = isset($actions) && ! $actions->isEmpty();
     $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary;
+    $pageSizeHaystack = strtolower(implode("\n", array_filter([
+        isset($primary) ? (string) $primary : '',
+        isset($secondary) ? (string) $secondary : '',
+        isset($dateRange) ? (string) $dateRange : '',
+    ])));
+    $injectPageSize = ! str_contains($pageSizeHaystack, 'name="per_page"')
+        && ! str_contains($pageSizeHaystack, "name='per_page'")
+        && ! str_contains($pageSizeHaystack, 'name=per_page');
+    $pageSizeField = $injectPageSize
+        ? view('components.property.filter-field', [
+            'type' => 'select',
+            'name' => 'per_page',
+            'label' => 'Rows',
+            'form' => $fieldFormId ?? null,
+            'value' => (string) ($filters['per_page'] ?? request()->query('per_page', '30')),
+        ])->render()
+        : '';
 @endphp
 
 @if ($hasFilterFields)

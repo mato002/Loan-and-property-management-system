@@ -95,14 +95,14 @@
         },
         async confirmReplaceSameType(type, count) {
             const label = this.typeLabel(type);
-            const text = 'There are already ' + count + ' ' + label + ' row(s) on specific units. A whole-property ' + label + ' rule replaces those unit rows only. Other charge types are left as they are.';
+            const text = 'Replace ' + count + ' ' + label + ' unit rows with one property amount?';
             if (window.Swal) {
                 const result = await window.Swal.fire({
                     icon: 'question',
-                    title: 'Replace existing ' + label + ' unit rows?',
+                    title: 'Replace ' + label + '?',
                     text,
                     showCancelButton: true,
-                    confirmButtonText: 'Replace ' + label + ' only',
+                    confirmButtonText: 'Replace',
                     cancelButtonText: 'Cancel',
                 });
                 return !!result.isConfirmed;
@@ -257,7 +257,7 @@
         async addOrUpdateCharge() {
             const type = String(this.draft.charge_type || '').trim();
             if (!type) {
-                this.warn('Charge type required', 'Choose Water, Garbage, Service charge, or another type. The label is only a display name and does not create a new charge.');
+                this.warn('Charge type required', 'Select a charge type.');
                 return;
             }
             const mode = String(this.draft.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed';
@@ -417,8 +417,6 @@
     <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
         <div>
             <h3 class="text-sm font-semibold text-slate-900">Saved utility charge templates</h3>
-            <p class="text-xs text-slate-500">These rows are recurring standing charges (garbage, service charge) that apply to leases and future billing.</p>
-            <p class="text-xs text-slate-500 mt-1">Water from EZEN is billed from meter readings, so it is not a fixed template here. Past water invoices are in Collections → Invoices (memo “WATER Meter Reading”). Use Add charge if this property should also have a water rate for new readings.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <button type="button" @click="openAdd()" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm shadow-blue-200 hover:bg-blue-700">
@@ -479,8 +477,6 @@
                     <option value="property">Whole property</option>
                     <option value="units">Selected units</option>
                 </select>
-                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'property'">One rule for every unit of this charge type only. Adding Water does not change Garbage. If this type already has unit-by-unit rows, you will be asked before those rows are replaced.</p>
-                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'units'">Set each unit to fixed, variable, or excluded. A mix is allowed on the same charge. Other charge types are left as they are.</p>
             </div>
             <div x-show="editingIndex !== null">
                 <label class="block text-xs font-medium text-slate-600">Scope</label>
@@ -502,19 +498,17 @@
                         <option :value="type" x-text="typeLabel(type)"></option>
                     </template>
                 </select>
-                <p class="mt-1 text-xs text-slate-500">This is what the system bills (Water vs Garbage). Changing the label below does not create a second charge.</p>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600">Label <span class="font-normal text-slate-400">(optional display name)</span></label>
+                <label class="block text-xs font-medium text-slate-600">Label</label>
                 <input x-model="draft.label" type="text" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Water bill" />
             </div>
             <div x-show="!showUnitGrid()">
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
                 <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="fixed">Fixed monthly amount</option>
-                    <option value="variable" x-text="isWaterType() ? 'Meter reading — enter each month' : 'Variable — enter each month'"></option>
+                    <option value="fixed">Fixed</option>
+                    <option value="variable" x-text="isWaterType() ? 'Meter' : 'Variable'"></option>
                 </select>
-                <p class="mt-1 text-xs text-slate-500" x-show="draft.amount_mode === 'variable'">This will not auto-bill. The agent must post this charge (or a meter reading for water) every month for each occupied unit.</p>
             </div>
             <div x-show="showUnitGrid()" class="rounded-xl border border-slate-200">
                 <div class="flex flex-wrap items-end gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
@@ -563,7 +557,6 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">Type the rate and fee once. Every unit set to Fixed uses those figures, and you can still change one row. Variable and Excluded hide the amount because nothing is billed from this form.</p>
             </div>
             <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && isWaterFixed()" class="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -571,10 +564,10 @@
                     <input x-model="draft.water_amount" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 200" />
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-600">Maintenance fee <span class="font-normal text-slate-400">(added once)</span></label>
-                    <input x-model="draft.maintenance_fee" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 100" />
+                    <label class="block text-xs font-medium text-slate-600">Fee</label>
+                    <input x-model="draft.maintenance_fee" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
                 </div>
-                <p class="sm:col-span-2 text-xs text-slate-500">The rate is multiplied by units used. The fee is added after that. Example: 3 units × <span class="tabular-nums" x-text="Number(draft.water_amount || 0).toFixed(2)"></span> = <span class="tabular-nums" x-text="waterPreview().water"></span> water, plus <span class="tabular-nums" x-text="waterPreview().fee"></span> fee = <span class="font-semibold tabular-nums text-slate-800" x-text="waterPreview().total"></span>.</p>
+                <p class="sm:col-span-2 text-xs tabular-nums text-slate-700" x-text="'3 × ' + Number(draft.water_amount || 0).toFixed(2) + ' + ' + Number(draft.maintenance_fee || 0).toFixed(2) + ' = ' + waterPreview().total"></p>
             </div>
             <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && !isWaterFixed()">
                 <label class="block text-xs font-medium text-slate-600">Fixed charge <span class="text-red-600">*</span></label>
@@ -589,13 +582,10 @@
                     <label class="block text-xs font-medium text-slate-600">VAT rate %</label>
                     <input x-model="draft.vat_rate" type="number" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 16" />
                 </div>
-                <div class="sm:mt-6">
-                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" x-model="draft.escalates_with_rent" class="rounded border-slate-300" />
-                        Increase when rent increases
-                    </label>
-                    <p class="mt-1 text-xs text-slate-500">Tick only if this extra should rise by the same percentage as rent (for example service charge that tracks rent). Leave off for garbage and meter water — those stay the amount you set, or the meter reading.</p>
-                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700 sm:mt-7">
+                    <input type="checkbox" x-model="draft.escalates_with_rent" class="rounded border-slate-300" />
+                    % with rent
+                </label>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600">Notes</label>

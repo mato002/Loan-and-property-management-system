@@ -8,6 +8,7 @@
 
 const ENHANCED_ATTR = 'data-property-searchable-enhanced';
 const ROOT_ATTR = 'data-property-searchable-root';
+const openPanelClosers = new Set();
 
 const ENTITY_NAME_RE = /(tenant|lease|unit|propert|landlord|vendor|employee|client|product|branch|account|agent|officer|user|invoice_type|charge|payer|payee|owner|guarantor|region|warehouse|item)/i;
 
@@ -119,7 +120,7 @@ function buildEnhancement(select) {
     const panel = document.createElement('div');
     panel.className = [
         'property-searchable-select__panel',
-        'absolute z-[80] mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg',
+        'fixed z-[400] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg',
         'dark:border-slate-600 dark:bg-gray-900',
         'hidden',
     ].join(' ');
@@ -149,8 +150,8 @@ function buildEnhancement(select) {
 
     parent.insertBefore(root, select);
     root.appendChild(trigger);
-    root.appendChild(panel);
     root.appendChild(select);
+    document.body.appendChild(panel);
 
     select.classList.add('sr-only');
     select.tabIndex = -1;
@@ -207,20 +208,47 @@ function buildEnhancement(select) {
         });
     };
 
-    const openPanel = () => {
-        open = true;
-        panel.classList.remove('hidden');
-        trigger.setAttribute('aria-expanded', 'true');
-        searchInput.value = '';
-        renderList('');
-        queueMicrotask(() => searchInput.focus());
+    const placePanel = () => {
+        const rect = trigger.getBoundingClientRect();
+        const width = Math.max(rect.width, 180);
+        const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+        panel.style.width = `${width}px`;
+        panel.style.left = `${left}px`;
+        panel.style.top = `${rect.bottom + 4}px`;
+
+        const spaceBelow = window.innerHeight - rect.bottom - 12;
+        const spaceAbove = rect.top - 12;
+        const needed = Math.min(panel.scrollHeight || 240, 320);
+        if (spaceBelow < needed && spaceAbove > spaceBelow) {
+            panel.style.top = `${Math.max(8, rect.top - needed - 4)}px`;
+        }
     };
 
     const closePanel = () => {
         open = false;
+        openPanelClosers.delete(closePanel);
         panel.classList.add('hidden');
         trigger.setAttribute('aria-expanded', 'false');
         searchInput.value = '';
+    };
+
+    const openPanel = () => {
+        openPanelClosers.forEach((close) => {
+            if (close !== closePanel) {
+                close();
+            }
+        });
+        open = true;
+        openPanelClosers.add(closePanel);
+        panel.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+        searchInput.value = '';
+        renderList('');
+        placePanel();
+        queueMicrotask(() => {
+            placePanel();
+            searchInput.focus();
+        });
     };
 
     const togglePanel = () => {
@@ -248,11 +276,19 @@ function buildEnhancement(select) {
         }
     });
 
+    const repositionIfOpen = () => {
+        if (open) {
+            placePanel();
+        }
+    };
+    window.addEventListener('resize', repositionIfOpen);
+    window.addEventListener('scroll', repositionIfOpen, true);
+
     document.addEventListener('click', (event) => {
         if (!open) {
             return;
         }
-        if (event.target instanceof Node && !root.contains(event.target)) {
+        if (event.target instanceof Node && !root.contains(event.target) && !panel.contains(event.target)) {
             closePanel();
         }
     });
@@ -318,6 +354,16 @@ function bindSearchableSelectEnhancer() {
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 }
+
+function discardFloatingPanels() {
+    openPanelClosers.clear();
+    document.querySelectorAll('body > .property-searchable-select__panel').forEach((panel) => {
+        panel.remove();
+    });
+}
+
+document.addEventListener('turbo:before-cache', discardFloatingPanels);
+document.addEventListener('turbo:before-frame-render', discardFloatingPanels);
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bindSearchableSelectEnhancer, { once: true });

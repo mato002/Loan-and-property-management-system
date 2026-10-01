@@ -12,6 +12,7 @@ use App\Models\PmLandlordPortalProfile;
 use App\Models\PmLandlordDocument;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
+use App\Models\PmUnitUtilityCharge;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
 use App\Models\Property;
@@ -199,9 +200,13 @@ class PropertyPortfolioController extends Controller
         ];
 
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
+        $chargeTypeLabelsByPropertyId = $this->chargeTypeLabelsByPropertyId(
+            $portfolio->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $propertyChargeTemplatesByPropertyId,
+        );
 
         $tableRowTones = [];
-        $rows = $portfolio->getCollection()->map(function (Property $p) use ($propertyChargeTemplatesByPropertyId, &$tableRowTones) {
+        $rows = $portfolio->getCollection()->map(function (Property $p) use ($chargeTypeLabelsByPropertyId, &$tableRowTones) {
             $landlordCount = $p->landlords->count();
             $landlordCell = $landlordCount === 0
                 ? '—'
@@ -250,8 +255,7 @@ class PropertyPortfolioController extends Controller
                 e($p->managementStatusLabel()).
                 '</span>'
             );
-            $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-            $chargeTypeLabels = $this->uniqueChargeTypeLabels($chargeTemplates);
+            $chargeTypeLabels = $chargeTypeLabelsByPropertyId[(string) $p->id] ?? [];
             $chargeBreakdownCell = $chargeTypeLabels === []
                 ? '—'
                 : new HtmlString(
@@ -402,6 +406,10 @@ class PropertyPortfolioController extends Controller
 
         $rows = $q->orderBy('name')->get();
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
+        $chargeTypeLabelsByPropertyId = $this->chargeTypeLabelsByPropertyId(
+            $rows->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $propertyChargeTemplatesByPropertyId,
+        );
         $format = TabularExport::requestedFormat(
             $request->query('export'),
             $request->query('format'),
@@ -410,13 +418,12 @@ class PropertyPortfolioController extends Controller
         return TabularExport::stream(
             'properties_'.now()->format('Ymd_His'),
             ['Name', 'Code', 'Address', 'City', 'Units', 'Occupied', 'Vacant', 'Utility charges', 'Landlords', 'Management', 'Occupancy'],
-            function () use ($rows, $propertyChargeTemplatesByPropertyId) {
+            function () use ($rows, $chargeTypeLabelsByPropertyId) {
                 foreach ($rows as $p) {
                     $status = $p->units_count === 0
                         ? 'No units'
                         : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
-                    $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-                    $chargeSummary = implode('; ', $this->uniqueChargeTypeLabels($chargeTemplates));
+                    $chargeSummary = implode('; ', $chargeTypeLabelsByPropertyId[(string) $p->id] ?? []);
 
                     yield [
                         $p->name,
@@ -4115,24 +4122,97 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
-     * Unique charge types on a property (names only) for the register list.
+     * Charge types actually billed on each property: templates, posted lines, and invoices.
      *
-     * @param  array<int, array{charge_type?:string}>  $templates
-     * @return list<string>
+     * @param  list<int>  $propertyIds
+     * @param  array<string, array<int, array<string, mixed>>>  $templatesByProperty
+     * @return array<string, list<string>>
      */
-    private function uniqueChargeTypeLabels(array $templates): array
+    private function chargeTypeLabelsByPropertyId(array $propertyIds, array $templatesByProperty): array
     {
+        $propertyIds = array_values(array_unique(array_filter(array_map('intval', $propertyIds))));
         $types = [];
-        foreach ($templates as $template) {
-            $type = $this->normalizeUtilityChargeType((string) ($template['charge_type'] ?? ''));
-            if ($type === '') {
-                continue;
+        foreach ($propertyIds as $propertyId) {
+            $types[$propertyId] = [];
+            foreach ((array) ($templatesByProperty[(string) $propertyId] ?? []) as $row) {
+                $this->rememberPropertyChargeType($types, $propertyId, (string) ($row['charge_type'] ?? ''));
             }
-            $types[$type] = ucfirst(str_replace('_', ' ', $type));
         }
-        ksort($types);
+        if ($propertyIds === []) {
+            return [];
+        }
 
-        return array_values($types);
+        if (Schema::hasTable('expense_definitions')) {
+            $expenseRows = ExpenseDefinition::query()
+                ->whereIn('property_id', $propertyIds)
+                ->where('is_active', true)
+                ->get(['property_id', 'charge_key']);
+            foreach ($expenseRows as $row) {
+                $this->rememberPropertyChargeType($types, (int) $row->property_id, (string) $row->charge_key);
+            }
+        }
+
+        $units = PropertyUnit::query()
+            ->whereIn('property_id', $propertyIds)
+            ->get(['id', 'property_id']);
+        $unitToProperty = $units->mapWithKeys(fn ($unit) => [(int) $unit->id => (int) $unit->property_id])->all();
+        $unitIds = array_keys($unitToProperty);
+
+        if ($unitIds !== [] && Schema::hasTable('pm_unit_utility_charges')) {
+            $chargeRows = PmUnitUtilityCharge::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->select('property_unit_id', 'charge_type')
+                ->distinct()
+                ->get();
+            foreach ($chargeRows as $row) {
+                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
+                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->charge_type);
+            }
+        }
+
+        if ($unitIds !== [] && Schema::hasTable('pm_invoices') && Schema::hasColumn('pm_invoices', 'invoice_type')) {
+            $invoiceQuery = PmInvoice::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereNotIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT, PmInvoice::TYPE_MIXED, PmInvoice::TYPE_OTHER]);
+            if (Schema::hasColumn('pm_invoices', 'status')) {
+                $invoiceQuery->where('status', '!=', PmInvoice::STATUS_CANCELLED);
+            }
+            $invoiceRows = $invoiceQuery
+                ->select('property_unit_id', 'invoice_type')
+                ->distinct()
+                ->get();
+            foreach ($invoiceRows as $row) {
+                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
+                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->invoice_type);
+            }
+        }
+
+        $labels = [];
+        foreach ($propertyIds as $propertyId) {
+            $named = [];
+            foreach ($types[$propertyId] ?? [] as $type) {
+                $named[$type] = ucfirst(str_replace('_', ' ', $type));
+            }
+            ksort($named);
+            $labels[(string) $propertyId] = array_values($named);
+        }
+
+        return $labels;
+    }
+
+    /**
+     * @param  array<int, list<string>>  $types
+     */
+    private function rememberPropertyChargeType(array &$types, int $propertyId, string $rawType): void
+    {
+        if ($propertyId <= 0) {
+            return;
+        }
+        $type = $this->normalizeUtilityChargeType($rawType);
+        if ($type === '' || in_array($type, ['rent', 'late_payment', 'mixed', 'other'], true)) {
+            return;
+        }
+        $types[$propertyId][$type] = $type;
     }
 
     private function userCanAccessOffboarding(): bool

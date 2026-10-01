@@ -14,6 +14,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyCommunicationService;
 use App\Support\CsvExport;
+use App\Support\Property\PhoneLink;
 use App\Support\Property\TenantNoticeTypes;
 use App\Support\TabularExport;
 use Carbon\Carbon;
@@ -166,25 +167,29 @@ class PropertyTenantsOpsWebController extends Controller
         $export = strtolower(trim((string) $request->query('export', '')));
         $baseQuery = $this->movementsQuery($filters);
         $movements = (clone $baseQuery)->get();
+        $this->hydrateMovementTenants($movements);
         $movementsPage = (clone $baseQuery)->paginate(50)->withQueryString();
+        $this->hydrateMovementTenants($movementsPage->getCollection());
 
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return TabularExport::stream(
                 'tenant-movements',
-                ['ID', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Owner', 'Notes'],
+                ['ID', 'Tenant', 'Ac/No', 'Phone', 'Property', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Notes'],
                 function () use ($movements) {
                     return $movements->map(function (PmUnitMovement $m) {
-                        $propertyName = (string) ($m->unit?->property?->name ?? 'Unknown property');
-                        $unitLabel = (string) ($m->unit?->label ?? 'Unknown unit');
+                        $party = $this->movementParty($m);
 
                         return [
                             (string) $m->id,
-                            $propertyName.'/'.$unitLabel,
+                            $party['name'],
+                            $party['account'],
+                            $party['phone'],
+                            (string) ($m->unit?->property?->name ?? ''),
+                            (string) ($m->unit?->label ?? ''),
                             (string) str_replace('_', ' ', $m->movement_type),
                             (string) $m->status,
                             (string) ($m->scheduled_on?->format('Y-m-d') ?? ''),
                             (string) ($m->completed_on?->format('Y-m-d') ?? ''),
-                            (string) ($m->agent?->name ?? ''),
                             (string) ($m->notes ?? ''),
                         ];
                     });
@@ -222,6 +227,10 @@ class PropertyTenantsOpsWebController extends Controller
             } else {
                 $extra[] = '<span class="block px-3 py-2 text-xs text-rose-700">Missing unit/property link</span>';
             }
+            $party = $this->movementParty($m);
+            if ($party['tenant'] instanceof PmTenant) {
+                $extra[] = '<a href="'.route('property.tenants.show', $party['tenant']).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View tenant</a>';
+            }
             if ($m->movement_type === 'move_in') {
                 $extra[] = '<a href="'.route('property.tenants.leases', ['unit_id' => $m->property_unit_id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Lease flow</a>';
             } else {
@@ -239,13 +248,32 @@ class PropertyTenantsOpsWebController extends Controller
                 '</div>'
             );
 
+            $tenantCell = '—';
+            if ($party['tenant'] instanceof PmTenant) {
+                $tenantCell = new HtmlString(
+                    '<a href="'.route('property.tenants.show', $party['tenant']).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.e($party['tenant']->name).'</a>'
+                );
+            } elseif ($party['name'] !== '') {
+                $tenantCell = $party['name'];
+            }
+            $notes = trim((string) ($m->notes ?? ''));
+            $notesCell = '—';
+            if ($notes !== '') {
+                $short = mb_strlen($notes) > 80 ? mb_substr($notes, 0, 77).'…' : $notes;
+                $notesCell = new HtmlString('<span title="'.e($notes).'">'.e($short).'</span>');
+            }
+
             return [
-                $propertyName.'/'.$unitLabel,
-                str_replace('_', ' ', $m->movement_type),
-                ucfirst($m->status),
+                $tenantCell,
+                $party['account'] !== '' ? $party['account'] : '—',
+                $party['tenant'] instanceof PmTenant ? PhoneLink::html($party['tenant']->phone) : ($party['phone'] !== '' ? $party['phone'] : '—'),
+                $propertyName,
+                $unitLabel,
+                ucfirst(str_replace('_', ' ', (string) $m->movement_type)),
+                ucfirst(str_replace('_', ' ', (string) $m->status)),
                 $m->scheduled_on?->format('Y-m-d') ?? '—',
                 $m->completed_on?->format('Y-m-d') ?? '—',
-                $m->agent?->name ?? '—',
+                $notesCell,
                 $actions,
             ];
         })->all();
@@ -263,7 +291,7 @@ class PropertyTenantsOpsWebController extends Controller
 
         return property_view('property.agent.tenants.movements', [
             'stats' => $stats,
-            'columns' => ['Unit', 'Type', 'Status', 'Scheduled', 'Completed', 'Owner', 'Actions'],
+            'columns' => ['Tenant', 'Ac/No', 'Phone', 'Property', 'Unit', 'Type', 'Status', 'Scheduled', 'Completed', 'Notes', 'Actions'],
             'tableRows' => $rows,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'tenantMoveInEnabled' => $tenantMoveInEnabled,
@@ -281,25 +309,28 @@ class PropertyTenantsOpsWebController extends Controller
 
     public function movementsExport(Request $request)
     {
-        $filters = $request->only(['q', 'movement_type', 'status', 'unit_id', 'from', 'to', 'sort', 'dir']);
+        $filters = $request->only(['q', 'movement_type', 'status', 'unit_id', 'property_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->movementsQuery($filters)->get();
+        $this->hydrateMovementTenants($rows);
         $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
         return TabularExport::stream(
             'tenant_movements_'.now()->format('Ymd_His'),
-            ['ID', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Owner', 'Notes'],
+            ['ID', 'Tenant', 'Ac/No', 'Phone', 'Property', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $m) {
-                    $propertyName = (string) ($m->unit?->property?->name ?? 'Unknown property');
-                    $unitLabel = (string) ($m->unit?->label ?? 'Unknown unit');
+                    $party = $this->movementParty($m);
                     yield [
                         $m->id,
-                        $propertyName.'/'.$unitLabel,
+                        $party['name'],
+                        $party['account'],
+                        $party['phone'],
+                        (string) ($m->unit?->property?->name ?? ''),
+                        (string) ($m->unit?->label ?? ''),
                         $m->movement_type,
                         $m->status,
                         optional($m->scheduled_on)->format('Y-m-d'),
                         optional($m->completed_on)->format('Y-m-d'),
-                        $m->agent?->name,
                         $m->notes,
                     ];
                 }
@@ -839,6 +870,126 @@ class PropertyTenantsOpsWebController extends Controller
         ]);
     }
 
+    /**
+     * @param  Collection<int, PmUnitMovement>  $movements
+     */
+    private function hydrateMovementTenants(Collection $movements): void
+    {
+        if ($movements->isEmpty()) {
+            return;
+        }
+
+        $leaseIds = [];
+        foreach ($movements as $movement) {
+            if (preg_match('/Lease #(\d+)/', (string) $movement->notes, $match) === 1) {
+                $leaseIds[(int) $match[1]] = true;
+            }
+        }
+
+        $leasesById = $leaseIds === []
+            ? collect()
+            : PmLease::query()->with('pmTenant')->whereIn('id', array_keys($leaseIds))->get()->keyBy('id');
+
+        $unresolvedUnitIds = $movements
+            ->filter(function (PmUnitMovement $movement) use ($leasesById): bool {
+                if (preg_match('/Lease #(\d+)/', (string) $movement->notes, $match) !== 1) {
+                    return true;
+                }
+
+                return $leasesById->get((int) $match[1])?->pmTenant === null;
+            })
+            ->pluck('property_unit_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $leasesByUnit = collect();
+        if ($unresolvedUnitIds->isNotEmpty()) {
+            $leasesByUnit = PmLease::query()
+                ->with(['pmTenant', 'units:id'])
+                ->whereHas('units', fn (Builder $query) => $query->whereIn('property_units.id', $unresolvedUnitIds->all()))
+                ->get()
+                ->flatMap(function (PmLease $lease) {
+                    return $lease->units->map(fn ($unit) => [
+                        'unit_id' => (int) $unit->id,
+                        'lease' => $lease,
+                    ]);
+                })
+                ->groupBy('unit_id');
+        }
+
+        foreach ($movements as $movement) {
+            $tenant = null;
+            if (preg_match('/Lease #(\d+)/', (string) $movement->notes, $match) === 1) {
+                $tenant = $leasesById->get((int) $match[1])?->pmTenant;
+            }
+            if (! $tenant) {
+                $tenant = $this->tenantFromUnitLeases(
+                    $movement,
+                    $leasesByUnit->get((int) $movement->property_unit_id, collect())
+                );
+            }
+            $movement->setAttribute('resolved_tenant', $tenant);
+        }
+    }
+
+    /**
+     * @param  Collection<int, array{unit_id:int, lease:PmLease}|PmLease>  $rows
+     */
+    private function tenantFromUnitLeases(PmUnitMovement $movement, Collection $rows): ?PmTenant
+    {
+        $leases = $rows->map(function ($row) {
+            if ($row instanceof PmLease) {
+                return $row;
+            }
+
+            return $row['lease'] ?? null;
+        })->filter();
+
+        $date = ($movement->completed_on ?? $movement->scheduled_on)?->toDateString();
+        if ($date !== null) {
+            $matched = $leases->first(function (PmLease $lease) use ($movement, $date): bool {
+                if ($movement->movement_type === 'move_out') {
+                    return $lease->end_date?->toDateString() === $date;
+                }
+
+                return $lease->start_date?->toDateString() === $date;
+            });
+            if ($matched?->pmTenant) {
+                return $matched->pmTenant;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{tenant:?PmTenant, name:string, account:string, phone:string}
+     */
+    private function movementParty(PmUnitMovement $movement): array
+    {
+        $tenant = $movement->getAttribute('resolved_tenant');
+        if (! $tenant instanceof PmTenant) {
+            $tenant = null;
+        }
+
+        $name = trim((string) ($tenant?->name ?? ''));
+        if ($name === '' && preg_match('/\(Tenant:\s*(.+?)\)\s*$/', (string) $movement->notes, $match) === 1) {
+            $name = trim($match[1]);
+            if ($name === '—') {
+                $name = '';
+            }
+        }
+
+        return [
+            'tenant' => $tenant,
+            'name' => $name,
+            'account' => trim((string) ($tenant?->account_number ?? '')),
+            'phone' => trim((string) ($tenant?->phone ?? '')),
+        ];
+    }
+
     private function movementsQuery(array $filters): Builder
     {
         $q = PmUnitMovement::query()->with(['unit.property', 'agent']);
@@ -850,6 +1001,17 @@ class PropertyTenantsOpsWebController extends Controller
                     ->orWhereHas('unit', function (Builder $u) use ($search) {
                         $u->where('label', 'like', '%'.$search.'%')
                             ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
+                    })
+                    ->orWhereIn('property_unit_id', function ($sub) use ($search) {
+                        $sub->select('lu.property_unit_id')
+                            ->from('pm_lease_unit as lu')
+                            ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                            ->join('pm_tenants as t', 't.id', '=', 'l.pm_tenant_id')
+                            ->where(function ($tenant) use ($search) {
+                                $tenant->where('t.name', 'like', '%'.$search.'%')
+                                    ->orWhere('t.account_number', 'like', '%'.$search.'%')
+                                    ->orWhere('t.phone', 'like', '%'.$search.'%');
+                            });
                     });
             });
         }
