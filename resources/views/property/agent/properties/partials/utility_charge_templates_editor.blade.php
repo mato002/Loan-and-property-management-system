@@ -51,9 +51,9 @@
         unitDrafts: {},
         fillAllAmount: '',
         fillAllMaintenance: '',
-        draft: { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' },
+        draft: { property_unit_id: '', charge_type: '', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' },
         emptyDraft() {
-            return { property_unit_id: '', charge_type: 'garbage', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' };
+            return { property_unit_id: '', charge_type: '', label: '', amount_mode: 'fixed', rate_per_unit: '', fixed_charge: '', water_amount: '', maintenance_fee: '', vat_rate: '', escalates_with_rent: false, notes: '' };
         },
         init() {
             this.resetUnitDrafts();
@@ -81,7 +81,33 @@
             if (this.scopeMode === 'units') this.loadUnitDrafts();
         },
         onChargeTypeChange() {
+            if (this.isWaterType() && String(this.draft.amount_mode || '') === 'fixed') {
+                this.draft.amount_mode = 'variable';
+            }
             if (this.showUnitGrid()) this.loadUnitDrafts();
+        },
+        warn(title, text) {
+            if (window.Swal) {
+                window.Swal.fire({ icon: 'warning', title, text });
+                return;
+            }
+            window.alert(text);
+        },
+        async confirmReplaceSameType(type, count) {
+            const label = this.typeLabel(type);
+            const text = 'There are already ' + count + ' ' + label + ' row(s) on specific units. A whole-property ' + label + ' rule replaces those unit rows only. Other charge types are left as they are.';
+            if (window.Swal) {
+                const result = await window.Swal.fire({
+                    icon: 'question',
+                    title: 'Replace existing ' + label + ' unit rows?',
+                    text,
+                    showCancelButton: true,
+                    confirmButtonText: 'Replace ' + label + ' only',
+                    cancelButtonText: 'Cancel',
+                });
+                return !!result.isConfirmed;
+            }
+            return window.confirm(text);
         },
         draftFromCharge(charge) {
             const mode = String(charge?.amount_mode || '') === 'variable' ? 'variable' : 'fixed';
@@ -228,9 +254,12 @@
                 this.unitDrafts[unit.id] = current;
             });
         },
-        addOrUpdateCharge() {
+        async addOrUpdateCharge() {
             const type = String(this.draft.charge_type || '').trim();
-            if (!type) return;
+            if (!type) {
+                this.warn('Charge type required', 'Choose Water, Garbage, Service charge, or another type. The label is only a display name and does not create a new charge.');
+                return;
+            }
             const mode = String(this.draft.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed';
             if (this.showUnitGrid()) {
                 const rows = [];
@@ -287,7 +316,16 @@
             }
             const row = this.makeRow(this.draft.property_unit_id, mode, fixedCharge, waterAmount, maintenanceFee);
             if (this.editingIndex === null && String(row.property_unit_id || '') === '') {
-                this.charges = this.charges.filter((charge) => String(charge.charge_type || '').toLowerCase() !== type.toLowerCase());
+                const typeKey = type.toLowerCase();
+                const unitCount = this.charges.filter((charge) => String(charge.charge_type || '').toLowerCase() === typeKey && String(charge.property_unit_id || '') !== '').length;
+                if (unitCount > 0 && !(await this.confirmReplaceSameType(type, unitCount))) {
+                    return;
+                }
+                this.charges = this.charges.filter((charge) => {
+                    if (String(charge.charge_type || '').toLowerCase() !== typeKey) return true;
+                    if (unitCount > 0) return false;
+                    return String(charge.property_unit_id || '') !== '';
+                });
                 this.charges.push(row);
             } else if (this.editingIndex === null) {
                 this.upsertRow(row);
@@ -379,7 +417,8 @@
     <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
         <div>
             <h3 class="text-sm font-semibold text-slate-900">Saved utility charge templates</h3>
-            <p class="text-xs text-slate-500">Add, edit, or delete charges, then save. Changes apply to this property’s leases and future monthly billing.</p>
+            <p class="text-xs text-slate-500">These rows are recurring standing charges (garbage, service charge) that apply to leases and future billing.</p>
+            <p class="text-xs text-slate-500 mt-1">Water from EZEN is billed from meter readings, so it is not a fixed template here. Past water invoices are in Collections → Invoices (memo “WATER Meter Reading”). Use Add charge if this property should also have a water rate for new readings.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <button type="button" @click="openAdd()" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm shadow-blue-200 hover:bg-blue-700">
@@ -440,8 +479,8 @@
                     <option value="property">Whole property</option>
                     <option value="units">Selected units</option>
                 </select>
-                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'property'">One billing rule for every unit. This replaces any unit-by-unit setup for this charge.</p>
-                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'units'">Set each unit to fixed, variable, or excluded. A mix is allowed on the same charge.</p>
+                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'property'">One rule for every unit of this charge type only. Adding Water does not change Garbage. If this type already has unit-by-unit rows, you will be asked before those rows are replaced.</p>
+                <p class="mt-1 text-xs text-slate-500" x-show="scopeMode === 'units'">Set each unit to fixed, variable, or excluded. A mix is allowed on the same charge. Other charge types are left as they are.</p>
             </div>
             <div x-show="editingIndex !== null">
                 <label class="block text-xs font-medium text-slate-600">Scope</label>
@@ -458,20 +497,22 @@
                     <button type="button" @click="addChargeType()" class="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">+</button>
                 </div>
                 <select x-model="draft.charge_type" @change="onChargeTypeChange()" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                    <option value="">Select charge type</option>
                     <template x-for="type in chargeTypeOptions" :key="'draft-type-'+type">
                         <option :value="type" x-text="typeLabel(type)"></option>
                     </template>
                 </select>
+                <p class="mt-1 text-xs text-slate-500">This is what the system bills (Water vs Garbage). Changing the label below does not create a second charge.</p>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600">Label <span class="font-normal text-slate-400">(optional)</span></label>
+                <label class="block text-xs font-medium text-slate-600">Label <span class="font-normal text-slate-400">(optional display name)</span></label>
                 <input x-model="draft.label" type="text" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Water bill" />
             </div>
             <div x-show="!showUnitGrid()">
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
                 <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <option value="fixed">Fixed monthly amount</option>
-                    <option value="variable">Variable — enter each month</option>
+                    <option value="variable" x-text="isWaterType() ? 'Meter reading — enter each month' : 'Variable — enter each month'"></option>
                 </select>
                 <p class="mt-1 text-xs text-slate-500" x-show="draft.amount_mode === 'variable'">This will not auto-bill. The agent must post this charge (or a meter reading for water) every month for each occupied unit.</p>
             </div>
@@ -548,10 +589,13 @@
                     <label class="block text-xs font-medium text-slate-600">VAT rate %</label>
                     <input x-model="draft.vat_rate" type="number" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. 16" />
                 </div>
-                <label class="inline-flex items-center gap-2 text-sm text-slate-700 sm:mt-7">
-                    <input type="checkbox" x-model="draft.escalates_with_rent" class="rounded border-slate-300" />
-                    Escalates with rent
-                </label>
+                <div class="sm:mt-6">
+                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" x-model="draft.escalates_with_rent" class="rounded border-slate-300" />
+                        Increase when rent increases
+                    </label>
+                    <p class="mt-1 text-xs text-slate-500">Tick only if this extra should rise by the same percentage as rent (for example service charge that tracks rent). Leave off for garbage and meter water — those stay the amount you set, or the meter reading.</p>
+                </div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600">Notes</label>

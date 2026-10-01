@@ -33,7 +33,11 @@
             </div>
         @endif
     @else
-        <div class="flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0 flex-1" data-filter-main-row>
+        <div @class([
+            'flex flex-row items-end gap-x-2 gap-y-2 flex-1',
+            'flex-nowrap' => ! empty($filterSingleRow),
+            'w-full min-w-0 flex-wrap' => empty($filterSingleRow),
+        ]) data-filter-main-row>
             @if ($hasDateRange)
                 <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-date-range>
                     {{ $dateRange }}

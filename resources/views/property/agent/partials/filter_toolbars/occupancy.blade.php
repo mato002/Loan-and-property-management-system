@@ -3,10 +3,10 @@
     $drawerLabel = 'Occupancy filters';
     $filters = $filters ?? [];
     $preset = (string) ($filters['preset'] ?? '');
-    $queryBase = request()->query();
 @endphp
 
 <x-property.filter-toolbar
+    single-row
     :action="$occupancyUrl"
     :reset-url="$occupancyUrl"
     :drawer-label="$drawerLabel"
@@ -49,41 +49,17 @@
             ]"
             :value="$filters['age_bucket'] ?? ''"
         />
-        <input type="hidden" name="preset" value="{{ $filters['preset'] ?? '' }}" />
-    </x-slot>
-
-    <x-slot name="secondary">
-        <x-property.filter-field type="custom" label="Presets" :show-label="false">
-            <div class="flex flex-wrap items-center gap-1.5 min-h-[38px]">
-                <a
-                    href="{{ route('property.properties.occupancy', array_merge($queryBase, ['status' => 'vacant', 'preset' => 'vacant']), false) }}"
-                    data-turbo-frame="property-main"
-                    @class([
-                        'inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold',
-                        'border-amber-400 bg-amber-50 text-amber-800' => $preset === 'vacant',
-                        'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' => $preset !== 'vacant',
-                    ])
-                >Vacant only</a>
-                <a
-                    href="{{ route('property.properties.occupancy', array_merge($queryBase, ['status' => 'notice', 'preset' => 'notice']), false) }}"
-                    data-turbo-frame="property-main"
-                    @class([
-                        'inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold',
-                        'border-orange-400 bg-orange-50 text-orange-800' => $preset === 'notice',
-                        'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' => $preset !== 'notice',
-                    ])
-                >Notice only</a>
-                <a
-                    href="{{ route('property.properties.occupancy', array_merge($queryBase, ['status' => 'vacant', 'age_bucket' => '90_plus', 'preset' => 'long_vacant']), false) }}"
-                    data-turbo-frame="property-main"
-                    @class([
-                        'inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold',
-                        'border-rose-400 bg-rose-50 text-rose-800' => $preset === 'long_vacant',
-                        'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' => $preset !== 'long_vacant',
-                    ])
-                >Long vacant 90+</a>
-            </div>
-        </x-property.filter-field>
+        <x-property.filter-field type="select"
+            name="preset"
+            label="Preset"
+            empty-option="Presets"
+            :options="[
+                ['value' => 'vacant', 'label' => 'Vacant only'],
+                ['value' => 'notice', 'label' => 'Notice only'],
+                ['value' => 'long_vacant', 'label' => 'Long vacant 90+'],
+            ]"
+            :value="$preset"
+        />
     </x-slot>
 
     <x-slot name="export">
@@ -93,20 +69,20 @@
             'wordUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'word']), false),
         ])
     </x-slot>
+    <x-slot name="bulk">
+        <form id="occupancy-bulk-form" method="post" action="{{ route('property.properties.occupancy.bulk', absolute: false) }}" class="flex flex-nowrap items-center gap-2">
+            @csrf
+            <select name="bulk_action" aria-label="Bulk action" class="min-h-[38px] max-w-[11rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200">
+                <option value="mark_vacant">Mark vacant</option>
+                <option value="mark_occupied">Mark occupied</option>
+                <option value="mark_notice">Mark notice</option>
+                <option value="open_assign">Assign tenant</option>
+                <option value="open_publish">Publish listing</option>
+                <option value="open_property">Open property</option>
+            </select>
+            <button type="submit" title="Tick units in the table first." class="inline-flex min-h-[38px] shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200">
+                Run on selected
+            </button>
+        </form>
+    </x-slot>
 </x-property.filter-toolbar>
-
-<form id="occupancy-bulk-form" method="post" action="{{ route('property.properties.occupancy.bulk', absolute: false) }}" class="mt-2 flex flex-wrap items-center gap-2">
-    @csrf
-    <select name="bulk_action" class="min-h-[38px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200">
-        <option value="mark_vacant">Bulk: Mark vacant</option>
-        <option value="mark_occupied">Bulk: Mark occupied</option>
-        <option value="mark_notice">Bulk: Mark notice</option>
-        <option value="open_assign">Bulk: Open assign tenant</option>
-        <option value="open_publish">Bulk: Open publish listing</option>
-        <option value="open_property">Bulk: Open property</option>
-    </select>
-    <button type="submit" class="inline-flex min-h-[38px] items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200">
-        Run on selected
-    </button>
-    <span class="text-xs text-slate-500">Tick units in the table first.</span>
-</form>

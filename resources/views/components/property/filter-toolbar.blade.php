@@ -13,6 +13,7 @@
     $toolbarViewport = $__propertyToolbarViewport ?? 'all';
     $showDesktopToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'desktop';
     $showMobileToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'mobile';
+    $filterSingleRow = $attributes->has('single-row');
 @endphp
 
 @php
@@ -28,16 +29,21 @@
         <script type="application/json" data-filter-cascade-catalog-json>{!! $filterCascadeCatalogJson !!}</script>
     @endif
     @if ($showDesktopToolbar && $submitFilters && $action)
+        <div @class([
+            'w-full min-w-0 items-end gap-2',
+            'flex flex-col md:flex-row flex-nowrap overflow-x-auto' => $filterSingleRow,
+            'contents' => ! $filterSingleRow,
+        ])>
         <form
             id="{{ $formId }}"
             method="{{ $method }}"
             action="{{ $action }}"
             @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
             @if ($revenueDateFilter) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
-            class="property-filter-toolbar__form hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0"
+            class="property-filter-toolbar__form hidden md:flex flex-row items-end gap-x-2 gap-y-2 {{ $filterSingleRow ? 'flex-1 flex-nowrap' : 'w-full min-w-0 flex-wrap' }}"
             data-property-filter-form-desktop
         >
-            @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId])
+            @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId, 'filterSingleRow' => $filterSingleRow])
             <button type="submit" class="inline-flex min-h-[38px] items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 shrink-0">Apply</button>
             @if ($resetUrl)
                 <a
@@ -47,6 +53,12 @@
                 >Reset</a>
             @endif
         </form>
+        @if ($filterSingleRow && $hasBulk)
+            <div class="flex shrink-0 items-center gap-2" data-filter-bulk>
+                {{ $bulk }}
+            </div>
+        @endif
+        </div>
     @elseif ($showDesktopToolbar && $hasFields)
         <div class="property-filter-toolbar__static hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0">
             @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop'])
@@ -72,7 +84,7 @@
         ])
     @endif
 
-    @if ($hasBulk && $submitFilters && $showMobileToolbar)
+    @if ($hasBulk && $submitFilters && $showMobileToolbar && ! $filterSingleRow)
         <div class="md:hidden w-full min-w-0 pt-1" data-filter-bulk-mobile>
             {{ $bulk }}
         </div>

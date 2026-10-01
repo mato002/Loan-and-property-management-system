@@ -7,13 +7,27 @@
     back-route="property.revenue.index"
     :legacy-toolbar="false"
     :show-search="false"
-    :stats="$stats"
+    :stats="[]"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No invoices"
     empty-hint="Create an invoice for a unit and tenant; record payments from the Payments screen."
 >
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showInvoiceForm' => $showInvoiceFormByDefault]) !!}" ></x-slot>
+
+    @if (count($stats ?? []) > 0)
+        <x-slot name="above">
+            <details class="group rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-semibold text-slate-800 marker:content-none dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+                    <span>Summary cards</span>
+                    <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+                </summary>
+                <div class="border-t border-slate-100 px-3 py-3 dark:border-slate-700">
+                    <x-property.compact-stat-strip :stats="$stats" />
+                </div>
+            </details>
+        </x-slot>
+    @endif
 
     <x-slot name="actions">
         <button

@@ -247,7 +247,15 @@
             @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
 
             @if (! empty($opsKpis))
-                <x-property.utility.compact-kpi-strip :items="$opsKpis" />
+                <details class="group rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
+                    <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-semibold text-slate-800 marker:content-none dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+                        <span>Billing summary</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+                    </summary>
+                    <div class="border-t border-slate-100 px-3 py-3 dark:border-slate-700">
+                        <x-property.utility.compact-kpi-strip :items="$opsKpis" />
+                    </div>
+                </details>
             @endif
 
             <nav class="utility-ops-tabbar" aria-label="Utility operations">

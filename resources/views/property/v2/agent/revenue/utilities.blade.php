@@ -4,7 +4,7 @@
     back-route="property.revenue.index"
     :legacy-toolbar="false"
     :show-search="false"
-    :stats="$stats"
+    :stats="[]"
     :columns="[]"
     empty-title="No utility charges"
     empty-hint="Use the workspace tabs to capture readings and manage charge lines."

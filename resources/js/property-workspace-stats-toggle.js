@@ -1,14 +1,20 @@
 /**
- * Toggle workspace summary stat cards (visible by default).
+ * Toggle workspace summary stat cards.
+ * Pages can set data-default-visible="0" so the cards stay closed until opened.
  */
 
 const DEFAULT_STORAGE_KEY = 'property.workspace.summaryStatsVisible';
 
-function readStatsVisible(storageKey) {
+function readStatsVisible(storageKey, defaultVisible) {
     try {
-        return localStorage.getItem(storageKey) !== '0';
+        const stored = localStorage.getItem(storageKey);
+        if (stored === null) {
+            return defaultVisible;
+        }
+
+        return stored !== '0';
     } catch {
-        return true;
+        return defaultVisible;
     }
 }
 
@@ -55,7 +61,8 @@ function bindStatsPanel(panel) {
     panel.dataset.statsToggleBound = '1';
 
     const storageKey = panel.dataset.storageKey || DEFAULT_STORAGE_KEY;
-    applyStatsVisibility(panel, readStatsVisible(storageKey));
+    const defaultVisible = panel.dataset.defaultVisible !== '0';
+    applyStatsVisibility(panel, readStatsVisible(storageKey, defaultVisible));
 
     toggle.addEventListener('click', () => {
         const nextVisible = body.classList.contains('hidden');

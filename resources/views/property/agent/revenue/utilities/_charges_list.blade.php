@@ -5,7 +5,7 @@
                 <tr>
                     <th class="px-3 py-2">Label</th>
                     <th class="px-3 py-2">Unit</th>
-                    <th class="px-3 py-2">Usage</th>
+                    <th class="px-3 py-2">How billed</th>
                     <th class="px-3 py-2">Added</th>
                     <th class="px-3 py-2">Amount</th>
                     <th class="px-3 py-2">Notes</th>
@@ -17,11 +17,7 @@
                     <tr class="border-t border-slate-100 hover:bg-slate-50/80">
                         <td class="px-3 py-2 font-medium">{{ $c->label }}</td>
                         <td class="px-3 py-2">{{ $c->unit?->property?->name ?? '—' }} / {{ $c->unit?->label ?? '—' }}</td>
-                        <td class="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
-                            @if (($c->units_consumed ?? null) !== null || ($c->rate_per_unit ?? null) !== null || ($c->fixed_charge ?? null) !== null)
-                                U {{ number_format((float) ($c->units_consumed ?? 0), 3) }} · R {{ number_format((float) ($c->rate_per_unit ?? 0), 2) }} · F {{ number_format((float) ($c->fixed_charge ?? 0), 2) }}
-                            @else — @endif
-                        </td>
+                        <td class="px-3 py-2 text-xs text-slate-600">{{ $c->billingExplanation() }}</td>
                         <td class="px-3 py-2 text-slate-600">{{ optional($c->created_at)->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-3 py-2 tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) $c->amount) }}</td>
                         <td class="px-3 py-2 text-slate-600 max-w-xs truncate">{{ $c->notes ?? '—' }}</td>

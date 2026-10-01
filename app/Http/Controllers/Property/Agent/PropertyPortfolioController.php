@@ -5553,9 +5553,7 @@ class PropertyPortfolioController extends Controller
             $status = PropertyUnit::STATUS_NOTICE;
         } elseif ($preset === 'long_vacant') {
             $status = PropertyUnit::STATUS_VACANT;
-            if ($ageBucket === '') {
-                $ageBucket = '90_plus';
-            }
+            $ageBucket = '90_plus';
         }
 
         $today = Carbon::today();

@@ -47,4 +47,47 @@ class PmUnitUtilityCharge extends Model
     {
         return $this->belongsTo(PropertyUnit::class, 'property_unit_id');
     }
+
+    /**
+     * Plain-language billing breakdown for the posted-charges table.
+     */
+    public function billingExplanation(): string
+    {
+        $units = round((float) ($this->units_consumed ?? 0), 3);
+        $rate = round((float) ($this->rate_per_unit ?? 0), 2);
+        $fixed = round((float) ($this->fixed_charge ?? 0), 2);
+
+        $hasUnits = $this->units_consumed !== null && $units > 0.0005;
+        $hasRate = $this->rate_per_unit !== null && $rate > 0.004;
+        $hasFixed = $this->fixed_charge !== null && $fixed > 0.004;
+
+        if (! $hasUnits && ! $hasRate && ! $hasFixed) {
+            return '—';
+        }
+
+        $parts = [];
+        if ($hasUnits && $hasRate) {
+            $parts[] = $this->formatUnits($units).' units × '.\App\Services\Property\PropertyMoney::kes($rate);
+        } elseif ($hasUnits) {
+            $parts[] = $this->formatUnits($units).' units';
+        } elseif ($hasRate) {
+            $parts[] = \App\Services\Property\PropertyMoney::kes($rate).' per unit';
+        }
+
+        if ($hasFixed) {
+            $fixedLabel = \App\Services\Property\PropertyMoney::kes($fixed);
+            $parts[] = $parts === [] ? 'Fixed charge of '.$fixedLabel : '+ fixed '.$fixedLabel;
+        }
+
+        return implode(' ', $parts);
+    }
+
+    private function formatUnits(float $units): string
+    {
+        if (abs($units - round($units)) < 0.0005) {
+            return number_format($units, 0);
+        }
+
+        return rtrim(rtrim(number_format($units, 3, '.', ''), '0'), '.');
+    }
 }

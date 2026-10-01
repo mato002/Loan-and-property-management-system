@@ -117,18 +117,15 @@ class PropertyUtilityChargeController extends Controller
 
             return TabularExport::stream(
                 'utility-charges-'.now()->format('Ymd_His'),
-                ['Label', 'Unit', 'Type', 'Billing month', 'Usage (units/rate/fixed)', 'Added', 'Amount', 'Notes'],
+                ['Label', 'Unit', 'Type', 'Billing month', 'How billed', 'Added', 'Amount', 'Notes'],
                 function () use ($rows) {
                     foreach ($rows as $c) {
-                        $usage = (($c->units_consumed ?? null) !== null || ($c->rate_per_unit ?? null) !== null || ($c->fixed_charge ?? null) !== null)
-                            ? 'U: '.number_format((float) ($c->units_consumed ?? 0), 3).' | R: '.number_format((float) ($c->rate_per_unit ?? 0), 2).' | F: '.number_format((float) ($c->fixed_charge ?? 0), 2)
-                            : '';
                         yield [
                             (string) $c->label,
                             (string) (($c->unit?->property?->name ?? '').' / '.($c->unit?->label ?? '')),
                             (string) ($c->charge_type ?? ''),
                             (string) ($c->billing_month ?? ''),
-                            $usage,
+                            $c->billingExplanation(),
                             $c->created_at?->format('Y-m-d') ?? '',
                             (string) PropertyMoney::kes((float) $c->amount),
                             (string) ($c->notes ?? ''),
@@ -530,11 +527,8 @@ class PropertyUtilityChargeController extends Controller
                     );
                 }
 
-                $usageMeta = (($charge->units_consumed ?? null) !== null || ($charge->rate_per_unit ?? null) !== null || ($charge->fixed_charge ?? null) !== null)
-                    ? ' | U: '.number_format((float) ($charge->units_consumed ?? 0), 3)
-                        .' R: '.number_format((float) ($charge->rate_per_unit ?? 0), 2)
-                        .' F: '.number_format((float) ($charge->fixed_charge ?? 0), 2)
-                    : '';
+                $howBilled = $charge->billingExplanation();
+                $usageMeta = ($howBilled !== '' && $howBilled !== '—') ? ' · '.$howBilled : '';
 
                 $invoice = PmInvoice::query()->create([
                     'pm_lease_id' => $lease->id,

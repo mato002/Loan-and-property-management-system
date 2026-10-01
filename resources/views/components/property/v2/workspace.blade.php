@@ -30,6 +30,9 @@
     'showWorkspaceTabs' => true,
     /** Table-first layout: title + actions → filters → compact KPIs → table; actions in page header */
     'compactList' => true,
+    /** Summary cards start open unless a page asks for them collapsed. */
+    'statsExpanded' => true,
+    'statsStorageKey' => 'property.workspace.summaryStatsVisible',
 ])
 
 @php
@@ -186,7 +189,7 @@
         </div>
 
         @if (count($stats) > 0)
-            <x-property.collapsible-stats>
+            <x-property.collapsible-stats :storage-key="$statsStorageKey" :default-visible="$statsExpanded">
                 <x-property.responsive.stat-card-grid :stats="$stats" />
             </x-property.collapsible-stats>
         @endif
@@ -248,7 +251,7 @@
                 @endif
 
                 @if ($compactList && count($stats) > 0)
-                    <x-property.collapsible-stats>
+                    <x-property.collapsible-stats :storage-key="$statsStorageKey" :default-visible="$statsExpanded">
                         <x-property.compact-stat-strip :stats="$stats" />
                     </x-property.collapsible-stats>
                 @endif
