@@ -5671,7 +5671,8 @@ class PropertyPortfolioController extends Controller
             ->orderBy('label');
 
         $units = (clone $baseQuery)->get();
-        $unitsPage = (clone $baseQuery)->paginate(50)->withQueryString();
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
+        $unitsPage = (clone $baseQuery)->paginate($perPage)->withQueryString();
 
         $total = $units->count();
         $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
@@ -5810,6 +5811,7 @@ class PropertyPortfolioController extends Controller
                 'age_bucket' => $ageBucket,
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '',
                 'q' => $search,
+                'per_page' => (string) $request->query('per_page', '30'),
             ],
             'propertyOptions' => $this->operationalPropertiesQuery($includeArchived)
                 ->whereIn('id', $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->select('property_id')->distinct())

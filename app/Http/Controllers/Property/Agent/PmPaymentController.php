@@ -19,6 +19,7 @@ use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -164,39 +165,21 @@ class PmPaymentController extends Controller
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
-            $rows = (clone $baseQuery)->limit(5000)->get();
+            $lines = $this->paymentExportLines($baseQuery);
+
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
                 ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status'],
-                function () use ($rows) {
-                    foreach ($rows as $p) {
-                        $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
-                        if ($allocatedTo === '' && $p->tenant) {
-                            $allocatedTo = $p->tenant->name;
-                        }
-                        $source = (string) data_get($p->meta, 'source', 'manual');
-                        $provider = (string) data_get($p->meta, 'provider', '');
-                        $sourceLabel = match ($source) {
-                            'equity_api' => 'Equity API',
-                            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
-                            default => 'Manual / Legacy',
-                        };
-                        yield [
-                            'PAY-'.$p->id,
-                            strip_tags((string) PmPaymentPresentation::propertyUnit($p, '')),
-                            PmPaymentPresentation::payerPhone($p, ''),
-                            PmPaymentPresentation::transactionRef($p, ''),
-                            PmPaymentPresentation::paymentMethod($p, ''),
-                            number_format((float) $p->amount, 2, '.', ''),
-                            $p->paid_at?->format('Y-m-d H:i:s') ?? '',
-                            $sourceLabel,
-                            $allocatedTo,
-                            ucfirst((string) $p->status),
-                        ];
+                function () use ($lines) {
+                    foreach ($lines as $line) {
+                        yield $line;
                     }
                 },
                 $export,
-                ['title' => 'Payments'],
+                [
+                    'title' => 'Payments',
+                    'subtitle' => count($lines).' payment'.(count($lines) === 1 ? '' : 's'),
+                ],
             );
         }
 
@@ -366,6 +349,69 @@ class PmPaymentController extends Controller
             'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
         ]);
+    }
+
+    /**
+     * Plain rows for export. Loaded in small batches so a full month (thousands of receipts) does not exhaust memory before the PDF is built.
+     *
+     * @param  Builder<PmPayment>  $query
+     * @return list<list<string>>
+     */
+    private function paymentExportLines(Builder $query): array
+    {
+        $lines = [];
+        $remaining = 5000;
+        $page = 1;
+        $with = [
+            'tenant:id,name,phone',
+            'allocations.invoice:id,invoice_no,property_unit_id',
+            'allocations.invoice.unit:id,label,property_id',
+            'allocations.invoice.unit.property:id,name,code',
+        ];
+
+        do {
+            $size = min(250, $remaining);
+            $batch = (clone $query)->with($with)->forPage($page, $size)->get();
+            foreach ($batch as $payment) {
+                $lines[] = $this->paymentExportLine($payment);
+            }
+            $count = $batch->count();
+            $remaining -= $count;
+            $page++;
+        } while ($count === $size && $remaining > 0);
+
+        return $lines;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function paymentExportLine(PmPayment $payment): array
+    {
+        $allocatedTo = $payment->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+        if ($allocatedTo === '' && $payment->tenant) {
+            $allocatedTo = (string) $payment->tenant->name;
+        }
+        $source = (string) data_get($payment->meta, 'source', 'manual');
+        $provider = (string) data_get($payment->meta, 'provider', '');
+        $sourceLabel = match ($source) {
+            'equity_api' => 'Equity API',
+            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
+            default => 'Manual / Legacy',
+        };
+
+        return [
+            'PAY-'.$payment->id,
+            trim(html_entity_decode(strip_tags((string) PmPaymentPresentation::propertyUnit($payment, '')), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+            PmPaymentPresentation::payerPhone($payment, ''),
+            PmPaymentPresentation::transactionRef($payment, ''),
+            PmPaymentPresentation::paymentMethod($payment, ''),
+            number_format((float) $payment->amount, 2, '.', ''),
+            $payment->paid_at?->format('Y-m-d H:i:s') ?? '',
+            $sourceLabel,
+            $allocatedTo,
+            ucfirst((string) $payment->status),
+        ];
     }
 
     private function channelLabel(?string $channel): string

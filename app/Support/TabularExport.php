@@ -78,8 +78,12 @@ class TabularExport
 
     private static function renderDompdfResponse(string $filename, string $html, string $paper = 'A4', string $orientation = 'portrait'): StreamedResponse
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         $pdfOptions = new Options();
-        $pdfOptions->set('isRemoteEnabled', true);
+        // Remote logos make Dompdf request this same site and can hang or 500.
+        $pdfOptions->set('isRemoteEnabled', false);
         $pdfOptions->set('defaultFont', 'DejaVu Sans');
 
         $dompdf = new Dompdf($pdfOptions);
@@ -293,7 +297,13 @@ class TabularExport
             ? trim((string) (PropertyPortalSetting::getValue('company_tagline', '') ?? ''))
             : '';
         $omitImages = (bool) ($options['omit_images'] ?? false);
-        $logoSrc = $omitImages ? '' : (string) (($doc['logo_embed'] ?? '') ?: PropertyWorkspaceBranding::embeddableLogoSrc($doc, $agentUserId));
+        $logoSrc = '';
+        if (! $omitImages) {
+            $candidate = (string) (($doc['logo_embed'] ?? '') ?: PropertyWorkspaceBranding::embeddableLogoSrc($doc, $agentUserId));
+            if (str_starts_with($candidate, 'data:image/')) {
+                $logoSrc = $candidate;
+            }
+        }
         $contactParts = array_values(array_filter([
             trim((string) ($doc['contact_phone'] ?? '')),
             trim((string) ($doc['contact_email_primary'] ?? '')),
@@ -311,14 +321,16 @@ class TabularExport
         $summary = is_array($options['summary'] ?? null) ? $options['summary'] : [];
         $th = implode('', array_map(fn ($h) => '<th>'.$esc($h).'</th>', $headers));
 
-        $trs = '';
+        $rowHtml = [];
         foreach ($rows() as $row) {
             $tds = '';
             foreach ($row as $cell) {
                 $tds .= '<td>'.$esc($cell).'</td>';
             }
-            $trs .= '<tr>'.$tds.'</tr>';
+            $rowHtml[] = '<tr>'.$tds.'</tr>';
         }
+        $trs = implode('', $rowHtml);
+        $isLarge = count($rowHtml) > 400;
 
         $summaryHtml = '';
         if ($summary !== []) {
@@ -346,15 +358,16 @@ class TabularExport
             .report-title{font-size:15px;font-weight:700;margin:8px 0 2px;}
             .report-subtitle{font-size:11px;color:#444;margin-bottom:8px;}
             .meta{font-size:10px;color:#555;margin:6px 0 10px;}
-            table{width:100%;border-collapse:collapse;table-layout:fixed;}
+            table{width:100%;border-collapse:collapse;'.($isLarge ? '' : 'table-layout:fixed;').'}
             th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-break:break-word;}
             th{background:'.$esc($accent).';color:#fff;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.02em;}
-            tr:nth-child(even) td{background:#f8fafc;}
+            '.($isLarge ? '' : 'tr:nth-child(even) td{background:#f8fafc;}').'
             .summary-wrap{margin-top:12px;display:flex;justify-content:flex-end;}
             .summary-table{width:48%;border-collapse:collapse;}
             .summary-table th,.summary-table td{border:1px solid #ddd;padding:6px;font-size:11px;}
             .summary-table th{background:#fafafa;width:55%;text-align:left;}
-            .footer{position:fixed;left:16px;right:16px;bottom:8px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
+            .footer{left:16px;right:16px;bottom:8px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
+            '.($isLarge ? '.footer{margin-top:12px;}' : '.footer{position:fixed;}').'
             body.compact{font-size:10px;}
             body.compact .report-title{font-size:13px;}
             body.compact th,body.compact td{padding:4px;font-size:9px;}

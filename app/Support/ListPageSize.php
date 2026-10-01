@@ -75,7 +75,7 @@ final class ListPageSize
      */
     public static function detectTotal(array $viewVars): ?int
     {
-        foreach (['tenantPager', 'paginator', 'rows', 'applicationsPager', 'leasesPager'] as $key) {
+        foreach (['tenantPager', 'paginator', 'rows', 'applicationsPager', 'leasesPager', 'leasePager'] as $key) {
             $total = self::totalFrom($viewVars[$key] ?? null);
             if ($total !== null) {
                 return $total;

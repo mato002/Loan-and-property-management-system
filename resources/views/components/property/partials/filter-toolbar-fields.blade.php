@@ -6,7 +6,6 @@
     $hasDateRange = isset($dateRange) && ! $dateRange->isEmpty();
     $hasExport = isset($export) && ! $export->isEmpty();
     $hasActions = isset($actions) && ! $actions->isEmpty();
-    $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary;
     $pageSizeHaystack = strtolower(implode("\n", array_filter([
         isset($primary) ? (string) $primary : '',
         isset($secondary) ? (string) $secondary : '',
@@ -15,15 +14,7 @@
     $injectPageSize = ! str_contains($pageSizeHaystack, 'name="per_page"')
         && ! str_contains($pageSizeHaystack, "name='per_page'")
         && ! str_contains($pageSizeHaystack, 'name=per_page');
-    $pageSizeField = $injectPageSize
-        ? view('components.property.filter-field', [
-            'type' => 'select',
-            'name' => 'per_page',
-            'label' => 'Rows',
-            'form' => $fieldFormId ?? null,
-            'value' => (string) ($filters['per_page'] ?? request()->query('per_page', '30')),
-        ])->render()
-        : '';
+    $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary || $injectPageSize;
 @endphp
 
 @if ($hasFilterFields)
@@ -49,6 +40,15 @@
                 </div>
             </div>
         @endif
+        @if ($injectPageSize)
+            <x-property.filter-field
+                type="select"
+                name="per_page"
+                label="Rows"
+                :form="$fieldFormId ?? null"
+                :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+            />
+        @endif
     @else
         <div @class([
             'flex flex-row items-end gap-x-2 gap-y-2 flex-1',
@@ -71,6 +71,15 @@
                 <div class="contents" data-filter-secondary>
                     {{ $secondary }}
                 </div>
+            @endif
+            @if ($injectPageSize)
+                <x-property.filter-field
+                    type="select"
+                    name="per_page"
+                    label="Rows"
+                    :form="$fieldFormId ?? null"
+                    :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+                />
             @endif
         </div>
     @endif
