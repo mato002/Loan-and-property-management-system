@@ -179,7 +179,7 @@ class PropertyHrEmployeeService
      * @param  list<int>  $roleIds
      * @return array{user: User, plain_password: string, mailed: bool, created: bool, mail_error: ?string}
      */
-    public function issueLoginAndEmail(Employee $employee, User $actor, array $roleIds = []): array
+    public function issueLoginAndEmail(Employee $employee, User $actor, array $roleIds = [], ?PmMessageLog $existingLog = null): array
     {
         $employee->loadMissing('user.pmRoles');
         $roleIds = array_values(array_unique(array_filter(array_map('intval', $roleIds))));
@@ -203,7 +203,7 @@ class PropertyHrEmployeeService
             }
         }
 
-        $delivery = $this->sendLoginEmail($employee->fresh(), $result['user']->loadMissing('pmRoles'), $result['plain_password']);
+        $delivery = $this->sendLoginEmail($employee->fresh(), $result['user']->loadMissing('pmRoles'), $result['plain_password'], $existingLog);
 
         return [
             'user' => $result['user'],
@@ -443,7 +443,7 @@ class PropertyHrEmployeeService
     /**
      * @return array{mailed: bool, error: ?string}
      */
-    public function sendLoginEmail(Employee $employee, User $user, string $plainPassword): array
+    public function sendLoginEmail(Employee $employee, User $user, string $plainPassword, ?PmMessageLog $existingLog = null): array
     {
         $role = $user->pmRoles->pluck('name')->filter()->join(', ') ?: ($employee->job_title ?: 'Staff');
         $subject = __('Your property workspace login');
@@ -470,6 +470,7 @@ class PropertyHrEmployeeService
                 body: $logBody,
                 userId: $actorId,
                 deliveryStatus: 'sent',
+                existingLog: $existingLog,
             );
 
             return ['mailed' => true, 'error' => null];
@@ -496,6 +497,7 @@ class PropertyHrEmployeeService
                 userId: $actorId,
                 deliveryStatus: 'failed',
                 deliveryError: $errorDetail,
+                existingLog: $existingLog,
             );
 
             return ['mailed' => false, 'error' => $errorDetail];
@@ -589,6 +591,7 @@ class PropertyHrEmployeeService
         ?int $userId,
         string $deliveryStatus,
         ?string $deliveryError = null,
+        ?PmMessageLog $existingLog = null,
     ): void {
         if (! Schema::hasTable('pm_message_logs') || $toAddress === '') {
             return;
@@ -613,6 +616,18 @@ class PropertyHrEmployeeService
             }
             if (Schema::hasColumn('pm_message_logs', 'internal_stage')) {
                 $payload['internal_stage'] = 'staff_login';
+            }
+            if ($deliveryStatus === 'sent' && Schema::hasColumn('pm_message_logs', 'superseded_at')) {
+                $payload['superseded_at'] = null;
+            }
+            if ($deliveryStatus === 'sent' && Schema::hasColumn('pm_message_logs', 'superseded_by_log_id')) {
+                $payload['superseded_by_log_id'] = null;
+            }
+
+            if ($existingLog) {
+                $existingLog->forceFill($payload)->save();
+
+                return;
             }
 
             PmMessageLog::query()->create($payload);

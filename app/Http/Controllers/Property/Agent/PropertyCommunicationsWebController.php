@@ -604,12 +604,10 @@ class PropertyCommunicationsWebController extends Controller
 
         try {
             $result = app(\App\Services\Property\PropertyHrEmployeeService::class)
-                ->issueLoginAndEmail($employee->fresh(), $request->user());
+                ->issueLoginAndEmail($employee->fresh(), $request->user(), [], $log);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->withErrors(['body' => collect($e->errors())->flatten()->first() ?: 'Could not resend login email.']);
         }
-
-        $this->markMessageLogSuperseded($log);
 
         if (! ($result['mailed'] ?? false)) {
             $error = app(SmsDeliveryErrorPresenter::class)->forEmail((string) ($result['mail_error'] ?? ''));
@@ -657,15 +655,29 @@ class PropertyCommunicationsWebController extends Controller
         return Employee::query()->where('user_id', $user->id)->first();
     }
 
-    private function markMessageLogSuperseded(PmMessageLog $log): void
+    /**
+     * Hide a failed staff-login row once a later send to the same address succeeded,
+     * so the outbox shows one row and nothing retries the old failure.
+     */
+    private function excludeResolvedStaffLoginFailures(Builder $query, string $table): void
     {
-        $payload = [];
-        if (Schema::hasColumn('pm_message_logs', 'superseded_at')) {
-            $payload['superseded_at'] = now();
-        }
-        if ($payload !== []) {
-            $log->forceFill($payload)->save();
-        }
+        $query->whereNotExists(function ($sub) use ($table): void {
+            $sub->selectRaw('1')
+                ->from('pm_message_logs as later_staff')
+                ->whereColumn('later_staff.to_address', $table.'.to_address')
+                ->where('later_staff.channel', 'email')
+                ->whereIn('later_staff.delivery_status', ['sent', 'delivered'])
+                ->whereColumn('later_staff.id', '>', $table.'.id')
+                ->where(function ($kind): void {
+                    $kind->where('later_staff.template_category', 'staff_credentials')
+                        ->orWhere('later_staff.internal_stage', 'staff_login');
+                })
+                ->where($table.'.delivery_status', 'failed')
+                ->where(function ($staff) use ($table): void {
+                    $staff->where($table.'.template_category', 'staff_credentials')
+                        ->orWhere($table.'.internal_stage', 'staff_login');
+                });
+        });
     }
 
     public function messagesExport(Request $request)
@@ -1505,6 +1517,10 @@ class PropertyCommunicationsWebController extends Controller
             $q->whereIn($table.'.delivery_status', ['sent', 'delivered']);
         } elseif ($status !== '') {
             $q->where($table.'.delivery_status', $status);
+        }
+
+        if ($status !== 'failed_all') {
+            $this->excludeResolvedStaffLoginFailures($q, $table);
         }
 
         $sender = trim((string) ($filters['sender'] ?? ''));
