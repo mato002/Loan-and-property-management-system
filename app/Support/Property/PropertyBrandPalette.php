@@ -35,7 +35,8 @@ final class PropertyBrandPalette
      *     navy_hover: string,
      *     navy_border: string,
      *     highlight: string,
-     *     on_primary: string
+     *     on_primary: string,
+     *     canvas: string
      * }>
      */
     public static function all(): array
@@ -56,22 +57,24 @@ final class PropertyBrandPalette
                 'navy_border' => '#264040',
                 'highlight' => '#6ee7b7',
                 'on_primary' => '#ffffff',
+                'canvas' => '#e8ecf1',
             ],
             self::PASSION_HOMES => [
-                'label' => 'Passion Homes logo',
-                'hint' => 'Two-color mark: electric blue roof/H, red P and house.',
-                'primary' => '#0000F0',
-                'primary_hover' => '#0000C8',
-                'primary_dark' => '#000099',
-                'primary_soft' => '#EEEEFF',
-                'cta' => '#EA1B1B',
-                'cta_hover' => '#C41616',
-                'gold' => '#EA1B1B',
-                'navy' => '#000066',
-                'navy_hover' => '#000080',
-                'navy_border' => '#00004D',
-                'highlight' => '#9D9DFF',
+                'label' => 'Passion Homes',
+                'hint' => 'Business-card brick red and cerulean on a quiet slate shell. Red is for actions and the active mark. Blue is for links and secondary labels.',
+                'primary' => '#C0392B',
+                'primary_hover' => '#922B21',
+                'primary_dark' => '#7B1E16',
+                'primary_soft' => '#FDEDEC',
+                'cta' => '#C0392B',
+                'cta_hover' => '#8B0000',
+                'gold' => '#1B75BC',
+                'navy' => '#0F172A',
+                'navy_hover' => '#1E293B',
+                'navy_border' => '#1E293B',
+                'highlight' => '#F5B7B1',
                 'on_primary' => '#ffffff',
+                'canvas' => '#F8FAFC',
             ],
         ];
     }
@@ -131,6 +134,8 @@ final class PropertyBrandPalette
             '--brand-navy-border: '.$t['navy_border'],
             '--brand-highlight: '.$t['highlight'],
             '--brand-on-primary: '.$t['on_primary'],
+            '--brand-canvas: '.($t['canvas'] ?? '#e8ecf1'),
+            '--brand-accent: '.$t['gold'],
         ]);
     }
 
