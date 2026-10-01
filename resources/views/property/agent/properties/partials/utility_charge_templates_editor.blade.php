@@ -109,16 +109,29 @@
             });
             this.unitDrafts = next;
         },
+        anyFixed() {
+            return this.units.some((unit) => (this.unitDrafts[unit.id] || {}).mode === 'fixed');
+        },
         setAllMode(mode) {
             this.units.forEach((unit) => {
                 const current = this.unitDrafts[unit.id] || { mode: 'exclude', amount: '', maintenance: '' };
                 current.mode = mode;
-                if (mode !== 'fixed') {
+                if (mode === 'fixed') {
+                    current.amount = this.fillAllAmount;
+                    current.maintenance = this.isWaterType() ? this.fillAllMaintenance : '';
+                } else {
                     current.amount = '';
                     current.maintenance = '';
                 }
                 this.unitDrafts[unit.id] = current;
             });
+        },
+        onUnitModeChange(unitId) {
+            const current = this.unitDrafts[unitId];
+            if (!current || current.mode !== 'fixed') return;
+            if (current.amount === '' || current.amount == null) current.amount = this.fillAllAmount;
+            if (this.isWaterType() && (current.maintenance === '' || current.maintenance == null)) current.maintenance = this.fillAllMaintenance;
+            this.unitDrafts[unitId] = current;
         },
         dropChargeRows(type, unitId) {
             const wanted = String(type || '').toLowerCase();
@@ -467,15 +480,14 @@
                     <button type="button" @click="setAllMode('fixed')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All fixed</button>
                     <button type="button" @click="setAllMode('variable')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All variable</button>
                     <button type="button" @click="setAllMode('exclude')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All excluded</button>
-                    <div>
-                        <label class="block text-[11px] font-medium text-slate-500" x-text="isWaterType() ? 'Rate for fixed units' : 'Amount for fixed units'"></label>
-                        <input x-model="fillAllAmount" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
+                    <div x-show="anyFixed()">
+                        <label class="block text-[11px] font-medium text-slate-500" x-text="isWaterType() ? 'Rate for every fixed unit' : 'Amount for every fixed unit'"></label>
+                        <input x-model="fillAllAmount" @input="applyFillAll()" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
                     </div>
-                    <div x-show="isWaterType()">
-                        <label class="block text-[11px] font-medium text-slate-500">Maintenance for fixed units</label>
-                        <input x-model="fillAllMaintenance" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
+                    <div x-show="anyFixed() && isWaterType()">
+                        <label class="block text-[11px] font-medium text-slate-500">Maintenance fee for every fixed unit</label>
+                        <input x-model="fillAllMaintenance" @input="applyFillAll()" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
                     </div>
-                    <button type="button" @click="applyFillAll()" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Fill fixed units</button>
                 </div>
                 <div class="max-h-64 overflow-auto">
                     <table class="w-full text-sm">
@@ -492,7 +504,7 @@
                                 <tr class="border-t border-slate-100">
                                     <td class="px-3 py-2 font-medium text-slate-800" x-text="unit.label"></td>
                                     <td class="px-3 py-2">
-                                        <select x-model="unitDrafts[unit.id].mode" class="rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5">
+                                        <select x-model="unitDrafts[unit.id].mode" @change="onUnitModeChange(unit.id)" class="rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5">
                                             <option value="exclude">Excluded</option>
                                             <option value="fixed">Fixed</option>
                                             <option value="variable">Variable</option>
@@ -510,7 +522,7 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">Fixed units bill the amount you enter. For water, the rate is multiplied by units used and the maintenance fee is added once. Variable units are entered each month. Excluded units do not get this charge.</p>
+                <p class="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">Type the rate and fee once. Every unit set to Fixed uses those figures, and you can still change one row. Variable and Excluded hide the amount because nothing is billed from this form.</p>
             </div>
             <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && isWaterFixed()" class="grid gap-3 sm:grid-cols-2">
                 <div>
