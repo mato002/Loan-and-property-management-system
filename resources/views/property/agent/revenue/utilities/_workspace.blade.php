@@ -268,8 +268,6 @@
             x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); const hasStanding = @json(((int) ($standingLeaseCount ?? 0) > 0) || ((float) ($standingMonthlyTotal ?? 0) > 0)); if (q && allowed.includes(q)) activeTab = q; else if (hasStanding) activeTab = 'standing'; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="utility-ops-shell space-y-4"
         >
-            @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
-
             @if (! empty($opsKpis))
                 <details class="group rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
                     <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-semibold text-slate-800 marker:content-none dark:text-slate-100 [&::-webkit-details-marker]:hidden">

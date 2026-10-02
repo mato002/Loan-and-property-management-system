@@ -41,7 +41,7 @@
             @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
             @if ($revenueDateFilter) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
             @class([
-                'property-filter-toolbar__form hidden md:flex min-w-0 w-full flex-1 flex-row items-end gap-2 overflow-visible',
+                'property-filter-toolbar__form hidden max-md:!hidden md:flex min-w-0 w-full flex-1 flex-row items-end gap-2 overflow-visible',
                 'flex-nowrap' => $filterSingleRow,
                 'flex-wrap' => ! $filterSingleRow,
             ])
@@ -64,7 +64,7 @@
         @endif
         </div>
     @elseif ($showDesktopToolbar && $hasFields)
-        <div class="property-filter-toolbar__static hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0">
+        <div class="property-filter-toolbar__static hidden max-md:!hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0">
             @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop'])
             @if ($hasBulk)
                 <div class="flex flex-wrap items-center gap-2 md:ml-auto" data-filter-bulk>

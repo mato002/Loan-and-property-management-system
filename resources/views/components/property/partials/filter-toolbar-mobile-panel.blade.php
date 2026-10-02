@@ -4,43 +4,45 @@
     $submitFilters = (bool) ($submitFilters ?? true);
     $hasPrimary = (bool) ($hasPrimary ?? false);
     $toolbarViewport = \App\Support\Property\FilterToolbarViewport::current();
-    $wrapInDrawer = $toolbarViewport === 'all';
+    $embedded = $toolbarViewport === 'mobile';
     $drawerLabel = $drawerLabel ?? 'Filters';
     $activeFilterCount = (int) ($activeFilterCount ?? 0);
-    $chips = $chips ?? collect();
 @endphp
 
 @if ($hasFields && ($submitFilters || $hasPrimary))
-    @if ($wrapInDrawer)
-        <x-property.responsive.mobile-filter-drawer
-            :label="$drawerLabel"
-            :active-count="$activeFilterCount"
-            :form-id="$formId"
-            :turbo-frame="$turboFrame ?? 'property-main'"
-            class="md:hidden"
-            data-filter-toolbar-mobile-panel
-        >
-            @if ($chips instanceof \Illuminate\Support\Collection && $chips->isNotEmpty())
-                <x-slot name="chips">
-                    @foreach ($chips as $chip)
-                        <a
-                            href="{{ $chip['removeUrl'] }}"
-                            @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
-                            class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100"
-                        >
-                            <span>{{ $chip['label'] }}: {{ \Illuminate\Support\Str::limit($chip['value'], 24) }}</span>
-                            <span aria-hidden="true">×</span>
-                        </a>
-                    @endforeach
-                </x-slot>
-            @endif
-            <x-slot name="mobile">
-                @include('components.property.partials.filter-toolbar-mobile-fields')
-            </x-slot>
-        </x-property.responsive.mobile-filter-drawer>
-    @else
+    @once
+        <style>
+            @media (max-width: 767.98px) {
+                [data-property-filter-form-desktop],
+                .property-filter-toolbar__static {
+                    display: none !important;
+                }
+            }
+            details.property-filter-mobile-toggle > summary {
+                list-style: none;
+            }
+            details.property-filter-mobile-toggle > summary::-webkit-details-marker {
+                display: none;
+            }
+        </style>
+    @endonce
+
+    @if ($embedded)
         <div class="w-full min-w-0 space-y-3" data-filter-toolbar-mobile-panel>
             @include('components.property.partials.filter-toolbar-mobile-fields')
         </div>
+    @else
+        <details class="property-filter-mobile-toggle md:hidden w-full min-w-0 rounded-xl border border-slate-300 bg-white shadow-sm dark:border-slate-600 dark:bg-gray-800" data-filter-toolbar-mobile-panel>
+            <summary class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <i class="fa-solid fa-sliders text-slate-500" aria-hidden="true"></i>
+                {{ $drawerLabel }}
+                @if ($activeFilterCount > 0)
+                    <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold text-white">{{ $activeFilterCount }}</span>
+                @endif
+            </summary>
+            <div class="space-y-3 border-t border-slate-200 px-3 py-3 dark:border-slate-700">
+                @include('components.property.partials.filter-toolbar-mobile-fields')
+            </div>
+        </details>
     @endif
 @endif

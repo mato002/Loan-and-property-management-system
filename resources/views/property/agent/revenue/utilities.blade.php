@@ -376,6 +376,10 @@
         </x-property.modal>
     </x-slot>
 
+    <x-slot name="toolbar">
+        @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+    </x-slot>
+
     <x-slot name="above">
         @include('property.agent.revenue.utilities._workspace')
     </x-slot>
