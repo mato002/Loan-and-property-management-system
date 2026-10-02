@@ -370,12 +370,16 @@ final class PropertyDashboardOverview
             })
             ->all();
 
+        $rentComparison = self::rentChargeVsCollectionByMonth($year);
+
         return [
             'financialKpis' => $financialKpis,
             'chartYear' => $year,
             'chartLabels' => $chartLabels,
             'chartInvoices' => $chartInvoices,
             'chartPayments' => $chartPayments,
+            'chartRentCharges' => $rentComparison['charges'],
+            'chartRentCollections' => $rentComparison['collections'],
             'chartCommissionByProperty' => $commissionByProperty,
             'chartCommissionSplit' => $commissionSplit,
             'chartOccupancy' => $chartOccupancy,
@@ -384,6 +388,60 @@ final class PropertyDashboardOverview
             'commissionSplitFallback' => ($commissionSplit['fallback'] ?? '') === 'collections',
             'recentRequests' => $recentRequests,
             'recentPayments' => $recentPayments,
+        ];
+    }
+
+    /**
+     * Rent invoiced versus rent collected, by calendar month.
+     *
+     * @return array{charges: list<float>, collections: list<float>}
+     */
+    private static function rentChargeVsCollectionByMonth(int $year): array
+    {
+        $chargeByMonth = PmInvoice::query()
+            ->billableAr()
+            ->where('invoice_type', PmInvoice::TYPE_RENT)
+            ->whereYear('issue_date', $year)
+            ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(issue_date)')
+            ->pluck('total', 'month_num');
+
+        $collectionQuery = PmPayment::query()
+            ->join('pm_payment_allocations as rent_alloc', 'rent_alloc.pm_payment_id', '=', 'pm_payments.id')
+            ->join('pm_invoices as rent_inv', 'rent_inv.id', '=', 'rent_alloc.pm_invoice_id')
+            ->where('pm_payments.status', PmPayment::STATUS_COMPLETED)
+            ->whereNotNull('pm_payments.paid_at')
+            ->whereYear('pm_payments.paid_at', $year)
+            ->where(function ($query) {
+                $query->whereNull('pm_payments.channel')
+                    ->orWhere('pm_payments.channel', '!=', 'tenant_credit');
+            })
+            ->where('rent_inv.invoice_type', PmInvoice::TYPE_RENT)
+            ->where('rent_inv.status', '!=', PmInvoice::STATUS_CANCELLED)
+            ->where('rent_inv.status', '!=', PmInvoice::STATUS_DRAFT)
+            ->whereNull('rent_inv.deleted_at');
+
+        if (Schema::hasColumn('pm_payment_allocations', 'is_reversed')) {
+            $collectionQuery->where(function ($query) {
+                $query->where('rent_alloc.is_reversed', false)->orWhereNull('rent_alloc.is_reversed');
+            });
+        }
+
+        $collectionByMonth = $collectionQuery
+            ->selectRaw('MONTH(pm_payments.paid_at) as month_num, COALESCE(SUM(rent_alloc.amount), 0) as total')
+            ->groupByRaw('MONTH(pm_payments.paid_at)')
+            ->pluck('total', 'month_num');
+
+        $charges = [];
+        $collections = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $charges[] = round((float) ($chargeByMonth[$m] ?? 0), 2);
+            $collections[] = round((float) ($collectionByMonth[$m] ?? 0), 2);
+        }
+
+        return [
+            'charges' => $charges,
+            'collections' => $collections,
         ];
     }
 

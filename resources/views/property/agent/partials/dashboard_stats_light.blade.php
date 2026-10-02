@@ -1,32 +1,40 @@
-<div class="mb-3 sm:mb-5 property-compact-panel rounded-xl sm:rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white shadow-sm">
-    <p class="text-base sm:text-lg font-semibold text-slate-900">Quick start checklist</p>
-    <p class="mt-1 text-xs sm:text-sm text-slate-600">If you’re new here: setup portfolio → onboard tenant → allocate unit → bill rent → collect payment.</p>
-    <x-property.responsive.quick-action-grid class="mt-3">
-        <a href="{{ route('property.properties.list') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
-            Properties
-            <i class="fa-solid fa-building" aria-hidden="true"></i>
-        </a>
-        <a href="{{ route('property.properties.units') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
-            Units
-            <i class="fa-solid fa-door-open" aria-hidden="true"></i>
-        </a>
-        <a href="{{ route('property.tenants.directory') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
-            Tenants
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-        </a>
-        <a href="{{ route('property.tenants.leases') }}" data-turbo-frame="property-main" class="quick-action-btn bg-blue-600 text-white hover:bg-blue-700">
-            Lease
-            <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-        </a>
-        <a href="{{ route('property.revenue.invoices') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
-            Invoices
-            <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
-        </a>
-        <a href="{{ route('property.revenue.payments') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
-            Payments
-            <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i>
-        </a>
-    </x-property.responsive.quick-action-grid>
-</div>
+<div class="dashboard-overview mb-3 sm:mb-4">
+    <x-property.responsive.kpi-card-grid :kpis="$kpis" />
 
-<x-property.responsive.kpi-card-grid :kpis="$kpis" class="mb-3 sm:mb-4" />
+    <aside class="dashboard-checklist" aria-label="Quick start checklist">
+        <p class="text-sm font-semibold text-slate-900">Quick start checklist</p>
+        <p class="mt-1 text-xs text-slate-600">Follow these in order to get a unit billed and paid.</p>
+        <nav class="dashboard-checklist-list">
+            <a href="{{ route('property.properties.list') }}" data-turbo-frame="property-main" class="dashboard-checklist-item">
+                <i class="fa-solid fa-building text-slate-400" aria-hidden="true"></i>
+                <strong>Properties</strong>
+                <span>Add each building you manage.</span>
+            </a>
+            <a href="{{ route('property.properties.units') }}" data-turbo-frame="property-main" class="dashboard-checklist-item">
+                <i class="fa-solid fa-door-open text-slate-400" aria-hidden="true"></i>
+                <strong>Units</strong>
+                <span>Add the spaces inside each property.</span>
+            </a>
+            <a href="{{ route('property.tenants.directory') }}" data-turbo-frame="property-main" class="dashboard-checklist-item">
+                <i class="fa-solid fa-users text-slate-400" aria-hidden="true"></i>
+                <strong>Tenants</strong>
+                <span>Register the people who will rent.</span>
+            </a>
+            <a href="{{ route('property.tenants.leases') }}" data-turbo-frame="property-main" class="dashboard-checklist-item is-primary">
+                <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                <strong>Lease</strong>
+                <span>Attach a tenant to a unit and set the rent.</span>
+            </a>
+            <a href="{{ route('property.revenue.invoices') }}" data-turbo-frame="property-main" class="dashboard-checklist-item">
+                <i class="fa-solid fa-file-invoice text-slate-400" aria-hidden="true"></i>
+                <strong>Invoices</strong>
+                <span>Bill the rent for the month.</span>
+            </a>
+            <a href="{{ route('property.revenue.payments') }}" data-turbo-frame="property-main" class="dashboard-checklist-item">
+                <i class="fa-solid fa-money-bill-wave text-slate-400" aria-hidden="true"></i>
+                <strong>Payments</strong>
+                <span>Record the money received.</span>
+            </a>
+        </nav>
+    </aside>
+</div>
