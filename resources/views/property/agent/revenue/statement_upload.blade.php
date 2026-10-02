@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Upload bank / M-Pesa statement"
-    subtitle="Stage Co-op or Safaricom C2B statements, match existing receipts, and recover missing credits into Unmatched for tenant assignment."
+    subtitle=""
     back-route="property.revenue.payments"
 >
     <x-slot name="actions">
@@ -23,13 +23,6 @@
 
     <div class="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="text-sm font-semibold text-slate-900">Upload statement</h2>
-        <p class="mt-1 text-sm text-slate-600">
-            Upload a Co-operative Bank <span class="font-medium">Statement of Account</span> PDF (filename like <span class="font-mono text-xs">AccountStatement…pdf</span>)
-            or a Safaricom C2B CSV — not a report printed from this system.
-            Credits match existing receipts; missing M-Pesa amounts go to
-            <a href="{{ route('property.equity.unmatched') }}" class="font-semibold text-blue-700 hover:underline">Unmatched</a>
-            so you can assign the tenant.
-        </p>
 
         <form method="POST" action="{{ route('property.revenue.statements.store') }}" enctype="multipart/form-data" class="mt-4 grid gap-4 md:grid-cols-2">
             @csrf
@@ -48,7 +41,7 @@
             <div class="md:col-span-2 flex items-center gap-2">
                 <input type="hidden" name="recover_missing" value="0">
                 <input type="checkbox" name="recover_missing" value="1" id="recover_missing" class="rounded border-slate-300" checked>
-                <label for="recover_missing" class="text-sm text-slate-700">Recover unmatched credits into Unmatched queue (recommended)</label>
+                <label for="recover_missing" class="text-sm text-slate-700">Recover unmatched credits</label>
             </div>
             <div class="md:col-span-2">
                 <button type="submit" class="inline-flex rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900">Upload &amp; import</button>

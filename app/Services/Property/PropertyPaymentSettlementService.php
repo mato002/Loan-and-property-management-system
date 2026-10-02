@@ -97,7 +97,8 @@ class PropertyPaymentSettlementService
 
             $fresh = $payment->fresh();
             $paymentId = (int) ($fresh?->id ?? 0);
-            if ($paymentId > 0) {
+            $skipNotification = (bool) data_get($payment->meta, 'skip_notification');
+            if ($paymentId > 0 && ! $skipNotification) {
                 DB::afterCommit(function () use ($paymentId) {
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);

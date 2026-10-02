@@ -4,13 +4,17 @@
     subtitle="{{ $statement->account_name }} · {{ $statement->periodLabel() }}"
     back-route="property.revenue.statements.index"
     :stats="[
-        ['label' => 'Matched', 'value' => (string) ($counts['matched'] ?? 0), 'hint' => 'Already in system'],
-        ['label' => 'Unmatched', 'value' => (string) ($counts['unmatched'] ?? 0), 'hint' => 'Need recovery / assign'],
-        ['label' => 'Bank only', 'value' => (string) ($counts['bank_only'] ?? 0), 'hint' => 'Cheques / charges'],
-        ['label' => 'Credits', 'value' => \App\Services\Property\PropertyMoney::kes((float) $statement->total_credit), 'hint' => 'Statement total'],
+        ['label' => 'Matched', 'value' => (string) ($counts['matched'] ?? 0)],
+        ['label' => 'Unmatched', 'value' => (string) ($counts['unmatched'] ?? 0)],
+        ['label' => 'Bank only', 'value' => (string) ($counts['bank_only'] ?? 0)],
+        ['label' => 'Credits', 'value' => \App\Services\Property\PropertyMoney::kes((float) $statement->total_credit)],
     ]"
 >
     <x-slot name="actions">
+        <form method="POST" action="{{ route('property.revenue.statements.auto_assign', $statement) }}" class="inline">
+            @csrf
+            <button type="submit" class="inline-flex rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Auto-assign safe matches</button>
+        </form>
         <form method="POST" action="{{ route('property.revenue.statements.recover', $statement) }}" class="inline">
             @csrf
             <button type="submit" class="inline-flex rounded-xl bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800">Recover missing → Unmatched</button>
@@ -26,15 +30,24 @@
     @endif
 
     <div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
-        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === '' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">All</a>
-        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'unmatched', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
-        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'matched', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
-        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'bank_only', 'q' => $filters['q'] ?? ''])) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
+        @php
+            $pageSize = (string) ($filters['per_page'] ?? 100);
+            $tabQuery = array_filter(['q' => $filters['q'] ?? '', 'per_page' => $pageSize]);
+        @endphp
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === '' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">All</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'unmatched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'matched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
+        <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'bank_only'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
         <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" class="ml-auto flex flex-wrap items-center gap-2">
             @if ($status !== '')
                 <input type="hidden" name="status" value="{{ $status }}">
             @endif
             <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Reference, phone, or payer" class="h-10 min-w-[14rem] rounded-lg border border-slate-300 px-3 text-sm">
+            <select name="per_page" data-server-page-size="1" class="h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm" onfocus="this.dataset.userChange='1'" onchange="if (this.dataset.userChange === '1') { this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit(); }">
+                @foreach (($perPageOptions ?? []) as $option)
+                    <option value="{{ $option['value'] }}" @selected($pageSize === (string) $option['value'])>{{ $option['label'] }}</option>
+                @endforeach
+            </select>
             <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Filter</button>
             @include('property.agent.partials.export_dropdown', [
                 'route' => 'property.revenue.statements.show',
@@ -44,11 +57,6 @@
         </form>
     </div>
 
-    <p class="mb-3 text-sm text-slate-600">
-        Tenant match is by <span class="font-semibold">M-Pesa receipt code</span> (and phone when one deposit is split).
-        Bank payer name is not used — two people can share a name.
-    </p>
-
     <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -57,10 +65,9 @@
                     <th class="px-3 py-2">Reference</th>
                     <th class="px-3 py-2">Phone</th>
                     <th class="px-3 py-2">Payer on bank</th>
-                    <th class="px-3 py-2">Tenant in system</th>
+                    <th class="px-3 py-2">Tenant / paid to</th>
                     <th class="px-3 py-2">Amount</th>
                     <th class="px-3 py-2">Status</th>
-                    <th class="px-3 py-2">How it matched</th>
                     <th class="px-3 py-2 text-right">Actions</th>
                 </tr>
             </thead>
@@ -72,11 +79,7 @@
                         $tenantUnit = $line->matchedUnitLabel();
                         $tenantName = $line->matchedTenantName();
                         $phone = $line->displayPhone();
-                        $unassignedId = (int) ($line->unassigned_payment_id ?? 0);
                         $paymentId = (int) ($line->pm_payment_id ?? 0);
-                        $canRecover = $line->direction === 'credit'
-                            && $line->match_status === 'unmatched'
-                            && $line->line_type === 'mpesa_c2b';
                     @endphp
                     <tr>
                         <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
@@ -112,6 +115,12 @@
                                         <div class="text-sm text-slate-700">{{ $tenantName }}</div>
                                     @endif
                                 @endif
+                            @elseif ((string) $line->match_status === 'bank_only' && trim((string) $line->paid_to_name) !== '')
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Paid to</div>
+                                <div class="text-sm font-medium text-slate-900">{{ $line->paid_to_name }}</div>
+                                @if (trim((string) $line->paid_to_note) !== '')
+                                    <div class="text-xs text-slate-500">{{ $line->paid_to_note }}</div>
+                                @endif
                             @else
                                 <span class="text-slate-400">—</span>
                             @endif
@@ -120,29 +129,20 @@
                             {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}
                         </td>
                         <td class="px-3 py-2">
-                            <span class="text-xs font-semibold {{ $line->match_status === 'matched' ? 'text-emerald-700' : ($line->match_status === 'unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
-                                {{ $line->displayMatchStatus() }}
+                            @php $shownStatus = $line->displayMatchStatus(); @endphp
+                            <span class="text-xs font-semibold {{ $shownStatus === 'Matched' || $shownStatus === 'Landlord' ? 'text-emerald-700' : ($shownStatus === 'Unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
+                                {{ $shownStatus }}
                             </span>
                         </td>
-                        <td class="px-3 py-2 text-xs text-slate-600 max-w-xs" title="{{ $line->narration }}">
-                            <div>{{ $line->matchReason() }}</div>
-                            @if ($line->narration)
-                                <div class="mt-0.5 text-slate-400 truncate">{{ $line->narration }}</div>
-                            @endif
-                        </td>
-                        <td class="px-3 py-2 text-right whitespace-nowrap">
+                        <td class="px-3 py-2 text-right">
                             <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                @if ($canRecover)
-                                    <form method="POST" action="{{ route('property.revenue.statements.lines.recover', [$statement, $line]) }}">
+                                @if (! $line->isAllocatedToTenant() && $line->direction === 'credit' && $line->line_type === 'mpesa_c2b')
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}" data-statement-assign class="flex items-center gap-1">
                                         @csrf
-                                        <button type="submit" class="rounded-lg bg-amber-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-800">
-                                            Assign tenant
-                                        </button>
+                                        <input type="hidden" name="tenant_id" value="">
+                                        <input type="text" data-tenant-query data-auto-submit="off" autocomplete="off" placeholder="Tenant, account, or phone" required class="h-8 w-52 rounded-lg border border-slate-300 px-2 text-xs" />
+                                        <button type="submit" class="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800">Assign</button>
                                     </form>
-                                @elseif ($unassignedId > 0)
-                                    <a href="{{ route('property.equity.unmatched.show', $unassignedId) }}" class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100">
-                                        Open Unmatched
-                                    </a>
                                 @elseif ($paymentId > 0)
                                     <a href="{{ route('property.payments.receipt.show', $paymentId) }}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                                         View receipt
@@ -151,6 +151,20 @@
                                     <a href="{{ route('property.tenants.show', $tenantId) }}" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                         Open tenant
                                     </a>
+                                @elseif ((string) $line->match_status === 'bank_only')
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.payee', [$statement, $line]) }}" data-statement-payee class="flex flex-nowrap items-center justify-end gap-1">
+                                        @csrf
+                                        <select name="paid_to_kind" data-payee-kind class="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs">
+                                            <option value="landlord" @selected(($line->paid_to_kind ?: 'landlord') === 'landlord')>Landlord</option>
+                                            <option value="bank_charge" @selected($line->paid_to_kind === 'bank_charge')>Bank charge</option>
+                                            <option value="other" @selected($line->paid_to_kind === 'other')>Other</option>
+                                        </select>
+                                        <input type="hidden" name="landlord_id" value="{{ $line->paid_to_landlord_id }}">
+                                        <input type="text" data-landlord-query autocomplete="off" placeholder="Landlord" value="{{ $line->paid_to_kind === 'landlord' ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 text-xs">
+                                        <input type="text" name="paid_to_name" value="{{ $line->paid_to_kind === 'other' ? $line->paid_to_name : '' }}" placeholder="Who was paid" class="h-8 w-36 rounded-lg border border-slate-300 px-2 text-xs">
+                                        <input type="text" name="paid_to_note" value="{{ $line->paid_to_note }}" placeholder="Cheque / note" class="h-8 w-28 rounded-lg border border-slate-300 px-2 text-xs">
+                                        <button type="submit" class="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800">Save</button>
+                                    </form>
                                 @else
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
@@ -159,17 +173,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="px-3 py-8 text-center text-slate-500">
-                            <p class="font-medium text-slate-700">No transactions were read from this upload.</p>
-                            <p class="mt-1 text-sm">
-                                Header totals can still show on the list even when the PDF text was not extracted.
-                                Re-upload the same statement as a <span class="font-semibold">.txt</span> export
-                                (or use Upload &amp; import again after the latest update).
-                            </p>
-                            @if ($statement->source_filename)
-                                <p class="mt-2 text-xs font-mono text-slate-400">{{ $statement->source_filename }}</p>
-                            @endif
-                        </td>
+                        <td colspan="8" class="px-3 py-8 text-center text-slate-500">No lines in this group.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -178,3 +182,173 @@
 
     <div class="mt-4">{{ $lines->links() }}</div>
 </x-property.workspace>
+
+<script>
+    (function () {
+        const tenants = @json($assignTenants ?? []);
+        const landlords = @json($assignLandlords ?? []);
+        let menu = null;
+
+        function closeMenu() {
+            if (menu) {
+                menu.remove();
+                menu = null;
+            }
+        }
+
+        function suggestions(typed) {
+            const needle = typed.trim().toLowerCase();
+            if (needle === '') {
+                return [];
+            }
+            return tenants.filter((tenant) => (tenant.label || '').toLowerCase().includes(needle)).slice(0, 12);
+        }
+
+        function choose(query, hidden, tenant) {
+            hidden.value = String(tenant.id);
+            query.value = tenant.label;
+            query.setCustomValidity('');
+            closeMenu();
+        }
+
+        function openMenu(query, hidden) {
+            closeMenu();
+            const items = suggestions(query.value);
+            if (items.length === 0) {
+                return;
+            }
+            const box = document.createElement('div');
+            box.setAttribute('data-tenant-menu', '1');
+            box.className = 'fixed z-[80] max-h-60 w-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg';
+            const rect = query.getBoundingClientRect();
+            box.style.top = (rect.bottom + 4) + 'px';
+            box.style.left = Math.max(8, rect.right - 288) + 'px';
+            items.forEach((tenant) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'block w-full px-3 py-1.5 text-left text-xs text-slate-800 hover:bg-emerald-50';
+                button.textContent = tenant.label;
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    choose(query, hidden, tenant);
+                });
+                box.appendChild(button);
+            });
+            document.body.appendChild(box);
+            menu = box;
+        }
+
+        document.querySelectorAll('[data-statement-assign]').forEach((form) => {
+            const query = form.querySelector('[data-tenant-query]');
+            const hidden = form.querySelector('[name="tenant_id"]');
+            if (!query || !hidden) {
+                return;
+            }
+            query.addEventListener('input', () => {
+                hidden.value = '';
+                openMenu(query, hidden);
+            });
+            query.addEventListener('focus', () => openMenu(query, hidden));
+            query.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeMenu();
+                }
+            });
+            form.addEventListener('submit', (event) => {
+                const typed = (query.value || '').trim().toLowerCase();
+                const match = tenants.find((tenant) => (tenant.label || '').toLowerCase() === typed)
+                    || (hidden.value ? tenants.find((tenant) => String(tenant.id) === hidden.value) : null);
+                if (!match) {
+                    event.preventDefault();
+                    query.setCustomValidity('Choose a tenant from the list.');
+                    query.reportValidity();
+                    return;
+                }
+                query.setCustomValidity('');
+                hidden.value = String(match.id);
+            });
+        });
+
+        function payeeFields(form) {
+            const kind = form.querySelector('[data-payee-kind]')?.value || 'landlord';
+            const landlord = form.querySelector('[data-landlord-query]');
+            const other = form.querySelector('[name="paid_to_name"]');
+            if (landlord) {
+                landlord.hidden = kind !== 'landlord';
+            }
+            if (other) {
+                other.hidden = kind !== 'other';
+            }
+        }
+
+        document.querySelectorAll('[data-statement-payee]').forEach((form) => {
+            const query = form.querySelector('[data-landlord-query]');
+            const hidden = form.querySelector('[name="landlord_id"]');
+            const kind = form.querySelector('[data-payee-kind]');
+            payeeFields(form);
+            kind?.addEventListener('change', () => {
+                if (hidden && kind.value !== 'landlord') {
+                    hidden.value = '';
+                }
+                payeeFields(form);
+            });
+            if (!query || !hidden) {
+                return;
+            }
+            query.addEventListener('input', () => {
+                hidden.value = '';
+                closeMenu();
+                const needle = query.value.trim().toLowerCase();
+                const items = needle === '' ? [] : landlords.filter((row) => (row.label || '').toLowerCase().includes(needle)).slice(0, 12);
+                if (items.length === 0) {
+                    return;
+                }
+                const box = document.createElement('div');
+                box.setAttribute('data-tenant-menu', '1');
+                box.className = 'fixed z-[80] max-h-60 w-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg';
+                const rect = query.getBoundingClientRect();
+                box.style.top = (rect.bottom + 4) + 'px';
+                box.style.left = Math.max(8, rect.right - 288) + 'px';
+                items.forEach((row) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'block w-full px-3 py-1.5 text-left text-xs text-slate-800 hover:bg-emerald-50';
+                    button.textContent = row.label;
+                    button.addEventListener('mousedown', (event) => {
+                        event.preventDefault();
+                        hidden.value = String(row.id);
+                        query.value = row.label;
+                        closeMenu();
+                    });
+                    box.appendChild(button);
+                });
+                document.body.appendChild(box);
+                menu = box;
+            });
+            form.addEventListener('submit', (event) => {
+                if ((kind?.value || 'landlord') !== 'landlord') {
+                    return;
+                }
+                const typed = (query.value || '').trim().toLowerCase();
+                const match = landlords.find((row) => (row.label || '').toLowerCase() === typed)
+                    || (hidden.value ? landlords.find((row) => String(row.id) === hidden.value) : null);
+                if (!match) {
+                    event.preventDefault();
+                    query.setCustomValidity('Choose a landlord from the list.');
+                    query.reportValidity();
+                    return;
+                }
+                query.setCustomValidity('');
+                hidden.value = String(match.id);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (event.target?.closest?.('[data-statement-assign], [data-statement-payee], [data-tenant-menu]')) {
+                return;
+            }
+            closeMenu();
+        });
+        window.addEventListener('scroll', closeMenu, true);
+    })();
+</script>

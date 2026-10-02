@@ -35,6 +35,10 @@ class PmBankStatementLine extends Model
         'pm_payment_id',
         'pm_ezen_receipt_register_id',
         'unassigned_payment_id',
+        'paid_to_kind',
+        'paid_to_landlord_id',
+        'paid_to_name',
+        'paid_to_note',
     ];
 
     protected function casts(): array
@@ -72,13 +76,87 @@ class PmBankStatementLine extends Model
         return $this->belongsTo(PmEzenReceiptRegister::class, 'pm_ezen_receipt_register_id');
     }
 
+    public function paidToLandlord(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'paid_to_landlord_id');
+    }
+
+    /**
+     * A line is matched only when the money is already on a known tenant.
+     * A shared M-Pesa code in the Unmatched queue is not a tenant allocation.
+     */
+    public function scopeAllocatedToTenant(Builder $query): Builder
+    {
+        return $query->where($this->qualifyColumn('match_status'), self::MATCH_MATCHED)
+            ->where(function (Builder $type) {
+                $type->whereNull($this->qualifyColumn('matched_type'))
+                    ->orWhere($this->qualifyColumn('matched_type'), '!=', 'unassigned');
+            })
+            ->where(function (Builder $known) {
+                $known->whereHas('payment', fn (Builder $payment) => $payment->where('pm_tenant_id', '>', 0))
+                    ->orWhereHas('ezenReceipt', function (Builder $receipt) {
+                        $receipt->where('pm_tenant_id', '>', 0)
+                            ->orWhere(function (Builder $name) {
+                                $name->whereNotNull('register_tenant_name')
+                                    ->where('register_tenant_name', '!=', '');
+                            });
+                    });
+            });
+    }
+
+    /**
+     * M-Pesa credits that still have no tenant, including ones already sitting in Unmatched.
+     */
+    public function scopeAwaitingTenant(Builder $query): Builder
+    {
+        $table = $this->getTable();
+
+        return $query->where($table.'.match_status', '!=', self::MATCH_BANK_ONLY)
+            ->where(function (Builder $waiting) use ($table) {
+                $waiting->where($table.'.match_status', self::MATCH_UNMATCHED)
+                    ->orWhere($table.'.matched_type', 'unassigned')
+                    ->orWhere(function (Builder $orphan) use ($table) {
+                        $orphan->where($table.'.match_status', self::MATCH_MATCHED)
+                            ->where(function (Builder $type) use ($table) {
+                                $type->whereNull($table.'.matched_type')
+                                    ->orWhere($table.'.matched_type', '!=', 'unassigned');
+                            })
+                            ->whereDoesntHave('payment', fn (Builder $payment) => $payment->where('pm_tenant_id', '>', 0))
+                            ->whereDoesntHave('ezenReceipt', function (Builder $receipt) {
+                                $receipt->where('pm_tenant_id', '>', 0)
+                                    ->orWhere(function (Builder $name) {
+                                        $name->whereNotNull('register_tenant_name')
+                                            ->where('register_tenant_name', '!=', '');
+                                    });
+                            });
+                    });
+            });
+    }
+
+    public function isAllocatedToTenant(): bool
+    {
+        if ((string) $this->match_status !== self::MATCH_MATCHED) {
+            return false;
+        }
+        if ((string) $this->matched_type === 'unassigned') {
+            return false;
+        }
+
+        return $this->matchedTenantId() !== null || $this->matchedTenantName() !== '';
+    }
+
     public function displayMatchStatus(): string
     {
-        return match ($this->match_status) {
-            self::MATCH_MATCHED => 'Matched',
-            self::MATCH_BANK_ONLY => 'Bank only',
-            default => 'Unmatched',
-        };
+        if ((string) $this->match_status === self::MATCH_BANK_ONLY) {
+            return match ((string) $this->paid_to_kind) {
+                'landlord' => 'Landlord',
+                'bank_charge' => 'Bank charge',
+                'other' => 'Other payee',
+                default => 'Bank only',
+            };
+        }
+
+        return $this->isAllocatedToTenant() ? 'Matched' : 'Unmatched';
     }
 
     public function displayPhone(): string
@@ -144,6 +222,17 @@ class PmBankStatementLine extends Model
 
     public function matchReason(): string
     {
+        if ((string) $this->match_status === self::MATCH_BANK_ONLY && trim((string) $this->paid_to_name) !== '') {
+            $note = trim((string) $this->paid_to_note);
+            $who = trim((string) $this->paid_to_name);
+
+            return match ((string) $this->paid_to_kind) {
+                'landlord' => 'Paid to landlord '.$who.($note !== '' ? ' · '.$note : ''),
+                'bank_charge' => 'Bank charge'.($note !== '' ? ' · '.$note : ''),
+                default => 'Paid to '.$who.($note !== '' ? ' · '.$note : ''),
+            };
+        }
+
         $ref = strtoupper(trim((string) $this->reference));
 
         return match ($this->matched_type) {
@@ -155,7 +244,7 @@ class PmBankStatementLine extends Model
                 : 'Payment by M-Pesa code',
             'unassigned' => 'Same M-Pesa code in Unmatched (not a tenant yet)',
             default => match ($this->match_status) {
-                self::MATCH_BANK_ONLY => 'Cheque or bank charge — not a tenant receipt',
+                self::MATCH_BANK_ONLY => 'Not a tenant receipt — record who was paid',
                 default => $ref !== ''
                     ? 'No EZEN receipt or payment with M-Pesa code '.$ref
                     : 'No unique M-Pesa code',

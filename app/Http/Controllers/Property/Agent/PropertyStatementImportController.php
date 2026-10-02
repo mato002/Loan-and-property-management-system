@@ -3,10 +3,18 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Payment;
 use App\Models\PmBankStatement;
 use App\Models\PmBankStatementLine;
+use App\Models\PmTenant;
+use App\Models\UnassignedPayment;
+use App\Models\User;
+use App\Repositories\Equity\EquityPaymentRepository;
+use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\Property\PropertyStatementAutoAssignService;
 use App\Services\Property\PropertyStatementMissingPaymentRecoveryService;
 use App\Services\Property\PropertyStatementUploadService;
+use App\Support\ListPageSize;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -110,6 +118,14 @@ class PropertyStatementImportController extends Controller
         if ($recovery) {
             $msg .= sprintf(' Recovered %d missing credits into Unmatched for assignment.', (int) $recovery['recovered']);
         }
+        $auto = $result['auto'] ?? null;
+        if (is_array($auto) && ((int) ($auto['posted'] ?? 0) > 0 || (int) ($auto['linked'] ?? 0) > 0)) {
+            $msg .= sprintf(
+                ' Auto-posted %d receipts where the phone and name matched one tenant and the M-Pesa code was not already a receipt. Linked %d lines that already had a receipt.',
+                (int) ($auto['posted'] ?? 0),
+                (int) ($auto['linked'] ?? 0),
+            );
+        }
 
         $statementId = (int) ($import['statement_id'] ?? 0);
         if ($statementId > 0) {
@@ -144,7 +160,9 @@ class PropertyStatementImportController extends Controller
                 'payment.tenant',
             ])
             ->where('pm_bank_statement_id', $statement->id)
-            ->when($status !== '', fn (Builder $query) => $query->where('match_status', $status))
+            ->when($status === PmBankStatementLine::MATCH_MATCHED, fn (Builder $query) => $query->allocatedToTenant())
+            ->when($status === PmBankStatementLine::MATCH_UNMATCHED, fn (Builder $query) => $query->awaitingTenant())
+            ->when($status === PmBankStatementLine::MATCH_BANK_ONLY, fn (Builder $query) => $query->where('match_status', PmBankStatementLine::MATCH_BANK_ONLY))
             ->when($q !== '', function (Builder $query) use ($q): void {
                 $query->where(function (Builder $w) use ($q): void {
                     $w->where('reference', 'like', '%'.$q.'%')
@@ -162,7 +180,7 @@ class PropertyStatementImportController extends Controller
 
             return TabularExport::stream(
                 'bank-statement-'.$statement->id.'-'.now()->format('Ymd_His'),
-                ['Date', 'Reference', 'Phone', 'Payer', 'Tenant account', 'Tenant', 'Unit', 'Direction', 'Amount', 'Status', 'Match reason', 'Narration'],
+                ['Date', 'Reference', 'Phone', 'Payer', 'Tenant account', 'Tenant', 'Unit', 'Direction', 'Amount', 'Status', 'Match reason', 'Paid to', 'Payee note', 'Narration'],
                 function () use ($rows) {
                     foreach ($rows as $line) {
                         yield [
@@ -177,6 +195,8 @@ class PropertyStatementImportController extends Controller
                             number_format((float) $line->amount, 2, '.', ''),
                             $line->displayMatchStatus(),
                             $line->matchReason(),
+                            (string) ($line->paid_to_name ?? ''),
+                            (string) ($line->paid_to_note ?? ''),
                             (string) ($line->narration ?? ''),
                         ];
                     }
@@ -189,12 +209,19 @@ class PropertyStatementImportController extends Controller
             );
         }
 
-        $lines = $linesQuery->paginate(50)->withQueryString();
+        $lineTotal = (clone $linesQuery)->count();
+        $requestedPageSize = $request->query('per_page');
+        $perPage = ListPageSize::resolve($requestedPageSize, 100);
+        $perPageValue = is_scalar($requestedPageSize) && strtolower(trim((string) $requestedPageSize)) === ListPageSize::ALL
+            ? ListPageSize::ALL
+            : (string) $perPage;
+        $lines = $linesQuery->paginate($perPage)->withQueryString();
 
+        $countBase = PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id);
         $counts = [
-            'matched' => PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id)->where('match_status', 'matched')->count(),
-            'unmatched' => PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id)->where('match_status', 'unmatched')->count(),
-            'bank_only' => PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id)->where('match_status', 'bank_only')->count(),
+            'matched' => (clone $countBase)->allocatedToTenant()->count(),
+            'unmatched' => (clone $countBase)->awaitingTenant()->count(),
+            'bank_only' => (clone $countBase)->where('match_status', PmBankStatementLine::MATCH_BANK_ONLY)->count(),
         ];
 
         return property_view('property.agent.revenue.statement_show', [
@@ -202,7 +229,28 @@ class PropertyStatementImportController extends Controller
             'lines' => $lines,
             'counts' => $counts,
             'status' => $status,
-            'filters' => ['q' => $q, 'status' => $status],
+            'assignLandlords' => User::query()
+                ->where('property_portal_role', 'landlord')
+                ->whereHas('landlordProperties')
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone'])
+                ->map(fn (User $landlord) => [
+                    'id' => (int) $landlord->id,
+                    'label' => trim($landlord->name.($landlord->phone ? ' · '.$landlord->phone : '')),
+                ])
+                ->values()
+                ->all(),
+            'assignTenants' => PmTenant::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone', 'account_number'])
+                ->map(fn (PmTenant $tenant) => [
+                    'id' => (int) $tenant->id,
+                    'label' => trim($tenant->name.($tenant->account_number ? ' · '.$tenant->account_number : '').($tenant->phone ? ' · '.$tenant->phone : '')),
+                ])
+                ->values()
+                ->all(),
+            'filters' => ['q' => $q, 'status' => $status, 'per_page' => $perPageValue],
+            'perPageOptions' => ListPageSize::options($lineTotal, $perPage),
         ]);
     }
 
@@ -252,6 +300,180 @@ class PropertyStatementImportController extends Controller
         }
 
         return back()->with('status', 'Nothing to recover for this line.');
+    }
+
+    public function assignLine(
+        Request $request,
+        PmBankStatement $statement,
+        PmBankStatementLine $line,
+        PropertyStatementMissingPaymentRecoveryService $recovery,
+        EquityPaymentRepository $payments,
+        PaymentAuditLogRepository $auditLogs,
+    ): RedirectResponse {
+        $this->authorizeStatement($request, $statement);
+        if ((int) $line->pm_bank_statement_id !== (int) $statement->id) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'integer', 'exists:pm_tenants,id'],
+        ]);
+
+        $tenant = PmTenant::query()->find($data['tenant_id']);
+        if (! $tenant) {
+            return back()->withErrors(['tenant_id' => 'That tenant is not in this workspace.'])->withInput();
+        }
+
+        if ($line->isAllocatedToTenant()) {
+            return back()->with('status', 'This line is already on a tenant.');
+        }
+
+        $unassignedId = (int) ($line->unassigned_payment_id ?? 0);
+        if ($unassignedId <= 0) {
+            $prepared = $recovery->recoverLine($line, (int) $request->user()->id);
+            $unassignedId = (int) ($prepared['unassigned_payment_id'] ?? 0);
+            if ($unassignedId <= 0) {
+                $message = $prepared['errors'][0] ?? 'This line could not be prepared for assignment.';
+
+                return back()->withErrors(['tenant_id' => $message])->withInput();
+            }
+            $line->refresh();
+        }
+
+        $unassigned = UnassignedPayment::query()->find($unassignedId);
+        if (! $unassigned) {
+            return back()->withErrors(['tenant_id' => 'The unmatched payment for this line is no longer available.'])->withInput();
+        }
+
+        $method = (string) ($unassigned->payment_method ?: 'statement_import');
+        $tx = [
+            'transaction_id' => (string) $unassigned->transaction_id,
+            'amount' => (float) $unassigned->amount,
+            'account_number' => (string) ($unassigned->account_number ?? ''),
+            'reference' => '',
+            'phone' => (string) ($unassigned->phone ?? ''),
+            'transaction_date' => $line->txn_date ?? $unassigned->created_at ?? now(),
+            'raw_payload' => [
+                'manual_assigned' => true,
+                'unassigned_payment_id' => (int) $unassigned->id,
+                'pm_bank_statement_line_id' => (int) $line->id,
+                'reason' => (string) ($unassigned->reason ?? ''),
+            ],
+        ];
+
+        Payment::query()
+            ->where('transaction_id', (string) $unassigned->transaction_id)
+            ->where('status', 'unmatched')
+            ->delete();
+
+        $payment = $payments->storeMatched($tx, (int) $tenant->id, 'manual', [
+            'payment_method' => $method,
+            'channel' => 'bank_statement',
+            'source' => 'statement_import',
+            'provider' => 'mpesa',
+            'message' => 'Assigned to a tenant from the bank statement.',
+            'agent_user_id' => (int) $request->user()->id,
+        ]);
+
+        $auditLogs->decision('success', [
+            'stage' => 'manual_assign',
+            'decision' => 'assigned',
+            'unassigned_payment_id' => (int) $unassigned->id,
+            'transaction_id' => (string) $unassigned->transaction_id,
+            'tenant_id' => (int) $tenant->id,
+            'payment_id' => (int) $payment->id,
+            'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
+            'pm_bank_statement_line_id' => (int) $line->id,
+        ], 'manual_assign_decision');
+
+        $line->update([
+            'match_status' => PmBankStatementLine::MATCH_MATCHED,
+            'matched_type' => 'payment',
+            'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0) ?: null,
+            'unassigned_payment_id' => null,
+        ]);
+
+        $unassigned->delete();
+
+        return back()->with('status', 'Assigned to '.$tenant->name.' and posted.');
+    }
+
+    public function classifyPayee(Request $request, PmBankStatement $statement, PmBankStatementLine $line): RedirectResponse
+    {
+        $this->authorizeStatement($request, $statement);
+        if ((int) $line->pm_bank_statement_id !== (int) $statement->id) {
+            abort(404);
+        }
+        if ((string) $line->match_status !== PmBankStatementLine::MATCH_BANK_ONLY) {
+            return back()->withErrors(['paid_to_kind' => 'Only bank-only lines can record a payee here.']);
+        }
+        if (! Schema::hasColumn('pm_bank_statement_lines', 'paid_to_kind')) {
+            return back()->withErrors(['paid_to_kind' => 'The payee columns are not on this database yet. Run migrations.']);
+        }
+
+        $data = $request->validate([
+            'paid_to_kind' => ['required', 'in:landlord,bank_charge,other'],
+            'landlord_id' => ['nullable', 'integer'],
+            'paid_to_name' => ['nullable', 'string', 'max:191'],
+            'paid_to_note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $landlordId = null;
+        $name = '';
+        $matchedType = 'other_payee';
+
+        if ($data['paid_to_kind'] === 'landlord') {
+            $landlord = User::query()
+                ->where('property_portal_role', 'landlord')
+                ->whereKey((int) ($data['landlord_id'] ?? 0))
+                ->whereHas('landlordProperties')
+                ->first();
+            if (! $landlord) {
+                return back()->withErrors(['landlord_id' => 'Choose a landlord from the list.'])->withInput();
+            }
+            $landlordId = (int) $landlord->id;
+            $name = (string) $landlord->name;
+            $matchedType = 'landlord_payout';
+        } elseif ($data['paid_to_kind'] === 'bank_charge') {
+            $name = 'Bank charge';
+            $matchedType = 'bank_charge';
+        } else {
+            $name = trim((string) ($data['paid_to_name'] ?? ''));
+            if ($name === '') {
+                return back()->withErrors(['paid_to_name' => 'Enter who was paid.'])->withInput();
+            }
+        }
+
+        $line->update([
+            'paid_to_kind' => $data['paid_to_kind'],
+            'paid_to_landlord_id' => $landlordId,
+            'paid_to_name' => $name,
+            'paid_to_note' => trim((string) ($data['paid_to_note'] ?? '')) ?: null,
+            'matched_type' => $matchedType,
+        ]);
+
+        return back()->with('status', 'Recorded '.$line->reference.' as paid to '.$name.'.');
+    }
+
+    public function autoAssign(
+        Request $request,
+        PmBankStatement $statement,
+        PropertyStatementAutoAssignService $autoAssign,
+    ): RedirectResponse {
+        $this->authorizeStatement($request, $statement);
+
+        $result = $autoAssign->assignStatement($statement, (int) $request->user()->id);
+        $msg = sprintf(
+            'Auto-posted %d receipts where the phone and name matched one tenant and the M-Pesa code was not already a receipt. Linked %d lines that already had a receipt. %d lines stayed unmatched.',
+            $result['posted'],
+            $result['linked'],
+            $result['skipped'],
+        );
+        if ($result['errors'] !== []) {
+            return back()->with('status', $msg)->withErrors(['auto_assign' => implode('; ', $result['errors'])]);
+        }
+
+        return back()->with('status', $msg);
     }
 
     public function rematch(

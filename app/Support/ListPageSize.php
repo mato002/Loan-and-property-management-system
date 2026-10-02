@@ -29,11 +29,9 @@ final class ListPageSize
 
         $chosen = [];
         foreach ($steps as $size) {
-            if ($total === null || $total <= 0 || $size < $total) {
-                $chosen[$size] = true;
-            }
+            $chosen[$size] = true;
         }
-        if ($currentNum !== null && $currentNum > 0 && ($total === null || $total <= 0 || $currentNum < $total)) {
+        if ($currentNum !== null && $currentNum > 0) {
             $chosen[$currentNum] = true;
         }
         ksort($chosen);
@@ -104,10 +102,6 @@ final class ListPageSize
             if ($size < 1) {
                 $size = $default;
             }
-        }
-
-        if ($total !== null && $total > 0) {
-            $size = min($size, $total);
         }
 
         return min(max($size, 1), self::HARD_CAP);

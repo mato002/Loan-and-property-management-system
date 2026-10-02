@@ -50,10 +50,11 @@ function prefersServerSearch(control) {
 }
 
 function isSearchInput(el) {
-    return (
-        el instanceof HTMLInputElement &&
-        (el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true' || el.dataset.filterSearch === '1')
-    );
+    if (!(el instanceof HTMLInputElement) || el.closest('[data-statement-assign]')) {
+        return false;
+    }
+
+    return el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true' || el.dataset.filterSearch === '1';
 }
 
 function isFilterSearchInput(el) {
@@ -685,7 +686,7 @@ function pageSizeSteps(total) {
     if (total && total > 1000) {
         steps.push(2000, 5000);
     }
-    return steps.filter((size) => !total || size < total);
+    return steps.filter((size) => !total || size <= Math.max(total, 100));
 }
 
 function ensurePageSizeOption(select, value, label) {
@@ -759,7 +760,7 @@ function bindCustomPageSize(select) {
 function enhancePageSizeSelects(root) {
     const scope = root || document;
     scope.querySelectorAll('select[name="per_page"], select[name$="_per_page"]').forEach((select) => {
-        if (!(select instanceof HTMLSelectElement)) {
+        if (!(select instanceof HTMLSelectElement) || select.dataset.serverPageSize === '1') {
             return;
         }
         const total = findListTotal(select);

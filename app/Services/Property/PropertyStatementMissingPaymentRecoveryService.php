@@ -62,7 +62,7 @@ final class PropertyStatementMissingPaymentRecoveryService
                     ->value('id');
                 if ($existingId) {
                     $line->update([
-                        'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                        'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
                         'matched_type' => 'unassigned',
                         'unassigned_payment_id' => (int) $existingId,
                     ]);
@@ -106,7 +106,7 @@ final class PropertyStatementMissingPaymentRecoveryService
                 ->value('id');
 
             $line->update([
-                'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
                 'matched_type' => 'unassigned',
                 'unassigned_payment_id' => $unassignedId ? (int) $unassignedId : null,
             ]);

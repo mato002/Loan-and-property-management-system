@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\EquitySyncRun;
 use App\Models\Payment;
+use App\Models\PmBankStatementLine;
 use App\Models\PmPayment;
 use App\Models\PmSmsIngest;
 use App\Models\PmTenant;
@@ -438,6 +439,17 @@ class EquitySyncController extends Controller
             'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
             'note' => (string) ($data['note'] ?? ''),
         ], 'manual_assign_decision');
+
+        if (Schema::hasTable('pm_bank_statement_lines')) {
+            PmBankStatementLine::query()
+                ->where('unassigned_payment_id', (int) $unassignedPayment->id)
+                ->update([
+                    'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                    'matched_type' => 'payment',
+                    'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0) ?: null,
+                    'unassigned_payment_id' => null,
+                ]);
+        }
 
         $unassignedPayment->delete();
 
