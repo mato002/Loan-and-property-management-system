@@ -10,7 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="Meters">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Meters</title>
-    <link rel="manifest" href="{{ route('pwa.manifest.field') }}">
+    <link rel="manifest" href="{{ route('pwa.manifest.field') }}?v=4">
+    <link rel="icon" href="{{ asset('pwa/meters-192.png') }}" type="image/png">
+    <link rel="apple-touch-icon" href="{{ asset('pwa/meters-192.png') }}">
     <style>
         :root { color-scheme: light; }
         * { box-sizing: border-box; }
@@ -71,6 +73,6 @@
             <div id="field-units"></div>
         </div>
     </main>
-    <script src="{{ asset('js/field-readings.js') }}?v=3" defer></script>
+    <script src="{{ asset('js/field-readings.js') }}?v=4" defer></script>
 </body>
 </html>

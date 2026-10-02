@@ -368,7 +368,9 @@
         }
     }
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+            setMessage('Install is blocked until this page can register its app service. Reload once on the office network.');
+        });
     }
 
     db().then(async () => {

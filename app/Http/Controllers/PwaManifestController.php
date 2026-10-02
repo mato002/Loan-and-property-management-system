@@ -34,15 +34,29 @@ class PwaManifestController extends Controller
     {
         return $this->manifest(
             startUrl: url('/property/field/readings'),
-            scope: url('/property/field/'),
+            scope: rtrim(url('/property/field'), '/').'/',
             descriptionSuffix: 'record water, electricity, and other meters while in the field.',
             shortNameSuffix: '',
             usePublicSiteBranding: false,
             appName: 'Meter capture',
+            icons: [
+                [
+                    'src' => asset('pwa/meters-192.png'),
+                    'sizes' => '192x192',
+                    'type' => 'image/png',
+                    'purpose' => 'any',
+                ],
+                [
+                    'src' => asset('pwa/meters-512.png'),
+                    'sizes' => '512x512',
+                    'type' => 'image/png',
+                    'purpose' => 'any',
+                ],
+            ],
         );
     }
 
-    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null): JsonResponse
+    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null, ?array $icons = null): JsonResponse
     {
         $companyName = $usePublicSiteBranding
             ? (PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Portal')) ?? config('app.name', 'Property Portal'))
@@ -68,7 +82,7 @@ class PwaManifestController extends Controller
             ? 'image/svg+xml'
             : 'image/png';
 
-        $icons = [
+        $icons ??= [
             [
                 'src' => $iconUrl,
                 'sizes' => '192x192',
@@ -79,7 +93,7 @@ class PwaManifestController extends Controller
                 'src' => $iconUrl,
                 'sizes' => '512x512',
                 'type' => $iconType,
-                'purpose' => 'any maskable',
+                'purpose' => 'any',
             ],
         ];
 
