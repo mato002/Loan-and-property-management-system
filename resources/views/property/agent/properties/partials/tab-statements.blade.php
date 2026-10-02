@@ -34,27 +34,27 @@
 @endphp
 
 <div class="mt-5 space-y-5">
-    @include('property.agent.partials.statement_report_builder', [
-        'showUrl' => route('property.properties.show', ['property' => $property->id], false),
-        'printUrl' => route('property.properties.show', ['property' => $property->id], false),
-        'showProperty' => false,
-        'showDetailLevel' => true,
-        'defaultPeriod' => $openMonth !== '' ? 'month' : 'fy',
-        'defaultReport' => 'detail',
-        'defaultFy' => $fy,
-        'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
-        'extraQuery' => ['tab' => 'statements'],
-        'title' => 'Generate property statement',
-        'hint' => 'Choose FY, a single month, or a custom range. Summary = month totals; Full = unit B/F / invoiced / received. Print or download CSV / Excel / PDF / Word.',
-    ])
-
-    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm overflow-visible">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h3 class="text-sm font-semibold text-slate-900">Property statement — {{ $property->name }}</h3>
                 <p class="mt-1 text-xs text-slate-500">FY {{ $fy }} for this property only. Yearly unit totals sit below; use + on a month to open the unit matrix (B/F, invoiced, received).</p>
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                @include('property.agent.partials.statement_report_builder', [
+                    'showUrl' => route('property.properties.show', ['property' => $property->id], false),
+                    'printUrl' => route('property.properties.show', ['property' => $property->id], false),
+                    'showProperty' => false,
+                    'showDetailLevel' => true,
+                    'defaultPeriod' => $openMonth !== '' ? 'month' : 'fy',
+                    'defaultReport' => 'detail',
+                    'defaultFy' => $fy,
+                    'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
+                    'extraQuery' => ['tab' => 'statements'],
+                    'layout' => 'split',
+                    'buttonLabel' => 'Print / Export Statement',
+                    'formats' => ['pdf', 'xls', 'csv', 'word'],
+                ])
                 @include('property.agent.partials.table_export_dropdown', $exportFor('year_units'))
                 <a href="{{ $printYearUrl }}" target="_blank" rel="noopener" data-turbo="false" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Print year</a>
                 @if ($printMonthUrl)

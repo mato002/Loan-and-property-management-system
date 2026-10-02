@@ -66,7 +66,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <div class="w-full space-y-3">
+        <div class="w-full flex flex-wrap items-end justify-between gap-3">
             <form method="get" action="{{ route('property.accounting.payables.landlord_settlements') }}" class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Property</label>
@@ -111,8 +111,9 @@
                         'property_id' => (int) $filters['property_id'],
                         'landlord_id' => (int) $filters['landlord_id'],
                     ],
-                    'title' => 'Export settlement for any period',
-                    'hint' => 'After selecting property and landlord above, generate FY / month / custom-range remittance as summary or full unit detail.',
+                    'layout' => 'split',
+                    'buttonLabel' => 'Print / Export Statement',
+                    'formats' => ['pdf', 'xls', 'csv', 'word'],
                 ])
             @endif
         </div>

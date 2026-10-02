@@ -1,4 +1,4 @@
-<div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+<div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
     <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-900">Statement</h3>
         <div class="flex flex-wrap items-center gap-2">

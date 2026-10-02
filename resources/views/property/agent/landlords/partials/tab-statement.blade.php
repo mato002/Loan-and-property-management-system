@@ -86,14 +86,29 @@
     }
 @endphp
 
-<div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0">
+<div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0 overflow-visible">
     <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
             <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
-            <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement. Use the report builder below for any property, any period, summary or full detail.</p>
+            <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement. Use Print / Export Statement for any property, period, summary, or full detail.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            @include('property.agent.partials.statement_report_builder', [
+                'showUrl' => route('property.landlords.show', ['landlord' => $landlord->id], false),
+                'printUrl' => route('property.landlords.statement.print', ['landlord' => $landlord->id], false),
+                'properties' => $linkedProperties,
+                'showProperty' => true,
+                'showDetailLevel' => true,
+                'defaultPeriod' => $isMonthScoped ? 'month' : 'fy',
+                'defaultReport' => 'detail',
+                'defaultFy' => $fy,
+                'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
+                'extraQuery' => ['tab' => 'statement'],
+                'layout' => 'split',
+                'buttonLabel' => 'Print / Export Statement',
+                'formats' => ['pdf', 'xls', 'csv', 'word'],
+            ])
             <a
                 href="{{ $printUrlFor(['report' => 'summary']) }}"
                 target="_blank"
@@ -134,22 +149,6 @@
         </div>
     </div>
     <p class="mt-3 text-xs text-slate-500">Totals {{ $toDateLabel }}. Monthly figures are in the tables below. Generated {{ now()->format('Y-m-d H:i') }}</p>
-</div>
-
-<div class="mt-4">
-    @include('property.agent.partials.statement_report_builder', [
-        'showUrl' => route('property.landlords.show', ['landlord' => $landlord->id], false),
-        'printUrl' => route('property.landlords.statement.print', ['landlord' => $landlord->id], false),
-        'properties' => $linkedProperties,
-        'showProperty' => true,
-        'showDetailLevel' => true,
-        'defaultPeriod' => $isMonthScoped ? 'month' : 'fy',
-        'defaultReport' => 'detail',
-        'defaultFy' => $fy,
-        'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
-        'extraQuery' => ['tab' => 'statement'],
-        'hint' => 'Pick one property or all, any year / month / custom range, then summary or full unit detail. Print or download CSV / Excel / PDF / Word.',
-    ])
 </div>
 
 <div class="property-erp-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm w-full min-w-0 overflow-visible mt-4">

@@ -22,6 +22,7 @@ use App\Services\Property\RentReminderEligibilityService;
 use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\RentRollQuery;
 use App\Services\Property\TenantCommunicationStageService;
+use App\Services\Property\TenantStatementLedgerService;
 use App\Models\PropertyPortalSetting;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\WorkspaceRowAlert;
@@ -652,6 +653,32 @@ class RevenueController extends Controller
             })
             ->values();
 
+        $summaryTenantIds = (clone $summaryQuery)
+            ->reorder()
+            ->where('pm_tenant_id', '>', 0)
+            ->distinct()
+            ->pluck('pm_tenant_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $statementBalances = $this->statementClosingBalances(array_merge(
+            $summaryTenantIds,
+            $aggregated->pluck('tenant_id')->map(fn ($id) => (int) $id)->all(),
+        ));
+        $aggregated = $aggregated->map(function (array $row) use ($statementBalances) {
+            $tenantId = (int) $row['tenant_id'];
+            if (array_key_exists($tenantId, $statementBalances)) {
+                $row['balance'] = $statementBalances[$tenantId];
+            }
+
+            return $row;
+        })->values();
+        if ($sortBy === 'balance') {
+            $aggregated = ($sortDir === 'desc'
+                ? $aggregated->sortByDesc(fn (array $row) => (float) $row['balance'])
+                : $aggregated->sortBy(fn (array $row) => (float) $row['balance']))
+                ->values();
+        }
+
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $exportRows = $this->hydrateArrearsTenantRows($aggregated, $tableQuery);
@@ -705,7 +732,21 @@ class RevenueController extends Controller
             '61_90' => (float) ($summaryRow->bucket_61_90 ?? 0),
             'over_90' => (float) ($summaryRow->bucket_over_90 ?? 0),
         ];
-        $summaryTotal = (float) ($summaryRow->total_balance ?? 0);
+        $invoiceOpenTotal = (float) ($summaryRow->total_balance ?? 0);
+        $summaryTotal = round(array_sum(array_map(
+            fn (int $tenantId): float => max(0.0, $statementBalances[$tenantId] ?? 0.0),
+            $summaryTenantIds,
+        )), 2);
+        // Opening balances and receipts the statement counts are not stored on invoice.balance_due.
+        // Fold that gap into the oldest bucket so Total overdue + Not yet due still equals the directory total.
+        $summaryBuckets['over_90'] = round($summaryBuckets['over_90'] + ($summaryTotal - $invoiceOpenTotal), 2);
+        if ($summaryBuckets['over_90'] < 0) {
+            $summaryBuckets['not_due'] = round($summaryBuckets['not_due'] + $summaryBuckets['over_90'], 2);
+            $summaryBuckets['over_90'] = 0.0;
+        }
+        if ($summaryBuckets['not_due'] < 0) {
+            $summaryBuckets['not_due'] = 0.0;
+        }
         $summaryOverdue = $summaryBuckets['0_30'] + $summaryBuckets['31_60'] + $summaryBuckets['61_90'] + $summaryBuckets['over_90'];
         $summaryInvoiceCount = (int) ($summaryRow->invoice_count ?? 0);
         $summaryTenantCount = (int) ($summaryRow->tenant_count ?? 0);
@@ -717,7 +758,7 @@ class RevenueController extends Controller
             [
                 'label' => 'Total tenant arrears',
                 'value' => PropertyMoney::kes($summaryTotal),
-                'hint' => $dueRangeLabel.' · billable open balances',
+                'hint' => $dueRangeLabel.' · same balance as the tenant directory',
                 'emphasis' => true,
             ],
             [
@@ -931,6 +972,7 @@ class RevenueController extends Controller
         $totalBalance = 0.0;
         $totalAmount = 0.0;
         $totalPaid = 0.0;
+        $accountBalance = app(TenantStatementLedgerService::class)->closingBalance($tenant);
 
         $rows = $invoices->map(function (PmInvoice $i) use ($today, &$totalBalance, &$totalAmount, &$totalPaid, $balanceSnapshot) {
             $bal = $balanceSnapshot->invoiceBalance($i);
@@ -971,6 +1013,26 @@ class RevenueController extends Controller
                 $actions,
             ];
         })->all();
+
+        $accountGap = round($accountBalance - $totalBalance, 2);
+        if (abs($accountGap) > 0.009) {
+            $rows[] = [
+                '',
+                '—',
+                '—',
+                'Account balance not on these invoices',
+                '—',
+                '—',
+                '—',
+                '—',
+                '—',
+                WorkspaceRowAlert::followUpAmount($accountGap, PropertyMoney::kes($accountGap)),
+                '—',
+                '—',
+                '',
+            ];
+            $totalBalance = $accountBalance;
+        }
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
@@ -1042,7 +1104,7 @@ class RevenueController extends Controller
             'reminderTargets' => $reminderTargets,
             'summary' => [
                 'invoice_count' => $invoices->count(),
-                'total_balance' => $totalBalance,
+                'total_balance' => $accountBalance,
                 'oldest_due' => $oldestDue?->format('Y-m-d') ?? '—',
                 'days_late' => $maxDays,
                 'aging_label' => $maxDaysOverdue > 0
@@ -2088,6 +2150,28 @@ class RevenueController extends Controller
         };
 
         return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $dueRangeLabel];
+    }
+
+    /**
+     * Account balance used on the tenant directory (statement closing), keyed by tenant id.
+     *
+     * @param  list<int>  $tenantIds
+     * @return array<int, float>
+     */
+    private function statementClosingBalances(array $tenantIds): array
+    {
+        $tenantIds = array_values(array_unique(array_filter(array_map('intval', $tenantIds))));
+        if ($tenantIds === []) {
+            return [];
+        }
+
+        $ledger = app(TenantStatementLedgerService::class);
+        $balances = [];
+        foreach (PmTenant::query()->whereIn('id', $tenantIds)->get() as $tenant) {
+            $balances[(int) $tenant->id] = $ledger->closingBalance($tenant);
+        }
+
+        return $balances;
     }
 
     private function addToArrearsBuckets(?\Carbon\CarbonInterface $dueDate, \Carbon\Carbon $today, float $balance, array &$buckets): void
