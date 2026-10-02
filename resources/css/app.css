@@ -2225,6 +2225,28 @@
     max-width: 100%;
   }
 
+  @media (max-width: 767px) {
+    .property-inline-actions {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .property-inline-actions > button,
+    .property-inline-actions > a,
+    .property-inline-actions > select,
+    .property-inline-actions > div {
+      flex: 0 0 auto;
+      width: auto !important;
+      max-width: none;
+    }
+  }
+
   .property-export-select {
     width: auto !important;
     max-width: 9.5rem;

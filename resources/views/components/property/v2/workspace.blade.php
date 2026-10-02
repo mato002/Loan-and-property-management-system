@@ -186,7 +186,7 @@
                     </a>
                 @endif
             </div>
-            <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 justify-start sm:justify-end [&>button]:w-full [&>button]:sm:w-auto">
+            <div class="print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible [&>button]:w-auto [&>a]:w-auto">
                 {{ $actions ?? '' }}
             </div>
         </div>
@@ -205,7 +205,12 @@
                 'space-y-2.5 md:space-y-3' => ! $compactList,
             ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
-                    <div class="print-hide w-full min-w-0">
+                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:block md:overflow-visible">
+                        @if ($compactList && $hasPageActions)
+                            <div class="property-inline-actions flex shrink-0 flex-nowrap items-center gap-2 md:hidden">
+                                {{ $actions }}
+                            </div>
+                        @endif
                         @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
                             <div class="flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible">
                                 @if ($useLegacyToolbar && $canShowDefaultSearch)
@@ -287,6 +292,10 @@
                                 \App\Support\Property\FilterToolbarViewport::set('all');
                             @endphp
                         @endif
+                    </div>
+                @elseif ($compactList && $hasPageActions)
+                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
+                        {{ $actions }}
                     </div>
                 @endif
 
