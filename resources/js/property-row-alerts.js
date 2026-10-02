@@ -36,6 +36,7 @@ const TOKEN_MAP = {
     'past due': 'attention',
     error: 'attention',
     uninvoiced: 'attention',
+    paid: 'occupied',
     'long vacant': 'vacant-long',
     '90+ days': 'vacant-long',
     '90 plus days': 'vacant-long',
@@ -57,7 +58,6 @@ const TOKEN_MAP = {
     medium: 'notice',
     'due soon': 'notice',
     'send renewal offer': 'notice',
-    'not sent to tenant': 'notice',
     'pending disbursement': 'notice',
     expiring: 'notice',
 };

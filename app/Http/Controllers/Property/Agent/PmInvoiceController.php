@@ -22,6 +22,7 @@ use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyReversalFinalizeService;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Services\Property\TenantCreditService;
 use App\Services\Property\UtilityPeriodGuardService;
@@ -706,9 +707,14 @@ class PmInvoiceController extends Controller
 
         $deliverySummaries = PmInvoice::prefetchTenantDeliverySummaries($invoices->getCollection());
 
-        $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries) {
+        $tableRowTones = [];
+        $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries, &$tableRowTones) {
             $showAction = route('property.revenue.invoices.show', $i, false);
             $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
+            $pastDue = $balance > 0.009
+                && $i->due_date
+                && $i->due_date->endOfDay()->isPast();
+            $tableRowTones[] = WorkspaceRowAlert::forInvoice((string) $i->status, $balance, $pastDue);
 
             $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
@@ -756,6 +762,7 @@ class PmInvoiceController extends Controller
             'billingRangeLabel' => $billingRangeLabel,
             'columns' => ['Select', 'Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
             'paginator' => $invoices,
             'filters' => [
                 ...$filters,

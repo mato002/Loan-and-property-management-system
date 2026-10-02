@@ -15,6 +15,8 @@ class PmUnitUtilityCharge extends Model
         'property_unit_id',
         'charge_type',
         'billing_month',
+        'previous_reading',
+        'current_reading',
         'units_consumed',
         'rate_per_unit',
         'fixed_charge',

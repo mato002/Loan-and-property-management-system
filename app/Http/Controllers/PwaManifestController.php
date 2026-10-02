@@ -30,7 +30,19 @@ class PwaManifestController extends Controller
         );
     }
 
-    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false): JsonResponse
+    public function field(): JsonResponse
+    {
+        return $this->manifest(
+            startUrl: url('/property/field/readings'),
+            scope: url('/property/field/'),
+            descriptionSuffix: 'record water, electricity, and other meters while in the field.',
+            shortNameSuffix: '',
+            usePublicSiteBranding: false,
+            appName: 'Meter capture',
+        );
+    }
+
+    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null): JsonResponse
     {
         $companyName = $usePublicSiteBranding
             ? (PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Portal')) ?? config('app.name', 'Property Portal'))
@@ -78,8 +90,8 @@ class PwaManifestController extends Controller
 
         return response()->json([
             'id' => $startUrl,
-            'name' => $companyName.($shortNameSuffix !== '' ? ' — Property Portal' : ''),
-            'short_name' => $shortName,
+            'name' => $appName ?: ($companyName.($shortNameSuffix !== '' ? ' — Property Portal' : '')),
+            'short_name' => $appName ? 'Meters' : $shortName,
             'description' => $companyName.' — '.$descriptionSuffix,
             'start_url' => $startUrl,
             'scope' => $scope,

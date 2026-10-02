@@ -161,6 +161,21 @@ function buildEnhancement(select) {
     select.tabIndex = -1;
     select.setAttribute('aria-hidden', 'true');
     select.setAttribute(ENHANCED_ATTR, '1');
+    [
+        ['position', 'absolute'],
+        ['width', '1px'],
+        ['height', '1px'],
+        ['padding', '0'],
+        ['margin', '-1px'],
+        ['overflow', 'hidden'],
+        ['clip', 'rect(0, 0, 0, 0)'],
+        ['white-space', 'nowrap'],
+        ['border', '0'],
+        ['opacity', '0'],
+        ['pointer-events', 'none'],
+        ['appearance', 'none'],
+    ].forEach(([prop, value]) => select.style.setProperty(prop, value, 'important'));
+    select.addEventListener('mousedown', (event) => event.preventDefault());
 
     let open = false;
 
@@ -194,16 +209,23 @@ function buildEnhancement(select) {
             ].join(' ');
             btn.textContent = opt.label || (opt.value === '' ? placeholder : opt.value);
             btn.disabled = Boolean(opt.disabled);
-            btn.addEventListener('click', () => {
+            btn.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+            });
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 if (opt.disabled) {
                     return;
                 }
                 currentValue = String(opt.value);
-                if (select.value !== currentValue) {
-                    select.value = currentValue;
-                    select.dispatchEvent(new Event('change', { bubbles: true }));
-                    select.dispatchEvent(new Event('input', { bubbles: true }));
+                const match = Array.from(select.options).find((option) => String(option.value) === currentValue);
+                if (match) {
+                    match.selected = true;
                 }
+                select.value = currentValue;
+                select.dispatchEvent(new Event('input', { bubbles: true }));
+                select.dispatchEvent(new Event('change', { bubbles: true }));
                 labelEl.textContent = selectedLabel(options, currentValue, placeholder);
                 closePanel();
             });

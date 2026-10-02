@@ -10,6 +10,8 @@
     :stats="[]"
     :columns="$columns"
     :table-rows="$tableRows"
+    :table-row-tones="$tableRowTones ?? []"
+    row-alert-legend="invoices"
     empty-title="No invoices"
     empty-hint="Create an invoice for a unit and tenant; record payments from the Payments screen."
 >

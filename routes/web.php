@@ -29,6 +29,7 @@ Route::get('/invoices/p/{token}/pdf', [\App\Http\Controllers\Property\Agent\PmIn
 
 Route::get('/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'public'])->name('pwa.manifest');
 Route::get('/property/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'portal'])->name('pwa.manifest.portal');
+Route::get('/property/field/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'field'])->name('pwa.manifest.field');
 
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
 Route::get('/media/unit-listings/{path}', [PublicListingMediaController::class, 'show'])

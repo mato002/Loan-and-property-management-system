@@ -950,6 +950,7 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage invoices', 'key' => 'invoices.manage', 'group' => 'revenue'],
             ['name' => 'Manage penalties', 'key' => 'revenue.penalties.manage', 'group' => 'revenue'],
             ['name' => 'Manage utilities', 'key' => 'revenue.utilities.manage', 'group' => 'revenue'],
+            ['name' => 'Record meter readings', 'key' => 'utilities.readings.capture', 'group' => 'revenue'],
             ['name' => 'Close utility billing periods', 'key' => 'revenue.utilities.period_close', 'group' => 'revenue'],
             ['name' => 'Approve utility period overrides', 'key' => 'revenue.utilities.period_override_approve', 'group' => 'revenue'],
             ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
@@ -985,7 +986,7 @@ class PropertySettingsStoreWebController extends Controller
                     'properties.manage', 'property.offboarding.start', 'property.offboarding.complete',
                     'property.archive.view', 'property.archive.restore', 'property.archive.override',
                     'tenants.manage', 'leases.manage', 'maintenance.manage', 'maintenance.resolve', 'maintenance.approve_high_value', 'vendors.manage',
-                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage', 'utilities.readings.capture',
                     'revenue.utilities.period_close', 'revenue.utilities.period_override_approve',
                     'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
                     'communications.send_legal_notice', 'communications.approve_notice',
@@ -1016,7 +1017,7 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Maintenance requests, jobs, and vendors.',
                 'permissions' => [
-                    'maintenance.manage', 'maintenance.resolve', 'vendors.manage', 'communications.manage', 'communications.export',
+                    'maintenance.manage', 'maintenance.resolve', 'utilities.readings.capture', 'vendors.manage', 'communications.manage', 'communications.export',
                 ],
             ],
             'finance_clerk' => [

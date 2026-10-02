@@ -297,6 +297,7 @@
                     <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Periods</a>
                     <button type="button" @click="setTab('standing')" class="quick-action-btn bg-slate-800 text-white hover:bg-slate-900">Standing register</button>
                     <button type="button" data-property-modal-open="showWaterReadingForm" @click="showWaterReadingForm = true" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
+                    <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="quick-action-btn border border-cyan-300 bg-white text-cyan-900 hover:bg-cyan-50">Meter app</a>
                 </x-property.responsive.quick-action-grid>
             </div>
             <div x-show="activeTab === 'readings'" x-cloak class="space-y-4">

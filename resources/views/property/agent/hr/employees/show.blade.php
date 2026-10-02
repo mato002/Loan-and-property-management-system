@@ -52,6 +52,9 @@
             @endif
         @endif
         <a href="{{ route('property.accounting.payroll', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Payroll</a>
+        @if ($isFieldOfficer ?? false)
+            <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-cyan-800">Meter app</a>
+        @endif
     </x-slot>
 
     @if (session('status'))

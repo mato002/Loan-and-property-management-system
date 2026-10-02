@@ -5,6 +5,7 @@ use App\Http\Controllers\Property\Agent\AgentPublicListingController;
 use App\Http\Controllers\Property\Agent\AgentWorkspaceFormController;
 use App\Http\Controllers\Property\Agent\DashboardController;
 use App\Http\Controllers\Property\Agent\FieldOfficerController;
+use App\Http\Controllers\Property\Agent\PropertyFieldReadingsController;
 use App\Http\Controllers\Property\Agent\PropertyHrEmployeesController;
 use App\Http\Controllers\Property\Agent\PropertyHrLeavesController;
 use App\Http\Controllers\Property\Agent\FinancialsController;
@@ -318,6 +319,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/properties/landlords/detach', [PropertyPortfolioController::class, 'detachLandlord'])->name('properties.landlords.detach');
     Route::post('/properties/landlords/ownership', [PropertyPortfolioController::class, 'updateLandlordOwnership'])->name('properties.landlords.ownership');
     Route::get('/landlords', [PropertyPortfolioController::class, 'landlordsIndex'])->name('landlords.index');
+    Route::get('/field/readings', [PropertyFieldReadingsController::class, 'index'])->name('field.readings');
+    Route::get('/field/readings/pack', [PropertyFieldReadingsController::class, 'pack'])->name('field.readings.pack');
+    Route::post('/field/readings/sync', [PropertyFieldReadingsController::class, 'sync'])->name('field.readings.sync');
     Route::get('/field-officers', [FieldOfficerController::class, 'index'])->name('field_officers.index');
     Route::get('/field-officers/create', [FieldOfficerController::class, 'create'])->middleware('property.permission:properties.manage')->name('field_officers.create');
     Route::post('/field-officers', [FieldOfficerController::class, 'store'])->middleware('property.permission:properties.manage')->name('field_officers.store');

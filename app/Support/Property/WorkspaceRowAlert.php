@@ -52,6 +52,7 @@ final class WorkspaceRowAlert
             'past due' => self::TONE_ATTENTION,
             'error' => self::TONE_ATTENTION,
             'uninvoiced' => self::TONE_ATTENTION,
+            'paid' => self::TONE_OCCUPIED,
 
             'long vacant' => self::TONE_VACANT_LONG,
             '90+ days' => self::TONE_VACANT_LONG,
@@ -79,7 +80,6 @@ final class WorkspaceRowAlert
             'medium' => self::TONE_NOTICE,
             'due soon' => self::TONE_NOTICE,
             'send renewal offer' => self::TONE_NOTICE,
-            'not sent to tenant' => self::TONE_NOTICE,
             'pending disbursement' => self::TONE_NOTICE,
             'expiring' => self::TONE_NOTICE,
         ];
@@ -256,6 +256,49 @@ final class WorkspaceRowAlert
         }
 
         return self::inferFromRow([$status]);
+    }
+
+    public static function forInvoice(string $status, float $balance, bool $pastDue = false): string
+    {
+        $status = mb_strtolower(trim($status));
+        $open = $balance > 0.009;
+
+        if ($status === 'cancelled') {
+            return '';
+        }
+
+        if (! $open || $status === 'paid') {
+            return self::TONE_OCCUPIED;
+        }
+
+        if ($status === 'overdue' || $pastDue) {
+            return self::TONE_ATTENTION;
+        }
+
+        return self::TONE_NOTICE;
+    }
+
+    /**
+     * @return list<array{tone: string, label: string}>
+     */
+    public static function legendItems(string $kind = 'occupancy'): array
+    {
+        if ($kind === 'invoices') {
+            return [
+                ['tone' => self::TONE_OCCUPIED, 'label' => 'Paid'],
+                ['tone' => self::TONE_NOTICE, 'label' => 'Open'],
+                ['tone' => self::TONE_ATTENTION, 'label' => 'Overdue'],
+            ];
+        }
+
+        return [
+            ['tone' => self::TONE_OCCUPIED, 'label' => 'Occupied'],
+            ['tone' => self::TONE_OWNER_OCCUPIED, 'label' => 'Owner occupied'],
+            ['tone' => self::TONE_VACANT, 'label' => 'Vacant / empty'],
+            ['tone' => self::TONE_VACANT_LONG, 'label' => 'Aging 90+ days'],
+            ['tone' => self::TONE_NOTICE, 'label' => 'Notice / pending'],
+            ['tone' => self::TONE_ATTENTION, 'label' => 'Needs attention'],
+        ];
     }
 
     /**

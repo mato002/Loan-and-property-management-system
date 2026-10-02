@@ -33,6 +33,8 @@
     /** Summary cards start open unless a page asks for them collapsed. */
     'statsExpanded' => true,
     'statsStorageKey' => 'property.workspace.summaryStatsVisible',
+    /** occupancy | invoices */
+    'rowAlertLegend' => 'occupancy',
 ])
 
 @php
@@ -304,30 +306,12 @@
                     <div class="w-full min-w-0 space-y-2.5">
                     @if ($showRowToneLegend)
                         <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--occupied" aria-hidden="true"></span>
-                                Occupied
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--owner-occupied" aria-hidden="true"></span>
-                                Owner occupied
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
-                                Vacant / empty
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant-long" aria-hidden="true"></span>
-                                Aging 90+ days
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--notice" aria-hidden="true"></span>
-                                Notice / pending
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--attention" aria-hidden="true"></span>
-                                Needs attention
-                            </span>
+                            @foreach (\App\Support\Property\WorkspaceRowAlert::legendItems((string) $rowAlertLegend) as $legendItem)
+                                <span class="property-row-alert-legend__item">
+                                    <span class="property-row-alert-swatch property-row-alert-swatch--{{ $legendItem['tone'] }}" aria-hidden="true"></span>
+                                    {{ $legendItem['label'] }}
+                                </span>
+                            @endforeach
                         </div>
                     @endif
                     <div @class([
