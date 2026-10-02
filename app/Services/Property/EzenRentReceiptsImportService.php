@@ -1025,7 +1025,17 @@ final class EzenRentReceiptsImportService
             return $payment;
         }
 
-        if ($refNo !== '') {
+        $byReceiptMeta = PmPayment::query()
+            ->withoutGlobalScopes()
+            ->where('meta->ezen_receipt_no', $receiptNo)
+            ->first();
+        if ($byReceiptMeta !== null) {
+            return $byReceiptMeta;
+        }
+
+        // CASH / BANK / short codes are shared across many receipts — matching them
+        // would skip thousands of rows as "existing" after the first hit.
+        if ($this->isUniquePaymentRef($refNo)) {
             return PmPayment::query()
                 ->withoutGlobalScopes()
                 ->where(function ($query) use ($refNo): void {
@@ -1037,6 +1047,20 @@ final class EzenRentReceiptsImportService
         }
 
         return null;
+    }
+
+    private function isUniquePaymentRef(string $refNo): bool
+    {
+        $ref = strtoupper(trim($refNo));
+        if (strlen($ref) < 8) {
+            return false;
+        }
+
+        if (in_array($ref, ['CASH', 'BANK', 'MPESA', 'M-PESA', 'N/A', 'NA', 'NONE', 'NULL', '-'], true)) {
+            return false;
+        }
+
+        return preg_match('/^[A-Z0-9]{8,}$/', $ref) === 1;
     }
 
     private function openInvoiceBalanceForTenant(int $tenantId): float
