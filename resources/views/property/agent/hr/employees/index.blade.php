@@ -38,33 +38,6 @@
         </div>
     @endif
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.hr.employees.index', absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                (($filters['role_type'] ?? 'all') === 'all') ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>All employees</a>
-            <a href="{{ route('property.hr.employees.index', array_merge((array) ($filters ?? []), ['role_type' => 'field_officer']), absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                ($filters['role_type'] ?? 'all') === 'field_officer' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>Field officers</a>
-            @if (($filters['role_type'] ?? 'all') === 'field_officer')
-                <a href="{{ route('property.hr.employees.index', array_merge((array) ($filters ?? []), ['portfolio' => 'all']), absolute: false) }}" @class([
-                    'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                    (($filters['portfolio'] ?? 'all') === 'all') ? 'border-slate-400 bg-slate-100 text-slate-800' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-                ])>All portfolios</a>
-                <a href="{{ route('property.hr.employees.index', array_merge((array) ($filters ?? []), ['portfolio' => 'assigned']), absolute: false) }}" @class([
-                    'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                    ($filters['portfolio'] ?? 'all') === 'assigned' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-                ])>With properties</a>
-                <a href="{{ route('property.hr.employees.index', array_merge((array) ($filters ?? []), ['portfolio' => 'unassigned']), absolute: false) }}" @class([
-                    'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                    ($filters['portfolio'] ?? 'all') === 'unassigned' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-                ])>No properties yet</a>
-            @endif
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.hr_employees')
     </x-slot>

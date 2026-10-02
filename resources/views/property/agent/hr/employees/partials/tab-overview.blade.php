@@ -30,6 +30,10 @@
                     <span class="block font-medium text-slate-900 dark:text-white">Access</span>
                     <span class="text-xs text-slate-500">{{ $employee->user ? 'Portal login on file' : 'No portal login yet' }}</span>
                 </a>
+                <a href="{{ route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'permissions'], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                    <span class="block font-medium text-slate-900 dark:text-white">Role &amp; permissions</span>
+                    <span class="text-xs text-slate-500">{{ $employee->user?->pmRoles?->pluck('name')->join(', ') ?: 'Allow or deny' }}</span>
+                </a>
                 <a href="{{ route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'leave'], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
                     <span class="block font-medium text-slate-900 dark:text-white">Leave</span>
                     <span class="text-xs text-slate-500">{{ ($recentLeaves ?? collect())->count() }} recent request{{ ($recentLeaves ?? collect())->count() === 1 ? '' : 's' }}</span>

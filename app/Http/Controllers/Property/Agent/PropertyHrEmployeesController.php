@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
+use App\Models\PmPermission;
+use App\Models\PmRole;
 use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyHrEmployeeService;
@@ -278,6 +280,7 @@ class PropertyHrEmployeesController extends Controller
         $unassignedProperties = $fieldOfficer ? $this->hr->unassignedPropertiesForOfficer($fieldOfficer) : [];
         $canManage = $this->canManageHr($request);
         $loginState = $this->hr->loginActionState($employee);
+        $accessRank = $this->employeeAccessRank($request->user(), $employee);
 
         return property_view('property.agent.hr.employees.show', [
             'employee' => $employee,
@@ -289,11 +292,100 @@ class PropertyHrEmployeesController extends Controller
             'assignedProperties' => $assignedProperties,
             'unassignedProperties' => $unassignedProperties,
             'canManage' => $canManage,
+            'canEditPermissions' => $accessRank > 0,
+            'permissionMatrix' => $activeTab === 'permissions'
+                ? $this->employeePermissionMatrix($employee, $accessRank)
+                : null,
             'loginState' => $loginState,
             'recentLeaves' => $employee->staffLeaves,
             'onboardingChecklist' => $this->hr->onboardingChecklist($employee),
             'exitReasons' => Employee::EXIT_REASONS,
         ]);
+    }
+
+    public function updatePermissions(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $actor = $request->user();
+        $rank = $actor ? $this->employeeAccessRank($actor, $employee) : 0;
+        if ($rank < 1) {
+            abort(403, 'Only HR, the company agent, or a super admin can change this employee’s permissions.');
+        }
+
+        $user = $employee->user;
+        if (! $user) {
+            return back()->with('error', 'Send a portal login before assigning a role or permissions.');
+        }
+
+        $data = $request->validate([
+            'role_ids' => ['nullable', 'array'],
+            'role_ids.*' => ['integer', 'exists:pm_roles,id'],
+            'effects' => ['nullable', 'array'],
+            'effects.*' => ['string', Rule::in(['inherit', 'allow', 'deny'])],
+        ]);
+
+        $roleIds = array_values(array_unique(array_map('intval', $data['role_ids'] ?? [])));
+        $allowedRoleIds = PmRole::query()
+            ->whereIn('portal_scope', ['agent', 'any'])
+            ->whereIn('id', $roleIds === [] ? [0] : $roleIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        if (count($allowedRoleIds) !== count($roleIds)) {
+            return back()->with('error', 'One or more roles are not available for property staff.');
+        }
+
+        if ($rank < 2 && $roleIds !== []) {
+            $blocked = PmRole::query()
+                ->with('permissions:id,key')
+                ->whereIn('id', $roleIds)
+                ->get()
+                ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+                ->unique()
+                ->filter(fn ($key) => ! $actor->hasPmPermission((string) $key));
+            if ($blocked->isNotEmpty()) {
+                return back()->with('error', 'HR can only assign roles made of permissions you already have. Ask the company agent or a super admin to grant the rest.');
+            }
+        }
+
+        $permissions = PmPermission::query()->get(['id', 'key'])->keyBy('id');
+        $previous = $user->pmPermissions()->get()->keyBy('id');
+        $sync = [];
+        foreach ($permissions as $permission) {
+            $effect = (string) ($data['effects'][$permission->id] ?? $data['effects'][(string) $permission->id] ?? 'inherit');
+            if (! in_array($effect, ['inherit', 'allow', 'deny'], true)) {
+                $effect = 'inherit';
+            }
+            if ($rank < 2 && $effect === 'allow' && ! $actor->hasPmPermission((string) $permission->key)) {
+                $kept = $previous->get($permission->id);
+                $effect = $kept && (string) ($kept->pivot->effect ?? 'allow') === 'allow' ? 'allow' : 'inherit';
+            }
+            if ($effect === 'allow' || $effect === 'deny') {
+                $sync[$permission->id] = ['effect' => $effect];
+            }
+        }
+
+        DB::transaction(function () use ($user, $roleIds, $sync): void {
+            $user->pmRoles()->sync($roleIds);
+            if (Schema::hasColumn('pm_user_permission', 'effect')) {
+                $user->pmPermissions()->sync($sync);
+            } else {
+                $user->pmPermissions()->sync(array_keys(array_filter(
+                    $sync,
+                    static fn (array $row): bool => ($row['effect'] ?? '') === 'allow'
+                )));
+            }
+        });
+
+        $status = 'Role and permissions saved for '.$employee->full_name.'.';
+        if ($roleIds === []) {
+            $status .= ' No role is selected, so other permissions stay open except the ones set to Deny.';
+        }
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'permissions'])
+            ->with('status', $status);
     }
 
     public function assignProperty(Request $request, Employee $employee): RedirectResponse
@@ -693,6 +785,123 @@ class PropertyHrEmployeesController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * 3 super admin, 2 company agent, 1 HR, 0 cannot change this employee.
+     */
+    private function employeeAccessRank(?User $actor, Employee $employee): int
+    {
+        if (! $actor) {
+            return 0;
+        }
+        if (($actor->is_super_admin ?? false) === true) {
+            return 3;
+        }
+        if ((int) $employee->agent_user_id > 0 && (int) $actor->id === (int) $employee->agent_user_id) {
+            return 2;
+        }
+        if ((int) $employee->user_id > 0 && (int) $actor->id === (int) $employee->user_id) {
+            return 0;
+        }
+        if ($this->actorIsHr($actor)) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private function actorIsHr(User $actor): bool
+    {
+        $record = Employee::query()->where('user_id', $actor->id)->first(['department', 'job_title']);
+        if ($record) {
+            $hay = strtolower(trim((string) $record->department.' '.(string) $record->job_title));
+            if (
+                str_contains($hay, 'human resource')
+                || str_contains($hay, 'administration')
+                || str_contains($hay, 'administrator')
+            ) {
+                return true;
+            }
+        }
+
+        $keys = $actor->pmRoles()
+            ->with('permissions:id,key')
+            ->get()
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'));
+
+        return $keys->contains(fn ($key) => in_array((string) $key, ['properties.manage', 'settings.manage'], true));
+    }
+
+    /**
+     * @return array{
+     *     hasLogin: bool,
+     *     roles: \Illuminate\Support\Collection,
+     *     selectedRoleIds: list<int>,
+     *     groups: \Illuminate\Support\Collection
+     * }
+     */
+    private function employeePermissionMatrix(Employee $employee, int $accessRank): array
+    {
+        $roles = $this->hr->propertyRolesForForm();
+        $user = $employee->user;
+        if ($user) {
+            $user->loadMissing(['pmRoles.permissions:id,key', 'pmPermissions']);
+        }
+
+        $selectedRoleIds = $user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
+        $fromRole = $user?->pmRoles
+            ?->flatMap(fn (PmRole $role) => $role->permissions->pluck('id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip() ?? collect();
+        $effects = [];
+        foreach ($user?->pmPermissions ?? [] as $permission) {
+            $effect = (string) ($permission->pivot->effect ?? 'allow');
+            $effects[(int) $permission->id] = in_array($effect, ['allow', 'deny'], true) ? $effect : 'allow';
+        }
+
+        $groups = collect();
+        if (Schema::hasTable('pm_permissions')) {
+            $groups = PmPermission::query()
+                ->orderBy('group')
+                ->orderBy('name')
+                ->get(['id', 'key', 'name', 'group', 'description'])
+                ->groupBy(fn (PmPermission $permission) => $permission->group ?: 'general')
+                ->map(function ($rows) use ($fromRole, $effects, $accessRank) {
+                    return $rows->map(function (PmPermission $permission) use ($fromRole, $effects, $accessRank) {
+                        $id = (int) $permission->id;
+
+                        return [
+                            'id' => $id,
+                            'key' => (string) $permission->key,
+                            'name' => (string) $permission->name,
+                            'description' => (string) ($permission->description ?? ''),
+                            'from_role' => $fromRole->has($id),
+                            'effect' => $effects[$id] ?? 'inherit',
+                            'can_grant' => $accessRank >= 2,
+                        ];
+                    })->values();
+                });
+        }
+
+        if ($accessRank === 1 && $user) {
+            $actor = request()->user();
+            $groups = $groups->map(function ($rows) use ($actor) {
+                return $rows->map(function (array $row) use ($actor) {
+                    $row['can_grant'] = $actor ? $actor->hasPmPermission($row['key']) : false;
+
+                    return $row;
+                });
+            });
+        }
+
+        return [
+            'hasLogin' => (bool) $user,
+            'roles' => $roles,
+            'selectedRoleIds' => $selectedRoleIds,
+            'groups' => $groups,
+        ];
     }
 
     private function canManageHr(Request $request): bool

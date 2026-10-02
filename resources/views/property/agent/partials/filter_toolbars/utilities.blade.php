@@ -5,6 +5,7 @@
 @endphp
 
 <x-property.filter-toolbar
+    single-row
     :action="$utilitiesUrl"
     :reset-url="$utilitiesUrl"
     :drawer-label="$drawerLabel"

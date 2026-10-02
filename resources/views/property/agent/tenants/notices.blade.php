@@ -112,19 +112,6 @@
         </x-slot>
     @endif
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.tenants.notices', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All notices</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'draft']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Draft</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'sent']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Sent</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'delivered']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Delivered</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'closed']), absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Closed</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'denied']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Denied actions</a>
-            <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'escalated']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Escalations</a>
-            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.tenants.notices.export', 'query' => (array) ($filters ?? [])])
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.tenants.notices') }}" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-8">
@@ -176,9 +163,10 @@
                     </select>
                 </div>
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
                 <a href="{{ route('property.tenants.notices', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+                @include('property.agent.partials.table_export_dropdown', ['route' => 'property.tenants.notices.export', 'query' => (array) ($filters ?? [])])
             </div>
         </form>
     </x-slot>

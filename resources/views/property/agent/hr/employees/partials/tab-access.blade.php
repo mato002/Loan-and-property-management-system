@@ -4,7 +4,7 @@
         @if ($employee->user)
             <p><span class="text-slate-500">Login email:</span> {{ $employee->user->email }}</p>
             <p><span class="text-slate-500">Roles:</span> {{ $employee->user->pmRoles->pluck('name')->join(', ') ?: '—' }}</p>
-            <p class="text-xs text-slate-500">They sign in at the main staff login, then open the property workspace. Assigned roles control what they can do.</p>
+            <p class="text-xs text-slate-500">They sign in at the main staff login, then open the property workspace. Use <a href="{{ route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'permissions']) }}" class="font-semibold text-indigo-700 hover:underline">Role &amp; permissions</a> to allow or deny individual permissions.</p>
             @if (($canManage ?? false) && ! $employee->isOffboarded())
                 <div class="flex flex-wrap gap-2 pt-2">
                     @if (($loginState['can_send_login'] ?? false) && ($loginLabel ?? null))

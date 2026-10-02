@@ -15,14 +15,6 @@
         <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">Vacant listings</a>
     </x-slot>
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('property.properties.performance', array_merge(request()->query(), ['preset' => 'below_ask', 'trend' => 'below_ask']), false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Below ask</a>
-            <a href="{{ route('property.properties.performance', array_merge(request()->query(), ['preset' => 'vacant', 'status' => 'vacant', 'trend' => 'vacant']), false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Vacant only</a>
-            <a href="{{ route('property.properties.performance', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Clear presets</a>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.properties.performance') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
             <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit or property..." class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 lg:col-span-2" />

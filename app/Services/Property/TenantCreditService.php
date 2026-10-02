@@ -4,6 +4,7 @@ namespace App\Services\Property;
 
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
+use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Models\PmTenantCreditBalance;
 use App\Models\PmTenantCreditTransaction;
@@ -208,6 +209,106 @@ class TenantCreditService
     }
 
     /**
+     * Receipts minus invoices, excluding wallet re-applications.
+     * Positive means the statement itself is in credit.
+     */
+    public function receiptSurplus(int $tenantId): float
+    {
+        if ($tenantId <= 0) {
+            return 0.0;
+        }
+
+        $receipts = (float) PmPayment::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where(function ($query): void {
+                $query->whereNull('channel')->orWhere('channel', '!=', 'tenant_credit');
+            })
+            ->sum('amount');
+        $charges = (float) PmInvoice::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
+            ->sum('amount');
+
+        return round($receipts - $charges, 2);
+    }
+
+    /**
+     * Credit the statement can support. A tenant who still owes has none.
+     */
+    public function allowedCredit(int $tenantId): float
+    {
+        return round(max(0.0, $this->receiptSurplus($tenantId)), 2);
+    }
+
+    /**
+     * Drop wallet balances and undo credit applications that the statement does not support.
+     *
+     * @return array{wallet_cleared: float, applications_undone: float, payments_undone: int}
+     */
+    public function alignUnsupportedCredit(int $tenantId, bool $dryRun = false): array
+    {
+        $empty = ['wallet_cleared' => 0.0, 'applications_undone' => 0.0, 'payments_undone' => 0];
+        if (! $this->isEnabled() || $tenantId <= 0) {
+            return $empty;
+        }
+
+        $allowed = $this->allowedCredit($tenantId);
+        $wallet = $this->balanceForTenant($tenantId);
+        $applications = PmPayment::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where('channel', 'tenant_credit')
+            ->orderByDesc('id')
+            ->get();
+        $applied = round((float) $applications->sum('amount'), 2);
+        $excess = round($wallet + $applied - $allowed, 2);
+        if ($excess <= 0.009) {
+            return $empty;
+        }
+
+        $walletCleared = round(min($wallet, max(0.0, $wallet - $allowed)), 2);
+        $toUndo = [];
+        $applicationsUndone = 0.0;
+        $remaining = round($excess - $walletCleared, 2);
+        foreach ($applications as $payment) {
+            if ($remaining <= 0.009) {
+                break;
+            }
+            $amount = round((float) $payment->amount, 2);
+            if ($amount <= 0.009 || $amount - $remaining > 0.009) {
+                continue;
+            }
+            $toUndo[] = $payment;
+            $applicationsUndone = round($applicationsUndone + $amount, 2);
+            $remaining = round($remaining - $amount, 2);
+        }
+
+        if ($dryRun) {
+            return [
+                'wallet_cleared' => $walletCleared,
+                'applications_undone' => $applicationsUndone,
+                'payments_undone' => count($toUndo),
+            ];
+        }
+
+        $reason = 'Cleared credit that is not on the statement. Receipts do not exceed invoices.';
+        foreach ($toUndo as $payment) {
+            $this->undoWalletApplication($payment, $reason);
+        }
+
+        if ($walletCleared > 0.009) {
+            $this->reverseUnsupportedWallet($tenantId, $walletCleared, $reason);
+        }
+
+        return [
+            'wallet_cleared' => $walletCleared,
+            'applications_undone' => $applicationsUndone,
+            'payments_undone' => count($toUndo),
+        ];
+    }
+
+    /**
      * Record advance rent from an identified tenant overpayment.
      */
     public function createCreditFromOverpayment(PmPayment $payment, float $amount, ?User $actor = null): ?PmTenantCreditTransaction
@@ -220,6 +321,12 @@ class TenantCreditService
         if ($tenantId <= 0) {
             return null;
         }
+
+        $room = round($this->allowedCredit($tenantId) - $this->balanceForTenant($tenantId), 2);
+        if ($room <= 0.009) {
+            return null;
+        }
+        $amount = min(round($amount, 2), $room);
 
         return DB::transaction(function () use ($payment, $amount, $actor, $tenantId) {
             $balance = $this->lockBalanceRow($tenantId);
@@ -263,6 +370,10 @@ class TenantCreditService
 
         return DB::transaction(function () use ($tenantId, $actor, $prioritizeInvoiceId) {
             $applied = [];
+            $room = round($this->allowedCredit($tenantId), 2);
+            if ($room <= 0.009) {
+                return [];
+            }
 
             if ($prioritizeInvoiceId) {
                 $invoice = PmInvoice::query()
@@ -270,10 +381,11 @@ class TenantCreditService
                     ->where('id', $prioritizeInvoiceId)
                     ->lockForUpdate()
                     ->first();
-                if ($invoice) {
-                    $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO);
+                if ($invoice && $room > 0.009) {
+                    $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO, $room);
                     if ($row) {
                         $applied[] = $row;
+                        $room = round($room - (float) $row['amount'], 2);
                     }
                 }
             }
@@ -290,12 +402,13 @@ class TenantCreditService
                 ->filter(fn (PmInvoice $invoice) => $invoice->balanceFloat() > 0.0001);
 
             foreach ($openInvoices as $invoice) {
-                if ($this->balanceForTenant($tenantId) <= 0.0001) {
+                if ($room <= 0.009 || $this->balanceForTenant($tenantId) <= 0.0001) {
                     break;
                 }
-                $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO);
+                $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO, $room);
                 if ($row) {
                     $applied[] = $row;
+                    $room = round($room - (float) $row['amount'], 2);
                 }
             }
 
@@ -444,6 +557,86 @@ class TenantCreditService
             'amount' => $amount,
             'transaction_id' => (int) $txn->id,
         ];
+    }
+
+    private function reverseUnsupportedWallet(int $tenantId, float $amount, string $reason): void
+    {
+        DB::transaction(function () use ($tenantId, $amount, $reason): void {
+            $balance = $this->lockBalanceRow($tenantId);
+            $available = round((float) $balance->balance, 2);
+            $toReverse = round(min($amount, $available), 2);
+            if ($toReverse <= 0.009) {
+                return;
+            }
+
+            PmTenantCreditTransaction::query()->create([
+                'pm_tenant_id' => $tenantId,
+                'pm_payment_id' => null,
+                'pm_invoice_id' => null,
+                'type' => PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+                'amount' => $toReverse,
+                'reference' => 'CREDIT-ALIGN-'.$tenantId,
+                'notes' => $reason,
+                'application_mode' => PmTenantCreditTransaction::MODE_AUTO,
+                'created_by' => null,
+            ]);
+
+            $balance->balance = round(max(0.0, $available - $toReverse), 2);
+            $balance->save();
+        });
+    }
+
+    private function undoWalletApplication(PmPayment $payment, string $reason): void
+    {
+        DB::transaction(function () use ($payment, $reason): void {
+            $payment = PmPayment::query()->lockForUpdate()->find($payment->id);
+            if (! $payment || $payment->status !== PmPayment::STATUS_COMPLETED || (string) $payment->channel !== 'tenant_credit') {
+                return;
+            }
+
+            $allocations = PmPaymentAllocation::query()
+                ->where('pm_payment_id', $payment->id)
+                ->where(function ($query): void {
+                    $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+                })
+                ->lockForUpdate()
+                ->get();
+
+            $invoiceIds = [];
+            foreach ($allocations as $allocation) {
+                $allocation->is_reversed = true;
+                $allocation->reversed_at = now();
+                $allocation->reversal_reason = $reason;
+                $allocation->save();
+                if ((int) $allocation->pm_invoice_id > 0) {
+                    $invoiceIds[] = (int) $allocation->pm_invoice_id;
+                }
+            }
+
+            foreach (array_unique($invoiceIds) as $invoiceId) {
+                $invoice = PmInvoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
+                if (! $invoice) {
+                    continue;
+                }
+                $invoice->syncAmountPaidFromAllocations();
+                $invoice->refreshComputedStatus();
+            }
+
+            $this->reverseCreditApplicationPayment($payment, null, $reason);
+
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            $meta['reversal'] = [
+                'reason' => $reason,
+                'reversed_at' => now()->toIso8601String(),
+                'cleanup' => 'unsupported_tenant_credit',
+            ];
+            $payment->meta = $meta;
+            $payment->status = PmPayment::STATUS_FAILED;
+            if (Schema::hasColumn('pm_payments', 'reversal_status')) {
+                $payment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
+            }
+            $payment->save();
+        });
     }
 
     private function lockBalanceRow(int $tenantId): PmTenantCreditBalance

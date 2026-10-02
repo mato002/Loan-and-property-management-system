@@ -12,10 +12,12 @@
         'job_title' => 'Job title',
         'employment_status' => 'Status',
         'role_type' => 'Role',
+        'portfolio' => 'Portfolio',
         'agent_user_id' => 'Agent',
     ]"
     :chip-ignore-values="[
         'role_type' => ['all'],
+        'portfolio' => ['all'],
         'agent_user_id' => ['0', 0],
     ]"
 >
@@ -55,6 +57,16 @@
                 ['value' => 'field_officer', 'label' => 'Field officers only'],
             ]"
             :value="($filters['role_type'] ?? 'all') === 'all' ? '' : ($filters['role_type'] ?? '')"
+        />
+        <x-property.filter-field type="select"
+            name="portfolio"
+            label="Portfolio"
+            empty-option="Portfolio: All"
+            :options="[
+                ['value' => 'assigned', 'label' => 'With properties'],
+                ['value' => 'unassigned', 'label' => 'No properties yet'],
+            ]"
+            :value="($filters['portfolio'] ?? 'all') === 'all' ? '' : ($filters['portfolio'] ?? '')"
         />
         @if (($agents ?? []) !== [])
             <x-property.filter-field type="select"

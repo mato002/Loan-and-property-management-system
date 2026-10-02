@@ -68,6 +68,7 @@ final class PropertyEntityHub
         ['key' => 'lifecycle', 'label' => 'Lifecycle'],
         ['key' => 'offboard', 'label' => 'Offboard'],
         ['key' => 'access', 'label' => 'Access'],
+        ['key' => 'permissions', 'label' => 'Role & permissions'],
         ['key' => 'leave', 'label' => 'Leave'],
         ['key' => 'portfolio', 'label' => 'Portfolio'],
     ];

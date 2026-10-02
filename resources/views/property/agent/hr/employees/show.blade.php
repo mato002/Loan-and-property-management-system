@@ -94,6 +94,8 @@
             @include('property.agent.hr.employees.partials.tab-offboard')
         @elseif (($activeTab ?? 'overview') === 'access')
             @include('property.agent.hr.employees.partials.tab-access')
+        @elseif (($activeTab ?? 'overview') === 'permissions')
+            @include('property.agent.hr.employees.partials.tab-permissions')
         @elseif (($activeTab ?? 'overview') === 'leave')
             @include('property.agent.hr.employees.partials.tab-leave')
         @else

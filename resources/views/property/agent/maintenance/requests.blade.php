@@ -112,16 +112,6 @@
         </x-slot>
     @endif
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.maintenance.requests', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All requests</a>
-            <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'open']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Open</a>
-            <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'in_progress']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">In progress</a>
-            <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'done']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Done</a>
-            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.maintenance.requests.export', 'query' => (array) ($filters ?? [])])
-        </div>
-    </x-slot>
-
     @if ($workflowAutoAssignTickets || ! $maintenanceEnabled)
         <x-slot name="secondary">
             @if ($workflowAutoAssignTickets)

@@ -337,7 +337,7 @@ final class AttachedUtilityChargeService
      */
     private function isVariableRule(array $rule): bool
     {
-        return $this->normalizeAmountMode($rule) === 'variable';
+        return in_array($this->normalizeAmountMode($rule), ['variable', 'per_unit'], true);
     }
 
     /**
@@ -346,6 +346,9 @@ final class AttachedUtilityChargeService
     private function normalizeAmountMode(array $row): string
     {
         $mode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
+        if ($mode === 'per_unit') {
+            return 'per_unit';
+        }
         if (in_array($mode, ['variable', 'manual', 'monthly'], true)) {
             return 'variable';
         }

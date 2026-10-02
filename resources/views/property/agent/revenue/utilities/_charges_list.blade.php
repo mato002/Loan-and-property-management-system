@@ -6,7 +6,7 @@
                     <th class="px-3 py-2">Label</th>
                     <th class="px-3 py-2">Unit</th>
                     <th class="px-3 py-2">How billed</th>
-                    <th class="px-3 py-2">Added</th>
+                    <th class="px-3 py-2">Month</th>
                     <th class="px-3 py-2">Amount</th>
                     <th class="px-3 py-2">Notes</th>
                     <th class="px-3 py-2"></th>
@@ -18,7 +18,20 @@
                         <td class="px-3 py-2 font-medium">{{ $c->label }}</td>
                         <td class="px-3 py-2">{{ $c->unit?->property?->name ?? '—' }} / {{ $c->unit?->label ?? '—' }}</td>
                         <td class="px-3 py-2 text-xs text-slate-600">{{ $c->billingExplanation() }}</td>
-                        <td class="px-3 py-2 text-slate-600">{{ optional($c->created_at)->format('Y-m-d') ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-700 whitespace-nowrap">
+                            @php
+                                $chargeMonth = trim((string) ($c->billing_month ?? ''));
+                                $chargeMonthLabel = '—';
+                                if (preg_match('/^\d{4}-\d{2}$/', $chargeMonth) === 1) {
+                                    try {
+                                        $chargeMonthLabel = \Illuminate\Support\Carbon::parse($chargeMonth.'-01')->format('M Y');
+                                    } catch (\Throwable) {
+                                        $chargeMonthLabel = $chargeMonth;
+                                    }
+                                }
+                            @endphp
+                            {{ $chargeMonthLabel }}
+                        </td>
                         <td class="px-3 py-2 tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) $c->amount) }}</td>
                         <td class="px-3 py-2 text-slate-600 max-w-xs truncate">{{ $c->notes ?? '—' }}</td>
                         <td class="px-3 py-2">

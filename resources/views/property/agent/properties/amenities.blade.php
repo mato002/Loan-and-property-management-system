@@ -121,13 +121,6 @@
         </x-property.modal>
     </x-slot>
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'tagged', 'tagged' => 'yes']), false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Tagged only</a>
-            <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'unused', 'tagged' => 'no']), false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Unused only</a>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.properties.amenities') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
             <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search amenity or category..." class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 lg:col-span-2" />

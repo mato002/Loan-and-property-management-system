@@ -25,35 +25,6 @@
         <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ session('status') }}</div>
     @endif
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.field_officers.index', absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                (($filters['portfolio'] ?? 'all') === 'all' && ($filters['portal_access'] ?? 'all') === 'all')
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
-                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>All officers</a>
-            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portfolio' => 'assigned', 'portal_access' => 'all']), absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                ($filters['portfolio'] ?? 'all') === 'assigned'
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>With properties</a>
-            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portfolio' => 'unassigned', 'portal_access' => 'all']), absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                ($filters['portfolio'] ?? 'all') === 'unassigned'
-                    ? 'border-amber-300 bg-amber-50 text-amber-800'
-                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>No properties yet</a>
-            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portal_access' => 'yes', 'portfolio' => 'all']), absolute: false) }}" @class([
-                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
-                ($filters['portal_access'] ?? 'all') === 'yes'
-                    ? 'border-blue-300 bg-blue-50 text-blue-800'
-                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
-            ])>Portal enabled</a>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.field_officers')
     </x-slot>

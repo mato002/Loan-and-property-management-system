@@ -344,15 +344,6 @@
 
     <x-slot name="secondary">
         <div class="space-y-4">
-<div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All units</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'vacant']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Vacant</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'occupied']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Occupied</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'notice']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Notice</a>
-            </div>
-        </div>
-
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Setup flow: Units → Tenants → Rent</p>
             <p class="mt-1 text-sm text-slate-600">Add units (doors) here. Then allocate a vacant unit to a tenant using a Lease, then bill rent using an Invoice.</p>

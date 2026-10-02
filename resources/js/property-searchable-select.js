@@ -129,9 +129,12 @@ function buildEnhancement(select) {
     searchWrap.className = 'border-b border-slate-100 p-2 dark:border-slate-700';
 
     const searchInput = document.createElement('input');
-    searchInput.type = 'search';
+    searchInput.type = 'text';
     searchInput.autocomplete = 'off';
     searchInput.placeholder = 'Search…';
+    searchInput.setAttribute('role', 'searchbox');
+    searchInput.setAttribute('data-auto-submit', 'off');
+    searchInput.setAttribute('data-filter-search', '0');
     searchInput.className = 'w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-600 dark:bg-gray-950';
 
     searchWrap.appendChild(searchInput);

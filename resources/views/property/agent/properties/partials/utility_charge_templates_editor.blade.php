@@ -10,14 +10,28 @@
 
             $rawMode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
             $type = strtolower(trim((string) ($row['charge_type'] ?? 'garbage'))) ?: 'garbage';
+            $label = strtolower(trim((string) ($row['label'] ?? '')));
+            $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
+            $fixed = is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0;
+            $isElectricity = $type === 'electricity' || str_contains($label, 'electric');
+            if ($isElectricity && $type !== 'electricity') {
+                $type = 'electricity';
+            }
+            if ($isElectricity && $rawMode !== 'variable' && $rate <= 0.009 && $fixed > 0.009) {
+                $rate = $fixed;
+                $fixed = 0.0;
+                $rawMode = 'per_unit';
+            }
             if (in_array($rawMode, ['variable', 'manual', 'monthly'], true)) {
                 $amountMode = 'variable';
+            } elseif ($rawMode === 'per_unit' || ($isElectricity && $rate > 0.009 && $fixed <= 0.009 && $rawMode !== 'fixed')) {
+                $amountMode = 'per_unit';
             } elseif ($rawMode === 'fixed') {
                 $amountMode = 'fixed';
-            } elseif ((float) ($row['fixed_charge'] ?? 0) > 0 || (float) ($row['rate_per_unit'] ?? 0) > 0) {
+            } elseif ($fixed > 0 || $rate > 0) {
                 $amountMode = 'fixed';
             } else {
-                $amountMode = $type === 'water' ? 'variable' : 'fixed';
+                $amountMode = $type === 'water' ? 'variable' : ($isElectricity ? 'per_unit' : 'fixed');
             }
 
         return [
@@ -25,8 +39,8 @@
             'charge_type' => $type,
             'label' => (string) ($row['label'] ?? ''),
             'amount_mode' => $amountMode,
-            'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? (string) $row['rate_per_unit'] : '',
-            'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? (string) $row['fixed_charge'] : '',
+            'rate_per_unit' => $rate > 0 ? (string) $rate : (is_numeric($row['rate_per_unit'] ?? null) ? (string) $row['rate_per_unit'] : ''),
+            'fixed_charge' => $fixed > 0 ? (string) $fixed : '',
             'vat_rate' => is_numeric($row['vat_rate'] ?? null) ? (string) $row['vat_rate'] : '',
             'escalates_with_rent' => ! empty($row['escalates_with_rent']),
             'water_amount' => is_numeric($row['water_amount'] ?? null) ? (string) $row['water_amount'] : '',
@@ -42,7 +56,7 @@
     action="{{ route('property.properties.update', $property) }}"
     x-data="{
         formOpen: false,
-        chargeTypeOptions: ['water', 'garbage', 'service_charge', 'other'],
+        chargeTypeOptions: ['water', 'electricity', 'garbage', 'service_charge', 'other'],
         unitLabels: @js($unitLabelMap),
         units: @js($unitOptions),
         charges: @js($seedChargeTemplates),
@@ -77,12 +91,26 @@
         isWaterFixed() {
             return this.isWaterType() && String(this.draft.amount_mode || '') !== 'variable';
         },
+        isElectricityType() {
+            return String(this.draft.charge_type || '').toLowerCase() === 'electricity';
+        },
+        isPerUnit() {
+            return String(this.draft.amount_mode || '') === 'per_unit';
+        },
         onScopeChange() {
             if (this.scopeMode === 'units') this.loadUnitDrafts();
         },
         onChargeTypeChange() {
             if (this.isWaterType() && String(this.draft.amount_mode || '') === 'fixed') {
                 this.draft.amount_mode = 'variable';
+            }
+            if (this.isElectricityType() && String(this.draft.amount_mode || '') !== 'variable') {
+                if (!(Number(this.draft.rate_per_unit || 0) > 0) && Number(this.draft.fixed_charge || 0) > 0) {
+                    this.draft.rate_per_unit = this.draft.fixed_charge;
+                    this.draft.fixed_charge = '';
+                }
+                this.draft.amount_mode = 'per_unit';
+                if (!String(this.draft.label || '').trim()) this.draft.label = 'Electricity';
             }
             if (this.showUnitGrid()) this.loadUnitDrafts();
         },
@@ -194,10 +222,14 @@
         billingLabel(charge) {
             const mode = String(charge?.amount_mode || '').trim().toLowerCase();
             const type = String(charge?.charge_type || '').trim().toLowerCase();
+            if (mode === 'per_unit' || (type === 'electricity' && Number(charge?.rate_per_unit || 0) > 0 && !(Number(charge?.fixed_charge || 0) > 0))) return 'Per unit';
             if (mode === 'variable') return type === 'water' ? 'Meter reading' : 'Enter monthly';
             return 'Fixed';
         },
         amountText(charge) {
+            if (this.billingLabel(charge) === 'Per unit') {
+                return Number(charge.rate_per_unit || 0).toFixed(2) + ' per unit';
+            }
             if (this.billingLabel(charge) !== 'Fixed') return '—';
             const maintenance = Number(charge.maintenance_fee || 0);
             const rate = Number(charge.rate_per_unit || charge.water_amount || 0);
@@ -224,16 +256,21 @@
         },
         makeRow(unitId, mode, fixedCharge, waterAmount, maintenanceFee) {
             const isWater = String(this.draft.charge_type || '').toLowerCase() === 'water';
+            const isElectricity = String(this.draft.charge_type || '').toLowerCase() === 'electricity';
+            const perUnit = mode === 'per_unit';
             const maintenance = mode === 'fixed' ? Number(maintenanceFee || 0) : 0;
-            const rate = mode === 'fixed' && isWater ? Number(waterAmount || 0) : 0;
+            const waterRate = mode === 'fixed' && isWater ? Number(waterAmount || 0) : 0;
+            const electricRate = perUnit ? Number(waterAmount || this.draft.rate_per_unit || 0) : 0;
             return {
                 property_unit_id: String(unitId || ''),
                 charge_type: String(this.draft.charge_type || '').trim(),
                 label: String(this.draft.label || ''),
                 amount_mode: mode,
-                rate_per_unit: mode === 'variable' ? '' : (isWater ? (rate > 0 ? String(rate) : '') : this.draft.rate_per_unit),
-                fixed_charge: mode === 'variable' ? '' : (isWater ? (maintenance > 0 ? String(maintenance) : '') : String(fixedCharge ?? '')),
-                water_amount: isWater && rate > 0 ? String(rate) : '',
+                rate_per_unit: perUnit
+                    ? (electricRate > 0 ? String(electricRate) : '')
+                    : (mode === 'variable' ? '' : (isWater ? (waterRate > 0 ? String(waterRate) : '') : (isElectricity ? '' : this.draft.rate_per_unit))),
+                fixed_charge: perUnit || mode === 'variable' ? '' : (isWater ? (maintenance > 0 ? String(maintenance) : '') : String(fixedCharge ?? '')),
+                water_amount: isWater && waterRate > 0 ? String(waterRate) : '',
                 maintenance_fee: isWater && maintenance > 0.009 ? String(maintenance) : '',
                 vat_rate: this.draft.vat_rate,
                 escalates_with_rent: !!this.draft.escalates_with_rent,
@@ -278,6 +315,10 @@
                         missingAmount = true;
                         return;
                     }
+                    if (this.isElectricityType()) {
+                        rows.push(this.makeRow(unit.id, 'per_unit', '', water, ''));
+                        return;
+                    }
                     rows.push(this.makeRow(unit.id, 'fixed', this.isWaterType() ? maintenance : water, this.isWaterType() ? water : '', maintenance));
                 });
                 if (missingAmount) {
@@ -303,7 +344,17 @@
             let fixedCharge = this.draft.fixed_charge;
             let waterAmount = '';
             let maintenanceFee = '';
-            if (mode === 'fixed' && String(type).toLowerCase() === 'water') {
+            let saveMode = mode;
+            if (String(type).toLowerCase() === 'electricity' && mode !== 'variable') {
+                saveMode = this.isPerUnit() || mode !== 'fixed' ? 'per_unit' : 'fixed';
+            }
+            if (saveMode === 'per_unit') {
+                waterAmount = this.draft.rate_per_unit;
+                if (!(Number(waterAmount || 0) > 0)) {
+                    this.warnAmount('Enter the charge per electricity unit.');
+                    return;
+                }
+            } else if (mode === 'fixed' && String(type).toLowerCase() === 'water') {
                 waterAmount = this.draft.water_amount;
                 maintenanceFee = this.draft.maintenance_fee;
                 if (!(Number(waterAmount || 0) > 0) && !(Number(maintenanceFee || 0) > 0)) {
@@ -314,7 +365,7 @@
                 this.warnAmount('Enter a fixed monthly amount, or switch billing to “Enter each month”.');
                 return;
             }
-            const row = this.makeRow(this.draft.property_unit_id, mode, fixedCharge, waterAmount, maintenanceFee);
+            const row = this.makeRow(this.draft.property_unit_id, saveMode, fixedCharge, waterAmount, maintenanceFee);
             if (this.editingIndex === null && String(row.property_unit_id || '') === '') {
                 const typeKey = type.toLowerCase();
                 const unitCount = this.charges.filter((charge) => String(charge.charge_type || '').toLowerCase() === typeKey && String(charge.property_unit_id || '') !== '').length;
@@ -342,7 +393,7 @@
                 property_unit_id: String(charge.property_unit_id || ''),
                 charge_type: String(charge.charge_type || 'garbage'),
                 label: String(charge.label || ''),
-                amount_mode: String(charge.amount_mode || 'fixed') === 'variable' ? 'variable' : 'fixed',
+                amount_mode: ['variable', 'per_unit'].includes(String(charge.amount_mode || '')) ? String(charge.amount_mode) : 'fixed',
                 rate_per_unit: charge.rate_per_unit ?? '',
                 fixed_charge: charge.fixed_charge ?? '',
                 water_amount: String(charge.charge_type || '').toLowerCase() === 'water' && String(charge.amount_mode || '') !== 'variable'
@@ -506,8 +557,9 @@
             <div x-show="!showUnitGrid()">
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
                 <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="fixed">Fixed</option>
-                    <option value="variable" x-text="isWaterType() ? 'Meter' : 'Variable'"></option>
+                    <option value="per_unit" x-show="isElectricityType()">Per unit</option>
+                    <option value="fixed" x-text="isWaterType() ? 'Rate + fee' : 'Fixed'"></option>
+                    <option value="variable" x-text="isWaterType() ? 'Meter' : 'Enter each month'"></option>
                 </select>
             </div>
             <div x-show="showUnitGrid()" class="rounded-xl border border-slate-200">
@@ -516,7 +568,7 @@
                     <button type="button" @click="setAllMode('variable')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All variable</button>
                     <button type="button" @click="setAllMode('exclude')" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">All excluded</button>
                     <div x-show="anyFixed()">
-                        <label class="block text-[11px] font-medium text-slate-500" x-text="isWaterType() ? 'Rate for every fixed unit' : 'Amount for every fixed unit'"></label>
+                        <label class="block text-[11px] font-medium text-slate-500" x-text="isWaterType() ? 'Rate for every fixed unit' : (isElectricityType() ? 'Charge per unit for every unit' : 'Amount for every fixed unit')"></label>
                         <input x-model="fillAllAmount" @input="applyFillAll()" type="number" min="0" step="0.01" class="mt-1 w-28 rounded-lg border border-slate-200 bg-white text-sm px-2 py-1.5" />
                     </div>
                     <div x-show="anyFixed() && isWaterType()">
@@ -530,7 +582,7 @@
                             <tr>
                                 <th class="px-3 py-2">Unit</th>
                                 <th class="px-3 py-2">Billing</th>
-                                <th class="px-3 py-2" x-text="isWaterType() ? 'Rate / unit' : 'Amount'"></th>
+                                <th class="px-3 py-2" x-text="isWaterType() ? 'Rate / unit' : (isElectricityType() ? 'Charge / unit' : 'Amount')"></th>
                                 <th class="px-3 py-2" x-show="isWaterType()">Fee</th>
                             </tr>
                         </thead>
@@ -569,11 +621,15 @@
                 </div>
                 <p class="sm:col-span-2 text-xs tabular-nums text-slate-700" x-text="'3 × ' + Number(draft.water_amount || 0).toFixed(2) + ' + ' + Number(draft.maintenance_fee || 0).toFixed(2) + ' = ' + waterPreview().total"></p>
             </div>
-            <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && !isWaterFixed()">
+            <div x-show="isPerUnit() && !showUnitGrid()">
+                <label class="block text-xs font-medium text-slate-600">Charge per unit <span class="text-red-600">*</span></label>
+                <input x-model="draft.rate_per_unit" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+            </div>
+            <div x-show="draft.amount_mode === 'fixed' && !showUnitGrid() && !isWaterFixed()">
                 <label class="block text-xs font-medium text-slate-600">Fixed charge <span class="text-red-600">*</span></label>
                 <input x-model="draft.fixed_charge" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
             </div>
-            <div x-show="draft.amount_mode !== 'variable' && !showUnitGrid() && !isWaterFixed()">
+            <div x-show="draft.amount_mode === 'fixed' && !showUnitGrid() && !isWaterFixed()">
                 <label class="block text-xs font-medium text-slate-600">Per area / measure (optional)</label>
                 <input x-model="draft.rate_per_unit" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
             </div>
