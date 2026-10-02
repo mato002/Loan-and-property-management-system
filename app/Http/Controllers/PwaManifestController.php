@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Support\Property\PropertyBrandPalette;
 use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PwaManifestController extends Controller
 {
@@ -28,6 +29,29 @@ class PwaManifestController extends Controller
             shortNameSuffix: ' Portal',
             usePublicSiteBranding: false,
         );
+    }
+
+    public function meterIcon(string $size): BinaryFileResponse
+    {
+        abort_unless(in_array($size, ['192', '512'], true), 404);
+        $path = public_path('pwa/meters-'.$size.'.png');
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => 'image/png',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
+    public function fieldScript(): BinaryFileResponse
+    {
+        $path = public_path('js/field-readings.js');
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => 'text/javascript; charset=UTF-8',
+            'Cache-Control' => 'no-cache',
+        ]);
     }
 
     public function field(): JsonResponse

@@ -26,6 +26,24 @@ for (const dest of destinations) {
     fs.rmSync(dest, { recursive: true, force: true });
     fs.cpSync(source, dest, { recursive: true });
     console.log('Copied Vite build to ' + dest);
+
+    const webRoot = parent;
+    const pwaSource = path.join(appRoot, 'public', 'pwa');
+    if (fs.existsSync(pwaSource)) {
+        fs.cpSync(pwaSource, path.join(webRoot, 'pwa'), { recursive: true });
+        console.log('Copied meter icons to ' + path.join(webRoot, 'pwa'));
+    }
+    const readingsSource = path.join(appRoot, 'public', 'js', 'field-readings.js');
+    if (fs.existsSync(readingsSource)) {
+        fs.mkdirSync(path.join(webRoot, 'js'), { recursive: true });
+        fs.copyFileSync(readingsSource, path.join(webRoot, 'js', 'field-readings.js'));
+        console.log('Copied field-readings.js into the live js folder');
+    }
+    const swSource = path.join(appRoot, 'public', 'sw.js');
+    if (fs.existsSync(swSource)) {
+        fs.copyFileSync(swSource, path.join(webRoot, 'sw.js'));
+        console.log('Copied sw.js into the live web root');
+    }
     copied = true;
     break;
 }

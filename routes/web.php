@@ -31,6 +31,12 @@ Route::get('/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController
 Route::get('/property/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'portal'])->name('pwa.manifest.portal');
 Route::get('/property/field/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'field'])->name('pwa.manifest.field');
 
+// The live site serves an older public folder. These files live in the app
+// checkout, so send them through PHP when Apache does not have a copy.
+Route::get('/pwa/meters-{size}.png', [\App\Http\Controllers\PwaManifestController::class, 'meterIcon'])
+    ->where('size', '192|512');
+Route::get('/js/field-readings.js', [\App\Http\Controllers\PwaManifestController::class, 'fieldScript']);
+
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
 Route::get('/media/unit-listings/{path}', [PublicListingMediaController::class, 'show'])
     ->where('path', '.*')
