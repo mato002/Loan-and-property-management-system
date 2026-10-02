@@ -39,18 +39,29 @@
                     @endforeach
                 </select>
             </div>
-            <div class="relative">
+            <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant / resident</label>
                 <input
                     type="search"
+                    x-ref="tenantInput"
                     x-model="tenantQuery"
-                    @focus="pickerOpen = true"
-                    @input="pickerOpen = true"
+                    @focus="openTenantPicker()"
+                    @input="openTenantPicker()"
                     placeholder="Name, account, or phone"
                     autocomplete="off"
                     class="{{ $field }}"
                 />
-                <div x-show="pickerOpen" x-cloak @click.outside="pickerOpen = false" class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-gray-900">
+                @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <template x-teleport="body">
+                <div
+                    x-show="pickerOpen"
+                    x-cloak
+                    @click.outside="pickerOpen = false"
+                    :style="tenantMenuStyle"
+                    class="fixed max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-gray-900"
+                    style="z-index: 8200;"
+                >
                     <template x-for="tenant in filteredTenants" :key="tenant.id">
                         <button type="button" class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" @click="selectTenant(tenant)">
                             <span x-text="tenant.label"></span>
@@ -58,8 +69,7 @@
                     </template>
                     <p x-show="filteredTenants.length === 0" class="px-3 py-2 text-xs text-slate-500">No tenant matches.</p>
                 </div>
-                @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
+            </template>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Phone</label>
                 <input type="text" x-model="phone" readonly class="{{ $field }} bg-slate-50" />
@@ -212,6 +222,7 @@
             tenantId: config.old?.tenant_id || '',
             tenantQuery: '',
             pickerOpen: false,
+            tenantMenuStyle: 'position:fixed;z-index:8200;',
             phone: '',
             rows: [],
             amount: config.old?.amount || '',
@@ -239,6 +250,35 @@
                         this.selectTenant(selected, false);
                     }
                 }
+                this._placeTenantMenu = () => {
+                    if (this.pickerOpen) {
+                        this.placeTenantMenu();
+                    }
+                };
+                window.addEventListener('scroll', this._placeTenantMenu, true);
+                window.addEventListener('resize', this._placeTenantMenu);
+            },
+            destroy() {
+                window.removeEventListener('scroll', this._placeTenantMenu, true);
+                window.removeEventListener('resize', this._placeTenantMenu);
+            },
+            openTenantPicker() {
+                this.pickerOpen = true;
+                this.$nextTick(() => this.placeTenantMenu());
+            },
+            placeTenantMenu() {
+                const input = this.$refs.tenantInput;
+                if (!input) {
+                    return;
+                }
+                const rect = input.getBoundingClientRect();
+                if (rect.width < 1) {
+                    this.pickerOpen = false;
+                    return;
+                }
+                const width = Math.max(rect.width, 220);
+                const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+                this.tenantMenuStyle = `position:fixed;z-index:8200;top:${Math.round(rect.bottom + 4)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
             },
             get filteredTenants() {
                 const query = this.tenantQuery.trim().toLowerCase();

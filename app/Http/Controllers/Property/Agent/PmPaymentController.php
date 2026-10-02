@@ -337,10 +337,7 @@ class PmPaymentController extends Controller
                 'canSettle' => $canSettle,
             ])->render());
 
-            $statusLabel = ucfirst((string) $p->status);
-            if (! blank($p->reversal_status)) {
-                $statusLabel .= ' / Reversal '.ucfirst((string) $p->reversal_status);
-            }
+            $statusLabel = $this->statusBadge($p);
 
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
@@ -504,6 +501,34 @@ class PmPaymentController extends Controller
             'mpesa_stk' => 'M-Pesa (STK Push)',
             default => ucfirst(str_replace('_', ' ', $key)),
         };
+    }
+
+    private function statusBadge(PmPayment $payment): HtmlString
+    {
+        $status = strtolower((string) $payment->status);
+        [$statusText, $statusClass] = match ($status) {
+            PmPayment::STATUS_COMPLETED => ['Completed', 'property-status-pill--occupied'],
+            PmPayment::STATUS_PENDING => ['Pending', 'property-status-pill--vacant'],
+            PmPayment::STATUS_FAILED => ['Failed', 'property-status-pill--attention'],
+            default => [ucfirst($status !== '' ? $status : 'Unknown'), 'property-status-pill--notice'],
+        };
+
+        $html = '<span class="inline-flex flex-wrap items-center gap-1">'
+            .'<span class="property-status-pill '.$statusClass.'">'.e($statusText).'</span>';
+
+        $reversal = strtolower(trim((string) $payment->reversal_status));
+        if ($reversal !== '') {
+            [$reversalText, $reversalClass] = match ($reversal) {
+                PmPayment::REVERSAL_STATUS_REVERSED => ['Reversed', 'property-status-pill--vacant-long'],
+                PmPayment::REVERSAL_STATUS_PENDING => ['Reversal pending', 'property-status-pill--notice'],
+                PmPayment::REVERSAL_STATUS_APPROVED => ['Reversal approved', 'property-status-pill--occupied'],
+                PmPayment::REVERSAL_STATUS_REJECTED => ['Reversal rejected', 'property-status-pill--attention'],
+                default => ['Reversal '.ucfirst($reversal), 'property-status-pill--notice'],
+            };
+            $html .= '<span class="property-status-pill '.$reversalClass.'">'.e($reversalText).'</span>';
+        }
+
+        return new HtmlString($html.'</span>');
     }
 
     private function sourceBadge(PmPayment $payment): HtmlString

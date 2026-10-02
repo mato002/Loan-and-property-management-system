@@ -120,10 +120,11 @@ function buildEnhancement(select) {
     const panel = document.createElement('div');
     panel.className = [
         'property-searchable-select__panel',
-        'fixed z-[400] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg',
+        'fixed overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg',
         'dark:border-slate-600 dark:bg-gray-900',
         'hidden',
     ].join(' ');
+    panel.style.zIndex = '8200';
 
     const searchWrap = document.createElement('div');
     searchWrap.className = 'border-b border-slate-100 p-2 dark:border-slate-700';

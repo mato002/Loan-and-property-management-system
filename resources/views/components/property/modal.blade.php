@@ -20,6 +20,11 @@
     'leaseSubmodal' => false,
 ])
 
+<style>
+    .property-searchable-select__panel {
+        z-index: 8200 !important;
+    }
+</style>
 @php
     $showKey = $show;
     $modalId = $name ?: ('modal-' . substr(md5((string) $show . ($title ?? '')), 0, 8));
