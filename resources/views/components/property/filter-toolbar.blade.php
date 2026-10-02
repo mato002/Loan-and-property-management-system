@@ -40,7 +40,7 @@
             action="{{ $action }}"
             @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
             @if ($revenueDateFilter) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
-            class="property-filter-toolbar__form hidden md:flex flex-row items-end gap-x-2 gap-y-2 {{ $filterSingleRow ? 'flex-1 flex-nowrap' : 'w-full min-w-0 flex-wrap' }}"
+            class="property-filter-toolbar__form hidden md:flex min-w-0 flex-1 flex-row flex-nowrap items-end gap-2 overflow-x-auto"
             data-property-filter-form-desktop
         >
             @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId, 'filterSingleRow' => $filterSingleRow])

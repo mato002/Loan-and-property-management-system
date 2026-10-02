@@ -200,7 +200,12 @@ final class TenantStatementLedgerService
                 'debit' => (float) $invoice->amount,
                 'credit' => 0.0,
                 'payment_id' => null,
-                'status' => 'Issued',
+                'status' => match ((string) $invoice->status) {
+                    PmInvoice::STATUS_PAID => 'Paid',
+                    PmInvoice::STATUS_PARTIAL => 'Partial',
+                    PmInvoice::STATUS_CANCELLED => 'Cancelled',
+                    default => 'Issued',
+                },
             ]);
         }
 

@@ -203,20 +203,28 @@
                 'space-y-2.5 md:space-y-3' => ! $compactList,
             ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
-                    <div @class([
-                        'print-hide w-full min-w-0',
-                        'space-y-2' => $useLegacyToolbar,
-                    ])>
-                        @if ($useLegacyToolbar && $canShowDefaultSearch)
-                            <input
-                                type="search"
-                                data-table-filter="parent"
-                                autocomplete="off"
-                                placeholder="Search…"
-                                class="w-full min-w-0 min-h-[44px] sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5"
-                            />
+                    <div class="print-hide w-full min-w-0">
+                        @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
+                            <div class="flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
+                                @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                    <input
+                                        type="search"
+                                        data-table-filter="parent"
+                                        autocomplete="off"
+                                        placeholder="Search…"
+                                        class="h-[38px] w-52 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                    />
+                                @endif
+                                @if ($hasTable)
+                                    @include('property.agent.partials.export_dropdown', [
+                                        'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
+                                        'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
+                                        'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
+                                        'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
+                                    ])
+                                @endif
+                            </div>
                         @endif
-
                         @if ($hasToolbar || $hasMobileFiltersExtra)
                             <x-property.responsive.mobile-filter-drawer
                                 :label="'Filters'"
@@ -233,8 +241,25 @@
                                         @php
                                             $__propertyToolbarViewport = 'desktop';
                                         @endphp
-                                        <div class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 [&_form]:flex [&_form]:flex-row [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-2 [&_form]:w-full [&_form]:min-w-0">
+                                        <div class="flex w-full min-w-0 flex-nowrap items-end gap-2 overflow-x-auto [&_form]:flex [&_form]:w-auto [&_form]:min-w-0 [&_form]:flex-nowrap [&_form]:items-end [&_form]:gap-2">
+                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                                <input
+                                                    type="search"
+                                                    data-table-filter="parent"
+                                                    autocomplete="off"
+                                                    placeholder="Search…"
+                                                    class="h-[38px] w-52 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                                />
+                                            @endif
                                             {{ $toolbar }}
+                                            @if ($hasTable && ! $toolbarHasExport)
+                                                @include('property.agent.partials.export_dropdown', [
+                                                    'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
+                                                    'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
+                                                    'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
+                                                    'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
+                                                ])
+                                            @endif
                                         </div>
                                     </x-slot>
                                     <x-slot name="mobile">
@@ -242,6 +267,15 @@
                                             $__propertyToolbarViewport = 'mobile';
                                         @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
+                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                                <input
+                                                    type="search"
+                                                    data-table-filter="parent"
+                                                    autocomplete="off"
+                                                    placeholder="Search…"
+                                                    class="min-h-[44px] w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                                />
+                                            @endif
                                             {{ $toolbar }}
                                         </div>
                                     </x-slot>
@@ -268,16 +302,6 @@
 
                 @if ($hasTable)
                     <div class="w-full min-w-0 space-y-2.5">
-                    @if (! $toolbarHasExport)
-                        <div class="print-hide flex justify-end">
-                            @include('property.agent.partials.export_dropdown', [
-                                'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
-                                'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
-                                'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
-                                'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
-                            ])
-                        </div>
-                    @endif
                     @if ($showRowToneLegend)
                         <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
                             <span class="property-row-alert-legend__item">

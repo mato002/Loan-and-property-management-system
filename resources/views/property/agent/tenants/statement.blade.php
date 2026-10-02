@@ -22,21 +22,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <div class="w-full space-y-3">
-            @include('property.agent.partials.statement_report_builder', [
-                'showUrl' => route('property.tenants.statement', $tenant, false),
-                'printUrl' => route('property.tenants.statement', $tenant, false),
-                'showProperty' => false,
-                'showDetailLevel' => true,
-                'defaultPeriod' => ! empty($filters['month']) ? 'month' : (! empty($filters['fy']) ? 'fy' : 'range'),
-                'defaultReport' => 'detail',
-                'defaultFy' => (int) ($filters['fy'] ?? now()->year),
-                'defaultMonth' => $filters['month'] ?? now()->format('Y-m'),
-                'defaultFrom' => isset($filters['from']) && strlen((string) $filters['from']) >= 7 ? substr((string) $filters['from'], 0, 7) : now()->startOfYear()->format('Y-m'),
-                'defaultTo' => isset($filters['to']) && strlen((string) $filters['to']) >= 7 ? substr((string) $filters['to'], 0, 7) : now()->format('Y-m'),
-                'title' => 'Generate tenant statement',
-                'hint' => 'Choose FY, month, or custom range. Summary = totals only; Full = every ledger line. Print or download CSV / Excel / PDF / Word.',
-            ])
+        <div class="w-full flex flex-wrap items-center justify-between gap-3">
             <form method="get" class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600">From</label>
@@ -59,6 +45,20 @@
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ url()->current() }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
             </form>
+            @include('property.agent.partials.statement_report_builder', [
+                'showUrl' => route('property.tenants.statement', $tenant, false),
+                'printUrl' => route('property.tenants.statement', $tenant, false),
+                'showProperty' => false,
+                'showDetailLevel' => true,
+                'defaultPeriod' => ! empty($filters['month']) ? 'month' : (! empty($filters['fy']) ? 'fy' : 'range'),
+                'defaultReport' => 'detail',
+                'defaultFy' => (int) ($filters['fy'] ?? now()->year),
+                'defaultMonth' => $filters['month'] ?? now()->format('Y-m'),
+                'defaultFrom' => isset($filters['from']) && strlen((string) $filters['from']) >= 7 ? substr((string) $filters['from'], 0, 7) : now()->startOfYear()->format('Y-m'),
+                'defaultTo' => isset($filters['to']) && strlen((string) $filters['to']) >= 7 ? substr((string) $filters['to'], 0, 7) : now()->format('Y-m'),
+                'layout' => 'split',
+                'formats' => ['pdf', 'xls', 'csv', 'word'],
+            ])
         </div>
     </x-slot>
 

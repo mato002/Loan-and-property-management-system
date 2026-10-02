@@ -65,7 +65,7 @@
                                 $monthLabel = $period;
                             }
                         }
-                        $balance = (float) ($invoice->balance_due ?? ((float) $invoice->amount - (float) $invoice->amount_paid));
+                        $balance = round(max(0, (float) $invoice->amount - (float) $invoice->amount_paid), 2);
                         $status = $balance <= 0.009 ? 'Paid' : (((float) $invoice->amount_paid > 0.009) ? 'Partial' : 'Unpaid');
                     @endphp
                     <tr class="border-t border-slate-100 hover:bg-slate-50/80">

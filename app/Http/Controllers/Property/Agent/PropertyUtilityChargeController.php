@@ -1209,7 +1209,7 @@ class PropertyUtilityChargeController extends Controller
 
     private function billedChargeStatusLabel(PmInvoice $invoice): string
     {
-        $balance = (float) ($invoice->balance_due ?? ((float) $invoice->amount - (float) $invoice->amount_paid));
+        $balance = round(max(0, (float) $invoice->amount - (float) $invoice->amount_paid), 2);
         if ($balance <= 0.009) {
             return 'Paid';
         }

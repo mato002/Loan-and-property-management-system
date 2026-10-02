@@ -50,25 +50,21 @@
             />
         @endif
     @else
-        <div @class([
-            'flex flex-row items-end gap-x-2 gap-y-2 flex-1',
-            'flex-nowrap' => ! empty($filterSingleRow),
-            'w-full min-w-0 flex-wrap' => empty($filterSingleRow),
-        ]) data-filter-main-row>
+        <div class="flex min-w-0 flex-1 flex-row flex-nowrap items-end gap-2" data-filter-main-row>
             @if ($hasDateRange)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-date-range>
+                <div class="flex shrink-0 flex-row flex-nowrap items-end gap-2" data-filter-date-range>
                     {{ $dateRange }}
                 </div>
             @endif
 
             @if ($hasPrimary)
-                <div class="flex flex-row flex-wrap items-end gap-2 min-w-0 flex-1" data-filter-primary>
+                <div class="flex min-w-0 flex-1 flex-row flex-nowrap items-end gap-2" data-filter-primary>
                     {{ $primary }}
                 </div>
             @endif
 
             @if ($hasSecondary)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-secondary>
+                <div class="flex shrink-0 flex-row flex-nowrap items-end gap-2" data-filter-secondary>
                     {{ $secondary }}
                 </div>
             @endif

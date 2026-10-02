@@ -223,7 +223,7 @@ class PropertyPaymentSettlementService
             }
 
             $invoiceRemaining = $invoice->balanceFloat();
-            if ($invoiceRemaining <= 0.0001) {
+            if ($invoiceRemaining <= 0.0001 || $this->receiptMissesInvoicePeriod($payment, $invoice)) {
                 continue;
             }
 
@@ -283,6 +283,10 @@ class PropertyPaymentSettlementService
                 break;
             }
 
+            if ($this->receiptMissesInvoicePeriod($payment, $invoice)) {
+                continue;
+            }
+
             $allocation = round(min($remaining, $invoice->balanceFloat()), 2);
             if ($allocation <= 0.0001) {
                 continue;
@@ -320,6 +324,121 @@ class PropertyPaymentSettlementService
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
 
         return $allocation;
+    }
+
+    /**
+     * Undo allocations where a receipt names its months and the invoice is for a different month.
+     * A January receipt must not mark November garbage as paid.
+     *
+     * @return array{allocations: int, amount: float}
+     */
+    public function releaseCrossPeriodAllocations(bool $dryRun = false): array
+    {
+        $count = 0;
+        $amount = 0.0;
+        $reason = 'Receipt names a different month, so this charge is not paid by it.';
+        $invoiceIds = [];
+
+        $rows = PmPaymentAllocation::query()
+            ->from('pm_payment_allocations as a')
+            ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->where(function ($query): void {
+                $query->whereNull('a.is_reversed')->orWhere('a.is_reversed', false);
+            })
+            ->where('p.status', PmPayment::STATUS_COMPLETED)
+            ->where(function ($query): void {
+                $query->whereNull('p.channel')->orWhere('p.channel', '!=', 'tenant_credit');
+            })
+            ->whereNotNull('i.billing_period')
+            ->where('i.billing_period', '!=', '')
+            ->get([
+                'a.id',
+                'a.amount',
+                'a.pm_invoice_id',
+                'i.billing_period',
+                'p.meta',
+            ]);
+
+        foreach ($rows as $row) {
+            $payment = new PmPayment(['meta' => $row->meta]);
+            $invoice = new PmInvoice(['billing_period' => $row->billing_period]);
+            if (! $this->receiptMissesInvoicePeriod($payment, $invoice)) {
+                continue;
+            }
+
+            $count++;
+            $amount = round($amount + (float) $row->amount, 2);
+            if ($dryRun) {
+                continue;
+            }
+
+            PmPaymentAllocation::query()->whereKey($row->id)->update([
+                'is_reversed' => true,
+                'reversed_at' => now(),
+                'reversal_reason' => $reason,
+            ]);
+            $invoiceIds[(int) $row->pm_invoice_id] = true;
+        }
+
+        if (! $dryRun) {
+            foreach (array_keys($invoiceIds) as $invoiceId) {
+                $invoice = PmInvoice::query()->find($invoiceId);
+                $invoice?->syncAmountPaidFromAllocations();
+            }
+        }
+
+        return ['allocations' => $count, 'amount' => $amount];
+    }
+
+    /**
+     * A receipt that names January must not be treated as payment for November.
+     * Prepayments, and receipts with no named month, are left alone.
+     */
+    public function receiptMissesInvoicePeriod(PmPayment $payment, PmInvoice $invoice): bool
+    {
+        $text = trim((string) data_get($payment->meta, 'particulars', ''));
+        if ($text === '' || preg_match('/prepay/i', $text) === 1) {
+            return false;
+        }
+
+        $named = $this->namedBillingPeriods($text);
+        if ($named === []) {
+            return false;
+        }
+
+        $period = trim((string) ($invoice->billing_period ?? ''));
+        if (preg_match('/^\d{4}-\d{2}$/', $period) !== 1) {
+            return false;
+        }
+
+        return ! in_array($period, $named, true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function namedBillingPeriods(string $text): array
+    {
+        $months = [
+            'january' => '01', 'february' => '02', 'march' => '03', 'april' => '04',
+            'may' => '05', 'june' => '06', 'july' => '07', 'august' => '08',
+            'september' => '09', 'october' => '10', 'november' => '11', 'december' => '12',
+            'jan' => '01', 'feb' => '02', 'mar' => '03', 'apr' => '04',
+            'jun' => '06', 'jul' => '07', 'aug' => '08', 'sep' => '09', 'sept' => '09',
+            'oct' => '10', 'nov' => '11', 'dec' => '12',
+        ];
+        $found = [];
+        if (preg_match_all('/\b([A-Za-z]+)\s*\/\s*(\d{4})\b/', $text, $matches, PREG_SET_ORDER) !== false) {
+            foreach ($matches as $match) {
+                $month = $months[strtolower($match[1])] ?? null;
+                if ($month !== null) {
+                    $found[$match[2].'-'.$month] = true;
+                }
+            }
+        }
+
+        return array_keys($found);
     }
 
     /**

@@ -1098,9 +1098,21 @@ class PmInvoice extends Model
         return $this->invoiceKindKey() === self::KIND_WATER_SUPPLEMENT;
     }
 
+    /**
+     * EZEN statement lines store a source tag on every charge, including monthly garbage.
+     * That tag is not an opening balance.
+     */
+    public function isImportedStatementCharge(): bool
+    {
+        $origin = $this->carry_forward_origin;
+
+        return is_array($origin)
+            && (string) ($origin['source'] ?? '') === 'ezen_tenant_statement_dbn';
+    }
+
     public function isCarryForwardInvoice(): bool
     {
-        if (! empty($this->carry_forward_origin)) {
+        if (! empty($this->carry_forward_origin) && ! $this->isImportedStatementCharge()) {
             return true;
         }
 
@@ -1127,7 +1139,7 @@ class PmInvoice extends Model
             return 'Water supplement';
         }
 
-        if ($this->isCarryForwardInvoice()) {
+        if ($this->isCarryForwardInvoice() && ! $this->isImportedStatementCharge()) {
             return 'Opening balance';
         }
 
