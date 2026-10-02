@@ -6,7 +6,6 @@
 @endphp
 
 <x-property.filter-toolbar
-    single-row
     :action="$occupancyUrl"
     :reset-url="$occupancyUrl"
     :drawer-label="$drawerLabel"

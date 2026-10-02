@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingChartAccount;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
@@ -379,11 +380,40 @@ class PmPaymentController extends Controller
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
             'filterCascadeCatalog' => $cascade->fromPayments(),
-            'openInvoices' => PmInvoice::query()
-                ->with('tenant')
+            'openInvoices' => $openInvoices = PmInvoice::query()
+                ->with(['tenant:id,name,phone,account_number', 'unit:id,label,property_id', 'unit.property:id,name'])
+                ->billableAr()
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->orderBy('due_date')
                 ->get(),
+            'receiptInvoices' => $openInvoices->map(function (PmInvoice $invoice) {
+                $due = max(0, round((float) $invoice->amount - (float) $invoice->amount_paid, 2));
+                $particulars = trim((string) ($invoice->description ?: str_replace('_', ' ', (string) $invoice->invoice_type)));
+
+                return [
+                    'id' => (int) $invoice->id,
+                    'tenant_id' => (int) $invoice->pm_tenant_id,
+                    'property_id' => (int) ($invoice->unit?->property_id ?? 0),
+                    'invoice_no' => (string) $invoice->invoice_no,
+                    'issue_date' => $invoice->issue_date?->format('d/m/Y') ?? '',
+                    'due_date' => $invoice->due_date?->format('d/m/Y') ?? '',
+                    'particulars' => $particulars !== '' ? $particulars : 'Charge',
+                    'amount' => round((float) $invoice->amount, 2),
+                    'paid' => round((float) $invoice->amount_paid, 2),
+                    'due' => $due,
+                ];
+            })->values()->all(),
+            'receiptTenants' => PmTenant::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone', 'account_number'])
+                ->map(fn (PmTenant $tenant) => [
+                    'id' => (int) $tenant->id,
+                    'name' => (string) $tenant->name,
+                    'phone' => (string) ($tenant->phone ?? ''),
+                    'account' => (string) ($tenant->account_number ?? ''),
+                ])
+                ->all(),
+            'cashAccounts' => $this->cashAccountsForReceipt(),
             // Only show tenants that actually have an open invoice (this screen posts against invoices).
             'tenants' => PmTenant::query()
                 ->whereHas('invoices', function ($q) {
@@ -492,58 +522,101 @@ class PmPaymentController extends Controller
     {
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
-            'pm_invoice_id' => ['required', 'exists:pm_invoices,id'],
+            'property_id' => ['nullable', 'integer'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'channel' => ['required', 'in:mpesa,bank,cash,card,cheque'],
             'external_ref' => ['nullable', 'string', 'max:128'],
-            'paid_at' => ['nullable', 'date'],
+            'record_date' => ['required', 'date'],
+            'banking_date' => ['required', 'date'],
+            'payer_bank' => ['nullable', 'string', 'max:120'],
+            'memo' => ['nullable', 'string', 'max:500'],
+            'receipt_to' => ['nullable', 'in:landlord,general_ledger'],
+            'bank_account_id' => ['nullable', 'integer'],
+            'vat_mode' => ['nullable', 'in:inclusive,exclusive'],
+            'skip_notification' => ['nullable', 'boolean'],
+            'allocations' => ['nullable', 'array'],
+            'allocations.*' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $invoice = PmInvoice::query()->findOrFail($data['pm_invoice_id']);
-        if ((int) $invoice->pm_tenant_id !== (int) $data['pm_tenant_id']) {
-            return back()->withErrors(['pm_invoice_id' => 'Invoice does not belong to this tenant.'])->withInput();
-        }
-
-        $remaining = (float) $invoice->amount - (float) $invoice->amount_paid;
-        if ((float) $data['amount'] > $remaining + 0.0001) {
-            return back()->withErrors(['amount' => 'Amount exceeds open balance on invoice.'])->withInput();
-        }
-
         if ($data['channel'] !== 'cash' && blank($data['external_ref'] ?? null)) {
-            return back()->withErrors(['external_ref' => 'Reference is required for non-cash payments.'])->withInput();
+            return back()->withErrors(['external_ref' => 'Payment ref. no. is required unless the method is cash.'])->withInput();
         }
 
         $agentUserId = null;
         if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
-            $agentUserId = (int) ($invoice->agent_user_id ?? 0);
-            if ($agentUserId <= 0) {
-                $invoice->loadMissing('unit.property');
-                $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
-            }
+            $tenant = PmTenant::query()->find($data['pm_tenant_id']);
+            $agentUserId = (int) ($tenant?->agent_user_id ?? 0);
         }
 
-        app(PropertyPaymentSettlementService::class)->recordPaymentToInvoice(
-            $invoice,
-            (float) $data['amount'],
-            (string) $data['channel'],
-            $data['external_ref'] ?? null,
-            $data['paid_at'] ?? now(),
-            $request->user(),
-            null,
-            $agentUserId > 0 ? $agentUserId : null,
-        );
+        try {
+            $payment = app(PropertyPaymentSettlementService::class)->recordManualRentReceipt([
+                'pm_tenant_id' => (int) $data['pm_tenant_id'],
+                'property_id' => (int) ($data['property_id'] ?? 0),
+                'amount' => (float) $data['amount'],
+                'channel' => (string) $data['channel'],
+                'external_ref' => $data['external_ref'] ?? null,
+                'record_date' => (string) $data['record_date'],
+                'banking_date' => (string) $data['banking_date'],
+                'payer_bank' => $data['payer_bank'] ?? null,
+                'memo' => $data['memo'] ?? null,
+                'receipt_to' => $data['receipt_to'] ?? 'general_ledger',
+                'bank_account_id' => (int) ($data['bank_account_id'] ?? 0),
+                'vat_mode' => $data['vat_mode'] ?? 'inclusive',
+                'skip_notification' => $request->boolean('skip_notification'),
+                'allocations' => (array) ($data['allocations'] ?? []),
+                'agent_user_id' => $agentUserId > 0 ? $agentUserId : null,
+            ], $request->user());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['amount' => $e->getMessage()])->withInput();
+        }
+
+        $allocated = round((float) $payment->allocations->sum('amount'), 2);
+        $credit = max(0.0, round((float) $payment->amount - $allocated, 2));
+        $parts = ['Rent receipt saved.'];
+        if ($allocated > 0) {
+            $parts[] = PropertyMoney::kes($allocated).' applied to invoice(s).';
+        }
+        if ($credit > 0.009) {
+            $parts[] = PropertyMoney::kes($credit).' held on account.';
+        }
+        $message = implode(' ', $parts);
+
+        if ($request->boolean('save_and_print')) {
+            return redirect()
+                ->route('property.payments.receipt.show', $payment)
+                ->with('success', $message);
+        }
 
         $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
             $request,
             (int) $data['pm_tenant_id'],
             'payments',
-            'Payment recorded and allocated.'
+            $message
         );
         if ($hubRedirect) {
             return $hubRedirect;
         }
 
-        return back()->with('success', 'Payment recorded and allocated.');
+        return back()->with('success', $message);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, AccountingChartAccount>
+     */
+    private function cashAccountsForReceipt()
+    {
+        if (! Schema::hasTable('accounting_chart_accounts') || ! Schema::hasColumn('accounting_chart_accounts', 'is_cash_account')) {
+            return collect();
+        }
+
+        $query = AccountingChartAccount::query()->where('is_cash_account', true)->orderBy('name');
+        if (Schema::hasColumn('accounting_chart_accounts', 'is_active')) {
+            $query->where(function ($inner) {
+                $inner->where('is_active', true)->orWhereNull('is_active');
+            });
+        }
+
+        return $query->get(['id', 'code', 'name']);
     }
 
     /**

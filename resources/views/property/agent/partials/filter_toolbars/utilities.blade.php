@@ -4,8 +4,48 @@
     $filterFormId = 'property-filter-form-'.substr(md5($utilitiesUrl.$drawerLabel), 0, 8);
 @endphp
 
+<style>
+@media (min-width: 768px) {
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form,
+    .property-filter-toolbar[data-filter-compact] [data-filter-main-row] {
+        flex-wrap: nowrap !important;
+        gap: 0.35rem;
+    }
+    .property-filter-toolbar[data-filter-compact] .property-filter-field {
+        min-width: 0 !important;
+        max-width: none !important;
+        width: auto !important;
+        flex: 1 1 0 !important;
+    }
+    .property-filter-toolbar[data-filter-compact] .property-filter-field__control,
+    .property-filter-toolbar[data-filter-compact] input[type="month"],
+    .property-filter-toolbar[data-filter-compact] select {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100%;
+        font-size: 12px;
+        padding-left: 0.4rem;
+        padding-right: 0.3rem;
+    }
+    .property-filter-toolbar[data-filter-compact] [data-filter-actions] {
+        flex-wrap: nowrap !important;
+        margin-left: 0.25rem;
+    }
+    .property-filter-toolbar[data-filter-compact] [data-page-size-custom] {
+        display: none;
+    }
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form > button,
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form > a {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+        font-size: 12px;
+    }
+}
+</style>
+
 <x-property.filter-toolbar
     single-row
+    data-filter-compact
     :action="$utilitiesUrl"
     :reset-url="$utilitiesUrl"
     :drawer-label="$drawerLabel"
@@ -21,7 +61,7 @@
     ]"
 >
     <x-slot name="primary">
-        <x-property.filter-field type="search" name="q" placeholder="Search tenant, TNT, unit, or charge label…" :value="$filters['q'] ?? ''" wide />
+        <x-property.filter-field type="search" name="q" placeholder="Search tenant, unit…" :value="$filters['q'] ?? ''" />
         <input type="hidden" name="ops_tab" x-bind:value="typeof activeTab === 'string' ? activeTab : @js($filters['ops_tab'] ?? '')" value="{{ $filters['ops_tab'] ?? '' }}" />
         @include('property.agent.partials.filter_toolbars.partials.property_unit_fields', [
             'filters' => $filters,

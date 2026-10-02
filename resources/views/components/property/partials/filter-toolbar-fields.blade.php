@@ -50,7 +50,11 @@
             />
         @endif
     @else
-        <div class="flex min-w-0 flex-1 flex-row flex-nowrap items-end gap-2" data-filter-main-row>
+        <div @class([
+            'flex min-w-0 flex-1 flex-row items-end gap-2',
+            'flex-nowrap' => ! empty($filterSingleRow),
+            'flex-wrap' => empty($filterSingleRow),
+        ]) data-filter-main-row>
             @if ($hasDateRange)
                 <div class="contents" data-filter-date-range>
                     {{ $dateRange }}

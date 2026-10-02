@@ -205,7 +205,7 @@
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
                     <div class="print-hide w-full min-w-0">
                         @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
-                            <div class="flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
+                            <div class="flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible">
                                 @if ($useLegacyToolbar && $canShowDefaultSearch)
                                     <input
                                         type="search"
@@ -241,7 +241,7 @@
                                         @php
                                             $__propertyToolbarViewport = 'desktop';
                                         @endphp
-                                        <div class="flex w-full min-w-0 flex-nowrap items-end gap-2 overflow-x-auto [&_form]:flex [&_form]:w-auto [&_form]:min-w-0 [&_form]:flex-nowrap [&_form]:items-end [&_form]:gap-2">
+                                        <div class="flex w-full min-w-0 flex-wrap items-end gap-2 overflow-visible">
                                             @if ($useLegacyToolbar && $canShowDefaultSearch)
                                                 <input
                                                     type="search"

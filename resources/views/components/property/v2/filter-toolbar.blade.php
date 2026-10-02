@@ -31,7 +31,7 @@
     @if ($showDesktopToolbar && $submitFilters && $action)
         <div @class([
             'w-full min-w-0 items-end gap-2',
-            'flex flex-col md:flex-row flex-nowrap overflow-x-auto' => $filterSingleRow,
+            'flex flex-col md:flex-row flex-nowrap overflow-visible' => $filterSingleRow,
             'contents' => ! $filterSingleRow,
         ])>
         <form
@@ -40,7 +40,11 @@
             action="{{ $action }}"
             @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
             @if ($revenueDateFilter) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
-            class="property-filter-toolbar__form hidden md:flex flex-row items-end gap-x-2 gap-y-2 {{ $filterSingleRow ? 'flex-1 flex-nowrap' : 'w-full min-w-0 flex-wrap' }}"
+            @class([
+                'property-filter-toolbar__form hidden md:flex min-w-0 w-full flex-1 flex-row items-end gap-2 overflow-visible',
+                'flex-nowrap' => $filterSingleRow,
+                'flex-wrap' => ! $filterSingleRow,
+            ])
             data-property-filter-form-desktop
         >
             @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId, 'filterSingleRow' => $filterSingleRow])

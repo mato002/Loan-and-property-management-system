@@ -2260,6 +2260,48 @@
     }
   }
 
+    @media (min-width: 768px) {
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form,
+    .property-filter-toolbar[data-filter-compact] [data-filter-main-row] {
+      flex-wrap: nowrap !important;
+      gap: 0.35rem;
+    }
+
+    .property-filter-toolbar[data-filter-compact] .property-filter-field {
+      min-width: 0 !important;
+      max-width: none !important;
+      width: auto !important;
+      flex: 1 1 0 !important;
+    }
+
+    .property-filter-toolbar[data-filter-compact] .property-filter-field__control,
+    .property-filter-toolbar[data-filter-compact] input[type="month"],
+    .property-filter-toolbar[data-filter-compact] select {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      width: 100%;
+      font-size: 12px;
+      padding-left: 0.4rem;
+      padding-right: 0.3rem;
+    }
+
+    .property-filter-toolbar[data-filter-compact] [data-filter-actions] {
+      flex-wrap: nowrap !important;
+      margin-left: 0.25rem;
+    }
+
+    .property-filter-toolbar[data-filter-compact] [data-page-size-custom] {
+      display: none;
+    }
+
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form > button,
+    .property-filter-toolbar[data-filter-compact] .property-filter-toolbar__form > a {
+      padding-left: 0.6rem;
+      padding-right: 0.6rem;
+      font-size: 12px;
+    }
+  }
+
   [data-mobile-record-list] article {
     max-width: 100%;
   }

@@ -8,6 +8,7 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\User;
 use App\Services\Property\InvoiceStateIntegrityService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -165,6 +166,117 @@ class PropertyPaymentSettlementService
             );
 
             return $payment->fresh(['allocations']);
+        });
+    }
+
+    /**
+     * Manual rent receipt: one amount received, applied to the invoice lines the cashier entered.
+     * Anything not applied to an invoice is held as tenant credit (on account).
+     *
+     * @param  array{
+     *     pm_tenant_id: int,
+     *     amount: float|int|string,
+     *     channel: string,
+     *     external_ref?: string|null,
+     *     record_date?: string|null,
+     *     banking_date?: string|null,
+     *     payer_bank?: string|null,
+     *     memo?: string|null,
+     *     receipt_to?: string|null,
+     *     bank_account_id?: int|null,
+     *     vat_mode?: string|null,
+     *     property_id?: int|null,
+     *     skip_notification?: bool,
+     *     allocations?: array<int|string, float|int|string>,
+     *     agent_user_id?: int|null
+     * }  $data
+     */
+    public function recordManualRentReceipt(array $data, ?User $actor = null): PmPayment
+    {
+        return DB::transaction(function () use ($data, $actor) {
+            $tenantId = (int) $data['pm_tenant_id'];
+            $amount = round((float) $data['amount'], 2);
+            if ($amount <= 0.0001) {
+                throw new RuntimeException('Enter the amount received.');
+            }
+
+            $lines = [];
+            foreach ((array) ($data['allocations'] ?? []) as $invoiceId => $lineAmount) {
+                $lineAmount = round((float) $lineAmount, 2);
+                if ($lineAmount <= 0.0001) {
+                    continue;
+                }
+                $lines[(int) $invoiceId] = $lineAmount;
+            }
+
+            $lineSum = round(array_sum($lines), 2);
+            if ($lineSum - $amount > 0.009) {
+                throw new RuntimeException('Invoice payments are higher than the amount received.');
+            }
+
+            $paidAt = Carbon::parse((string) ($data['banking_date'] ?: $data['record_date'] ?: now()->toDateString()))->startOfDay();
+
+            $payment = PmPayment::query()->create([
+                'pm_tenant_id' => $tenantId,
+                'channel' => (string) $data['channel'],
+                'amount' => $amount,
+                'external_ref' => $data['external_ref'] ?? null,
+                'paid_at' => $paidAt,
+                'status' => PmPayment::STATUS_COMPLETED,
+                'agent_user_id' => ($data['agent_user_id'] ?? null) ?: null,
+                'meta' => [
+                    'source' => 'manual_rent_receipt',
+                    'record_date' => (string) ($data['record_date'] ?? ''),
+                    'banking_date' => (string) ($data['banking_date'] ?? ''),
+                    'payer_bank' => (string) ($data['payer_bank'] ?? ''),
+                    'memo' => (string) ($data['memo'] ?? ''),
+                    'receipt_to' => (string) ($data['receipt_to'] ?? 'general_ledger'),
+                    'bank_account_id' => (int) ($data['bank_account_id'] ?? 0) ?: null,
+                    'vat_mode' => (string) ($data['vat_mode'] ?? 'inclusive'),
+                    'property_id' => (int) ($data['property_id'] ?? 0) ?: null,
+                    'skip_notification' => (bool) ($data['skip_notification'] ?? true),
+                ],
+            ]);
+
+            foreach ($lines as $invoiceId => $lineAmount) {
+                $invoice = PmInvoice::query()
+                    ->whereKey($invoiceId)
+                    ->where('pm_tenant_id', $tenantId)
+                    ->first();
+                if (! $invoice) {
+                    throw new RuntimeException('One of the invoices does not belong to this tenant.');
+                }
+                if ($lineAmount - $invoice->balanceFloat() > 0.009) {
+                    throw new RuntimeException('Payment on '.$invoice->invoice_no.' is higher than the amount due.');
+                }
+                $this->createAllocation($payment, $invoice, $lineAmount);
+            }
+
+            $allocated = round((float) PmPaymentAllocation::query()
+                ->where('pm_payment_id', $payment->id)
+                ->sum('amount'), 2);
+            $remaining = round($amount - $allocated, 2);
+
+            $payment->load('allocations.invoice.unit');
+            $this->finalizeIdentifiedPayment($payment, $actor, $remaining);
+            $this->repairTenantIfDriftDetected($tenantId);
+
+            $fresh = $payment->fresh(['allocations']);
+            if ($fresh && ! ($data['skip_notification'] ?? true)) {
+                $paymentId = (int) $fresh->id;
+                DB::afterCommit(function () use ($paymentId) {
+                    try {
+                        SendPaymentReceiptJob::dispatch($paymentId);
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to queue payment receipt', [
+                            'pm_payment_id' => $paymentId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                });
+            }
+
+            return $fresh ?? $payment;
         });
     }
 
