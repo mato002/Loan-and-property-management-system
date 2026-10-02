@@ -503,6 +503,10 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->isTerminatedEmployee()) {
+            return false;
+        }
+
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_user_role')) {
             return true; // Legacy-safe until RBAC tables are migrated.
         }
@@ -546,6 +550,18 @@ class User extends Authenticatable
         $effect = $query->value('up.effect');
 
         return in_array($effect, ['allow', 'deny'], true) ? $effect : null;
+    }
+
+    public function isTerminatedEmployee(): bool
+    {
+        if (! Schema::hasTable('employees') || ! Schema::hasColumn('employees', 'employment_status')) {
+            return false;
+        }
+
+        return Employee::query()
+            ->where('user_id', $this->id)
+            ->where('employment_status', 'terminated')
+            ->exists();
     }
 
     public function agentSubscription(): ?AgentSubscription

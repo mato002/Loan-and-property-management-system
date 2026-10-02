@@ -11,6 +11,8 @@ class PmActivityLog extends Model
 
     protected $fillable = [
         'actor_user_id',
+        'employee_id',
+        'employee_role',
         'portal_role',
         'source',
         'action',

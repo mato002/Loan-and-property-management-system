@@ -1782,6 +1782,11 @@ SQL;
             }
 
             $lease = PmLease::query()->create($payload);
+            app(\App\Services\Property\PropertyHrWorkflowService::class)->logLeaseCreated(
+                (int) $lease->id,
+                (int) ($lease->pm_tenant_id ?? 0) ?: null,
+                $request->user(),
+            );
 
             $lease->load('pmTenant');
             if ($unitIds !== []) {

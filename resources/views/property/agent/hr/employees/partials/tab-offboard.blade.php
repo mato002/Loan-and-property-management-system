@@ -5,7 +5,7 @@
 
 <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm max-w-3xl">
     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Offboard employee</h3>
-    <p class="mt-1 text-xs text-slate-500">Records the last working day, revokes portal access, and can unassign field-officer properties.</p>
+    <p class="mt-1 text-xs text-slate-500">One action records the last working day, revokes the portal login, clears roles and permission overrides, and detaches every assigned property.</p>
 
     @if ($employee->isOffboarded())
         <div class="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950 space-y-1">
@@ -23,7 +23,7 @@
             @endif
         </div>
     @elseif ($canManage)
-        <form method="post" action="{{ route('property.hr.employees.offboard', $employee) }}" class="mt-4 grid gap-3 sm:grid-cols-2" data-turbo-frame="_top" data-swal-title="Offboard this employee?" data-swal-confirm="They will be marked offboarded. Portal access is revoked if selected." data-swal-confirm-text="Offboard">
+        <form method="post" action="{{ route('property.hr.employees.offboard', $employee) }}" class="mt-4 grid gap-3 sm:grid-cols-2" data-turbo-frame="_top" data-swal-title="Offboard this employee?" data-swal-confirm="This removes their portal login, permissions, and property assignments." data-swal-confirm-text="Offboard">
             @csrf
             <div>
                 <label class="block text-xs font-medium text-slate-600">Last working day <span class="text-rose-600">*</span></label>
@@ -43,16 +43,6 @@
                 <label class="block text-xs font-medium text-slate-600">Notes</label>
                 <textarea name="offboarding_notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('offboarding_notes') }}</textarea>
             </div>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                <input type="hidden" name="revoke_portal" value="0" />
-                <input type="checkbox" name="revoke_portal" value="1" checked class="rounded border-slate-300" />
-                Revoke portal access
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                <input type="hidden" name="unassign_properties" value="0" />
-                <input type="checkbox" name="unassign_properties" value="1" checked class="rounded border-slate-300" />
-                Unassign field-officer properties
-            </label>
             <div class="sm:col-span-2">
                 <button type="submit" class="inline-flex min-h-[40px] items-center rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-800">Offboard employee</button>
             </div>

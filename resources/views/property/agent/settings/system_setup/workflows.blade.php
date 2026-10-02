@@ -37,8 +37,13 @@
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_assign_tickets" value="1" @checked(old('workflow_auto_assign_tickets', $autoAssignTickets ? '1' : '0') === '1') />
-                Auto-assign maintenance tickets to default team
+                Also move new maintenance tickets into triage when nobody on the property can resolve them
             </label>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">High-value repair approval threshold</label>
+                <input type="number" name="workflow_maintenance_approval_threshold" min="0" step="0.01" value="{{ old('workflow_maintenance_approval_threshold', $maintenanceApprovalThreshold ?? '100') }}" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Estimates above this amount need someone with high-value maintenance approval. Default is 100.</p>
+            </div>
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_reminders" value="1" @checked(old('workflow_auto_reminders', $autoReminders ? '1' : '0') === '1') />

@@ -1,5 +1,5 @@
 @php
-    $headerStats = ($isFieldOfficer ?? false) && ($activeTab ?? 'overview') === 'portfolio'
+    $headerStats = ($activeTab ?? 'overview') === 'portfolio'
         ? [
             ['label' => 'Properties', 'value' => (string) ($portfolioStats['properties'] ?? 0), 'hint' => 'Assigned'],
             ['label' => 'Landlords', 'value' => (string) ($portfolioStats['landlords'] ?? 0), 'hint' => 'Across portfolio'],

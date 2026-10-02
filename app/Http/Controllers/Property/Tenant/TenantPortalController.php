@@ -1160,7 +1160,7 @@ class TenantPortalController extends Controller
             $description .= "\n\nAccess: ".$data['access_notes'];
         }
 
-        PmMaintenanceRequest::query()->create([
+        $ticket = PmMaintenanceRequest::query()->create([
             'property_unit_id' => (int) $data['property_unit_id'],
             'pm_tenant_id' => (int) $lease->pm_tenant_id,
             'reported_by_user_id' => $request->user()->id,
@@ -1169,6 +1169,7 @@ class TenantPortalController extends Controller
             'urgency' => $data['urgency'],
             'status' => 'open',
         ]);
+        app(\App\Services\Property\PropertyHrWorkflowService::class)->routeMaintenanceRequest($ticket);
 
         return redirect()
             ->route('property.tenant.maintenance.index')

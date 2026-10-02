@@ -17,6 +17,7 @@ class PmMaintenanceRequest extends Model
         'property_unit_id',
         'pm_tenant_id',
         'reported_by_user_id',
+        'assigned_user_id',
         'category',
         'description',
         'urgency',
@@ -56,6 +57,11 @@ class PmMaintenanceRequest extends Model
     public function reportedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reported_by_user_id');
+    }
+
+    public function assignedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function jobs(): HasMany

@@ -1,9 +1,9 @@
 @if ($canManage ?? false)
     <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm max-w-2xl">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Assign property</h3>
-        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Link an unassigned property from this agent&apos;s workspace to this field officer.</p>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Properties linked here are where this employee receives work, including maintenance tickets they are allowed to resolve.</p>
         @if (($unassignedProperties ?? []) === [])
-            <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">All properties in this workspace are already assigned to a field officer.</p>
+            <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">Every property in this company is already linked to this employee.</p>
         @else
             <form method="post" action="{{ route('property.hr.employees.properties.assign', $employee, false) }}" class="mt-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
                 @csrf

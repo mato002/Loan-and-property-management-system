@@ -263,6 +263,7 @@ class LandlordPortalWorkspaceController extends Controller
             'urgency' => $data['urgency'] ?? 'normal',
             'status' => 'open',
         ]);
+        app(\App\Services\Property\PropertyHrWorkflowService::class)->routeMaintenanceRequest($maint);
 
         PmPortalAction::query()->create([
             'user_id' => $request->user()->id,

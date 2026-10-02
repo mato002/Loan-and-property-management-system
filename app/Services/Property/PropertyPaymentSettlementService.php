@@ -156,6 +156,14 @@ class PropertyPaymentSettlementService
 
             $this->repairTenantIfDriftDetected((int) $invoice->pm_tenant_id);
 
+            app(PropertyHrWorkflowService::class)->logPaymentRecorded(
+                (int) $payment->id,
+                (int) $invoice->pm_tenant_id,
+                $amount,
+                (int) $invoice->id,
+                $actor,
+            );
+
             return $payment->fresh(['allocations']);
         });
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Models\Employee;
 use App\Models\PmActivityLog;
 use App\Models\PmLease;
 use App\Models\User;
@@ -20,9 +21,15 @@ final class PropertyActivityLogger
             }
 
             $actor = auth()->user();
+            $actorId = $context['actor_user_id'] ?? $actor?->id;
+            $staff = self::staffContext(is_numeric($actorId) ? (int) $actorId : null);
+            $payload = $context['payload'] ?? null;
+            if (is_array($payload) || $payload === null) {
+                $payload = array_merge($staff, is_array($payload) ? $payload : []);
+            }
 
-            PmActivityLog::query()->create([
-                'actor_user_id' => $context['actor_user_id'] ?? $actor?->id,
+            $row = [
+                'actor_user_id' => $actorId,
                 'portal_role' => $context['portal_role'] ?? $actor?->property_portal_role,
                 'source' => (string) ($context['source'] ?? 'system'),
                 'action' => $action,
@@ -32,9 +39,17 @@ final class PropertyActivityLogger
                 'pm_lease_id' => isset($context['pm_lease_id']) ? (int) $context['pm_lease_id'] : null,
                 'pm_tenant_id' => isset($context['pm_tenant_id']) ? (int) $context['pm_tenant_id'] : null,
                 'pm_invoice_id' => isset($context['pm_invoice_id']) ? (int) $context['pm_invoice_id'] : null,
-                'payload' => $context['payload'] ?? null,
+                'payload' => $payload,
                 'occurred_at' => $context['occurred_at'] ?? now(),
-            ]);
+            ];
+            if (Schema::hasColumn('pm_activity_logs', 'employee_id')) {
+                $row['employee_id'] = $staff['employee_id'];
+            }
+            if (Schema::hasColumn('pm_activity_logs', 'employee_role')) {
+                $row['employee_role'] = $staff['employee_role'];
+            }
+
+            PmActivityLog::query()->create($row);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -78,6 +93,38 @@ final class PropertyActivityLogger
             'actor_user_id' => $actor?->id,
             'portal_role' => $actor?->property_portal_role,
         ]);
+    }
+
+    /**
+     * @return array{employee_id: ?int, employee_role: ?string}
+     */
+    private static function staffContext(?int $userId): array
+    {
+        if (! $userId || ! Schema::hasTable('employees')) {
+            return ['employee_id' => null, 'employee_role' => null];
+        }
+
+        $employee = Employee::query()->where('user_id', $userId)->first(['id', 'job_title']);
+        $roles = null;
+        if (Schema::hasTable('pm_user_role') && Schema::hasTable('pm_roles')) {
+            $roles = \Illuminate\Support\Facades\DB::table('pm_user_role as ur')
+                ->join('pm_roles as r', 'r.id', '=', 'ur.pm_role_id')
+                ->where('ur.user_id', $userId)
+                ->orderBy('r.name')
+                ->pluck('r.name')
+                ->filter()
+                ->join(', ');
+        }
+
+        $role = trim((string) $roles);
+        if ($role === '') {
+            $role = trim((string) ($employee?->job_title ?? ''));
+        }
+
+        return [
+            'employee_id' => $employee?->id,
+            'employee_role' => $role !== '' ? $role : null,
+        ];
     }
 
     private static function stringifyChangeValue(mixed $value): string

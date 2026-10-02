@@ -416,26 +416,44 @@ class PropertyHrEmployeeService
             'offboarded_by_user_id' => $actor?->id,
         ]);
 
-        if (! empty($data['unassign_properties'])) {
-            $this->unassignAllPropertiesFromEmployee($employee->fresh());
-        }
-
         $employee = $employee->fresh();
-        if (! empty($data['revoke_portal']) && $employee?->user) {
+        $this->unassignAllPropertiesFromEmployee($employee);
+        if ($employee?->user) {
             $this->revokePortalAccess($employee);
+            $this->stripPortalPermissions($employee);
         }
 
         return $employee->fresh();
     }
 
-    public function unassignAllPropertiesFromEmployee(Employee $employee): int
+    public function stripPortalPermissions(Employee $employee): void
     {
-        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
-        if (! $fieldOfficer) {
-            return 0;
+        $user = $employee->user;
+        if (! $user) {
+            return;
         }
 
-        return Property::query()
+        if (Schema::hasTable('pm_user_role')) {
+            $user->pmRoles()->detach();
+        }
+        if (Schema::hasTable('pm_user_permission')) {
+            $user->pmPermissions()->detach();
+        }
+    }
+
+    public function unassignAllPropertiesFromEmployee(Employee $employee): int
+    {
+        $removed = 0;
+        if (Schema::hasTable('employee_property_assignments')) {
+            $removed = DB::table('employee_property_assignments')->where('employee_id', $employee->id)->delete();
+        }
+
+        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
+        if (! $fieldOfficer) {
+            return $removed;
+        }
+
+        return $removed + Property::query()
             ->where('field_officer_id', $fieldOfficer->id)
             ->update(['field_officer_id' => null]);
     }
@@ -899,51 +917,105 @@ class PropertyHrEmployeeService
 
     public function assignPropertyToEmployee(Employee $employee, int $propertyId): Property
     {
-        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
-        if (! $fieldOfficer) {
-            throw ValidationException::withMessages([
-                'property_id' => 'Enable the field officer role on this employee before assigning properties.',
-            ]);
-        }
-
         $property = Property::query()->findOrFail($propertyId);
-        $this->assertPropertyAssignableToOfficer($property, $fieldOfficer);
+        $this->assertPropertyInEmployeeWorkspace($property, $employee);
 
-        if ((int) $property->field_officer_id === (int) $fieldOfficer->id) {
-            return $property;
+        $fieldOfficer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($fieldOfficer) {
+            $this->assertPropertyAssignableToOfficer($property, $fieldOfficer);
+            if ((int) $property->field_officer_id !== (int) $fieldOfficer->id && $property->field_officer_id !== null) {
+                throw ValidationException::withMessages([
+                    'property_id' => 'Property is already assigned to another field officer. Unassign it first.',
+                ]);
+            }
+            if ((int) $property->field_officer_id !== (int) $fieldOfficer->id) {
+                $property->update(['field_officer_id' => $fieldOfficer->id]);
+            }
         }
 
-        if ($property->field_officer_id !== null) {
-            throw ValidationException::withMessages([
-                'property_id' => 'Property is already assigned to another field officer. Unassign it first.',
-            ]);
-        }
-
-        $property->update(['field_officer_id' => $fieldOfficer->id]);
+        $this->attachEmployeeProperty($employee, $property);
 
         return $property->fresh();
     }
 
     public function detachPropertyFromEmployee(Employee $employee, int $propertyId): Property
     {
-        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
-        if (! $fieldOfficer) {
-            throw ValidationException::withMessages([
-                'property_id' => 'This employee is not a field officer.',
-            ]);
-        }
-
         $property = Property::query()->findOrFail($propertyId);
+        $this->detachEmployeeProperty($employee, (int) $property->id);
 
-        if ((int) $property->field_officer_id !== (int) $fieldOfficer->id) {
-            throw ValidationException::withMessages([
-                'property_id' => 'This property is not assigned to this employee.',
-            ]);
+        $fieldOfficer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($fieldOfficer && (int) $property->field_officer_id === (int) $fieldOfficer->id) {
+            $property->update(['field_officer_id' => null]);
         }
-
-        $property->update(['field_officer_id' => null]);
 
         return $property->fresh();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function propertyIdsForEmployee(Employee $employee): array
+    {
+        $ids = [];
+        if (Schema::hasTable('employee_property_assignments')) {
+            $ids = DB::table('employee_property_assignments')
+                ->where('employee_id', $employee->id)
+                ->pluck('property_id')
+                ->all();
+        }
+
+        $officer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($officer) {
+            $ids = array_merge($ids, Property::query()->where('field_officer_id', $officer->id)->pluck('id')->all());
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    /**
+     * @return list<array{id: int, name: string, city: string, units: int, tenants: int, rent: float, show_url: string}>
+     */
+    public function assignedPropertyRowsForEmployee(Employee $employee): array
+    {
+        $ids = $this->propertyIdsForEmployee($employee);
+        if ($ids === []) {
+            return [];
+        }
+
+        $properties = Property::query()
+            ->whereIn('id', $ids)
+            ->orderBy('name')
+            ->get(['id', 'name', 'city']);
+
+        return $this->propertyAssignmentRows($properties);
+    }
+
+    /**
+     * @return list<array{id: int, name: string, city: string}>
+     */
+    public function assignablePropertiesForEmployee(Employee $employee): array
+    {
+        $assigned = $this->propertyIdsForEmployee($employee);
+
+        return Property::query()
+            ->operational()
+            ->when((int) $employee->agent_user_id > 0, fn ($query) => $query->where('agent_user_id', (int) $employee->agent_user_id))
+            ->when($assigned !== [], fn ($query) => $query->whereNotIn('id', $assigned))
+            ->orderBy('name')
+            ->get(['id', 'name', 'city'])
+            ->map(fn (Property $property) => [
+                'id' => (int) $property->id,
+                'name' => (string) $property->name,
+                'city' => (string) ($property->city ?: '—'),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -964,6 +1036,15 @@ class PropertyHrEmployeeService
             ->orderBy('name')
             ->get(['id', 'name', 'city']);
 
+        return $this->propertyAssignmentRows($properties);
+    }
+
+    /**
+     * @param  Collection<int, Property>  $properties
+     * @return list<array{id: int, name: string, city: string, units: int, tenants: int, rent: float, show_url: string}>
+     */
+    private function propertyAssignmentRows(Collection $properties): array
+    {
         if ($properties->isEmpty()) {
             return [];
         }
@@ -1058,6 +1139,50 @@ class PropertyHrEmployeeService
             ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
+    }
+
+    private function attachEmployeeProperty(Employee $employee, Property $property): void
+    {
+        if (! Schema::hasTable('employee_property_assignments')) {
+            return;
+        }
+
+        $exists = DB::table('employee_property_assignments')
+            ->where('employee_id', $employee->id)
+            ->where('property_id', $property->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        DB::table('employee_property_assignments')->insert([
+            'employee_id' => $employee->id,
+            'property_id' => $property->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function detachEmployeeProperty(Employee $employee, int $propertyId): void
+    {
+        if (! Schema::hasTable('employee_property_assignments')) {
+            return;
+        }
+
+        DB::table('employee_property_assignments')
+            ->where('employee_id', $employee->id)
+            ->where('property_id', $propertyId)
+            ->delete();
+    }
+
+    private function assertPropertyInEmployeeWorkspace(Property $property, Employee $employee): void
+    {
+        $agentId = (int) $employee->agent_user_id;
+        if ($agentId > 0 && (int) $property->agent_user_id !== $agentId) {
+            throw ValidationException::withMessages([
+                'property_id' => 'This property is outside this employee’s company.',
+            ]);
+        }
     }
 
     private function assertPropertyAssignableToOfficer(Property $property, PmFieldOfficer $fieldOfficer): void

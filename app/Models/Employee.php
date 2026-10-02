@@ -103,6 +103,12 @@ class Employee extends Model
         return $this->belongsTo(User::class, 'offboarded_by_user_id');
     }
 
+    public function assignedProperties(): BelongsToMany
+    {
+        return $this->belongsToMany(Property::class, 'employee_property_assignments', 'employee_id', 'property_id')
+            ->withTimestamps();
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -154,11 +154,18 @@ final class PropertyActivityLogQueryService
             });
         }
 
-        return $query->get()->map(fn (PmActivityLog $row) => $this->normalizeRow(
+        return $query->get()->map(function (PmActivityLog $row) {
+            $actorName = (string) ($row->actor?->name ?? 'System');
+            $role = trim((string) ($row->employee_role ?? ''));
+            if ($role !== '') {
+                $actorName .= ' ('.$role.')';
+            }
+
+            return $this->normalizeRow(
             'activity',
             (int) $row->id,
             $row->occurred_at ?? $row->created_at,
-            (string) ($row->actor?->name ?? 'System'),
+            $actorName,
             (int) ($row->actor_user_id ?? 0),
             (string) $row->action,
             (string) $row->summary,
@@ -166,7 +173,9 @@ final class PropertyActivityLogQueryService
             (int) ($row->entity_id ?? 0),
             is_array($row->payload) ? $row->payload : [],
             $this->resolveEntityUrl($row->entity_type, (int) ($row->entity_id ?? 0), (int) ($row->pm_invoice_id ?? 0), (int) ($row->pm_lease_id ?? 0), (int) ($row->pm_tenant_id ?? 0)),
-        ));
+            $role !== '' ? $role : null,
+        );
+        });
     }
 
     /**

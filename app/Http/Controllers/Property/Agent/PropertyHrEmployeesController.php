@@ -271,13 +271,15 @@ class PropertyHrEmployeesController extends Controller
         $fieldOfficer = $isFieldOfficer ? $this->hr->resolveFieldOfficerForEmployee($employee) : null;
         $activeTab = PropertyEntityHub::normalizeTab('employee', $request->query('tab'));
 
-        if ($activeTab === 'portfolio' && ! $isFieldOfficer) {
-            $activeTab = 'overview';
-        }
-
-        $portfolioStats = $fieldOfficer?->portfolioStats();
-        $assignedProperties = $fieldOfficer ? $this->hr->assignedPropertyRows($fieldOfficer) : [];
-        $unassignedProperties = $fieldOfficer ? $this->hr->unassignedPropertiesForOfficer($fieldOfficer) : [];
+        $assignedProperties = $this->hr->assignedPropertyRowsForEmployee($employee);
+        $unassignedProperties = $this->hr->assignablePropertiesForEmployee($employee);
+        $portfolioStats = [
+            'properties' => count($assignedProperties),
+            'landlords' => (int) ($fieldOfficer?->portfolioStats()['landlords'] ?? 0),
+            'units' => (int) array_sum(array_column($assignedProperties, 'units')),
+            'tenants' => (int) array_sum(array_column($assignedProperties, 'tenants')),
+            'rent_portfolio' => (float) array_sum(array_column($assignedProperties, 'rent')),
+        ];
         $canManage = $this->canManageHr($request);
         $loginState = $this->hr->loginActionState($employee);
         $accessRank = $this->employeeAccessRank($request->user(), $employee);
@@ -287,7 +289,7 @@ class PropertyHrEmployeesController extends Controller
             'fieldOfficer' => $fieldOfficer,
             'isFieldOfficer' => $isFieldOfficer,
             'activeTab' => $activeTab,
-            'employeeTabs' => PropertyEntityHub::employeeTabsFor($isFieldOfficer),
+            'employeeTabs' => PropertyEntityHub::employeeTabsFor(true),
             'portfolioStats' => $portfolioStats,
             'assignedProperties' => $assignedProperties,
             'unassignedProperties' => $unassignedProperties,
@@ -588,13 +590,11 @@ class PropertyHrEmployeesController extends Controller
             'exit_date' => $data['exit_date'],
             'exit_reason' => $data['exit_reason'],
             'offboarding_notes' => $data['offboarding_notes'] ?? null,
-            'unassign_properties' => $request->boolean('unassign_properties', true),
-            'revoke_portal' => $request->boolean('revoke_portal', true),
         ], $request->user());
 
         return redirect()
             ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'offboard'])
-            ->with('status', $employee->full_name.' has been offboarded.');
+            ->with('status', $employee->full_name.' is offboarded. Portal access, permissions, and property assignments were removed.');
     }
 
     /**
