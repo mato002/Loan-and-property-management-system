@@ -43,7 +43,7 @@
             <h1>Meters</h1>
             <p>Field readings only</p>
         </div>
-        <button type="button" id="field-install" hidden>Install</button>
+        <button type="button" id="field-install">Install</button>
     </header>
     <main>
         <div id="field-readings-app" data-pack-url="{{ $packUrl }}" data-sync-url="{{ $syncUrl }}">
@@ -58,7 +58,7 @@
                     <button type="button" id="field-sync">Send to office</button>
                 </div>
                 <p id="field-message" class="muted"></p>
-                <p id="field-install-help" class="muted" hidden>On iPhone: Share, then Add to Home Screen. The icon opens only this meter app.</p>
+                <p id="field-install-help" class="muted">Install lives on this page. On Android or Chrome, tap Install in the green bar. If the phone does not ask, open the browser menu and choose Install app. On iPhone, open this page in Safari, tap Share, then Add to Home Screen.</p>
             </section>
             <section class="card">
                 <label for="field-month">Billing month</label>
@@ -71,6 +71,6 @@
             <div id="field-units"></div>
         </div>
     </main>
-    <script src="{{ asset('js/field-readings.js') }}?v=2" defer></script>
+    <script src="{{ asset('js/field-readings.js') }}?v=3" defer></script>
 </body>
 </html>

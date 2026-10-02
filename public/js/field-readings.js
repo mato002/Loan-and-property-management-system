@@ -337,7 +337,14 @@
     const installHelp = document.getElementById('field-install-help');
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     let installPrompt = null;
-    if (!standalone && installBtn) {
+    if (standalone) {
+        if (installBtn) {
+            installBtn.hidden = true;
+        }
+        if (installHelp) {
+            installHelp.hidden = true;
+        }
+    } else if (installBtn) {
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
             installPrompt = event;
@@ -348,6 +355,7 @@
                 if (installHelp) {
                     installHelp.hidden = false;
                 }
+                setMessage('The browser did not open an install box. Use the browser menu and choose Install app, or on iPhone use Share then Add to Home Screen.');
                 return;
             }
             installPrompt.prompt();
@@ -355,8 +363,7 @@
             installPrompt = null;
             installBtn.hidden = true;
         });
-        if (/iphone|ipad|ipod/i.test(navigator.userAgent) && installHelp) {
-            installBtn.hidden = false;
+        if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
             installBtn.textContent = 'Add';
         }
     }

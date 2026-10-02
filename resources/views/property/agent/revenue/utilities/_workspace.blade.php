@@ -282,6 +282,10 @@
                 </details>
             @endif
 
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-sm text-cyan-950">
+                <p>The phone install is not on this page. Open the meter app, then tap <strong>Install</strong> in the green bar.</p>
+                <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[40px] items-center rounded-lg bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-800">Open meter app</a>
+            </div>
             <nav class="utility-ops-tabbar" aria-label="Utility operations">
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Register</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'overview' ? 'is-active' : ''" @click="setTab('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Overview</button>

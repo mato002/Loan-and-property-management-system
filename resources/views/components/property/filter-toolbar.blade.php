@@ -10,7 +10,7 @@
     $hasActions = isset($actions) && ! $actions->isEmpty();
     $hasBulk = isset($bulk) && ! $bulk->isEmpty();
     $hasFields = $hasPrimary || $hasSecondary || $hasDateRange || $hasExport || $hasActions;
-    $toolbarViewport = $__propertyToolbarViewport ?? 'all';
+    $toolbarViewport = \App\Support\Property\FilterToolbarViewport::current();
     $showDesktopToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'desktop';
     $showMobileToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'mobile';
     $filterSingleRow = $attributes->has('single-row');
@@ -85,6 +85,9 @@
             'turboFrame' => $turboFrame,
             'revenueDateFilter' => $revenueDateFilter,
             'resetUrl' => $resetUrl,
+            'drawerLabel' => $drawerLabel,
+            'activeFilterCount' => $activeFilterCount(),
+            'chips' => $chips,
         ])
     @endif
 
@@ -94,8 +97,12 @@
         </div>
     @endif
 
-    @if ($showDesktopToolbar && $chips->isNotEmpty())
-        <div class="property-filter-toolbar__chips flex flex-wrap items-center gap-1.5" data-property-filter-chips>
+    @if (($showDesktopToolbar || $toolbarViewport === 'mobile') && $chips->isNotEmpty())
+        <div @class([
+            'property-filter-toolbar__chips flex-wrap items-center gap-1.5',
+            'hidden md:flex' => $toolbarViewport === 'all',
+            'flex' => $toolbarViewport !== 'all',
+        ]) data-property-filter-chips>
             <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 shrink-0">Active</span>
             @foreach ($chips as $chip)
                 <a

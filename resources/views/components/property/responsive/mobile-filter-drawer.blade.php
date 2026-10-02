@@ -18,6 +18,7 @@
     x-on:keydown.escape.window="filterOpen = false"
     x-on:turbo:before-visit.window="filterOpen = false"
     x-on:turbo:frame-load.window="if ($event.target?.id === @js($turboFrame)) filterOpen = false"
+    data-property-filter-drawer-host
     {{ $attributes->merge(['class' => 'w-full min-w-0']) }}
 >
     {{-- Desktop: filters inline --}}

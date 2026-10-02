@@ -17,7 +17,7 @@
     /** @var list<string>|null $tableRowTones Optional per-row alert tones (same length as tableRows): vacant, vacant-long, notice, attention */
     'tableRowTones' => null,
     'showSearch' => true,
-    /** When false, toolbar slot renders as-is (e.g. x-property.filter-toolbar) without legacy mobile drawer wrapper */
+    /** When false, skip default search and extra mobile filter slots. Filter toolbars still collapse via x-property.filter-toolbar. */
     'legacyToolbar' => true,
     'tableMinWidth' => '720px',
     /** When true, renders mobile-record-list below md and hides the table on small screens */
@@ -241,7 +241,7 @@
                                 @if ($hasToolbar)
                                     <x-slot name="desktop">
                                         @php
-                                            $__propertyToolbarViewport = 'desktop';
+                                            \App\Support\Property\FilterToolbarViewport::set('desktop');
                                         @endphp
                                         <div class="flex w-full min-w-0 flex-wrap items-end gap-2 overflow-visible">
                                             @if ($useLegacyToolbar && $canShowDefaultSearch)
@@ -266,7 +266,7 @@
                                     </x-slot>
                                     <x-slot name="mobile">
                                         @php
-                                            $__propertyToolbarViewport = 'mobile';
+                                            \App\Support\Property\FilterToolbarViewport::set('mobile');
                                         @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
                                             @if ($useLegacyToolbar && $canShowDefaultSearch)
@@ -283,6 +283,9 @@
                                     </x-slot>
                                 @endif
                             </x-property.responsive.mobile-filter-drawer>
+                            @php
+                                \App\Support\Property\FilterToolbarViewport::set('all');
+                            @endphp
                         @endif
                     </div>
                 @endif
