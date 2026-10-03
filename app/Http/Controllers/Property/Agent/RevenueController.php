@@ -54,8 +54,8 @@ class RevenueController extends Controller
             ],
             [
                 'label' => 'Collected ('.$overview['period_label'].')',
-                'value' => PropertyMoney::kes($totals['collected']),
-                'hint' => 'Payments allocated this month',
+                'value' => PropertyMoney::kes($totals['applied']),
+                'hint' => 'Paid against invoices issued this month',
             ],
             [
                 'label' => 'Outstanding',
@@ -64,8 +64,10 @@ class RevenueController extends Controller
             ],
             [
                 'label' => 'Collection rate',
-                'value' => $totals['rate'] === null ? '—' : number_format($totals['rate'], 1).'%',
-                'hint' => 'Collected this month vs billed this month',
+                'value' => $totals['applied'] > 0.009 && $totals['billed'] > 0.009
+                    ? number_format(round(100.0 * $totals['applied'] / $totals['billed'], 1), 1).'%'
+                    : ($totals['billed'] > 0.009 ? '0.0%' : '—'),
+                'hint' => 'Paid vs billed on this month’s invoices',
             ],
         ];
 

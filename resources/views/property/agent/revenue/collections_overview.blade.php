@@ -23,7 +23,7 @@
         <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">By charge type</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Collected is money allocated this month. Outstanding is still open on that charge.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Collected is paid against this month’s invoices. Outstanding is everything still open for that charge.</p>
             </div>
         </div>
 
@@ -32,7 +32,10 @@
                 @php
                     $rate = $row['rate'];
                     $bar = $rate === null ? 0 : min(100, max(0, (float) $rate));
-                    $caughtUp = ($row['billed'] ?? 0) <= 0.009 && ($row['collected'] ?? 0) > 0.009;
+                    $received = (float) ($row['collected'] ?? 0);
+                    $applied = (float) ($row['applied'] ?? 0);
+                    $billed = (float) ($row['billed'] ?? 0);
+                    $caughtUp = $billed <= 0.009 && $received > 0.009;
                     $tone = match (true) {
                         $caughtUp => 'bg-amber-500',
                         $rate === null => 'bg-slate-200',
@@ -54,17 +57,20 @@
                     <dl class="mt-3 space-y-1.5 text-sm">
                         <div class="flex items-center justify-between gap-3">
                             <dt class="text-slate-500">Billed</dt>
-                            <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes((float) $row['billed']) }}</dd>
+                            <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes($billed) }}</dd>
                         </div>
                         <div class="flex items-center justify-between gap-3">
                             <dt class="text-slate-500">Collected</dt>
-                            <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes((float) $row['collected']) }}</dd>
+                            <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes($applied) }}</dd>
                         </div>
                         <div class="flex items-center justify-between gap-3">
                             <dt class="text-slate-500">Outstanding</dt>
                             <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes((float) $row['outstanding']) }}</dd>
                         </div>
                     </dl>
+                    @if($received > 0.009)
+                        <p class="mt-2 text-[11px] text-slate-500">Received this month {{ \App\Services\Property\PropertyMoney::kes($received) }}</p>
+                    @endif
                     @if($caughtUp)
                         <p class="mt-2 text-[11px] text-amber-700">Catch-up on older invoices — nothing billed this month.</p>
                     @endif

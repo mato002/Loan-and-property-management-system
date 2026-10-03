@@ -290,7 +290,7 @@ final class FinancialReportingFormulaService
                 'collected' => $collected,
                 'applied' => $applied,
                 'outstanding' => $outstanding,
-                'rate' => $billed > 0.009 ? round(100.0 * $collected / $billed, 1) : null,
+                'rate' => $billed > 0.009 ? round(100.0 * $applied / $billed, 1) : null,
             ];
         }
 
@@ -307,7 +307,7 @@ final class FinancialReportingFormulaService
                 'collected' => $totalsCollected,
                 'applied' => $totalsApplied,
                 'outstanding' => $totalsOutstanding,
-                'rate' => $totalsBilled > 0.009 ? round(100.0 * $totalsCollected / $totalsBilled, 1) : null,
+                'rate' => $totalsBilled > 0.009 ? round(100.0 * $totalsApplied / $totalsBilled, 1) : null,
             ],
         ];
     }
