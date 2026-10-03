@@ -84,7 +84,7 @@
         netEl.className = online ? 'online' : 'offline';
         pendingEl.textContent = queue.length + ' waiting to send';
         if (pack?.downloaded_at) {
-            downloadedEl.textContent = 'Route saved on this phone ' + pack.downloaded_at + '. ' + (pack.properties || []).length + ' properties.';
+            downloadedEl.textContent = (pack.properties || []).length + ' properties on this phone';
         }
     }
 
@@ -139,40 +139,39 @@
                 const saved = queuedFor(unit.id, meter.kind, month);
                 const row = document.createElement('div');
                 row.className = 'meter';
-                const label = document.createElement('p');
-                label.className = 'muted';
-                label.textContent = meter.label + (meter.meter_no ? ' · meter ' + meter.meter_no : '') + (meter.already_recorded ? ' · already in the office' : '');
-                row.appendChild(label);
-                const previous = document.createElement('p');
+                const who = document.createElement('div');
+                who.className = 'who';
+                const name = document.createElement('strong');
+                name.textContent = meter.label;
+                who.appendChild(name);
+                const previous = document.createElement('span');
                 previous.className = 'muted';
-                previous.textContent = 'Previous ' + Number(meter.previous || 0);
-                row.appendChild(previous);
+                previous.textContent = 'Prev ' + Number(meter.previous || 0);
+                who.appendChild(previous);
+                const reset = document.createElement('input');
+                reset.type = 'checkbox';
+                reset.checked = Boolean(saved?.is_meter_reset);
+                const resetLabel = document.createElement('label');
+                resetLabel.className = 'reset';
+                resetLabel.appendChild(reset);
+                resetLabel.appendChild(document.createTextNode('Replaced'));
+                who.appendChild(resetLabel);
+                row.appendChild(who);
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.inputMode = 'decimal';
                 input.step = '0.001';
                 input.min = '0';
-                input.placeholder = 'Current reading';
+                input.placeholder = 'Now';
+                input.setAttribute('aria-label', meter.label + ' current reading');
                 input.value = saved ? String(saved.current_reading) : '';
-                input.className = '';
                 row.appendChild(input);
-                const actions = document.createElement('div');
-                actions.className = 'meter-actions';
-                const resetLabel = document.createElement('label');
-                resetLabel.className = 'muted';
-                const reset = document.createElement('input');
-                reset.type = 'checkbox';
-                reset.checked = Boolean(saved?.is_meter_reset);
-                resetLabel.appendChild(reset);
-                resetLabel.appendChild(document.createTextNode('Meter replaced'));
                 const save = document.createElement('button');
                 save.type = 'button';
                 save.className = 'save';
-                save.textContent = saved ? 'Saved on phone' : 'Save on phone';
+                save.textContent = saved ? 'Saved' : 'Save';
                 save.addEventListener('click', () => saveLocal(property, unit, meter, month, input.value, reset.checked, save));
-                actions.appendChild(resetLabel);
-                actions.appendChild(save);
-                row.appendChild(actions);
+                row.appendChild(save);
                 card.appendChild(row);
             });
             unitsEl.appendChild(card);
@@ -241,7 +240,7 @@
         renderProperties();
         renderUnits();
         paintStatus();
-        setMessage((data.properties || []).length ? 'Route is on this phone. You can record without internet.' : 'No properties are assigned to you yet.');
+        setMessage((data.properties || []).length ? 'Route ready.' : 'No properties assigned.');
     }
 
     async function syncQueue() {
