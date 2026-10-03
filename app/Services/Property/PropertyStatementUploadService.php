@@ -18,6 +18,7 @@ final class PropertyStatementUploadService
         private readonly CoopBankAccountStatementImportService $coopImport,
         private readonly SafaricomC2bCsvStatementParser $safaricomParser,
         private readonly PropertyStatementMissingPaymentRecoveryService $recovery,
+        private readonly PropertyStatementAutoAssignService $autoAssign,
     ) {}
 
     /**
@@ -25,7 +26,8 @@ final class PropertyStatementUploadService
      *     provider:string,
      *     path:string,
      *     import:array<string, mixed>,
-     *     recovery:array{recovered:int, skipped:int, errors:list<string>}|null
+     *     recovery:array{recovered:int, skipped:int, errors:list<string>}|null,
+     *     auto:array{posted:int, linked:int, skipped:int, errors:list<string>}|null
      * }
      */
     public function uploadAndImport(
@@ -54,12 +56,16 @@ final class PropertyStatementUploadService
         };
 
         $recovery = null;
+        $auto = null;
         $statementId = (int) ($import['statement_id'] ?? 0);
-        if ($recoverMissing && $statementId > 0 && (int) ($import['unmatched'] ?? 0) > 0) {
-            $statement = \App\Models\PmBankStatement::query()->find($statementId);
-            if ($statement) {
-                $recovery = $this->recovery->recoverStatement($statement, $agentUserId);
-            }
+        $statement = $statementId > 0
+            ? \App\Models\PmBankStatement::query()->find($statementId)
+            : null;
+        if ($recoverMissing && $statement && (int) ($import['unmatched'] ?? 0) > 0) {
+            $recovery = $this->recovery->recoverStatement($statement, $agentUserId);
+        }
+        if ($statement) {
+            $auto = $this->autoAssign->assignStatement($statement, $agentUserId);
         }
 
         return [
@@ -67,6 +73,7 @@ final class PropertyStatementUploadService
             'path' => $stored,
             'import' => $import,
             'recovery' => $recovery,
+            'auto' => $auto,
         ];
     }
 

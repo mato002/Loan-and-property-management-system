@@ -14,6 +14,7 @@ use App\Models\PropertyUnit;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
+use App\Services\Property\PropertyHrWorkflowService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -100,7 +101,7 @@ class PmMaintenanceWebController extends Controller
                 $r->created_at->format('Y-m-d'),
                 ucfirst($r->urgency),
                 ucfirst(str_replace('_', ' ', $r->status)),
-                $r->reportedBy?->name ?? '—',
+                $r->assignedUser?->name ?? 'Unassigned',
                 $actions,
             ];
         })->all();
@@ -125,22 +126,23 @@ class PmMaintenanceWebController extends Controller
 
         return TabularExport::stream(
             'maintenance_requests_'.now()->format('Ymd_His'),
-            ['ID', 'Unit', 'Category', 'Description', 'Urgency', 'Status', 'Reported By', 'Created At'],
+            ['ID', 'Unit', 'Category', 'Summary', 'Reported', 'Priority', 'Status', 'Assignee'],
             function () use ($rows) {
                 foreach ($rows as $r) {
                     yield [
-                        $r->id,
-                        $r->unit->property->name.'/'.$r->unit->label,
+                        '#'.$r->id,
+                        ($r->unit?->property?->name ?? '').'/'.($r->unit?->label ?? ''),
                         $r->category,
                         $r->description,
-                        $r->urgency,
-                        $r->status,
-                        $r->reportedBy?->name,
-                        optional($r->created_at)->format('Y-m-d H:i:s'),
+                        optional($r->created_at)->format('Y-m-d'),
+                        ucfirst((string) $r->urgency),
+                        ucfirst(str_replace('_', ' ', (string) $r->status)),
+                        $r->assignedUser?->name ?? '',
                     ];
                 }
             },
             $format,
+            ['title' => 'Maintenance requests'],
         );
     }
 
@@ -167,20 +169,22 @@ class PmMaintenanceWebController extends Controller
         $property = Property::query()->findOrFail((int) $data['property_id']);
         app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateMaintenance($property);
 
-        PmMaintenanceRequest::query()->create([
+        $ticket = PmMaintenanceRequest::query()->create([
             'property_unit_id' => (int) $data['property_unit_id'],
             'pm_tenant_id' => $pmTenantId,
             'reported_by_user_id' => $request->user()->id,
-            // Auto-assign behavior is represented by moving new tickets into triage immediately.
             'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
             'category' => (string) $data['category'],
             'description' => (string) $data['description'],
             'urgency' => (string) $data['urgency'],
         ]);
+        $routedTo = app(PropertyHrWorkflowService::class)->routeMaintenanceRequest($ticket);
 
-        $success = $workflowAutoAssignTickets
-            ? 'Maintenance request logged and auto-routed to triage.'
-            : 'Maintenance request logged.';
+        $success = $routedTo
+            ? 'Maintenance request logged and sent to '.$routedTo.'.'
+            : ($workflowAutoAssignTickets
+                ? 'Maintenance request logged and auto-routed to triage.'
+                : 'Maintenance request logged.');
 
         $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
             $request,
@@ -412,6 +416,15 @@ class PmMaintenanceWebController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $decision = app(PropertyHrWorkflowService::class)->decideMaintenanceApproval(
+            null,
+            $request->user(),
+            (string) $data['status'],
+            (float) ($data['quote_amount'] ?? 0),
+            true,
+            (int) $data['pm_maintenance_request_id'],
+        );
+        $data['status'] = $decision['status'];
         $completedAt = $data['status'] === 'done' ? now() : null;
 
         $job = PmMaintenanceJob::query()->create([
@@ -419,8 +432,11 @@ class PmMaintenanceWebController extends Controller
             'completed_at' => $completedAt,
         ]);
         PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+        if ($data['status'] === 'done') {
+            app(PropertyHrWorkflowService::class)->logMaintenanceClosed($job, $request->user());
+        }
 
-        return back()->with('success', 'Job saved.');
+        return back()->with('success', $decision['notice'] ?? 'Job saved.');
     }
 
     public function editJob(Request $request, PmMaintenanceJob $job): View
@@ -444,6 +460,13 @@ class PmMaintenanceWebController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $decision = app(PropertyHrWorkflowService::class)->decideMaintenanceApproval(
+            $job,
+            $request->user(),
+            (string) $data['status'],
+            (float) ($data['quote_amount'] ?? $job->quote_amount ?? 0),
+        );
+        $data['status'] = $decision['status'];
         $status = $data['status'];
         $oldStatus = (string) $job->status;
         $job->update([
@@ -454,6 +477,9 @@ class PmMaintenanceWebController extends Controller
 
         if ($status === 'done') {
             PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+            if ($oldStatus !== 'done') {
+                app(PropertyHrWorkflowService::class)->logMaintenanceClosed($job, $request->user());
+            }
         }
         if ($oldStatus !== $status && $job->request) {
             $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
@@ -469,10 +495,12 @@ class PmMaintenanceWebController extends Controller
             );
         }
 
+        $message = $decision['notice'] ?? 'Job updated.';
+
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
-            redirect()->route('property.maintenance.jobs')->with('success', 'Job updated.'),
-            'Job updated.',
+            redirect()->route('property.maintenance.jobs')->with('success', $message),
+            $message,
         );
     }
 
@@ -489,7 +517,13 @@ class PmMaintenanceWebController extends Controller
             'status' => ['required', 'in:quoted,approved,in_progress,done,cancelled'],
         ]);
 
-        $status = $data['status'];
+        $decision = app(PropertyHrWorkflowService::class)->decideMaintenanceApproval(
+            $job,
+            $request->user(),
+            (string) $data['status'],
+            (float) ($job->quote_amount ?? 0),
+        );
+        $status = $decision['status'];
         $oldStatus = (string) $job->status;
         $job->update([
             'status' => $status,
@@ -499,6 +533,9 @@ class PmMaintenanceWebController extends Controller
 
         if ($status === 'done') {
             PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+            if ($oldStatus !== 'done') {
+                app(PropertyHrWorkflowService::class)->logMaintenanceClosed($job, $request->user());
+            }
         }
         if ($oldStatus !== $status && $job->request) {
             $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
@@ -514,7 +551,7 @@ class PmMaintenanceWebController extends Controller
             );
         }
 
-        return back()->with('success', 'Job status updated.');
+        return back()->with('success', $decision['notice'] ?? 'Job status updated.');
     }
 
     public function history(): View
@@ -605,7 +642,11 @@ class PmMaintenanceWebController extends Controller
 
     private function requestsQuery(array $filters): Builder
     {
-        $q = PmMaintenanceRequest::query()->with(['unit.property', 'reportedBy']);
+        $with = ['unit.property', 'reportedBy'];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'assigned_user_id')) {
+            $with[] = 'assignedUser';
+        }
+        $q = PmMaintenanceRequest::query()->with($with);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {

@@ -23,6 +23,11 @@
                 selectedWaterPropertyId: @js($oldWaterPropertyId),
                 selectedReadingUnitId: @js($oldWaterUnitId),
                 selectedWaterMonth: @js(old('billing_month', now()->format('Y-m'))),
+                selectedElectricPropertyId: 0,
+                selectedElectricUnitId: 0,
+                electricMonth: @js(old('billing_month', now()->format('Y-m'))),
+                electricUnits: '',
+                electricRate: '',
                 defaultPreviousUrl: @js(route('property.revenue.utilities.water_readings.default_previous', [], true)),
                 waterPrevAutofillOnMount: @json(! $skipWaterPrevAutofill),
                 _prevFetchTimer: null,
@@ -234,6 +239,25 @@
                     }
                 },
                 closePenaltyModal() { this.penaltyModalOpen = false; },
+                electricityTemplate() {
+                    const unitId = String(this.selectedElectricUnitId || '');
+                    return (this.utilityTemplatesByUnit?.[unitId] || {}).electricity || null;
+                },
+                syncElectricityUnit() {
+                    const units = this.filteredUnits(this.selectedElectricPropertyId);
+                    const exists = units.some((unit) => Number(unit.id) === Number(this.selectedElectricUnitId));
+                    if (!exists) this.selectedElectricUnitId = Number(units[0]?.id || 0);
+                    const tpl = this.electricityTemplate();
+                    if (tpl && Number(tpl.rate_per_unit || 0) > 0) {
+                        this.electricRate = Number(tpl.rate_per_unit).toFixed(2);
+                    }
+                },
+                electricityBill() {
+                    const units = Number(this.electricUnits || 0);
+                    const rate = Number(this.electricRate || 0);
+                    if (!(units > 0) || !(rate > 0)) return '';
+                    return (units * rate).toFixed(2);
+                },
                 isReadingRecorded(unitId) {
                     const month = String(this.selectedWaterMonth || '');
                     if (!month) return false;
@@ -244,12 +268,22 @@
             x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); const hasStanding = @json(((int) ($standingLeaseCount ?? 0) > 0) || ((float) ($standingMonthlyTotal ?? 0) > 0)); if (q && allowed.includes(q)) activeTab = q; else if (hasStanding) activeTab = 'standing'; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="utility-ops-shell space-y-4"
         >
-            @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
-
             @if (! empty($opsKpis))
-                <x-property.utility.compact-kpi-strip :items="$opsKpis" />
+                <details class="group rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
+                    <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-semibold text-slate-800 marker:content-none dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+                        <span>Billing summary</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+                    </summary>
+                    <div class="border-t border-slate-100 px-3 py-3 dark:border-slate-700">
+                        <x-property.utility.compact-kpi-strip :items="$opsKpis" />
+                    </div>
+                </details>
             @endif
 
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-sm text-cyan-950">
+                <p>The phone install is not on this page. Open the meter app, then tap <strong>Install</strong> in the green bar.</p>
+                <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[40px] items-center rounded-lg bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-800">Open meter app</a>
+            </div>
             <nav class="utility-ops-tabbar" aria-label="Utility operations">
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Register</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'overview' ? 'is-active' : ''" @click="setTab('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Overview</button>
@@ -265,9 +299,60 @@
                     <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Periods</a>
                     <button type="button" @click="setTab('standing')" class="quick-action-btn bg-slate-800 text-white hover:bg-slate-900">Standing register</button>
                     <button type="button" data-property-modal-open="showWaterReadingForm" @click="showWaterReadingForm = true" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
+                    <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="quick-action-btn border border-cyan-300 bg-white text-cyan-900 hover:bg-cyan-50">Meter app</a>
                 </x-property.responsive.quick-action-grid>
             </div>
             <div x-show="activeTab === 'readings'" x-cloak class="space-y-4">
+                <form method="post" action="{{ route('property.revenue.utilities.store') }}" class="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm space-y-3">
+                    @csrf
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">Electricity units</h3>
+                    </div>
+                    <input type="hidden" name="charge_type" value="electricity" />
+                    <input type="hidden" name="label" value="Electricity" />
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600">Property</label>
+                            <select x-model.number="selectedElectricPropertyId" @change="syncElectricityUnit()" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                <option value="0">Select property...</option>
+                                <template x-for="property in properties" :key="'elec-property-' + property.id">
+                                    <option :value="property.id" x-text="property.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600">Unit</label>
+                            <select name="property_unit_id" x-model.number="selectedElectricUnitId" @change="syncElectricityUnit()" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                <option value="0">Select unit...</option>
+                                <template x-for="unit in filteredUnits(selectedElectricPropertyId)" :key="'elec-unit-' + unit.id">
+                                    <option :value="unit.id" x-text="unit.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600">Month</label>
+                            <input type="month" name="billing_month" x-model="electricMonth" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600">Units used</label>
+                            <input type="number" name="units_consumed" x-model="electricUnits" step="0.001" min="0.001" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                        </div>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600">Charge per unit</label>
+                            <input type="number" name="rate_per_unit" x-model="electricRate" step="0.01" min="0.01" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                        </div>
+                        <p class="text-sm tabular-nums text-slate-700 lg:col-span-2" x-show="electricityBill()" x-cloak>
+                            <span x-text="Number(electricUnits || 0).toFixed(3)"></span>
+                            ×
+                            <span x-text="Number(electricRate || 0).toFixed(2)"></span>
+                            =
+                            <span class="font-semibold">KES <span x-text="electricityBill()"></span></span>
+                        </p>
+                        <button type="submit" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700">Save electricity bill</button>
+                    </div>
+                </form>
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Recorded readings</h3>
                     <button type="button" data-property-modal-open="showWaterReadingForm" @click="showWaterReadingForm = true" class="inline-flex items-center justify-center rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700 min-h-[44px]">Capture reading</button>

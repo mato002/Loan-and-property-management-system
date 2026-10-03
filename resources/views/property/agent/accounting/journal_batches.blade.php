@@ -70,9 +70,13 @@
                     </select>
                 </div>
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
                 <a href="{{ route('property.accounting.gl.journal_batches') }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+                @include('property.agent.partials.export_dropdown', [
+                    'route' => 'property.accounting.gl.journal_batches',
+                    'query' => request()->except(['export', 'page']),
+                ])
             </div>
         </form>
     </x-slot>

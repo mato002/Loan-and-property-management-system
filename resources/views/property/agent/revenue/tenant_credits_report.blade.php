@@ -4,13 +4,20 @@
         || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
 @endphp
 <x-property.workspace
+    :legacy-toolbar="false"
+    :show-search="false"
     title="Tenant advance credits"
     subtitle="Unapplied tenant funds held as credit liability (not suspense)."
     back-route="property.revenue.overview"
     :stats="[
-        ['label' => 'Total unapplied', 'value' => \App\Services\Property\PropertyMoney::kes((float) $totalUnapplied), 'hint' => 'All tenants'],
-        ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'This page'],
+        ['label' => 'Total unapplied', 'value' => \App\Services\Property\PropertyMoney::kes((float) $totalUnapplied), 'hint' => 'All tenants with credit'],
+        ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'Matching the filters'],
     ]"
+    :columns="$columns"
+    :table-rows="$tableRows"
+    table-min-width="1100px"
+    empty-title="No tenant credit balances"
+    empty-hint="Record an advance payment, or clear the filters."
 >
     <x-slot name="pageModalsAttributes"
         x-data="{!! \Illuminate\Support\Js::from(['showAdvancePaymentForm' => $showAdvanceFormByDefault]) !!}"
@@ -50,45 +57,46 @@
         </x-property.modal>
     </x-slot>
 
-    <form method="get" class="mb-4 flex flex-wrap gap-2 items-end" data-turbo-frame="property-main">
-        <div>
-            <label class="text-xs text-slate-500">Search tenant</label>
-            <input type="search" name="q" value="{{ $filters['q'] }}" class="mt-1 rounded-lg border-slate-300 text-sm" placeholder="Name or phone">
-        </div>
-        <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white">Filter</button>
-    </form>
-
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <table class="min-w-full text-sm">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <tr>
-                    <th class="px-4 py-3">Tenant</th>
-                    <th class="px-4 py-3">Phone</th>
-                    <th class="px-4 py-3">Credit balance</th>
-                    <th class="px-4 py-3">Updated</th>
-                    <th class="px-4 py-3"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($balances as $row)
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
-                        <td class="px-4 py-3 font-medium">{{ $row->tenant?->name ?? '—' }}</td>
-                        <td class="px-4 py-3">{{ $row->tenant?->phone ?? '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums font-semibold text-emerald-700">{{ \App\Services\Property\PropertyMoney::kes((float) $row->balance) }}</td>
-                        <td class="px-4 py-3 text-slate-500">{{ $row->updated_at?->format('Y-m-d') }}</td>
-                        <td class="px-4 py-3 text-right">
-                            @if ($row->tenant)
-                                <a href="{{ route('property.tenants.credit.ledger', $row->tenant, false) }}" data-turbo-frame="property-main" class="text-indigo-600 font-medium hover:underline">Ledger</a>
-                            @endif
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="5" class="px-4 py-10 text-center text-slate-500">No tenant credit balances.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+    <x-slot name="toolbar">
+        <x-property.filter-toolbar
+            :action="route('property.revenue.tenant_credits', false)"
+            :reset-url="route('property.revenue.tenant_credits', false)"
+            drawer-label="Credit filters"
+            :chip-labels="[
+                'q' => 'Search',
+                'property_id' => 'Property',
+                'min_balance' => 'Min balance',
+                'sort' => 'Sort',
+                'dir' => 'Order',
+            ]"
+        >
+            <x-slot name="primary">
+                <x-property.filter-field type="search" name="q" placeholder="Name, phone, or account…" :value="$filters['q'] ?? ''" wide />
+                <x-property.filter-field type="select" name="property_id" label="Property" empty-option="Property: All" :options="collect($properties ?? [])->map(fn ($p) => ['value' => (string) $p->id, 'label' => $p->name])->all()" :value="(string) ($filters['property_id'] ?? '')" />
+                <x-property.filter-field type="number" name="min_balance" placeholder="Min balance" :value="$filters['min_balance'] ?? ''" />
+                <x-property.filter-field type="select" name="sort" label="Sort" :options="[
+                    ['value' => 'balance', 'label' => 'Sort: Balance'],
+                    ['value' => 'name', 'label' => 'Sort: Tenant'],
+                    ['value' => 'updated', 'label' => 'Sort: Updated'],
+                ]" :value="$filters['sort'] ?? 'balance'" />
+                <x-property.filter-field type="select" name="dir" label="Order" :options="[['value' => 'desc', 'label' => 'Desc'], ['value' => 'asc', 'label' => 'Asc']]" :value="$filters['dir'] ?? 'desc'" />
+            </x-slot>
+            <x-slot name="export">
+                @include('property.agent.partials.export_dropdown', [
+                    'csvUrl' => route('property.revenue.tenant_credits', array_merge(request()->query(), ['export' => 'csv']), false),
+                    'xlsUrl' => route('property.revenue.tenant_credits', array_merge(request()->query(), ['export' => 'xls']), false),
+                    'pdfUrl' => route('property.revenue.tenant_credits', array_merge(request()->query(), ['export' => 'pdf']), false),
+                    'wordUrl' => route('property.revenue.tenant_credits', array_merge(request()->query(), ['export' => 'word']), false),
+                ])
+            </x-slot>
+        </x-property.filter-toolbar>
+    </x-slot>
+    <x-slot name="footer">
         @if ($balances->hasPages())
-            <div class="px-4 py-3 border-t">{{ $balances->links() }}</div>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600">Showing {{ $balances->firstItem() ?? 0 }}–{{ $balances->lastItem() ?? 0 }} of {{ $balances->total() }} tenant(s)</p>
+                {{ $balances->links() }}
+            </div>
         @endif
-    </div>
+    </x-slot>
 </x-property.workspace>

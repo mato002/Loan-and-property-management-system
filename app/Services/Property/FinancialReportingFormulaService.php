@@ -11,6 +11,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Canonical financial reporting formulas (billable AR, collections, billed, landlord payable, tenant total due).
@@ -146,12 +147,169 @@ final class FinancialReportingFormulaService
         return round((float) $query->sum('amount'), 2);
     }
 
+    /**
+     * Money already applied to invoices issued in the period.
+     * Payment dates are often outside the billing month, so paid_at is not the rent-roll collection figure.
+     *
+     * @param  list<int>|array<int, int>  $unitIds
+     */
+    public function collectedOnIssuedBills(
+        CarbonInterface $start,
+        CarbonInterface $end,
+        ?int $tenantId = null,
+        array $unitIds = [],
+    ): float {
+        $query = $this->billableIssuedQuery($start, $end);
+        if ($tenantId !== null && $tenantId > 0) {
+            $query->where('pm_tenant_id', $tenantId);
+        }
+        if ($unitIds !== []) {
+            $query->whereIn('property_unit_id', $unitIds);
+        }
+
+        return round((float) $query->sum('amount_paid'), 2);
+    }
+
     public function billedMtd(): float
     {
         return $this->billedForPeriod(
             Carbon::now()->startOfMonth(),
             Carbon::now()->endOfMonth()
         );
+    }
+
+    /**
+     * Billed vs collected vs outstanding, grouped by invoice charge type.
+     *
+     * @return array{
+     *     period_label: string,
+     *     types: list<array{
+     *         key: string,
+     *         label: string,
+     *         billed: float,
+     *         collected: float,
+     *         applied: float,
+     *         outstanding: float,
+     *         rate: float|null
+     *     }>,
+     *     totals: array{billed: float, collected: float, applied: float, outstanding: float, rate: float|null}
+     * }
+     */
+    public function collectionsOverviewByChargeType(?CarbonInterface $start = null, ?CarbonInterface $end = null): array
+    {
+        $start = ($start ?? Carbon::now()->startOfMonth())->copy()->startOfDay();
+        $end = ($end ?? Carbon::now()->endOfMonth())->copy()->endOfDay();
+
+        $billedRows = $this->billableIssuedQuery($start, $end)
+            ->selectRaw('invoice_type')
+            ->selectRaw('COALESCE(SUM(amount), 0) as billed')
+            ->selectRaw('COALESCE(SUM(amount_paid), 0) as applied')
+            ->groupBy('invoice_type')
+            ->get()
+            ->keyBy(fn ($row) => (string) ($row->invoice_type ?? ''));
+
+        $outstandingRows = $this->balances->billableArQuery()
+            ->selectRaw('invoice_type')
+            ->selectRaw(FinanceBalanceSnapshotService::OUTSTANDING_SUM_SQL.' as outstanding')
+            ->groupBy('invoice_type')
+            ->get()
+            ->keyBy(fn ($row) => (string) ($row->invoice_type ?? ''));
+
+        $collectedQuery = PmInvoice::query()
+            ->billableAr()
+            ->join('pm_payment_allocations as a', 'a.pm_invoice_id', '=', 'pm_invoices.id')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->whereNotNull('pay.paid_at')
+            ->whereBetween('pay.paid_at', [$start, $end])
+            ->where(function ($query) {
+                $query->whereNull('pay.channel')
+                    ->orWhere('pay.channel', '!=', 'tenant_credit');
+            });
+
+        if (Schema::hasColumn('pm_payment_allocations', 'is_reversed')) {
+            $collectedQuery->where(function ($query) {
+                $query->where('a.is_reversed', false)->orWhereNull('a.is_reversed');
+            });
+        }
+
+        $collectedRows = $collectedQuery
+            ->selectRaw('pm_invoices.invoice_type as invoice_type')
+            ->selectRaw('COALESCE(SUM(a.amount), 0) as collected')
+            ->groupBy('pm_invoices.invoice_type')
+            ->get()
+            ->keyBy(fn ($row) => (string) ($row->invoice_type ?? ''));
+
+        $labels = array_merge(
+            PmInvoice::builtinTypeOptions(),
+            PmInvoice::customTypeOptions(),
+            [
+                PmInvoice::TYPE_OTHER => 'Other',
+                PmInvoice::TYPE_MIXED => 'Mixed',
+            ],
+        );
+
+        $priority = [
+            PmInvoice::TYPE_RENT,
+            PmInvoice::TYPE_WATER,
+            PmInvoice::TYPE_ELECTRICITY,
+            PmInvoice::TYPE_GARBAGE,
+            PmInvoice::TYPE_SERVICE,
+            PmInvoice::TYPE_LATE_PAYMENT,
+        ];
+
+        $keys = collect($priority)
+            ->merge($billedRows->keys())
+            ->merge($collectedRows->keys())
+            ->merge($outstandingRows->keys())
+            ->map(fn ($key) => (string) $key)
+            ->unique()
+            ->values();
+
+        $types = [];
+        foreach ($keys as $key) {
+            $billed = round((float) ($billedRows[$key]->billed ?? 0), 2);
+            $applied = round((float) ($billedRows[$key]->applied ?? 0), 2);
+            $collected = round((float) ($collectedRows[$key]->collected ?? 0), 2);
+            $outstanding = round((float) ($outstandingRows[$key]->outstanding ?? 0), 2);
+            $alwaysShow = in_array($key, [
+                PmInvoice::TYPE_RENT,
+                PmInvoice::TYPE_WATER,
+                PmInvoice::TYPE_ELECTRICITY,
+                PmInvoice::TYPE_GARBAGE,
+            ], true);
+
+            if (! $alwaysShow && $billed <= 0.009 && $collected <= 0.009 && $outstanding <= 0.009) {
+                continue;
+            }
+
+            $types[] = [
+                'key' => $key !== '' ? $key : 'unspecified',
+                'label' => $labels[$key] ?? ($key !== '' ? ucwords(str_replace('_', ' ', $key)) : 'Unspecified'),
+                'billed' => $billed,
+                'collected' => $collected,
+                'applied' => $applied,
+                'outstanding' => $outstanding,
+                'rate' => $billed > 0.009 ? round(100.0 * $applied / $billed, 1) : null,
+            ];
+        }
+
+        $totalsBilled = round((float) collect($types)->sum('billed'), 2);
+        $totalsCollected = round((float) collect($types)->sum('collected'), 2);
+        $totalsApplied = round((float) collect($types)->sum('applied'), 2);
+        $totalsOutstanding = round((float) collect($types)->sum('outstanding'), 2);
+
+        return [
+            'period_label' => $start->format('F Y'),
+            'types' => $types,
+            'totals' => [
+                'billed' => $totalsBilled,
+                'collected' => $totalsCollected,
+                'applied' => $totalsApplied,
+                'outstanding' => $totalsOutstanding,
+                'rate' => $totalsBilled > 0.009 ? round(100.0 * $totalsApplied / $totalsBilled, 1) : null,
+            ],
+        ];
     }
 
     public function landlordPayableGlobal(): float

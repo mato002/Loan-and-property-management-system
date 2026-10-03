@@ -12,6 +12,7 @@
     },
     "scripts": {
         "build": "vite build",
+        "postbuild": "node scripts/publish-vite-build.mjs",
         "dev": "vite",
         "cap:sync": "npx cap sync",
         "cap:copy": "npx cap copy",

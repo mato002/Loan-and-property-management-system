@@ -310,6 +310,7 @@ function initPropertyDashboardCharts(root = document) {
         return;
     }
 
+    destroyChartOnCanvas('dashboard-chart-rent-comparison', root);
     destroyChartOnCanvas('dashboard-chart-invoices', root);
     destroyChartOnCanvas('dashboard-chart-payments', root);
     destroyChartOnCanvas('dashboard-chart-commission-properties', root);
@@ -320,6 +321,8 @@ function initPropertyDashboardCharts(root = document) {
     let labels = [];
     let invoices = [];
     let payments = [];
+    let rentCharges = [];
+    let rentCollections = [];
     let commissionByProperty = { labels: [], values: [] };
     let commissionSplit = { labels: [], values: [] };
     let occupancy = { labels: [], values: [] };
@@ -328,12 +331,41 @@ function initPropertyDashboardCharts(root = document) {
         labels = JSON.parse(holder.dataset.labels || '[]');
         invoices = JSON.parse(holder.dataset.invoices || '[]');
         payments = JSON.parse(holder.dataset.payments || '[]');
+        rentCharges = JSON.parse(holder.dataset.rentCharges || '[]');
+        rentCollections = JSON.parse(holder.dataset.rentCollections || '[]');
         commissionByProperty = JSON.parse(holder.dataset.commissionByProperty || '{"labels":[],"values":[]}');
         commissionSplit = JSON.parse(holder.dataset.commissionSplit || '{"labels":[],"values":[]}');
         occupancy = JSON.parse(holder.dataset.occupancy || '{"labels":[],"values":[]}');
         collectionsBilled = JSON.parse(holder.dataset.collectionsBilled || '{"labels":[],"values":[]}');
     } catch {
         return;
+    }
+
+    const rentCanvas = root.querySelector?.('#dashboard-chart-rent-comparison') ?? document.getElementById('dashboard-chart-rent-comparison');
+    if (rentCanvas?.getContext) {
+        new Chart(rentCanvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Rental charge',
+                        data: rentCharges,
+                        backgroundColor: '#ef4444',
+                        borderRadius: 2,
+                        maxBarThickness: 22,
+                    },
+                    {
+                        label: 'Rent collection',
+                        data: rentCollections,
+                        backgroundColor: '#94a3b8',
+                        borderRadius: 2,
+                        maxBarThickness: 22,
+                    },
+                ],
+            },
+            options: baseOptions(),
+        });
     }
 
     const invCanvas = root.querySelector?.('#dashboard-chart-invoices') ?? document.getElementById('dashboard-chart-invoices');

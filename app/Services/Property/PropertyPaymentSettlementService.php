@@ -8,6 +8,7 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\User;
 use App\Services\Property\InvoiceStateIntegrityService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -96,7 +97,8 @@ class PropertyPaymentSettlementService
 
             $fresh = $payment->fresh();
             $paymentId = (int) ($fresh?->id ?? 0);
-            if ($paymentId > 0) {
+            $skipNotification = (bool) data_get($payment->meta, 'skip_notification');
+            if ($paymentId > 0 && ! $skipNotification) {
                 DB::afterCommit(function () use ($paymentId) {
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);
@@ -156,7 +158,126 @@ class PropertyPaymentSettlementService
 
             $this->repairTenantIfDriftDetected((int) $invoice->pm_tenant_id);
 
+            app(PropertyHrWorkflowService::class)->logPaymentRecorded(
+                (int) $payment->id,
+                (int) $invoice->pm_tenant_id,
+                $amount,
+                (int) $invoice->id,
+                $actor,
+            );
+
             return $payment->fresh(['allocations']);
+        });
+    }
+
+    /**
+     * Manual rent receipt: one amount received, applied to the invoice lines the cashier entered.
+     * Anything not applied to an invoice is held as tenant credit (on account).
+     *
+     * @param  array{
+     *     pm_tenant_id: int,
+     *     amount: float|int|string,
+     *     channel: string,
+     *     external_ref?: string|null,
+     *     record_date?: string|null,
+     *     banking_date?: string|null,
+     *     payer_bank?: string|null,
+     *     memo?: string|null,
+     *     receipt_to?: string|null,
+     *     bank_account_id?: int|null,
+     *     vat_mode?: string|null,
+     *     property_id?: int|null,
+     *     skip_notification?: bool,
+     *     allocations?: array<int|string, float|int|string>,
+     *     agent_user_id?: int|null
+     * }  $data
+     */
+    public function recordManualRentReceipt(array $data, ?User $actor = null): PmPayment
+    {
+        return DB::transaction(function () use ($data, $actor) {
+            $tenantId = (int) $data['pm_tenant_id'];
+            $amount = round((float) $data['amount'], 2);
+            if ($amount <= 0.0001) {
+                throw new RuntimeException('Enter the amount received.');
+            }
+
+            $lines = [];
+            foreach ((array) ($data['allocations'] ?? []) as $invoiceId => $lineAmount) {
+                $lineAmount = round((float) $lineAmount, 2);
+                if ($lineAmount <= 0.0001) {
+                    continue;
+                }
+                $lines[(int) $invoiceId] = $lineAmount;
+            }
+
+            $lineSum = round(array_sum($lines), 2);
+            if ($lineSum - $amount > 0.009) {
+                throw new RuntimeException('Invoice payments are higher than the amount received.');
+            }
+
+            $paidAt = Carbon::parse((string) ($data['banking_date'] ?: $data['record_date'] ?: now()->toDateString()))->startOfDay();
+
+            $payment = PmPayment::query()->create([
+                'pm_tenant_id' => $tenantId,
+                'channel' => (string) $data['channel'],
+                'amount' => $amount,
+                'external_ref' => $data['external_ref'] ?? null,
+                'paid_at' => $paidAt,
+                'status' => PmPayment::STATUS_COMPLETED,
+                'agent_user_id' => ($data['agent_user_id'] ?? null) ?: null,
+                'meta' => [
+                    'source' => 'manual_rent_receipt',
+                    'record_date' => (string) ($data['record_date'] ?? ''),
+                    'banking_date' => (string) ($data['banking_date'] ?? ''),
+                    'payer_bank' => (string) ($data['payer_bank'] ?? ''),
+                    'memo' => (string) ($data['memo'] ?? ''),
+                    'receipt_to' => (string) ($data['receipt_to'] ?? 'general_ledger'),
+                    'bank_account_id' => (int) ($data['bank_account_id'] ?? 0) ?: null,
+                    'vat_mode' => (string) ($data['vat_mode'] ?? 'inclusive'),
+                    'property_id' => (int) ($data['property_id'] ?? 0) ?: null,
+                    'skip_notification' => (bool) ($data['skip_notification'] ?? true),
+                ],
+            ]);
+
+            foreach ($lines as $invoiceId => $lineAmount) {
+                $invoice = PmInvoice::query()
+                    ->whereKey($invoiceId)
+                    ->where('pm_tenant_id', $tenantId)
+                    ->first();
+                if (! $invoice) {
+                    throw new RuntimeException('One of the invoices does not belong to this tenant.');
+                }
+                if ($lineAmount - $invoice->balanceFloat() > 0.009) {
+                    throw new RuntimeException('Payment on '.$invoice->invoice_no.' is higher than the amount due.');
+                }
+                $this->createAllocation($payment, $invoice, $lineAmount);
+            }
+
+            $allocated = round((float) PmPaymentAllocation::query()
+                ->where('pm_payment_id', $payment->id)
+                ->sum('amount'), 2);
+            $remaining = round($amount - $allocated, 2);
+
+            $payment->load('allocations.invoice.unit');
+            $this->finalizeIdentifiedPayment($payment, $actor, $remaining);
+            $this->repairTenantIfDriftDetected($tenantId);
+
+            $fresh = $payment->fresh(['allocations']);
+            if ($fresh && ! ($data['skip_notification'] ?? true)) {
+                $paymentId = (int) $fresh->id;
+                DB::afterCommit(function () use ($paymentId) {
+                    try {
+                        SendPaymentReceiptJob::dispatch($paymentId);
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to queue payment receipt', [
+                            'pm_payment_id' => $paymentId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                });
+            }
+
+            return $fresh ?? $payment;
         });
     }
 
@@ -200,9 +321,17 @@ class PropertyPaymentSettlementService
     {
         $payment = $this->lockPayment($payment);
 
-        $remaining = round((float) $payment->amount, 2);
+        $alreadyAllocated = round((float) PmPaymentAllocation::query()
+            ->where('pm_payment_id', $payment->id)
+            ->where(function ($q): void {
+                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $remaining = round((float) $payment->amount - $alreadyAllocated, 2);
         if ($remaining <= 0.0001 || (int) $payment->pm_tenant_id <= 0) {
-            return $remaining;
+            app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
+
+            return max(0.0, $remaining);
         }
 
         $openInvoices = $this->openInvoicesForPaymentQuery($payment, $invoiceType)
@@ -215,7 +344,7 @@ class PropertyPaymentSettlementService
             }
 
             $invoiceRemaining = $invoice->balanceFloat();
-            if ($invoiceRemaining <= 0.0001) {
+            if ($invoiceRemaining <= 0.0001 || $this->receiptMissesInvoicePeriod($payment, $invoice)) {
                 continue;
             }
 
@@ -227,6 +356,8 @@ class PropertyPaymentSettlementService
             $this->createAllocation($payment, $invoice, $allocation);
             $remaining = round($remaining - $allocation, 2);
         }
+
+        app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
 
         return max(0.0, $remaining);
     }
@@ -242,7 +373,13 @@ class PropertyPaymentSettlementService
         $targetInvoice = PmInvoice::query()->whereKey($targetInvoice->id)->lockForUpdate()->firstOrFail();
         $targetInvoice->syncAmountPaidFromAllocations();
 
-        $remaining = round((float) $payment->amount, 2);
+        $alreadyAllocated = round((float) PmPaymentAllocation::query()
+            ->where('pm_payment_id', $payment->id)
+            ->where(function ($q): void {
+                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $remaining = round((float) $payment->amount - $alreadyAllocated, 2);
         if ($remaining <= 0.0001) {
             return 0.0;
         }
@@ -265,6 +402,10 @@ class PropertyPaymentSettlementService
         foreach ($openInvoices as $invoice) {
             if ($remaining <= 0.0001) {
                 break;
+            }
+
+            if ($this->receiptMissesInvoicePeriod($payment, $invoice)) {
+                continue;
             }
 
             $allocation = round(min($remaining, $invoice->balanceFloat()), 2);
@@ -304,6 +445,121 @@ class PropertyPaymentSettlementService
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
 
         return $allocation;
+    }
+
+    /**
+     * Undo allocations where a receipt names its months and the invoice is for a different month.
+     * A January receipt must not mark November garbage as paid.
+     *
+     * @return array{allocations: int, amount: float}
+     */
+    public function releaseCrossPeriodAllocations(bool $dryRun = false): array
+    {
+        $count = 0;
+        $amount = 0.0;
+        $reason = 'Receipt names a different month, so this charge is not paid by it.';
+        $invoiceIds = [];
+
+        $rows = PmPaymentAllocation::query()
+            ->from('pm_payment_allocations as a')
+            ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->where(function ($query): void {
+                $query->whereNull('a.is_reversed')->orWhere('a.is_reversed', false);
+            })
+            ->where('p.status', PmPayment::STATUS_COMPLETED)
+            ->where(function ($query): void {
+                $query->whereNull('p.channel')->orWhere('p.channel', '!=', 'tenant_credit');
+            })
+            ->whereNotNull('i.billing_period')
+            ->where('i.billing_period', '!=', '')
+            ->get([
+                'a.id',
+                'a.amount',
+                'a.pm_invoice_id',
+                'i.billing_period',
+                'p.meta',
+            ]);
+
+        foreach ($rows as $row) {
+            $payment = new PmPayment(['meta' => $row->meta]);
+            $invoice = new PmInvoice(['billing_period' => $row->billing_period]);
+            if (! $this->receiptMissesInvoicePeriod($payment, $invoice)) {
+                continue;
+            }
+
+            $count++;
+            $amount = round($amount + (float) $row->amount, 2);
+            if ($dryRun) {
+                continue;
+            }
+
+            PmPaymentAllocation::query()->whereKey($row->id)->update([
+                'is_reversed' => true,
+                'reversed_at' => now(),
+                'reversal_reason' => $reason,
+            ]);
+            $invoiceIds[(int) $row->pm_invoice_id] = true;
+        }
+
+        if (! $dryRun) {
+            foreach (array_keys($invoiceIds) as $invoiceId) {
+                $invoice = PmInvoice::query()->find($invoiceId);
+                $invoice?->syncAmountPaidFromAllocations();
+            }
+        }
+
+        return ['allocations' => $count, 'amount' => $amount];
+    }
+
+    /**
+     * A receipt that names January must not be treated as payment for November.
+     * Prepayments, and receipts with no named month, are left alone.
+     */
+    public function receiptMissesInvoicePeriod(PmPayment $payment, PmInvoice $invoice): bool
+    {
+        $text = trim((string) data_get($payment->meta, 'particulars', ''));
+        if ($text === '' || preg_match('/prepay/i', $text) === 1) {
+            return false;
+        }
+
+        $named = $this->namedBillingPeriods($text);
+        if ($named === []) {
+            return false;
+        }
+
+        $period = trim((string) ($invoice->billing_period ?? ''));
+        if (preg_match('/^\d{4}-\d{2}$/', $period) !== 1) {
+            return false;
+        }
+
+        return ! in_array($period, $named, true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function namedBillingPeriods(string $text): array
+    {
+        $months = [
+            'january' => '01', 'february' => '02', 'march' => '03', 'april' => '04',
+            'may' => '05', 'june' => '06', 'july' => '07', 'august' => '08',
+            'september' => '09', 'october' => '10', 'november' => '11', 'december' => '12',
+            'jan' => '01', 'feb' => '02', 'mar' => '03', 'apr' => '04',
+            'jun' => '06', 'jul' => '07', 'aug' => '08', 'sep' => '09', 'sept' => '09',
+            'oct' => '10', 'nov' => '11', 'dec' => '12',
+        ];
+        $found = [];
+        if (preg_match_all('/\b([A-Za-z]+)\s*\/\s*(\d{4})\b/', $text, $matches, PREG_SET_ORDER) !== false) {
+            foreach ($matches as $match) {
+                $month = $months[strtolower($match[1])] ?? null;
+                if ($month !== null) {
+                    $found[$match[2].'-'.$month] = true;
+                }
+            }
+        }
+
+        return array_keys($found);
     }
 
     /**

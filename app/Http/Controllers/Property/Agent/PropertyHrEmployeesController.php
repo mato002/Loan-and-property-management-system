@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
+use App\Models\PmPermission;
+use App\Models\PmRole;
+use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
@@ -14,8 +17,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PropertyHrEmployeesController extends Controller
@@ -71,7 +76,7 @@ class PropertyHrEmployeesController extends Controller
             $query->where('agent_user_id', $filters['agent_user_id']);
         }
 
-        $employees = $query->with('fieldOfficerProfile')->get();
+        $employees = $query->with(['fieldOfficerProfile', 'user'])->get();
         $fieldOfficerCount = $employees->filter(fn (Employee $e) => $e->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($e->job_title))->count();
 
         $isFieldOfficerList = $filters['role_type'] === 'field_officer';
@@ -86,6 +91,8 @@ class PropertyHrEmployeesController extends Controller
             $showUrl = route('property.hr.employees.show', ['employee' => $employee->id], false);
             $isFieldOfficer = $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title);
             $portfolioStats = $employee->fieldOfficerProfile?->portfolioStats() ?? [];
+            $loginState = $this->hr->loginActionState($employee);
+            $canManage = $this->canManageHr($request);
 
             if ($isFieldOfficerList && $isFieldOfficer) {
                 $totalProperties += (int) ($portfolioStats['properties'] ?? 0);
@@ -103,6 +110,8 @@ class PropertyHrEmployeesController extends Controller
                     'editUrl' => $editUrl,
                     'portfolioUrl' => $portfolioUrl,
                     'isFieldOfficer' => true,
+                    'canManage' => $canManage,
+                    'loginState' => $loginState,
                 ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
@@ -129,6 +138,8 @@ class PropertyHrEmployeesController extends Controller
                     'editUrl' => $editUrl,
                     'portfolioUrl' => $portfolioUrl,
                     'isFieldOfficer' => $isFieldOfficer,
+                    'canManage' => $canManage,
+                    'loginState' => $loginState,
                 ])->render());
                 $tableRows[] = [
                     new HtmlString('<span class="font-mono text-xs text-slate-600 dark:text-slate-400">'.e((string) $employee->employee_number).'</span>'),
@@ -140,7 +151,7 @@ class PropertyHrEmployeesController extends Controller
                     ),
                     (string) ($employee->department ?: '—'),
                     (string) ($employee->job_title ?: '—'),
-                    (string) ($employee->employment_status ?: '—'),
+                    $employee->employmentStatusLabel(),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
                     $actions,
                 ];
@@ -160,7 +171,7 @@ class PropertyHrEmployeesController extends Controller
                 ['label' => 'Employees', 'value' => (string) $employees->count(), 'hint' => 'Matching filters'],
                 ['label' => 'Field officers', 'value' => (string) $fieldOfficerCount, 'hint' => 'With portfolio role'],
                 ['label' => 'Active', 'value' => (string) $employees->where('employment_status', 'active')->count(), 'hint' => 'Employment status'],
-                ['label' => 'Departments', 'value' => (string) $employees->pluck('department')->filter()->unique()->count(), 'hint' => 'In result set'],
+                ['label' => 'Onboarding', 'value' => (string) $employees->where('employment_status', 'onboarding')->count(), 'hint' => 'Not yet activated'],
             ];
 
         $columns = $isFieldOfficerList
@@ -201,37 +212,48 @@ class PropertyHrEmployeesController extends Controller
         $agentUserId = $this->hr->resolveAgentUserIdForStore($request);
         $validated = $this->validateEmployee($request, null, $agentUserId);
         $provision = null;
+        $createdEmployee = null;
 
-        DB::transaction(function () use ($validated, $agentUserId, $request, &$provision): void {
-            $employee = Employee::query()->create([
-                ...$validated['employee'],
-                'agent_user_id' => $agentUserId,
-                'employee_number' => $validated['employee']['employee_number'] ?: $this->hr->generateNextEmployeeNumber(),
-            ]);
-
-            if ($validated['provision_login']) {
-                $provision = $this->hr->provisionPropertyLogin(
-                    $employee->fresh(),
-                    $validated['role_ids'],
-                    $request->user(),
-                );
-                $employee->refresh();
+        DB::transaction(function () use ($validated, $agentUserId, $request, &$provision, &$createdEmployee): void {
+            $employeePayload = $validated['employee'];
+            $employeePayload['employee_number'] = $employeePayload['employee_number'] ?: $this->hr->generateNextEmployeeNumber();
+            if (($employeePayload['employment_status'] ?? 'onboarding') === 'active') {
+                $employeePayload['onboarding_completed_at'] = now();
             }
+
+            $employee = Employee::query()->create([
+                ...$employeePayload,
+                'agent_user_id' => $agentUserId,
+            ]);
+            $createdEmployee = $employee;
 
             $this->hr->syncFieldOfficerFromEmployee(
                 $employee->fresh(),
                 $validated['is_field_officer'],
-                $validated['portal_access'],
+                $validated['portal_access'] || $validated['provision_login'],
             );
         });
 
-        $redirect = redirect()->route('property.hr.employees.index')->with('status', 'Employee added.');
+        if ($validated['provision_login'] && $createdEmployee) {
+            $provision = $this->hr->issueLoginAndEmail(
+                $createdEmployee->fresh(),
+                $request->user(),
+                $validated['role_ids'],
+            );
+        }
+
+        if (! $createdEmployee) {
+            return redirect()->route('property.hr.employees.index')->with('error', 'Could not save the employee.');
+        }
+
+        $redirect = redirect()
+            ->route('property.hr.employees.show', $createdEmployee)
+            ->with('status', 'Employee record created. Complete onboarding when the hire is ready to work.');
         if ($provision !== null) {
-            $redirect->with('hr_user_created', [
-                'email' => $provision['user']->email,
-                'temporary_password' => $provision['plain_password'],
-                'name' => $provision['user']->name,
-            ])->with('status', 'Employee added and portal login created. Share the temporary password securely.');
+            $redirect->with('hr_user_created', $this->loginFlash($provision));
+            $redirect->with('status', $provision['mailed']
+                ? 'Employee added. Login was emailed to '.$provision['user']->email.'.'
+                : 'Employee added and login created, but email failed. Copy the temporary password below.');
         }
 
         return $this->redirectOrPropertyFormModalSuccess(
@@ -249,27 +271,123 @@ class PropertyHrEmployeesController extends Controller
         $fieldOfficer = $isFieldOfficer ? $this->hr->resolveFieldOfficerForEmployee($employee) : null;
         $activeTab = PropertyEntityHub::normalizeTab('employee', $request->query('tab'));
 
-        if ($activeTab === 'portfolio' && ! $isFieldOfficer) {
-            $activeTab = 'overview';
-        }
-
-        $portfolioStats = $fieldOfficer?->portfolioStats();
-        $assignedProperties = $fieldOfficer ? $this->hr->assignedPropertyRows($fieldOfficer) : [];
-        $unassignedProperties = $fieldOfficer ? $this->hr->unassignedPropertiesForOfficer($fieldOfficer) : [];
-        $canManage = auth()->check() && auth()->user()?->hasPmPermission('properties.manage');
+        $assignedProperties = $this->hr->assignedPropertyRowsForEmployee($employee);
+        $unassignedProperties = $this->hr->assignablePropertiesForEmployee($employee);
+        $portfolioStats = [
+            'properties' => count($assignedProperties),
+            'landlords' => (int) ($fieldOfficer?->portfolioStats()['landlords'] ?? 0),
+            'units' => (int) array_sum(array_column($assignedProperties, 'units')),
+            'tenants' => (int) array_sum(array_column($assignedProperties, 'tenants')),
+            'rent_portfolio' => (float) array_sum(array_column($assignedProperties, 'rent')),
+        ];
+        $canManage = $this->canManageHr($request);
+        $loginState = $this->hr->loginActionState($employee);
+        $accessRank = $this->employeeAccessRank($request->user(), $employee);
 
         return property_view('property.agent.hr.employees.show', [
             'employee' => $employee,
             'fieldOfficer' => $fieldOfficer,
             'isFieldOfficer' => $isFieldOfficer,
             'activeTab' => $activeTab,
-            'employeeTabs' => PropertyEntityHub::employeeTabsFor($isFieldOfficer),
+            'employeeTabs' => PropertyEntityHub::employeeTabsFor(true),
             'portfolioStats' => $portfolioStats,
             'assignedProperties' => $assignedProperties,
             'unassignedProperties' => $unassignedProperties,
             'canManage' => $canManage,
+            'canEditPermissions' => $accessRank > 0,
+            'permissionMatrix' => $activeTab === 'permissions'
+                ? $this->employeePermissionMatrix($employee, $accessRank)
+                : null,
+            'loginState' => $loginState,
             'recentLeaves' => $employee->staffLeaves,
+            'onboardingChecklist' => $this->hr->onboardingChecklist($employee),
+            'exitReasons' => Employee::EXIT_REASONS,
         ]);
+    }
+
+    public function updatePermissions(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $actor = $request->user();
+        $rank = $actor ? $this->employeeAccessRank($actor, $employee) : 0;
+        if ($rank < 1) {
+            abort(403, 'Only HR, the company agent, or a super admin can change this employee’s permissions.');
+        }
+
+        $user = $employee->user;
+        if (! $user) {
+            return back()->with('error', 'Send a portal login before assigning a role or permissions.');
+        }
+
+        $data = $request->validate([
+            'role_ids' => ['nullable', 'array'],
+            'role_ids.*' => ['integer', 'exists:pm_roles,id'],
+            'effects' => ['nullable', 'array'],
+            'effects.*' => ['string', Rule::in(['inherit', 'allow', 'deny'])],
+        ]);
+
+        $roleIds = array_values(array_unique(array_map('intval', $data['role_ids'] ?? [])));
+        $allowedRoleIds = PmRole::query()
+            ->whereIn('portal_scope', ['agent', 'any'])
+            ->whereIn('id', $roleIds === [] ? [0] : $roleIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        if (count($allowedRoleIds) !== count($roleIds)) {
+            return back()->with('error', 'One or more roles are not available for property staff.');
+        }
+
+        if ($rank < 2 && $roleIds !== []) {
+            $blocked = PmRole::query()
+                ->with('permissions:id,key')
+                ->whereIn('id', $roleIds)
+                ->get()
+                ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+                ->unique()
+                ->filter(fn ($key) => ! $actor->hasPmPermission((string) $key));
+            if ($blocked->isNotEmpty()) {
+                return back()->with('error', 'HR can only assign roles made of permissions you already have. Ask the company agent or a super admin to grant the rest.');
+            }
+        }
+
+        $permissions = PmPermission::query()->get(['id', 'key'])->keyBy('id');
+        $previous = $user->pmPermissions()->get()->keyBy('id');
+        $sync = [];
+        foreach ($permissions as $permission) {
+            $effect = (string) ($data['effects'][$permission->id] ?? $data['effects'][(string) $permission->id] ?? 'inherit');
+            if (! in_array($effect, ['inherit', 'allow', 'deny'], true)) {
+                $effect = 'inherit';
+            }
+            if ($rank < 2 && $effect === 'allow' && ! $actor->hasPmPermission((string) $permission->key)) {
+                $kept = $previous->get($permission->id);
+                $effect = $kept && (string) ($kept->pivot->effect ?? 'allow') === 'allow' ? 'allow' : 'inherit';
+            }
+            if ($effect === 'allow' || $effect === 'deny') {
+                $sync[$permission->id] = ['effect' => $effect];
+            }
+        }
+
+        DB::transaction(function () use ($user, $roleIds, $sync): void {
+            $user->pmRoles()->sync($roleIds);
+            if (Schema::hasColumn('pm_user_permission', 'effect')) {
+                $user->pmPermissions()->sync($sync);
+            } else {
+                $user->pmPermissions()->sync(array_keys(array_filter(
+                    $sync,
+                    static fn (array $row): bool => ($row['effect'] ?? '') === 'allow'
+                )));
+            }
+        });
+
+        $status = 'Role and permissions saved for '.$employee->full_name.'.';
+        if ($roleIds === []) {
+            $status .= ' No role is selected, so other permissions stay open except the ones set to Deny.';
+        }
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'permissions'])
+            ->with('status', $status);
     }
 
     public function assignProperty(Request $request, Employee $employee): RedirectResponse
@@ -305,6 +423,7 @@ class PropertyHrEmployeesController extends Controller
         return property_view('property.agent.hr.employees.edit', array_merge([
             'employee' => $employee,
             'agents' => $this->agentOptionsForForm($request),
+            'defaultAgentUserId' => (int) ($employee->agent_user_id ?: $this->defaultAgentUserId($request)),
             'departments' => PropertyHrEmployeeService::DEPARTMENTS,
             'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
             'isFieldOfficer' => (bool) $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title),
@@ -318,41 +437,49 @@ class PropertyHrEmployeesController extends Controller
     {
         $agentUserId = AgentWorkspaceScope::shouldApply()
             ? (int) ($employee->agent_user_id ?: $request->user()->id)
-            : (int) $request->input('agent_user_id', $employee->agent_user_id ?: $request->user()->id);
+            : $this->hr->resolveAgentUserIdForStore($request);
 
         $validated = $this->validateEmployee($request, $employee, $agentUserId);
         $provision = null;
 
-        DB::transaction(function () use ($employee, $validated, $agentUserId, $request, &$provision): void {
+        DB::transaction(function () use ($employee, $validated, $agentUserId, $request): void {
+            $employeePayload = $validated['employee'];
+            if ($employee->isOffboarded()) {
+                unset($employeePayload['employment_status']);
+            } elseif (($employeePayload['employment_status'] ?? '') === 'active' && ! $employee->onboarding_completed_at) {
+                $employeePayload['onboarding_completed_at'] = now();
+            }
+
             $employee->update([
-                ...$validated['employee'],
+                ...$employeePayload,
                 'agent_user_id' => $agentUserId,
             ]);
 
-            if ($validated['provision_login'] && ! $employee->user_id) {
-                $provision = $this->hr->provisionPropertyLogin(
-                    $employee->fresh(),
-                    $validated['role_ids'],
-                    $request->user(),
-                );
-            } elseif ($employee->user_id && $validated['role_ids'] !== []) {
+            if ($employee->user_id && $validated['role_ids'] !== []) {
                 $employee->user?->pmRoles()?->sync($validated['role_ids']);
             }
 
             $this->hr->syncFieldOfficerFromEmployee(
                 $employee->fresh(),
                 $validated['is_field_officer'],
-                $validated['portal_access'],
+                $validated['portal_access'] || $validated['provision_login'],
             );
         });
 
+        if ($validated['provision_login'] && ! $employee->fresh()->user_id) {
+            $provision = $this->hr->issueLoginAndEmail(
+                $employee->fresh(),
+                $request->user(),
+                $validated['role_ids'],
+            );
+        }
+
         $redirect = redirect()->route('property.hr.employees.show', $employee)->with('status', 'Employee updated.');
         if ($provision !== null) {
-            $redirect->with('hr_user_created', [
-                'email' => $provision['user']->email,
-                'temporary_password' => $provision['plain_password'],
-                'name' => $provision['user']->name,
-            ])->with('status', 'Employee updated and portal login created.');
+            $redirect->with('hr_user_created', $this->loginFlash($provision));
+            $redirect->with('status', $provision['mailed']
+                ? 'Employee updated. Login was emailed to '.$provision['user']->email.'.'
+                : 'Employee updated and login created, but email failed. Copy the temporary password below.');
         }
 
         return $this->redirectOrPropertyFormModalSuccess(
@@ -360,6 +487,136 @@ class PropertyHrEmployeesController extends Controller
             $redirect,
             $provision !== null ? 'Employee updated and portal login created.' : 'Employee updated.',
         );
+    }
+
+    public function sendLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        if ($employee->isOffboarded()) {
+            return back()->with('error', 'Re-activate this employee before issuing a portal login.');
+        }
+
+        $roleIds = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('role_ids', [])))));
+
+        try {
+            $result = $this->hr->issueLoginAndEmail($employee->fresh(), $request->user(), $roleIds);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not create login.');
+        }
+
+        $message = $result['mailed']
+            ? ($result['created'] ? 'Login created and emailed to ' : 'New password emailed to ').$result['user']->email.'.'
+            : 'Login saved, but email failed. Copy the temporary password below.'.($result['mail_error'] ? ' '.$result['mail_error'] : '');
+
+        return back()
+            ->with('status', $message)
+            ->with('hr_user_created', $this->loginFlash($result));
+    }
+
+    public function revokeLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        try {
+            $this->hr->revokePortalAccess($employee);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not revoke login.');
+        }
+
+        return back()->with('status', 'Portal access revoked. The employee can no longer open the property workspace.');
+    }
+
+    public function restoreLogin(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        if ($employee->isOffboarded()) {
+            return back()->with('error', 'Re-activate this employee before restoring portal access.');
+        }
+
+        try {
+            $this->hr->restorePortalAccess($employee, $request->user());
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not restore login.');
+        }
+
+        return back()->with('status', 'Portal access restored.');
+    }
+
+    public function updateStatus(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $data = $request->validate([
+            'employment_status' => ['required', 'in:onboarding,active,on_leave'],
+        ]);
+
+        $this->hr->setEmploymentStatus($employee, (string) $data['employment_status']);
+
+        $label = Employee::STATUSES[(string) $data['employment_status']] ?? $data['employment_status'];
+
+        return back()->with('status', 'Employment status set to '.$label.'.');
+    }
+
+    public function completeOnboarding(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        try {
+            $this->hr->completeOnboarding($employee);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not complete onboarding.');
+        }
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'lifecycle'])
+            ->with('status', $employee->full_name.' is now active.');
+    }
+
+    public function offboard(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->assertEmployeeInWorkspace($request, $employee);
+
+        $data = $request->validate([
+            'exit_date' => ['required', 'date'],
+            'exit_reason' => ['required', 'in:'.implode(',', array_keys(Employee::EXIT_REASONS))],
+            'offboarding_notes' => ['nullable', 'string', 'max:2000'],
+            'unassign_properties' => ['nullable', 'boolean'],
+            'revoke_portal' => ['nullable', 'boolean'],
+        ]);
+
+        $this->hr->offboardEmployee($employee, [
+            'exit_date' => $data['exit_date'],
+            'exit_reason' => $data['exit_reason'],
+            'offboarding_notes' => $data['offboarding_notes'] ?? null,
+        ], $request->user());
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'offboard'])
+            ->with('status', $employee->full_name.' is offboarded. Portal access, permissions, and property assignments were removed.');
+    }
+
+    /**
+     * @param  array{user: \App\Models\User, plain_password: string}  $provision
+     * @return array{email: string, temporary_password: string, name: string, login_url: string}
+     */
+    private function loginFlash(array $provision): array
+    {
+        return [
+            'email' => $provision['user']->email,
+            'temporary_password' => $provision['plain_password'],
+            'name' => $provision['user']->name,
+            'login_url' => route('login'),
+        ];
+    }
+
+    private function assertEmployeeInWorkspace(Request $request, Employee $employee): void
+    {
+        $allowed = $this->hr->queryForActor($request->user())->whereKey($employee->id)->exists();
+        if (! $allowed) {
+            abort(404);
+        }
     }
 
     /**
@@ -417,15 +674,29 @@ class PropertyHrEmployeesController extends Controller
             'phone' => ['nullable', 'string', 'max:40'],
             'department' => ['nullable', 'string', 'max:120'],
             'job_title' => ['nullable', 'string', 'max:120'],
-            'employment_status' => ['nullable', 'string', 'max:40'],
+            'employment_status' => ['nullable', 'in:onboarding,active,on_leave'],
             'hire_date' => ['nullable', 'date'],
+            'probation_ends_on' => ['nullable', 'date'],
+            'work_type' => ['nullable', 'string', 'max:40'],
+            'gender' => ['nullable', 'string', 'max:20'],
             'national_id' => ['nullable', 'string', 'max:40'],
+            'personal_email' => ['nullable', 'email', 'max:255'],
+            'next_of_kin_name' => ['nullable', 'string', 'max:200'],
+            'next_of_kin_phone' => ['nullable', 'string', 'max:40'],
+            'kra_pin' => ['nullable', 'string', 'max:30'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_account_number' => ['nullable', 'string', 'max:80'],
+            'nhif_number' => ['nullable', 'string', 'max:40'],
+            'nssf_number' => ['nullable', 'string', 'max:40'],
+            'assigned_tools' => ['nullable', 'string', 'max:2000'],
             'is_field_officer' => ['nullable', 'boolean'],
             'portal_access' => ['nullable', 'boolean'],
             'provision_login' => ['nullable', 'boolean'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['nullable', 'integer', 'exists:pm_roles,id'],
-            'agent_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'agent_user_id' => AgentWorkspaceScope::shouldApply()
+                ? ['nullable', 'integer', 'exists:users,id']
+                : ['required', 'integer', 'exists:users,id'],
         ]);
 
         $isFieldOfficer = $request->boolean('is_field_officer')
@@ -449,9 +720,21 @@ class PropertyHrEmployeesController extends Controller
                 'phone' => trim((string) ($validated['phone'] ?? '')) ?: null,
                 'department' => trim((string) ($validated['department'] ?? '')) ?: null,
                 'job_title' => trim((string) ($validated['job_title'] ?? '')) ?: null,
-                'employment_status' => trim((string) ($validated['employment_status'] ?? '')) ?: 'active',
+                'employment_status' => trim((string) ($validated['employment_status'] ?? '')) ?: 'onboarding',
                 'hire_date' => $validated['hire_date'] ?? null,
+                'probation_ends_on' => $validated['probation_ends_on'] ?? null,
+                'work_type' => trim((string) ($validated['work_type'] ?? '')) ?: null,
+                'gender' => trim((string) ($validated['gender'] ?? '')) ?: null,
                 'national_id' => trim((string) ($validated['national_id'] ?? '')) ?: null,
+                'personal_email' => trim((string) ($validated['personal_email'] ?? '')) ?: null,
+                'next_of_kin_name' => trim((string) ($validated['next_of_kin_name'] ?? '')) ?: null,
+                'next_of_kin_phone' => trim((string) ($validated['next_of_kin_phone'] ?? '')) ?: null,
+                'kra_pin' => trim((string) ($validated['kra_pin'] ?? '')) ?: null,
+                'bank_name' => trim((string) ($validated['bank_name'] ?? '')) ?: null,
+                'bank_account_number' => trim((string) ($validated['bank_account_number'] ?? '')) ?: null,
+                'nhif_number' => trim((string) ($validated['nhif_number'] ?? '')) ?: null,
+                'nssf_number' => trim((string) ($validated['nssf_number'] ?? '')) ?: null,
+                'assigned_tools' => trim((string) ($validated['assigned_tools'] ?? '')) ?: null,
             ],
             'is_field_officer' => $isFieldOfficer,
             'portal_access' => $request->boolean('portal_access'),
@@ -469,7 +752,7 @@ class PropertyHrEmployeesController extends Controller
             return [];
         }
 
-        return User::query()
+        $users = User::query()
             ->where(function ($q) {
                 $q->where('property_portal_role', 'agent')
                     ->orWhereIn('id', function ($sub) {
@@ -477,10 +760,159 @@ class PropertyHrEmployeesController extends Controller
                     });
             })
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (User $u) => ['id' => (int) $u->id, 'name' => (string) $u->name])
+            ->get(['id', 'name']);
+
+        $counts = [];
+        if (Schema::hasTable('properties') && Schema::hasColumn('properties', 'agent_user_id')) {
+            $counts = Property::query()
+                ->withoutGlobalScopes()
+                ->selectRaw('agent_user_id, COUNT(*) as property_count')
+                ->whereNotNull('agent_user_id')
+                ->groupBy('agent_user_id')
+                ->pluck('property_count', 'agent_user_id')
+                ->all();
+        }
+
+        return $users
+            ->map(function (User $u) use ($counts) {
+                $count = (int) ($counts[$u->id] ?? 0);
+                $label = (string) $u->name;
+                if ($count > 0) {
+                    $label .= ' ('.$count.' '.($count === 1 ? 'property' : 'properties').')';
+                }
+
+                return ['id' => (int) $u->id, 'name' => $label, 'property_count' => $count, 'raw_name' => (string) $u->name];
+            })
             ->values()
             ->all();
+    }
+
+    /**
+     * 3 super admin, 2 company agent, 1 HR, 0 cannot change this employee.
+     */
+    private function employeeAccessRank(?User $actor, Employee $employee): int
+    {
+        if (! $actor) {
+            return 0;
+        }
+        if (($actor->is_super_admin ?? false) === true) {
+            return 3;
+        }
+        if ((int) $employee->agent_user_id > 0 && (int) $actor->id === (int) $employee->agent_user_id) {
+            return 2;
+        }
+        if ((int) $employee->user_id > 0 && (int) $actor->id === (int) $employee->user_id) {
+            return 0;
+        }
+        if ($this->actorIsHr($actor)) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private function actorIsHr(User $actor): bool
+    {
+        $record = Employee::query()->where('user_id', $actor->id)->first(['department', 'job_title']);
+        if ($record) {
+            $hay = strtolower(trim((string) $record->department.' '.(string) $record->job_title));
+            if (
+                str_contains($hay, 'human resource')
+                || str_contains($hay, 'administration')
+                || str_contains($hay, 'administrator')
+            ) {
+                return true;
+            }
+        }
+
+        $keys = $actor->pmRoles()
+            ->with('permissions:id,key')
+            ->get()
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'));
+
+        return $keys->contains(fn ($key) => in_array((string) $key, ['properties.manage', 'settings.manage'], true));
+    }
+
+    /**
+     * @return array{
+     *     hasLogin: bool,
+     *     roles: \Illuminate\Support\Collection,
+     *     selectedRoleIds: list<int>,
+     *     groups: \Illuminate\Support\Collection
+     * }
+     */
+    private function employeePermissionMatrix(Employee $employee, int $accessRank): array
+    {
+        $roles = $this->hr->propertyRolesForForm();
+        $user = $employee->user;
+        if ($user) {
+            $user->loadMissing(['pmRoles.permissions:id,key', 'pmPermissions']);
+        }
+
+        $selectedRoleIds = $user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
+        $fromRole = $user?->pmRoles
+            ?->flatMap(fn (PmRole $role) => $role->permissions->pluck('id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip() ?? collect();
+        $effects = [];
+        foreach ($user?->pmPermissions ?? [] as $permission) {
+            $effect = (string) ($permission->pivot->effect ?? 'allow');
+            $effects[(int) $permission->id] = in_array($effect, ['allow', 'deny'], true) ? $effect : 'allow';
+        }
+
+        $groups = collect();
+        if (Schema::hasTable('pm_permissions')) {
+            $groups = PmPermission::query()
+                ->orderBy('group')
+                ->orderBy('name')
+                ->get(['id', 'key', 'name', 'group', 'description'])
+                ->groupBy(fn (PmPermission $permission) => $permission->group ?: 'general')
+                ->map(function ($rows) use ($fromRole, $effects, $accessRank) {
+                    return $rows->map(function (PmPermission $permission) use ($fromRole, $effects, $accessRank) {
+                        $id = (int) $permission->id;
+
+                        return [
+                            'id' => $id,
+                            'key' => (string) $permission->key,
+                            'name' => (string) $permission->name,
+                            'description' => (string) ($permission->description ?? ''),
+                            'from_role' => $fromRole->has($id),
+                            'effect' => $effects[$id] ?? 'inherit',
+                            'can_grant' => $accessRank >= 2,
+                        ];
+                    })->values();
+                });
+        }
+
+        if ($accessRank === 1 && $user) {
+            $actor = request()->user();
+            $groups = $groups->map(function ($rows) use ($actor) {
+                return $rows->map(function (array $row) use ($actor) {
+                    $row['can_grant'] = $actor ? $actor->hasPmPermission($row['key']) : false;
+
+                    return $row;
+                });
+            });
+        }
+
+        return [
+            'hasLogin' => (bool) $user,
+            'roles' => $roles,
+            'selectedRoleIds' => $selectedRoleIds,
+            'groups' => $groups,
+        ];
+    }
+
+    private function canManageHr(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user) {
+            return false;
+        }
+
+        return ($user->is_super_admin ?? false) === true
+            || $user->hasPmPermission('properties.manage');
     }
 
     private function defaultAgentUserId(Request $request): int
@@ -490,7 +922,15 @@ class PropertyHrEmployeesController extends Controller
         }
 
         $agents = $this->agentOptionsForForm($request);
+        $preferred = collect($agents)->first(function (array $agent): bool {
+            return str_contains(strtoupper((string) ($agent['raw_name'] ?? $agent['name'] ?? '')), 'PASSION');
+        });
+        if ($preferred) {
+            return (int) $preferred['id'];
+        }
 
-        return (int) ($agents[0]['id'] ?? $request->user()->id);
+        $richest = collect($agents)->sortByDesc('property_count')->first();
+
+        return (int) ($richest['id'] ?? $request->user()->id);
     }
 }

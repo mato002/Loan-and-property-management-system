@@ -147,7 +147,7 @@ final class CoopBankAccountStatementParser
         $date = self::DATE;
         $ref = self::REF;
 
-        $full = '#('.$ref.')\s+\d{5,6}\s+(254\d{9})\s+MPESAC2B[_ ]?(\d+)\s+([A-Za-z][A-Za-z .\'-]{1,80}?)\s+('
+        $full = '#('.$ref.')\s+\d{4,10}\s+(254\d{9})\s+MPESAC2B[_ ]?(\d+)\s+([A-Za-z][A-Za-z .\'-]{1,80}?)\s+('
             .$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
         if (preg_match_all($full, $normalized, $matches, PREG_SET_ORDER) !== false) {
             foreach ($matches as $match) {
@@ -167,7 +167,30 @@ final class CoopBankAccountStatementParser
 
         $seen = array_map(fn (array $row): string => (string) $row['reference'], $rows);
 
-        $short = '#('.$ref.')\s+\d{5,6}\s+(254\d{9})\s*('.$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
+        $namedWithoutPhone = '#('.$ref.')\s+\d{4,10}\s+MPESAC2B[_ ]?(\d+)\s+([A-Za-z][A-Za-z .\'-]{1,80}?)\s+('
+            .$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
+        if (preg_match_all($namedWithoutPhone, $normalized, $matches, PREG_SET_ORDER) !== false) {
+            foreach ($matches as $match) {
+                $reference = strtoupper($match[1]);
+                if (in_array($reference, $seen, true)) {
+                    continue;
+                }
+                $rows[] = $this->line(
+                    self::TYPE_MPESA,
+                    'credit',
+                    $reference,
+                    $this->toIsoDate($match[4]),
+                    $this->money($match[6]),
+                    $this->money($match[5]),
+                    trim($match[3]),
+                    null,
+                    'M-Pesa C2B '.$match[2],
+                );
+                $seen[] = $reference;
+            }
+        }
+
+        $short = '#('.$ref.')\s+\d{4,10}\s+(254\d{9})\s*('.$date.')\s+('.$money.')\s*('.$money.')\s*('.$date.')\s+\1#i';
         if (preg_match_all($short, $normalized, $matches, PREG_SET_ORDER) !== false) {
             foreach ($matches as $match) {
                 $reference = strtoupper($match[1]);
@@ -216,6 +239,55 @@ final class CoopBankAccountStatementParser
                     'M-Pesa C2B',
                 );
                 $seen[] = $reference;
+            }
+        }
+
+        return $this->fillPayerFromDetails($normalized, $rows);
+    }
+
+    /**
+     * The PDF text sometimes drops the phone, or splits the payer name onto the next page.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function fillPayerFromDetails(string $normalized, array $rows): array
+    {
+        $index = [];
+        foreach ($rows as $i => $row) {
+            if (($row['line_type'] ?? '') === self::TYPE_MPESA) {
+                $index[strtoupper((string) $row['reference'])] = $i;
+            }
+        }
+
+        $patterns = [
+            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+(254\d{9})\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+\d{2}/|\s+[A-Z0-9]{8,14}\b)#i',
+            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+\d{2}/|\s+[A-Z0-9]{8,14}\b)#i',
+            '#([A-Z0-9]{8,14})\s+(?:(?!MPESAC2B|[A-Z0-9]{8,14}\s+\d{4,10}).){0,500}?MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+[A-Z0-9]{8,14}\s+\d{4,10}|\s+\d{2}/)#i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match_all($pattern, $normalized, $matches, PREG_SET_ORDER) === false) {
+                continue;
+            }
+            foreach ($matches as $match) {
+                $ref = strtoupper($match[1]);
+                if (! isset($index[$ref])) {
+                    continue;
+                }
+                $i = $index[$ref];
+                $phone = null;
+                $name = trim((string) ($match[2] ?? ''));
+                if (isset($match[3]) && preg_match('/^254\d{9}$/', (string) $match[2]) === 1) {
+                    $phone = $match[2];
+                    $name = trim((string) $match[3]);
+                }
+                if ($phone && empty($rows[$i]['phone'])) {
+                    $rows[$i]['phone'] = $phone;
+                }
+                if ($name !== '' && empty($rows[$i]['counterparty']) && preg_match('/^(page|transaction|debit|credit|balance|value|date|reference|number)$/i', $name) !== 1) {
+                    $rows[$i]['counterparty'] = $name;
+                }
             }
         }
 

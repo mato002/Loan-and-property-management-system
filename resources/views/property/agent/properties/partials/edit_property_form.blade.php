@@ -67,5 +67,12 @@
             @error('field_officer_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
     @endif
+    <input type="hidden" name="property_details_save" value="1" />
+    <details class="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-900/40 p-3" open>
+        <summary class="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">Title, location, area, listing &amp; alerts</summary>
+        <div class="mt-3">
+            @include('property.agent.properties.partials.property_record_fields', ['property' => $property])
+        </div>
+    </details>
     <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
 </form>

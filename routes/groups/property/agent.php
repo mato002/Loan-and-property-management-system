@@ -5,6 +5,7 @@ use App\Http\Controllers\Property\Agent\AgentPublicListingController;
 use App\Http\Controllers\Property\Agent\AgentWorkspaceFormController;
 use App\Http\Controllers\Property\Agent\DashboardController;
 use App\Http\Controllers\Property\Agent\FieldOfficerController;
+use App\Http\Controllers\Property\Agent\PropertyFieldReadingsController;
 use App\Http\Controllers\Property\Agent\PropertyHrEmployeesController;
 use App\Http\Controllers\Property\Agent\PropertyHrLeavesController;
 use App\Http\Controllers\Property\Agent\FinancialsController;
@@ -113,6 +114,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/revenue/statements/{statement}', [PropertyStatementImportController::class, 'show'])->name('revenue.statements.show');
     Route::post('/revenue/statements/{statement}/recover', [PropertyStatementImportController::class, 'recover'])->middleware('property.permission:payments.record')->name('revenue.statements.recover');
     Route::post('/revenue/statements/{statement}/lines/{line}/recover', [PropertyStatementImportController::class, 'recoverLine'])->middleware('property.permission:payments.record')->name('revenue.statements.lines.recover');
+    Route::post('/revenue/statements/{statement}/lines/{line}/assign', [PropertyStatementImportController::class, 'assignLine'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.assign');
+    Route::post('/revenue/statements/{statement}/lines/{line}/payee', [PropertyStatementImportController::class, 'classifyPayee'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.payee');
+    Route::post('/revenue/statements/{statement}/auto-assign', [PropertyStatementImportController::class, 'autoAssign'])->middleware('property.permission:payments.settle')->name('revenue.statements.auto_assign');
     Route::post('/revenue/statements/{statement}/rematch', [PropertyStatementImportController::class, 'rematch'])->middleware('property.permission:payments.record')->name('revenue.statements.rematch');
     Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
     Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');
@@ -217,6 +221,10 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
         ->name('tenants.repair_allocations');
     Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->whereNumber('tenant')->name('tenants.edit');
     Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.update');
+    Route::post('/tenants/{tenant}/deposits/refund', [PmTenantDirectoryController::class, 'storeDepositRefund'])
+        ->whereNumber('tenant')
+        ->middleware('property.permission:payments.record')
+        ->name('tenants.deposits.refund');
     Route::delete('/tenants/{tenant}', [PmTenantDirectoryController::class, 'destroy'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.destroy');
     Route::get('/leases/create-form', [PmLeaseWebController::class, 'createForm'])->middleware('property.permission:leases.manage')->name('leases.create_form');
     Route::get('/leases/form/tenants', [PmLeaseWebController::class, 'formTenants'])->middleware('property.permission:leases.manage')->name('leases.form_tenants');
@@ -314,6 +322,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/properties/landlords/detach', [PropertyPortfolioController::class, 'detachLandlord'])->name('properties.landlords.detach');
     Route::post('/properties/landlords/ownership', [PropertyPortfolioController::class, 'updateLandlordOwnership'])->name('properties.landlords.ownership');
     Route::get('/landlords', [PropertyPortfolioController::class, 'landlordsIndex'])->name('landlords.index');
+    Route::get('/field/readings', [PropertyFieldReadingsController::class, 'index'])->name('field.readings');
+    Route::get('/field/readings/pack', [PropertyFieldReadingsController::class, 'pack'])->name('field.readings.pack');
+    Route::post('/field/readings/sync', [PropertyFieldReadingsController::class, 'sync'])->name('field.readings.sync');
     Route::get('/field-officers', [FieldOfficerController::class, 'index'])->name('field_officers.index');
     Route::get('/field-officers/create', [FieldOfficerController::class, 'create'])->middleware('property.permission:properties.manage')->name('field_officers.create');
     Route::post('/field-officers', [FieldOfficerController::class, 'store'])->middleware('property.permission:properties.manage')->name('field_officers.store');
@@ -329,6 +340,13 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'show'])->whereNumber('employee')->name('hr.employees.show');
     Route::get('/hr/employees/{employee}/edit', [PropertyHrEmployeesController::class, 'edit'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.edit');
     Route::put('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'update'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.update');
+    Route::post('/hr/employees/{employee}/permissions', [PropertyHrEmployeesController::class, 'updatePermissions'])->whereNumber('employee')->name('hr.employees.permissions.update');
+    Route::post('/hr/employees/{employee}/send-login', [PropertyHrEmployeesController::class, 'sendLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.send_login');
+    Route::post('/hr/employees/{employee}/revoke-login', [PropertyHrEmployeesController::class, 'revokeLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.revoke_login');
+    Route::post('/hr/employees/{employee}/restore-login', [PropertyHrEmployeesController::class, 'restoreLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.restore_login');
+    Route::post('/hr/employees/{employee}/status', [PropertyHrEmployeesController::class, 'updateStatus'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.status');
+    Route::post('/hr/employees/{employee}/complete-onboarding', [PropertyHrEmployeesController::class, 'completeOnboarding'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.complete_onboarding');
+    Route::post('/hr/employees/{employee}/offboard', [PropertyHrEmployeesController::class, 'offboard'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.offboard');
     Route::post('/hr/employees/{employee}/properties/assign', [PropertyHrEmployeesController::class, 'assignProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.assign');
     Route::post('/hr/employees/{employee}/properties/detach', [PropertyHrEmployeesController::class, 'detachProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.detach');
     Route::get('/hr/leaves', [PropertyHrLeavesController::class, 'index'])->name('hr.leaves.index');
@@ -338,6 +356,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->whereNumber('landlord')->name('landlords.show');
     Route::get('/landlords/{landlord}/edit', [PropertyPortfolioController::class, 'editLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.edit');
     Route::put('/landlords/{landlord}', [PropertyPortfolioController::class, 'updateLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.update');
+    Route::post('/landlords/{landlord}/documents', [PropertyPortfolioController::class, 'storeLandlordDocument'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.documents.store');
+    Route::get('/landlords/{landlord}/documents/{document}/download', [PropertyPortfolioController::class, 'downloadLandlordDocument'])->whereNumber(['landlord', 'document'])->name('landlords.documents.download');
+    Route::delete('/landlords/{landlord}/documents/{document}', [PropertyPortfolioController::class, 'destroyLandlordDocument'])->whereNumber(['landlord', 'document'])->middleware('property.permission:properties.manage')->name('landlords.documents.destroy');
     Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->whereNumber('landlord')->name('landlords.statement');
     Route::get('/landlords/{landlord}/statement/print', [PropertyPortfolioController::class, 'landlordsStatementPrint'])->whereNumber('landlord')->name('landlords.statement.print');
     Route::post('/landlords/{landlord}/resend-portal-login', [PropertyPortfolioController::class, 'resendLandlordPortalLogin'])
@@ -426,6 +447,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/accounting/payables/landlord-payment-fees/batch', [PropertyAccountingController::class, 'batchLandlordPaymentFees'])->name('accounting.payables.landlord_payment_fees.batch');
     Route::get('/accounting/payables/property-commissions', [PropertyAccountingController::class, 'propertyCommissions'])->name('accounting.payables.property_commissions');
     Route::get('/accounting/payables/payment-vouchers', [PropertyAccountingController::class, 'paymentVouchers'])->name('accounting.payables.payment_vouchers');
+    Route::get('/accounting/payables/payment-vouchers/create', [PropertyAccountingController::class, 'createPaymentVoucher'])->name('accounting.payables.payment_vouchers.create');
+    Route::post('/accounting/payables/payment-vouchers', [PropertyAccountingController::class, 'storePaymentVoucher'])->name('accounting.payables.payment_vouchers.store');
+    Route::get('/accounting/payables/payment-vouchers/{voucher}', [PropertyAccountingController::class, 'showPaymentVoucher'])->whereNumber('voucher')->name('accounting.payables.payment_vouchers.show');
     Route::get('/accounting/payables/landlord-settlements', [PropertyAccountingController::class, 'landlordSettlements'])->name('accounting.payables.landlord_settlements');
     Route::post('/accounting/payables/landlord-settlements/payout', [PropertyAccountingController::class, 'storeLandlordSettlementPayout'])->name('accounting.payables.landlord_settlements.payout');
     Route::get('/accounting/payables/landlord-payables', [PropertyAccountingController::class, 'landlordPayables'])->name('accounting.payables.landlord_payables');
@@ -532,6 +556,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/communications/templates', [PropertyCommunicationsWebController::class, 'templates'])->name('communications.templates');
     Route::post('/communications/templates', [PropertyCommunicationsWebController::class, 'storeTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.store');
     Route::delete('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'destroyTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.destroy');
+    Route::get('/communications/schedules', [PropertyCommunicationsWebController::class, 'schedules'])->name('communications.schedules');
+    Route::post('/communications/schedules', [PropertyCommunicationsWebController::class, 'updateSchedule'])->middleware('property.permission:communications.manage')->name('communications.schedules.update');
     Route::get('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'rentTemplates'])->name('communications.rent_templates');
     Route::post('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'saveRentTemplateMessages'])->middleware('property.permission:communications.manage')->name('communications.rent_templates.store');
     Route::post('/communications/rent-templates/preview', [PropertyCommunicationsWebController::class, 'previewRentTemplatesJson'])->name('communications.rent_templates.preview');

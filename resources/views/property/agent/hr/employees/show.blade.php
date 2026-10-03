@@ -1,5 +1,5 @@
 @php
-    $headerStats = ($isFieldOfficer ?? false) && ($activeTab ?? 'overview') === 'portfolio'
+    $headerStats = ($activeTab ?? 'overview') === 'portfolio'
         ? [
             ['label' => 'Properties', 'value' => (string) ($portfolioStats['properties'] ?? 0), 'hint' => 'Assigned'],
             ['label' => 'Landlords', 'value' => (string) ($portfolioStats['landlords'] ?? 0), 'hint' => 'Across portfolio'],
@@ -11,7 +11,7 @@
             ['label' => 'Employee #', 'value' => $employee->employee_number, 'hint' => 'HR record'],
             ['label' => 'Department', 'value' => (string) ($employee->department ?: '—'), 'hint' => 'Current'],
             ['label' => 'Job title', 'value' => (string) ($employee->job_title ?: '—'), 'hint' => 'Current'],
-            ['label' => 'Status', 'value' => ucfirst((string) ($employee->employment_status ?: 'active')), 'hint' => 'Employment'],
+            ['label' => 'Status', 'value' => $employee->employmentStatusLabel(), 'hint' => 'Employment'],
         ];
 @endphp
 
@@ -22,12 +22,39 @@
     :stats="$headerStats"
     :columns="[]"
 >
+    @php
+        $loginState = $loginState ?? [
+            'has_email' => trim((string) ($employee->email ?? '')) !== '',
+            'has_login' => (bool) ($employee->user_id ?? false),
+            'login_emailed' => false,
+            'can_send_login' => trim((string) ($employee->email ?? '')) !== '' && ! $employee->isOffboarded(),
+            'login_action' => null,
+            'login_action_label' => null,
+        ];
+        if (($loginState['login_action'] ?? null) === null && ($loginState['can_send_login'] ?? false)) {
+            $loginState['login_action'] = ! empty($loginState['has_login']) || ! empty($loginState['login_emailed']) ? 'resend' : 'send';
+            $loginState['login_action_label'] = $loginState['login_action'] === 'resend' ? 'Resend logins' : 'Send logins';
+        }
+        $loginAction = $loginState['login_action'] ?? null;
+        $loginLabel = $loginState['login_action_label'] ?? null;
+    @endphp
     <x-slot name="actions">
-        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+        @if ($canManage ?? false)
             <a href="{{ route('property.hr.employees.edit', $employee, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Edit employee</a>
+            @if (($loginState['can_send_login'] ?? false) && $loginLabel)
+                <form method="post" action="{{ route('property.hr.employees.send_login', $employee) }}" data-turbo-frame="_top" data-swal-title="{{ $loginAction === 'resend' ? 'Resend login credentials?' : 'Send login credentials?' }}" data-swal-confirm="A temporary password will be emailed to {{ $employee->email }}." data-swal-confirm-text="{{ $loginAction === 'resend' ? 'Yes, resend' : 'Yes, send logins' }}">
+                    @csrf
+                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">{{ $loginLabel }}</button>
+                </form>
+            @endif
+            @if (! $employee->isOffboarded())
             <a href="{{ route('property.hr.leaves.create', ['employee_id' => $employee->id], false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Request leave</a>
+            @endif
         @endif
         <a href="{{ route('property.accounting.payroll', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Payroll</a>
+        @if ($isFieldOfficer ?? false)
+            <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-cyan-800">Meter app</a>
+        @endif
     </x-slot>
 
     @if (session('status'))
@@ -40,6 +67,7 @@
         <div class="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
             Portal login: email <code>{{ session('hr_user_created.email') }}</code>,
             temporary password <code>{{ session('hr_user_created.temporary_password') }}</code>.
+            Copy this now if email is delayed. They should change the password after first sign-in.
         </div>
     @endif
 
@@ -63,65 +91,18 @@
     <div class="space-y-4 sm:space-y-5 w-full min-w-0">
         @if (($activeTab ?? 'overview') === 'portfolio')
             @include('property.agent.hr.employees.partials.tab-portfolio')
+        @elseif (($activeTab ?? 'overview') === 'lifecycle')
+            @include('property.agent.hr.employees.partials.lifecycle')
+        @elseif (($activeTab ?? 'overview') === 'offboard')
+            @include('property.agent.hr.employees.partials.tab-offboard')
+        @elseif (($activeTab ?? 'overview') === 'access')
+            @include('property.agent.hr.employees.partials.tab-access')
+        @elseif (($activeTab ?? 'overview') === 'permissions')
+            @include('property.agent.hr.employees.partials.tab-permissions')
+        @elseif (($activeTab ?? 'overview') === 'leave')
+            @include('property.agent.hr.employees.partials.tab-leave')
         @else
-            <div class="grid gap-4 lg:grid-cols-2">
-                <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Profile</h3>
-                    <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
-                        <p><span class="text-slate-500">Name:</span> {{ $employee->full_name }}</p>
-                        <p><span class="text-slate-500">Email:</span> {{ $employee->email ?: '—' }}</p>
-                        <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$employee->phone" /></p>
-                        <p><span class="text-slate-500">National ID:</span> {{ $employee->national_id ?: '—' }}</p>
-                        <p><span class="text-slate-500">Hire date:</span> {{ $employee->hire_date?->format('Y-m-d') ?? '—' }}</p>
-                        @if ($employee->supervisor)
-                            <p><span class="text-slate-500">Supervisor:</span> {{ $employee->supervisor->full_name }}</p>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Portal & property roles</h3>
-                    <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
-                        @if ($employee->user)
-                            <p><span class="text-slate-500">Login email:</span> {{ $employee->user->email }}</p>
-                            <p><span class="text-slate-500">Roles:</span> {{ $employee->user->pmRoles->pluck('name')->join(', ') ?: '—' }}</p>
-                        @else
-                            <p class="text-slate-500">No portal login yet. Edit employee and enable portal login with property roles.</p>
-                        @endif
-                    </div>
-                </div>
-
-                @if ($isFieldOfficer ?? false)
-                    <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
-                        <div class="flex items-center justify-between gap-2">
-                            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Field officer portfolio</h3>
-                            <a href="{{ route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'], false) }}" data-turbo-frame="property-main" class="text-xs font-medium text-blue-600 hover:underline">Manage portfolio</a>
-                        </div>
-                        <div class="mt-3 text-sm text-slate-700 dark:text-slate-200 space-y-2">
-                            <p><span class="text-slate-500">Properties:</span> {{ (int) ($portfolioStats['properties'] ?? 0) }}</p>
-                            <p><span class="text-slate-500">Units:</span> {{ (int) ($portfolioStats['units'] ?? 0) }}</p>
-                            <p><span class="text-slate-500">Rent portfolio:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($portfolioStats['rent_portfolio'] ?? 0)) }}</p>
-                        </div>
-                    </div>
-                @endif
-
-                <div class="property-compact-panel rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Recent leave</h3>
-                        <a href="{{ route('property.hr.leaves.index', ['employee_id' => $employee->id], false) }}" data-turbo-frame="property-main" class="text-xs font-medium text-blue-600 hover:underline">View all</a>
-                    </div>
-                    <div class="mt-3 space-y-2 text-sm">
-                        @forelse ($recentLeaves as $leave)
-                            <div class="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
-                                <div class="font-medium text-slate-900 dark:text-white">{{ $leave->leave_type }}</div>
-                                <div class="text-xs text-slate-500">{{ $leave->start_date?->format('Y-m-d') }} → {{ $leave->end_date?->format('Y-m-d') }} · {{ ucfirst((string) $leave->status) }}</div>
-                            </div>
-                        @empty
-                            <p class="text-slate-500">No leave requests recorded.</p>
-                        @endforelse
-                    </div>
-                </div>
-            </div>
+            @include('property.agent.hr.employees.partials.tab-overview')
         @endif
     </div>
 </x-property.workspace>

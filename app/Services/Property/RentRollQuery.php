@@ -6,15 +6,36 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PropertyUnit;
+use Carbon\Carbon;
 
 final class RentRollQuery
 {
+    public static function normalizeMonth(?string $month): string
+    {
+        $month = trim((string) $month);
+        if (preg_match('/^\d{4}-\d{2}$/', $month) !== 1) {
+            return now()->format('Y-m');
+        }
+
+        $parsed = Carbon::createFromFormat('!Y-m', $month);
+        if ($parsed === false || $parsed->format('Y-m') !== $month) {
+            return now()->format('Y-m');
+        }
+
+        return $month;
+    }
+
     /**
      * @return list<array{property_id: int, unit_id: int, tenant_id: int|null, cells: list<string>}>
      */
-    public static function rowRecords(): array
+    public static function rowRecords(?string $month = null): array
     {
+        $month = self::normalizeMonth($month);
+        $start = Carbon::createFromFormat('!Y-m', $month)->startOfMonth()->toDateString();
+        $end = Carbon::createFromFormat('!Y-m', $month)->endOfMonth()->toDateString();
+
         $utilityTotals = PmUnitUtilityCharge::query()
+            ->where('billing_month', $month)
             ->selectRaw('property_unit_id, SUM(amount) as total')
             ->groupBy('property_unit_id')
             ->pluck('total', 'property_unit_id');
@@ -43,13 +64,15 @@ final class RentRollQuery
                 ->pluck('balance', 'property_unit_id');
 
             $paidByUnit = PmInvoice::query()
+                ->billableAr()
                 ->whereIn('property_unit_id', $unitIds)
+                ->whereBetween('issue_date', [$start, $end])
                 ->selectRaw('property_unit_id, COALESCE(SUM(amount_paid), 0) as paid')
                 ->groupBy('property_unit_id')
                 ->pluck('paid', 'property_unit_id');
         }
 
-        $period = now()->format('Y-m');
+        $period = $month;
         $rows = [];
         foreach ($units as $unit) {
             $lease = $unit->leases->first();
@@ -82,8 +105,8 @@ final class RentRollQuery
     /**
      * @return list<list<string>>
      */
-    public static function tableRows(): array
+    public static function tableRows(?string $month = null): array
     {
-        return array_map(static fn (array $row) => $row['cells'], self::rowRecords());
+        return array_map(static fn (array $row) => $row['cells'], self::rowRecords($month));
     }
 }

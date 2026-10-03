@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 
 class PropertyUnit extends Model
@@ -29,6 +29,12 @@ class PropertyUnit extends Model
     public const TYPE_VILLA = 'villa';
     public const TYPE_TOWNHOUSE = 'townhouse';
     public const TYPE_COMMERCIAL = 'commercial';
+    public const TYPE_DOUBLE_ROOM = 'double_room';
+    public const TYPE_TRIPLE_ROOM = 'triple_room';
+    public const TYPE_SHOP = 'shop';
+    public const TYPE_OFFICE = 'office';
+    public const TYPE_WAREHOUSE = 'warehouse';
+    public const TYPE_RESTAURANT = 'restaurant';
 
     protected $fillable = [
         'property_id',
@@ -43,6 +49,21 @@ class PropertyUnit extends Model
         'legacy_area',
         'floor',
         'furnished',
+        'bathrooms',
+        'parking_spaces',
+        'rent_per_area',
+        'charge_frequency',
+        'take_on_letting_date',
+        'unit_sequence',
+        'floor_number',
+        'notes',
+        'location_notes',
+        'electricity_account',
+        'electricity_meter',
+        'water_account',
+        'water_meter',
+        'extra_meters',
+        'features',
         'public_listing_published',
         'public_listing_description',
     ];
@@ -56,6 +77,13 @@ class PropertyUnit extends Model
             'available_from' => 'date',
             'legacy_area' => 'decimal:2',
             'furnished' => 'boolean',
+            'bathrooms' => 'integer',
+            'parking_spaces' => 'integer',
+            'rent_per_area' => 'decimal:2',
+            'take_on_letting_date' => 'date',
+            'unit_sequence' => 'integer',
+            'extra_meters' => 'array',
+            'features' => 'array',
             'public_listing_published' => 'boolean',
         ];
     }
@@ -63,18 +91,21 @@ class PropertyUnit extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->whereIn('property_id', function ($sub) use ($user) {
+            $query->whereIn('property_id', function ($sub) use ($ownerIds) {
                 $sub->select('id')
                     ->from('properties')
-                    ->where('agent_user_id', $user->id);
+                    ->where(function ($owned) use ($ownerIds) {
+                        $owned->whereIn('agent_user_id', $ownerIds)
+                            ->orWhereNull('agent_user_id');
+                    });
             });
         });
     }
@@ -239,7 +270,34 @@ class PropertyUnit extends Model
             self::TYPE_MAISONETTE => 'Maisonette',
             self::TYPE_VILLA => 'Villa',
             self::TYPE_TOWNHOUSE => 'Townhouse',
+            self::TYPE_DOUBLE_ROOM => 'Double room',
+            self::TYPE_TRIPLE_ROOM => 'Triple room',
             self::TYPE_COMMERCIAL => 'Commercial',
+            self::TYPE_SHOP => 'Retail / shop',
+            self::TYPE_OFFICE => 'Office',
+            self::TYPE_WAREHOUSE => 'Warehouse',
+            self::TYPE_RESTAURANT => 'Restaurant',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function chargeFrequencyOptions(): array
+    {
+        return [
+            'monthly' => 'Monthly',
+            'one_off' => 'One off',
+            'daily' => 'Daily',
+            'weekly' => 'Weekly',
+            'biweekly' => 'Bi-weekly',
+            'bimonthly' => 'Bi-monthly',
+            'quarterly' => 'Quarterly',
+            'semiannually' => 'Semi-annually',
+            'annually' => 'Annually',
+            'biennially' => 'Biennially',
+            'triennially' => 'Triennially',
+            'none' => 'None',
         ];
     }
 

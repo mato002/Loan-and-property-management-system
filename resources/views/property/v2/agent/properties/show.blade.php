@@ -113,9 +113,11 @@
                 </div>
                 <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">CSV</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">PDF</a>
-                <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="inline-flex h-9 items-center justify-center rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Word</a>
+                @include('property.agent.partials.table_export_dropdown', [
+                    'current' => true,
+                    'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
+                    'class' => 'h-9 rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50',
+                ])
             </form>
 
             @if (count($hubSummaryStats) > 0)
@@ -148,6 +150,10 @@
                 <p><span class="text-slate-500">Code:</span> {{ $property->code ?: '—' }}</p>
                 <p><span class="text-slate-500">City:</span> {{ $property->city ?: '—' }}</p>
                 <p><span class="text-slate-500">Address:</span> {{ $property->address_line ?: '—' }}</p>
+                <p><span class="text-slate-500">LR / title:</span> {{ $property->lr_number ?: '—' }}</p>
+                <p><span class="text-slate-500">Category:</span> {{ $property->category ?: '—' }}{{ $property->property_type ? ' · '.$property->property_type : '' }}</p>
+                <p><span class="text-slate-500">Estate / zone:</span> {{ trim(collect([$property->estate, $property->zone])->filter()->implode(' · ')) ?: '—' }}</p>
+                <p><span class="text-slate-500">Let / manage:</span> {{ $property->management_mode === 'letting' ? 'Letting' : 'Managing' }}</p>
                 <p>
                     <span class="text-slate-500">Linked landlord{{ count($ownerRows) === 1 ? '' : 's' }}:</span>
                     @if (count($ownerRows) > 0)
@@ -171,9 +177,9 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
             </div>
-            <div class="mt-3 overflow-x-auto">
+            <div class="mt-3 max-h-[22rem] overflow-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
                             <th class="px-3 py-2">Landlord</th>
                             <th class="px-3 py-2">Share %</th>
@@ -252,12 +258,13 @@
     @endif
 
     @if ($activeTab === 'occupancy')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Occupancy snapshot</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Unit</th>
                     <th class="px-4 py-3">Status</th>
@@ -287,11 +294,12 @@
                 @endforeach
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 
     @if ($activeTab === 'maintenance')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Maintenance requests</h3>
             <div class="flex flex-wrap gap-2">
@@ -301,8 +309,9 @@
                 <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline self-center">Open maintenance workspace</a>
             </div>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Date</th>
                     <th class="px-4 py-3">Unit</th>
@@ -327,11 +336,12 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 
     @if ($activeTab === 'units')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto overflow-y-visible">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -682,12 +692,13 @@
     @endif
 
     @if ($activeTab === 'revenue')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Recent collections ({{ $periodLabel }})</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Date</th>
                     <th class="px-4 py-3">Tenant</th>
@@ -710,14 +721,16 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
 
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Collection channel report ({{ $periodLabel }})</h3>
         </div>
+        <div class="max-h-[22rem] overflow-auto">
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Channel</th>
                     <th class="px-4 py-3">Transactions</th>
@@ -736,20 +749,18 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
     @endif
 
+    @if ($activeTab === 'statements')
+        @include('property.agent.properties.partials.tab-statements')
+    @endif
+
     @if ($activeTab === 'offboarding')
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 class="text-sm font-semibold text-slate-900">Property offboarding</h3>
-        <p class="mt-2 text-sm text-slate-600">Safely wind down management without deleting invoices, payments, leases, or accounting history.</p>
-        <p class="mt-1 text-sm text-slate-600">Current status: <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span></p>
-        @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Open offboarding wizard
-            </a>
-        @endif
-    </div>
+        <div class="mt-5">
+            @include('property.agent.properties.partials.offboarding_panel')
+        </div>
     @endif
     </div>
 

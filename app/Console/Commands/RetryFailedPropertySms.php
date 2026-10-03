@@ -20,7 +20,7 @@ class RetryFailedPropertySms extends Command
             ? max(1, (int) $this->option('limit'))
             : null;
 
-        if ($propertyRetryService->enabled()) {
+        if ($propertyRetryService->enabled() && \App\Models\PropertyPortalSetting::isSmsRetryAutomationEnabled()) {
             $property = $propertyRetryService->retryDue($limit);
             $this->info(sprintf(
                 'Property SMS auto-retry: attempted=%d sent=%d skipped=%d failed=%d',
@@ -30,7 +30,7 @@ class RetryFailedPropertySms extends Command
                 $property['failed'],
             ));
         } else {
-            $this->info('Property SMS auto-retry is disabled (PROPERTY_SMS_AUTO_RETRY_ENABLED=false).');
+            $this->info('Property SMS auto-retry is disabled (PROPERTY_SMS_AUTO_RETRY_ENABLED=false or Communications → Schedules).');
         }
 
         if ($loanRetryService->enabled()) {

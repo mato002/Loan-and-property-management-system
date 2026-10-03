@@ -50,10 +50,173 @@ function prefersServerSearch(control) {
 }
 
 function isSearchInput(el) {
+    if (!(el instanceof HTMLInputElement) || el.closest('[data-statement-assign]')) {
+        return false;
+    }
+
+    return el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true' || el.dataset.filterSearch === '1';
+}
+
+function isFilterSearchInput(el) {
     return (
-        el instanceof HTMLInputElement &&
-        (el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true')
+        el instanceof HTMLInputElement
+        && el.dataset.filterSearch !== '0'
+        && (el.dataset.filterSearch === '1' || (el.name === 'q' && !!el.closest('[data-property-filter-toolbar]')))
     );
+}
+
+function filterControlIsVisible(el) {
+    if (!(el instanceof Element)) {
+        return false;
+    }
+
+    let node = el;
+    while (node instanceof Element) {
+        if (node.hidden) {
+            return false;
+        }
+        const style = window.getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+        node = node.parentElement;
+    }
+
+    return true;
+}
+
+/** Text the user typed, kept so a duplicate hidden box cannot wipe the first search. */
+let lastFilterSearchValue = '';
+/** Path the remembered search belongs to, so another list does not inherit it. */
+let filterSearchPath = '';
+/** Non-empty search sent with the last Apply, used if the response comes back blank. */
+let pendingFilterSubmit = '';
+let filterSearchResubmitted = false;
+
+function readUrlSearchQuery() {
+    try {
+        return new URL(window.location.href).searchParams.get('q') || '';
+    } catch {
+        return '';
+    }
+}
+
+function uniquifyFilterFieldIds(root) {
+    const scope = root instanceof Element || root instanceof Document ? root : document;
+    /** @type {Map<string, number>} */
+    const seen = new Map();
+
+    scope.querySelectorAll('[id^="filter-field-"]').forEach((el) => {
+        if (!(el instanceof HTMLElement) || !el.id) {
+            return;
+        }
+        const count = seen.get(el.id) ?? 0;
+        seen.set(el.id, count + 1);
+        if (count === 0) {
+            return;
+        }
+        const nextId = `${el.id}--${count}`;
+        el.closest('.property-filter-field')?.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.setAttribute('for', nextId);
+        el.id = nextId;
+    });
+}
+
+function stampFilterSearchOnSubmit(form) {
+    const searches = [...form.querySelectorAll('input[name="q"]')].filter((el) => el instanceof HTMLInputElement);
+    if (searches.length === 0) {
+        return;
+    }
+
+    const active = document.activeElement;
+    const preferred = (active instanceof HTMLInputElement && searches.includes(active) ? active : null)
+        || searches.find((el) => filterControlIsVisible(el) && !el.disabled)
+        || searches.find((el) => !el.disabled)
+        || searches[0];
+
+    const typed = preferred.value !== '' ? preferred.value : lastFilterSearchValue;
+    if (typed !== '' && preferred.value !== typed) {
+        preferred.value = typed;
+    }
+
+    searches.forEach((el) => {
+        if (el === preferred) {
+            return;
+        }
+        el.disabled = true;
+        el.dataset.filterVisibilityDisabled = '1';
+    });
+
+    if (preferred.value === '') {
+        lastFilterSearchValue = '';
+        pendingFilterSubmit = '';
+        return;
+    }
+
+    lastFilterSearchValue = preferred.value;
+    pendingFilterSubmit = preferred.value;
+}
+
+function restoreSubmittedFilterSearch(root) {
+    const scope = root instanceof Element || root instanceof Document ? root : document;
+    const inputs = [...scope.querySelectorAll('[data-property-filter-toolbar] input[name="q"], input[data-filter-search="1"]')]
+        .filter((el) => el instanceof HTMLInputElement);
+    const visible = inputs.find((el) => filterControlIsVisible(el));
+    if (!(visible instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const urlQ = readUrlSearchQuery();
+    if (urlQ !== '') {
+        if (visible.value !== urlQ) {
+            visible.value = urlQ;
+        }
+        lastFilterSearchValue = urlQ;
+        filterSearchPath = window.location.pathname;
+        pendingFilterSubmit = '';
+        filterSearchResubmitted = false;
+        return;
+    }
+
+    if (filterSearchPath !== '' && window.location.pathname !== filterSearchPath) {
+        lastFilterSearchValue = '';
+        pendingFilterSubmit = '';
+        filterSearchResubmitted = false;
+        return;
+    }
+
+    if (visible.value === '' && lastFilterSearchValue !== '') {
+        visible.value = lastFilterSearchValue;
+        applyLiveWorkspaceSearch(visible);
+    }
+
+    if (pendingFilterSubmit === '' || filterSearchResubmitted) {
+        return;
+    }
+
+    filterSearchResubmitted = true;
+    visible.value = pendingFilterSubmit;
+    lastFilterSearchValue = pendingFilterSubmit;
+    visible.form?.requestSubmit();
+}
+
+function rememberFilterSearchInput(event) {
+    const el = event.target;
+    if (!isFilterSearchInput(el) || !filterControlIsVisible(el)) {
+        return;
+    }
+
+    const inputType = typeof event.inputType === 'string' ? event.inputType : '';
+    const userCleared = inputType.startsWith('delete') || inputType === 'deleteByCut';
+    if (el.value === '' && lastFilterSearchValue !== '' && !userCleared) {
+        el.value = lastFilterSearchValue;
+        return;
+    }
+
+    lastFilterSearchValue = el.value;
+    filterSearchPath = window.location.pathname;
+    if (el.value === '') {
+        pendingFilterSubmit = '';
+    }
 }
 
 function isLiveSearchControl(control) {
@@ -523,7 +686,7 @@ function pageSizeSteps(total) {
     if (total && total > 1000) {
         steps.push(2000, 5000);
     }
-    return steps.filter((size) => !total || size < total);
+    return steps.filter((size) => !total || size <= Math.max(total, 100));
 }
 
 function ensurePageSizeOption(select, value, label) {
@@ -597,7 +760,7 @@ function bindCustomPageSize(select) {
 function enhancePageSizeSelects(root) {
     const scope = root || document;
     scope.querySelectorAll('select[name="per_page"], select[name$="_per_page"]').forEach((select) => {
-        if (!(select instanceof HTMLSelectElement)) {
+        if (!(select instanceof HTMLSelectElement) || select.dataset.serverPageSize === '1') {
             return;
         }
         const total = findListTotal(select);
@@ -711,11 +874,17 @@ export function wireAutoFilterForms(scopeRoot) {
 }
 
 export function syncPropertyFilterDesktopForms() {
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-    document.querySelectorAll('[data-property-filter-form-desktop]').forEach((form) => {
+    uniquifyFilterFieldIds(document);
+
+    document.querySelectorAll('[data-property-filter-toolbar] form').forEach((form) => {
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
+
+        const visible = Array.from(form.elements).some((el) => {
+            return el instanceof HTMLElement && el.type !== 'hidden' && filterControlIsVisible(el);
+        });
+
         Array.from(form.elements).forEach((el) => {
             if (
                 !(
@@ -727,10 +896,18 @@ export function syncPropertyFilterDesktopForms() {
             ) {
                 return;
             }
-            if (isMobile) {
-                el.setAttribute('disabled', 'disabled');
-            } else {
-                el.removeAttribute('disabled');
+
+            if (!visible) {
+                if (!el.disabled) {
+                    el.disabled = true;
+                    el.dataset.filterVisibilityDisabled = '1';
+                }
+                return;
+            }
+
+            if (el.dataset.filterVisibilityDisabled === '1') {
+                el.disabled = false;
+                delete el.dataset.filterVisibilityDisabled;
             }
         });
     });
@@ -782,15 +959,45 @@ function bindFilterLifecycle() {
     const run = (scope) => {
         wireAutoFilterForms(scope || document);
         syncPropertyFilterDesktopForms();
+        restoreSubmittedFilterSearch(scope || document);
     };
 
     document.addEventListener('input', (event) => {
+        rememberFilterSearchInput(event);
         const el = event.target;
         if (!(el instanceof HTMLInputElement) || !isSearchInput(el) || el.matches('[data-auto-submit="off"]')) {
             return;
         }
         handleSearchInput(el);
-    });
+    }, true);
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'get') {
+            return;
+        }
+        if (!form.closest('[data-property-filter-toolbar]')) {
+            return;
+        }
+        stampFilterSearchOnSubmit(form);
+    }, true);
+
+    document.addEventListener('click', (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+        if (!(link instanceof HTMLAnchorElement) || !link.closest('[data-property-filter-toolbar]')) {
+            return;
+        }
+        try {
+            const url = new URL(link.href, window.location.href);
+            if ((url.searchParams.get('q') || '') === '') {
+                lastFilterSearchValue = '';
+                pendingFilterSubmit = '';
+                filterSearchResubmitted = false;
+            }
+        } catch {
+            // ignore malformed reset links
+        }
+    }, true);
 
     document.addEventListener('DOMContentLoaded', () => run(document));
     document.addEventListener('turbo:load', () => run(document));

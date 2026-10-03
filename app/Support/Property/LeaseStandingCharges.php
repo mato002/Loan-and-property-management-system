@@ -27,7 +27,7 @@ final class LeaseStandingCharges
             }
             $lines[] = [
                 'type' => $type,
-                'type_label' => self::typeLabel($type),
+                'type_label' => self::typeLabel($type).self::maintenanceDetail($row, $amount),
                 'amount' => $amount,
             ];
         }
@@ -48,6 +48,23 @@ final class LeaseStandingCharges
             'type_label' => self::typeLabel($type !== '' ? $type : 'other'),
             'amount' => $amount,
         ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private static function maintenanceDetail(array $row, float $amount): string
+    {
+        $maintenance = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+        if ($maintenance <= 0.009) {
+            return '';
+        }
+
+        $water = is_numeric($row['water_amount'] ?? null)
+            ? (float) $row['water_amount']
+            : max(0.0, $amount - $maintenance);
+
+        return ' ('.number_format($water, 2).' + '.number_format($maintenance, 2).' maintenance)';
     }
 
     public static function typeLabel(string $type): string

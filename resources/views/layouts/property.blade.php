@@ -70,7 +70,7 @@
                 height: 100% !important;
                 min-height: 100dvh;
                 overflow: hidden !important;
-                background: #e8ecf1 !important;
+                background: var(--brand-canvas, #e8ecf1) !important;
             }
             html[data-pwa-context='portal'] .property-print-root {
                 display: flex !important;
@@ -310,7 +310,7 @@
         </style>
     </head>
     <body
-        class="font-sans antialiased h-full min-h-0 overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
+        class="font-sans antialiased h-full min-h-0 overflow-hidden text-slate-900 selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
         data-property-nav-mode="{{ $propertyNavMode }}"
         x-data="{
             sidebarOpen: false,

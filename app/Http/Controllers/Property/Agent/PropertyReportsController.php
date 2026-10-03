@@ -354,7 +354,7 @@ class PropertyReportsController extends Controller
             ->orderBy('p.name');
 
         if (AgentWorkspaceScope::shouldApply()) {
-            $links->where('p.agent_user_id', (int) $request->user()?->id);
+            $links->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()?->id]);
         }
         if ($landlordId > 0) {
             $links->where('pl.user_id', $landlordId);

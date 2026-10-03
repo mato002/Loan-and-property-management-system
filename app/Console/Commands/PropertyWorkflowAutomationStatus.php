@@ -39,6 +39,9 @@ class PropertyWorkflowAutomationStatus extends Command
         $this->line('  Water invoices (water:generate-invoices): '.(PropertyPortalSetting::isWaterInvoiceAutomationEnabled() ? 'ON' : 'OFF'));
         $this->line('  Rent reminders (rent:send-reminders): '.(PropertyPortalSetting::isRentReminderAutomationEnabled() ? 'ON' : 'OFF'));
         $this->line('  Invoice delivery (invoices:deliver-pending): '.(PropertyPortalSetting::isInvoiceDeliveryAutomationEnabled() ? 'ON' : 'OFF'));
+        $this->line('  Scheduled campaigns (communications:dispatch-scheduled): '.(PropertyPortalSetting::isScheduledDispatchAutomationEnabled() ? 'ON' : 'OFF'));
+        $this->line('  Failed SMS retry (communications:retry-failed-sms): '.(PropertyPortalSetting::isSmsRetryAutomationEnabled() ? 'ON' : 'OFF'));
+        $this->line('  Landlord alerts (landlord:send-portal-alerts): '.(PropertyPortalSetting::isLandlordAlertAutomationEnabled() ? 'ON' : 'OFF'));
         $this->line('  Water penalties (water:apply-penalties): '.(PropertyPortalSetting::isWaterPenaltyAutomationEnabled() ? 'ON' : 'OFF'));
         $this->line('  Any scheduled automation ON: '.(PropertyPortalSetting::isAnyScheduledPropertyAutomationOn() ? 'yes' : 'no'));
 

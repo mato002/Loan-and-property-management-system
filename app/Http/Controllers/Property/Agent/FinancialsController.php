@@ -210,7 +210,7 @@ class FinancialsController extends Controller
             ->orderBy('u.name')
             ->orderBy('p.name');
         if (AgentWorkspaceScope::shouldApply()) {
-            $linksQuery->where('p.agent_user_id', (int) $request->user()?->id);
+            $linksQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()?->id]);
         }
         $links = $linksQuery->get();
 
@@ -384,7 +384,7 @@ class FinancialsController extends Controller
 
         $propertiesQuery = Property::query()->orderBy('name');
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertiesQuery->where('agent_user_id', (int) $request->user()?->id);
+            $propertiesQuery->whereIn('agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()?->id]);
         }
         $properties = $propertiesQuery->get(['id', 'name']);
 

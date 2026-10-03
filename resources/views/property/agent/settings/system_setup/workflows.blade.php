@@ -11,14 +11,14 @@
             <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">
                 When enabled below (or via <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">PROPERTY_WORKFLOW_AUTOMATION_ENABLED</code> in <code class="rounded bg-white px-1 py-0.5">.env</code>),
                 the server must run <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">php artisan schedule:run</code> every minute (see <code class="rounded bg-white px-1 py-0.5">deploy/laravel-scheduler.cron.example</code>).
-                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>invoice delivery</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. Until you save this form once per environment, each switch follows the legacy “master” checkbox.
+                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>invoice delivery</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. The same switches are on <a href="{{ route('property.communications.schedules', false) }}" class="font-semibold underline">Communications → Schedules</a>. Saving a switch here controls that job even when <code class="rounded bg-white px-1 py-0.5">PROPERTY_WORKFLOW_AUTOMATION_ENABLED=true</code>. Setting that variable to <code class="rounded bg-white px-1 py-0.5">false</code> forces every job off.
             </p>
             <p class="mt-2 text-xs font-medium {{ ($workflowAutomationEffective ?? false) ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-300' }}">
                 Automation is currently <strong>{{ ($workflowAutomationEffective ?? false) ? 'ON' : 'OFF' }}</strong> for scheduled commands.
             </p>
-            @if (!empty($workflowAutomationEnvIsSet))
+            @if (($workflowAutomationEnvIsSet ?? false) && ! ($workflowAutomationEffective ?? false))
                 <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                    <code class="rounded bg-white px-1 py-0.5 dark:bg-slate-800">PROPERTY_WORKFLOW_AUTOMATION_ENABLED</code> is set in the environment and <strong>overrides</strong> the checkbox for scheduled commands.
+                    <code class="rounded bg-white px-1 py-0.5 dark:bg-slate-800">PROPERTY_WORKFLOW_AUTOMATION_ENABLED=false</code> is forcing every scheduled job off.
                 </p>
             @endif
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-500">CLI check: <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800">php artisan property:workflow-automation-status</code></p>
@@ -37,8 +37,13 @@
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_assign_tickets" value="1" @checked(old('workflow_auto_assign_tickets', $autoAssignTickets ? '1' : '0') === '1') />
-                Auto-assign maintenance tickets to default team
+                Also move new maintenance tickets into triage when nobody on the property can resolve them
             </label>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">High-value repair approval threshold</label>
+                <input type="number" name="workflow_maintenance_approval_threshold" min="0" step="0.01" value="{{ old('workflow_maintenance_approval_threshold', $maintenanceApprovalThreshold ?? '100') }}" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Estimates above this amount need someone with high-value maintenance approval. Default is 100.</p>
+            </div>
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_reminders" value="1" @checked(old('workflow_auto_reminders', $autoReminders ? '1' : '0') === '1') />

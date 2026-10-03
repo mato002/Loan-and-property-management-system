@@ -13,6 +13,7 @@ final class PropertyEntityHub
         ['key' => 'overview', 'label' => 'Overview'],
         ['key' => 'properties', 'label' => 'Properties'],
         ['key' => 'units', 'label' => 'Units'],
+        ['key' => 'files', 'label' => 'Files'],
         ['key' => 'collections', 'label' => 'Collections'],
         ['key' => 'commission', 'label' => 'Commission'],
         ['key' => 'settlements', 'label' => 'Settlements'],
@@ -44,6 +45,7 @@ final class PropertyEntityHub
         ['key' => 'maintenance', 'label' => 'Maintenance'],
         ['key' => 'performance', 'label' => 'Performance'],
         ['key' => 'revenue', 'label' => 'Revenue'],
+        ['key' => 'statements', 'label' => 'Statements'],
         ['key' => 'offboarding', 'label' => 'Offboarding'],
     ];
 
@@ -63,6 +65,11 @@ final class PropertyEntityHub
 
     public const EMPLOYEE_TABS = [
         ['key' => 'overview', 'label' => 'Overview'],
+        ['key' => 'lifecycle', 'label' => 'Lifecycle'],
+        ['key' => 'offboard', 'label' => 'Offboard'],
+        ['key' => 'access', 'label' => 'Access'],
+        ['key' => 'permissions', 'label' => 'Role & permissions'],
+        ['key' => 'leave', 'label' => 'Leave'],
         ['key' => 'portfolio', 'label' => 'Portfolio'],
     ];
 
@@ -71,11 +78,10 @@ final class PropertyEntityHub
      */
     public static function employeeTabsFor(bool $isFieldOfficer): array
     {
-        if (! $isFieldOfficer) {
-            return [['key' => 'overview', 'label' => 'Overview']];
-        }
-
-        return self::EMPLOYEE_TABS;
+        return array_values(array_filter(
+            self::EMPLOYEE_TABS,
+            static fn (array $tab): bool => $isFieldOfficer || $tab['key'] !== 'portfolio'
+        ));
     }
 
     /**

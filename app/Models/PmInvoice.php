@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\InvoiceStateIntegrityService;
@@ -50,6 +51,8 @@ class PmInvoice extends Model
 
     public const TYPE_SERVICE = 'service';
 
+    public const TYPE_LATE_PAYMENT = 'late_payment';
+
     /** @deprecated Not offered in the create dropdown — agents should add a named type instead. Kept for legacy rows. */
     public const TYPE_OTHER = 'other';
 
@@ -72,6 +75,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
+            self::TYPE_LATE_PAYMENT => 'Late payment charge',
         ];
     }
 
@@ -88,6 +92,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY,
             self::TYPE_GARBAGE,
             self::TYPE_SERVICE,
+            self::TYPE_LATE_PAYMENT,
             self::TYPE_OTHER,
             self::TYPE_MIXED,
         ];
@@ -313,7 +318,7 @@ class PmInvoice extends Model
     {
         $type = (string) ($this->invoice_type ?? '');
 
-        return $type !== '' && $type !== self::TYPE_RENT;
+        return $type !== '' && $type !== self::TYPE_RENT && $type !== self::TYPE_LATE_PAYMENT;
     }
 
     public const KIND_INVOICE = 'invoice';
@@ -422,23 +427,23 @@ class PmInvoice extends Model
         });
 
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where(function (Builder $q) use ($user) {
+            $query->where(function (Builder $q) use ($ownerIds) {
                 if (Schema::hasColumn('pm_invoices', 'agent_user_id')) {
-                    $q->where('pm_invoices.agent_user_id', $user->id);
+                    $q->whereIn('pm_invoices.agent_user_id', $ownerIds);
                 }
-                $q->orWhereIn('property_unit_id', function ($sub) use ($user) {
+                $q->orWhereIn('property_unit_id', function ($sub) use ($ownerIds) {
                     $sub->select('pu.id')
                         ->from('property_units as pu')
                         ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                        ->where('p.agent_user_id', $user->id);
+                        ->whereIn('p.agent_user_id', $ownerIds);
                 });
             });
         });
@@ -1093,9 +1098,21 @@ class PmInvoice extends Model
         return $this->invoiceKindKey() === self::KIND_WATER_SUPPLEMENT;
     }
 
+    /**
+     * EZEN statement lines store a source tag on every charge, including monthly garbage.
+     * That tag is not an opening balance.
+     */
+    public function isImportedStatementCharge(): bool
+    {
+        $origin = $this->carry_forward_origin;
+
+        return is_array($origin)
+            && (string) ($origin['source'] ?? '') === 'ezen_tenant_statement_dbn';
+    }
+
     public function isCarryForwardInvoice(): bool
     {
-        if (! empty($this->carry_forward_origin)) {
+        if (! empty($this->carry_forward_origin) && ! $this->isImportedStatementCharge()) {
             return true;
         }
 
@@ -1122,7 +1139,7 @@ class PmInvoice extends Model
             return 'Water supplement';
         }
 
-        if ($this->isCarryForwardInvoice()) {
+        if ($this->isCarryForwardInvoice() && ! $this->isImportedStatementCharge()) {
             return 'Opening balance';
         }
 
@@ -1142,6 +1159,7 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
+            self::TYPE_LATE_PAYMENT => 'Late payment charge',
             default => ucfirst(str_replace('_', ' ', $type)),
         };
     }

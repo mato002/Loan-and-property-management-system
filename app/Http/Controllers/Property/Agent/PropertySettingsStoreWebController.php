@@ -258,6 +258,7 @@ class PropertySettingsStoreWebController extends Controller
             'attachedUtilityChargesAuto' => PropertyPortalSetting::isAttachedUtilityChargeAutomationEnabled(),
             'invoiceDeliveryAuto' => PropertyPortalSetting::isInvoiceDeliveryAutomationEnabled(),
             'reminderLeadDays' => PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'),
+            'maintenanceApprovalThreshold' => PropertyPortalSetting::getValue('workflow_maintenance_approval_threshold', '100'),
             'rentDueDayDefault' => app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay(),
             'rentDueDayEnvDefault' => (int) config('property.rent_due_day_default', 5),
             'notes' => PropertyPortalSetting::getValue('workflow_notes', ''),
@@ -277,6 +278,7 @@ class PropertySettingsStoreWebController extends Controller
             'workflow_auto_invoice_delivery' => ['nullable', 'in:0,1'],
             'workflow_reminder_lead_days' => ['nullable', 'integer', 'min:0', 'max:60'],
             'property_rent_due_day_default' => ['nullable', 'integer', 'min:1', 'max:31'],
+            'workflow_maintenance_approval_threshold' => ['nullable', 'numeric', 'min:0'],
             'workflow_notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
@@ -299,6 +301,12 @@ class PropertySettingsStoreWebController extends Controller
             );
         }
         PropertyPortalSetting::setValue('workflow_notes', $data['workflow_notes'] ?? '');
+        if ($request->exists('workflow_maintenance_approval_threshold')) {
+            PropertyPortalSetting::setValue(
+                'workflow_maintenance_approval_threshold',
+                (string) ($data['workflow_maintenance_approval_threshold'] ?? '100')
+            );
+        }
         PropertyPortalSetting::setValue('system_setup_workflows_count', '9');
 
         $this->logSettingsActivity('workflows', 'Workflow setup updated');
@@ -934,12 +942,15 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage tenants', 'key' => 'tenants.manage', 'group' => 'tenants'],
             ['name' => 'Manage leases', 'key' => 'leases.manage', 'group' => 'tenants'],
             ['name' => 'Manage maintenance', 'key' => 'maintenance.manage', 'group' => 'maintenance'],
+            ['name' => 'Resolve maintenance', 'key' => 'maintenance.resolve', 'group' => 'maintenance'],
+            ['name' => 'Approve high-value maintenance', 'key' => 'maintenance.approve_high_value', 'group' => 'maintenance'],
             ['name' => 'Manage vendors', 'key' => 'vendors.manage', 'group' => 'vendors'],
             ['name' => 'Record payments', 'key' => 'payments.record', 'group' => 'payments'],
             ['name' => 'Settle payments', 'key' => 'payments.settle', 'group' => 'payments'],
             ['name' => 'Manage invoices', 'key' => 'invoices.manage', 'group' => 'revenue'],
             ['name' => 'Manage penalties', 'key' => 'revenue.penalties.manage', 'group' => 'revenue'],
             ['name' => 'Manage utilities', 'key' => 'revenue.utilities.manage', 'group' => 'revenue'],
+            ['name' => 'Record meter readings', 'key' => 'utilities.readings.capture', 'group' => 'revenue'],
             ['name' => 'Close utility billing periods', 'key' => 'revenue.utilities.period_close', 'group' => 'revenue'],
             ['name' => 'Approve utility period overrides', 'key' => 'revenue.utilities.period_override_approve', 'group' => 'revenue'],
             ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
@@ -974,8 +985,8 @@ class PropertySettingsStoreWebController extends Controller
                 'permissions' => [
                     'properties.manage', 'property.offboarding.start', 'property.offboarding.complete',
                     'property.archive.view', 'property.archive.restore', 'property.archive.override',
-                    'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
-                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'tenants.manage', 'leases.manage', 'maintenance.manage', 'maintenance.resolve', 'maintenance.approve_high_value', 'vendors.manage',
+                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage', 'utilities.readings.capture',
                     'revenue.utilities.period_close', 'revenue.utilities.period_override_approve',
                     'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
                     'communications.send_legal_notice', 'communications.approve_notice',
@@ -1006,7 +1017,7 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Maintenance requests, jobs, and vendors.',
                 'permissions' => [
-                    'maintenance.manage', 'vendors.manage', 'communications.manage', 'communications.export',
+                    'maintenance.manage', 'maintenance.resolve', 'utilities.readings.capture', 'vendors.manage', 'communications.manage', 'communications.export',
                 ],
             ],
             'finance_clerk' => [

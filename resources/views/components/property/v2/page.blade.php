@@ -30,14 +30,35 @@
         : new \Illuminate\View\ComponentAttributeBag();
 @endphp
 
+<style>
+@media (max-width: 767px) {
+    .property-inline-actions {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    .property-inline-actions > * {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none !important;
+    }
+}
+</style>
 <div {{ $modalShellBag->merge(['class' => $pageClasses]) }}>
     @if ($renderWorkspaceTabs)
         <x-property.workspace-tabs :workspace="$resolvedWorkspaceKey" />
     @endif
 
-    <header @class(['property-erp-header property-print-hide print-hide', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <div class="min-w-0 flex-1">
+    <header @class(['property-erp-header property-print-hide print-hide', $compactList ? '' : 'space-y-2 sm:space-y-3'])>
+        <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div class="min-w-0 md:flex-1">
                 <h1 @class([
                     'font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight',
                     $compactList ? 'text-base sm:text-lg' : 'text-lg sm:text-xl',
@@ -51,7 +72,7 @@
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="print-hide flex flex-wrap items-center justify-end gap-1.5 w-full sm:w-auto sm:ml-auto sm:max-w-[58%] [&>button]:min-h-0 [&>a]:min-h-0">
+                    <div class="property-erp-header__actions print-hide hidden w-full md:ml-auto md:flex md:w-auto md:max-w-[70%] md:flex-wrap md:items-center md:justify-end md:gap-1.5">
                         {{ $actions }}
                     </div>
                 @endif

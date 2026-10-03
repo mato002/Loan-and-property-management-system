@@ -25,8 +25,9 @@
             @foreach ($panelGroups as $groupKey => $group)
                 @php $groupActive = $groupKey === $activeGroup; @endphp
                 <a
-                    href="{{ route('property.landlord.reports.index', ['panel' => $group['default']]) }}"
+                    href="{{ route('property.landlord.reports.index', ['panel' => $group['default']], false) }}"
                     data-turbo-frame="property-main"
+                    data-turbo-prefetch="true"
                     data-property-nav="property.landlord.reports.index"
                     data-property-workspace-tab="{{ $groupKey }}"
                     @if ($groupActive) aria-current="page" @endif
@@ -52,8 +53,9 @@
                         $isActive = $panelKey === $active;
                     @endphp
                     <a
-                        href="{{ route('property.landlord.reports.index', ['panel' => $panelKey]) }}"
+                        href="{{ route('property.landlord.reports.index', ['panel' => $panelKey], false) }}"
                         data-turbo-frame="property-main"
+                        data-turbo-prefetch="true"
                         data-property-nav="property.landlord.reports.index"
                         data-property-workspace-subtab="{{ $panelKey }}"
                         @if ($isActive) aria-current="page" @endif

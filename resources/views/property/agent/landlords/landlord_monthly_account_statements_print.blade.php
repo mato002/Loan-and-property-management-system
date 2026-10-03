@@ -63,7 +63,7 @@
             ])
             <div class="footer">
                 Generated {{ $generatedAt ?? now()->format('d M Y H:i') }}.
-                Month statement for {{ $periodLabel ?? ($settlement['period_label'] ?? '') }} only — units, invoiced, received, additions and deductions.
+                Month statement for {{ $periodLabel ?? ($settlement['period_label'] ?? '') }} — units, invoiced, received, additions and deductions.
             </div>
         </div>
     @empty

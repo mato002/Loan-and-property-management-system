@@ -98,21 +98,21 @@ class PmVendorWebController extends Controller
 
         return TabularExport::stream(
             'vendors_directory_'.now()->format('Ymd_His'),
-            ['ID', 'Name', 'Category', 'Phone', 'Email', 'Status', 'Rating'],
+            ['Vendor', 'Category', 'Phone', 'Email', 'Rating', 'Status'],
             function () use ($rows) {
                 foreach ($rows as $vendor) {
                     yield [
-                        $vendor->id,
                         $vendor->name,
                         $vendor->category,
                         $vendor->phone,
                         $vendor->email,
-                        $vendor->status,
-                        $vendor->rating,
+                        $vendor->rating !== null ? number_format((float) $vendor->rating, 1) : '',
+                        ucfirst((string) $vendor->status),
                     ];
                 }
             },
             $format,
+            ['title' => 'Vendor directory'],
         );
     }
 

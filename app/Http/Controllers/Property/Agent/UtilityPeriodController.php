@@ -10,11 +10,13 @@ use App\Services\Property\UtilityPeriodGuardService;
 use App\Services\Property\UtilityPeriodOverrideService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UtilityPeriodController extends Controller
 {
@@ -24,13 +26,43 @@ class UtilityPeriodController extends Controller
         private readonly UtilityPeriodGuardService $guard,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View|StreamedResponse
     {
         $agentId = (int) auth()->id();
+        $status = strtolower(trim((string) $request->query('status', '')));
         $periods = $this->closing->recentPeriods(18, $agentId);
+        if (in_array($status, [UtilityBillingPeriod::STATUS_OPEN, UtilityBillingPeriod::STATUS_CLOSED], true)) {
+            $periods = $periods->where('status', $status)->values();
+        }
+        $periods->load('closedBy');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            return TabularExport::stream(
+                'utility-periods-'.now()->format('Ymd_His'),
+                ['Month', 'Status', 'Closed at', 'Closed by', 'Notes'],
+                function () use ($periods) {
+                    foreach ($periods as $period) {
+                        yield [
+                            (string) $period->billing_month,
+                            (string) $period->status,
+                            $period->closed_at?->format('Y-m-d H:i') ?? '',
+                            (string) ($period->closedBy?->name ?? ''),
+                            (string) ($period->close_notes ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Utility billing periods',
+                    'subtitle' => $periods->count().' period'.($periods->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
 
         return property_view('property.agent.revenue.utility_periods.index', [
             'periods' => $periods,
+            'filters' => ['status' => $status],
             'stats' => [
                 ['label' => 'Open periods', 'value' => (string) $periods->where('status', UtilityBillingPeriod::STATUS_OPEN)->count(), 'hint' => 'Editable'],
                 ['label' => 'Closed periods', 'value' => (string) $periods->where('status', UtilityBillingPeriod::STATUS_CLOSED)->count(), 'hint' => 'Locked'],

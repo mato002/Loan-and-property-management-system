@@ -1045,8 +1045,12 @@ return array (
     array (
       0 => 
       array (
-        'label' => 'Send SMS / email',
+        'label' => 'SMS',
         'route' => 'property.communications.messages',
+        'query' => 
+        array (
+          'channel' => 'sms',
+        ),
         'active' => 
         array (
           0 => 'property.communications.messages',
@@ -1054,6 +1058,20 @@ return array (
         ),
       ),
       1 => 
+      array (
+        'label' => 'Emails',
+        'route' => 'property.communications.messages',
+        'query' => 
+        array (
+          'channel' => 'email',
+        ),
+        'active' => 
+        array (
+          0 => 'property.communications.messages',
+          1 => 'property.communications.messages.store',
+        ),
+      ),
+      2 => 
       array (
         'label' => 'Send bulk SMS',
         'route' => 'property.communications.bulk',
@@ -1063,7 +1081,7 @@ return array (
           1 => 'property.communications.bulk.store',
         ),
       ),
-      2 => 
+      3 => 
       array (
         'label' => 'Message templates',
         'route' => 'property.communications.templates',
@@ -1074,7 +1092,7 @@ return array (
           2 => 'property.communications.templates.destroy',
         ),
       ),
-      3 => 
+      4 => 
       array (
         'label' => 'Conversations',
         'route' => 'property.communications.conversations',

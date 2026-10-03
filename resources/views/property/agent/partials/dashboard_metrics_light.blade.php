@@ -9,11 +9,26 @@
     data-labels='@json($chartLabels)'
     data-invoices='@json($chartInvoices)'
     data-payments='@json($chartPayments)'
+    data-rent-charges='@json($chartRentCharges ?? [])'
+    data-rent-collections='@json($chartRentCollections ?? [])'
     data-commission-by-property='@json($chartCommissionByProperty ?? ['labels' => [], 'values' => []])'
     data-commission-split='@json($chartCommissionSplit ?? ['labels' => [], 'values' => []])'
     data-occupancy='@json($chartOccupancy ?? ['labels' => [], 'values' => []])'
     data-collections-billed='@json($chartCollectionsBilled ?? ['labels' => [], 'values' => []])'
 ></div>
+
+<div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm mb-3 sm:mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <h2 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-column text-rose-600 dark:text-rose-400" aria-hidden="true"></i>
+            Rental charge vs rental collection
+        </h2>
+        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">{{ $chartYear }}</span>
+    </div>
+    <div class="h-64 sm:h-72 w-full min-w-0 overflow-hidden">
+        <canvas id="dashboard-chart-rent-comparison" aria-label="Rental charge versus rental collection by month"></canvas>
+    </div>
+</div>
 
 <x-property.responsive.compact-card-grid class="gap-3 sm:gap-4">
     <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm">

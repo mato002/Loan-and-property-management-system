@@ -57,7 +57,21 @@ php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_recei
   --include-already-paid --agent-user-id=1
 ```
 
-Spot-check 5–10 tenants against EZEN statements. Closing should come from invoice charges + receipt payments. Late-fee **DBN** rows are still not in the invoice/receipt listings — export EZEN **Debit Notes / late payment charges** and we will import those next. Do not mix Phase 6c B/F with this mode.
+Spot-check 5–10 tenants against EZEN statements. Closing should come from invoice charges + receipt payments. Late-fee **DBN** rows are not in the invoice/receipt listings — export each tenant’s EZEN **Tenant/Resident Statement of Account** (`.xls`) and import:
+
+```bash
+php artisan property:import-ezen-tenant-statement path/to/tenant_stmt.xls \
+  --dry-run --agent-user-id=1
+php artisan property:import-ezen-tenant-statement path/to/tenant_stmt.xls \
+  --agent-user-id=1
+```
+
+This creates `late_payment` invoices from `DBN-*` lines, restores statement-only
+rent-deposit and opening-balance charges, imports missing monthly INV rent/garbage
+lines that ERP has not billed yet, applies `CN*` credit notes as receipts, and
+applies any leftover payment remainder.
+Re-running is safe because EZEN transaction numbers (and rent/garbage period) are
+deduplicated. Do not mix Phase 6c B/F with this mode.
 
 **Mode A alternative:** if you only want closing balances (no line history), skip Phase 7/8 payments and use Phase 6c B/F + Phase 8 `--register-only` instead. Do not mix Mode A and Mode B.
 

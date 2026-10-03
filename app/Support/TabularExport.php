@@ -16,12 +16,13 @@ class TabularExport
     public const FORMAT_CSV = 'csv';
     public const FORMAT_PDF = 'pdf';
     public const FORMAT_WORD = 'word';
+    public const FORMAT_XLS = 'xls';
 
     /** @var list<string> */
-    public const TABLE_FORMATS = [self::FORMAT_CSV, self::FORMAT_PDF, self::FORMAT_WORD];
+    public const TABLE_FORMATS = [self::FORMAT_CSV, self::FORMAT_XLS, self::FORMAT_PDF, self::FORMAT_WORD];
 
     /** @var list<string> */
-    public const REVENUE_FORMATS = [self::FORMAT_CSV, 'xls', self::FORMAT_PDF, self::FORMAT_WORD];
+    public const REVENUE_FORMATS = [self::FORMAT_CSV, self::FORMAT_XLS, 'xlsx', self::FORMAT_PDF, self::FORMAT_WORD];
 
     public static function requestedFormat(?string $export, ?string $format = null, string $default = self::FORMAT_CSV): string
     {
@@ -38,10 +39,12 @@ class TabularExport
     public static function stream(string $filenameBase, array $headers, Closure $rows, string $format, array $options = []): StreamedResponse
     {
         $format = strtolower(trim($format));
+        $options = self::withDocumentContext($filenameBase, $options);
 
         return match ($format) {
             self::FORMAT_PDF => self::streamPdf($filenameBase.'.pdf', $headers, $rows, $options),
-            self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows),
+            self::FORMAT_WORD => self::streamWordHtml($filenameBase.'.doc', $headers, $rows, $options),
+            self::FORMAT_XLS, 'xlsx' => self::streamSpreadsheetMl($filenameBase.'.xls', $headers, $rows, $options),
             default => CsvExport::stream($filenameBase.'.csv', $headers, $rows),
         };
     }
@@ -75,8 +78,12 @@ class TabularExport
 
     private static function renderDompdfResponse(string $filename, string $html, string $paper = 'A4', string $orientation = 'portrait'): StreamedResponse
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         $pdfOptions = new Options();
-        $pdfOptions->set('isRemoteEnabled', true);
+        // Remote logos make Dompdf request this same site and can hang or 500.
+        $pdfOptions->set('isRemoteEnabled', false);
         $pdfOptions->set('defaultFont', 'DejaVu Sans');
 
         $dompdf = new Dompdf($pdfOptions);
@@ -114,16 +121,159 @@ class TabularExport
      *
      * @param  list<string>  $headers
      * @param  Closure(): iterable<array<int, scalar|null>>  $rows
+     * @param  array<string,mixed>  $options
      */
-    private static function streamWordHtml(string $filename, array $headers, Closure $rows): StreamedResponse
+    private static function streamWordHtml(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
     {
-        $html = self::htmlTable($headers, $rows, []);
+        $html = self::htmlTable($headers, $rows, array_merge($options, ['__column_count' => count($headers)]));
 
         return response()->streamDownload(function () use ($html) {
             echo $html;
         }, $filename, [
             'Content-Type' => 'application/msword; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @param  list<string>  $headers
+     * @param  Closure(): iterable<array<int, scalar|null>>  $rows
+     * @param  array<string,mixed>  $options
+     */
+    private static function streamSpreadsheetMl(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
+    {
+        $esc = static fn ($v): string => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $cell = static function (mixed $value, string $style = '') use ($esc): string {
+            $styleAttr = $style !== '' ? ' ss:StyleID="'.$style.'"' : '';
+            $raw = trim((string) ($value ?? ''));
+            if ($style === '' && $raw !== '' && preg_match('/^-?\d+(\.\d+)?$/', $raw) === 1) {
+                return '<Cell'.$styleAttr.'><Data ss:Type="Number">'.$esc($raw).'</Data></Cell>';
+            }
+
+            return '<Cell'.$styleAttr.'><Data ss:Type="String">'.$esc($raw).'</Data></Cell>';
+        };
+        $span = max(0, count($headers) - 1);
+        $banner = static function (string $text, string $style) use ($esc, $span): string {
+            return '<Row><Cell ss:MergeAcross="'.$span.'" ss:StyleID="'.$style.'"><Data ss:Type="String">'.$esc($text).'</Data></Cell></Row>';
+        };
+
+        $agentUserId = isset($options['agent_user_id']) && (int) $options['agent_user_id'] > 0
+            ? (int) $options['agent_user_id']
+            : PropertyWorkspaceBranding::resolveViewerAgentUserId();
+        $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
+        $brandName = self::brandName($doc);
+        $title = trim((string) ($options['title'] ?? 'Report'));
+        $subtitle = trim((string) ($options['subtitle'] ?? ''));
+        $contact = implode(' · ', array_values(array_filter([
+            trim((string) ($doc['contact_phone'] ?? '')),
+            trim((string) ($doc['contact_email_primary'] ?? '')),
+            trim((string) ($doc['contact_address'] ?? '')),
+        ])));
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
+        $xml .= '<?mso-application progid="Excel.Sheet"?>'."\n";
+        $xml .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+        $xml .= '<Styles>'
+            .'<Style ss:ID="brand"><Font ss:Bold="1" ss:Size="16" ss:Color="#0F766E"/></Style>'
+            .'<Style ss:ID="title"><Font ss:Bold="1" ss:Size="13"/></Style>'
+            .'<Style ss:ID="meta"><Font ss:Size="10" ss:Color="#444444"/></Style>'
+            .'<Style ss:ID="head"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/></Style>'
+            .'</Styles>';
+        $xml .= '<Worksheet ss:Name="Export"><Table>';
+        $xml .= $banner($brandName, 'brand');
+        if ($contact !== '') {
+            $xml .= $banner($contact, 'meta');
+        }
+        $xml .= $banner($title, 'title');
+        if ($subtitle !== '') {
+            $xml .= $banner($subtitle, 'meta');
+        }
+        $xml .= $banner('Generated '.now()->format('d M Y, h:i A'), 'meta');
+        $xml .= '<Row></Row>';
+        $xml .= '<Row>'.implode('', array_map(fn ($header) => $cell($header, 'head'), $headers)).'</Row>';
+        foreach ($rows() as $row) {
+            $xml .= '<Row>';
+            foreach ($row as $value) {
+                $xml .= $cell($value);
+            }
+            $xml .= '</Row>';
+        }
+        $xml .= '</Table></Worksheet></Workbook>';
+
+        return response()->streamDownload(function () use ($xml) {
+            echo $xml;
+        }, $filename, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    private static function withDocumentContext(string $filenameBase, array $options): array
+    {
+        $options['filename_base'] = $filenameBase;
+        if (trim((string) ($options['title'] ?? '')) === '') {
+            $base = (string) preg_replace('/-\d{8}(?:[_-]?\d{4,6})?$/', '', $filenameBase);
+            $options['title'] = Str::headline(str_replace(['-', '_'], ' ', $base));
+        }
+
+        $filterNote = self::activeFilterNote();
+        $subtitle = trim((string) ($options['subtitle'] ?? ''));
+        if ($filterNote !== '') {
+            $options['subtitle'] = ($subtitle !== '' ? $subtitle.' · ' : '').'Filtered · '.$filterNote;
+        } elseif ($subtitle === '') {
+            $options['subtitle'] = 'All records — no list filters applied';
+        }
+
+        return $options;
+    }
+
+    public static function activeFilterNote(): string
+    {
+        if (! app()->bound('request')) {
+            return '';
+        }
+
+        $ignore = ['export', 'format', 'page', 'per_page', 'sort', 'dir', 'export_scope', '_token', 'print'];
+        $parts = [];
+        foreach (request()->query() as $key => $value) {
+            if (in_array((string) $key, $ignore, true)) {
+                continue;
+            }
+            if (is_array($value)) {
+                $value = implode(', ', array_filter(array_map(static fn ($item) => trim((string) $item), $value)));
+            }
+            $value = trim((string) $value);
+            if ($value === '' || in_array(strtolower($value), ['0', 'all', 'any'], true)) {
+                continue;
+            }
+            $parts[] = Str::headline(str_replace('_', ' ', (string) $key)).': '.str_replace('_', ' ', $value);
+            if (count($parts) >= 8) {
+                break;
+            }
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /**
+     * @param  array<string, mixed>  $doc
+     */
+    private static function brandName(array $doc): string
+    {
+        $brandName = trim((string) ($doc['company_name'] ?? ''));
+        if ($brandName === '' || strtolower($brandName) === 'laravel' || strtolower($brandName) === 'property manager') {
+            $appName = trim((string) config('app.name', 'Property Management System'));
+            if ($appName !== '' && strtolower($appName) !== 'laravel') {
+                return $appName;
+            }
+            if ($brandName === '' || strtolower($brandName) === 'laravel') {
+                return 'Property Management System';
+            }
+        }
+
+        return $brandName;
     }
 
     /**
@@ -140,17 +290,20 @@ class TabularExport
 
         $agentUserId = isset($options['agent_user_id']) && (int) $options['agent_user_id'] > 0
             ? (int) $options['agent_user_id']
-            : null;
+            : PropertyWorkspaceBranding::resolveViewerAgentUserId();
         $doc = PropertyWorkspaceBranding::documentSnapshot($agentUserId);
-        $brandName = trim((string) ($doc['company_name'] ?? ''));
-        if ($brandName === '') {
-            $brandName = (string) config('app.name', 'Property Management System');
-        }
+        $brandName = self::brandName($doc);
         $brandTagline = Schema::hasTable('property_portal_settings')
             ? trim((string) (PropertyPortalSetting::getValue('company_tagline', '') ?? ''))
             : '';
         $omitImages = (bool) ($options['omit_images'] ?? false);
-        $logoSrc = $omitImages ? '' : (string) (($doc['logo_embed'] ?? '') ?: PropertyWorkspaceBranding::embeddableLogoSrc($doc, $agentUserId));
+        $logoSrc = '';
+        if (! $omitImages) {
+            $candidate = (string) (($doc['logo_embed'] ?? '') ?: PropertyWorkspaceBranding::embeddableLogoSrc($doc, $agentUserId));
+            if (str_starts_with($candidate, 'data:image/')) {
+                $logoSrc = $candidate;
+            }
+        }
         $contactParts = array_values(array_filter([
             trim((string) ($doc['contact_phone'] ?? '')),
             trim((string) ($doc['contact_email_primary'] ?? '')),
@@ -168,14 +321,16 @@ class TabularExport
         $summary = is_array($options['summary'] ?? null) ? $options['summary'] : [];
         $th = implode('', array_map(fn ($h) => '<th>'.$esc($h).'</th>', $headers));
 
-        $trs = '';
+        $rowHtml = [];
         foreach ($rows() as $row) {
             $tds = '';
             foreach ($row as $cell) {
                 $tds .= '<td>'.$esc($cell).'</td>';
             }
-            $trs .= '<tr>'.$tds.'</tr>';
+            $rowHtml[] = '<tr>'.$tds.'</tr>';
         }
+        $trs = implode('', $rowHtml);
+        $isLarge = count($rowHtml) > 400;
 
         $summaryHtml = '';
         if ($summary !== []) {
@@ -203,14 +358,16 @@ class TabularExport
             .report-title{font-size:15px;font-weight:700;margin:8px 0 2px;}
             .report-subtitle{font-size:11px;color:#444;margin-bottom:8px;}
             .meta{font-size:10px;color:#555;margin:6px 0 10px;}
-            table{width:100%;border-collapse:collapse;table-layout:fixed;}
+            table{width:100%;border-collapse:collapse;'.($isLarge ? '' : 'table-layout:fixed;').'}
             th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-break:break-word;}
-            th{background:#f3f4f6;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;}
+            th{background:'.$esc($accent).';color:#fff;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.02em;}
+            '.($isLarge ? '' : 'tr:nth-child(even) td{background:#f8fafc;}').'
             .summary-wrap{margin-top:12px;display:flex;justify-content:flex-end;}
             .summary-table{width:48%;border-collapse:collapse;}
             .summary-table th,.summary-table td{border:1px solid #ddd;padding:6px;font-size:11px;}
             .summary-table th{background:#fafafa;width:55%;text-align:left;}
-            .footer{position:fixed;left:16px;right:16px;bottom:8px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
+            .footer{left:16px;right:16px;bottom:8px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
+            '.($isLarge ? '.footer{margin-top:12px;}' : '.footer{position:fixed;}').'
             body.compact{font-size:10px;}
             body.compact .report-title{font-size:13px;}
             body.compact th,body.compact td{padding:4px;font-size:9px;}

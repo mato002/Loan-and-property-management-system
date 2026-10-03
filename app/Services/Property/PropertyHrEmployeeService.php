@@ -2,10 +2,12 @@
 
 namespace App\Services\Property;
 
+use App\Mail\PropertyStaffCredentialsMail;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\Employee;
 use App\Models\PmFieldOfficer;
 use App\Models\PmLease;
+use App\Models\PmMessageLog;
 use App\Models\PmRole;
 use App\Models\Property;
 use App\Models\PropertyUnit;
@@ -17,9 +19,12 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class PropertyHrEmployeeService
 {
@@ -43,6 +48,10 @@ class PropertyHrEmployeeService
     ];
 
     public const FIELD_OFFICER_JOB_TITLE = 'Field Officer';
+
+    public const EMPLOYMENT_STATUSES = Employee::STATUSES;
+
+    public const EXIT_REASONS = Employee::EXIT_REASONS;
 
     public const LEAVE_TYPES = [
         'Annual leave',
@@ -123,7 +132,7 @@ class PropertyHrEmployeeService
             ]);
         }
 
-        $plainPassword = Str::password(16, symbols: false);
+        $plainPassword = Str::password(12, symbols: false);
 
         $user = DB::transaction(function () use ($employee, $email, $plainPassword, $roleIds, $actor) {
             $payload = [
@@ -164,6 +173,560 @@ class PropertyHrEmployeeService
         return ['user' => $user, 'plain_password' => $plainPassword];
     }
 
+    /**
+     * Create or reset a property login and email the temporary password.
+     *
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string, mailed: bool, created: bool, mail_error: ?string}
+     */
+    public function issueLoginAndEmail(Employee $employee, User $actor, array $roleIds = [], ?PmMessageLog $existingLog = null): array
+    {
+        $employee->loadMissing('user.pmRoles');
+        $roleIds = array_values(array_unique(array_filter(array_map('intval', $roleIds))));
+        if ($roleIds === []) {
+            $roleIds = $employee->user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
+        }
+        if ($roleIds === []) {
+            $roleIds = $this->defaultRoleIdsForEmployee($employee);
+        }
+
+        $created = false;
+        if ($employee->user_id && $employee->user) {
+            $result = $this->resetLinkedLogin($employee, $roleIds);
+        } else {
+            $existing = $this->existingUserForEmployeeEmail($employee);
+            if ($existing) {
+                $result = $this->linkAndResetExistingUser($employee, $existing, $roleIds, $actor);
+            } else {
+                $result = $this->provisionPropertyLogin($employee->fresh(), $roleIds, $actor);
+                $created = true;
+            }
+        }
+
+        $delivery = $this->sendLoginEmail($employee->fresh(), $result['user']->loadMissing('pmRoles'), $result['plain_password'], $existingLog);
+
+        return [
+            'user' => $result['user'],
+            'plain_password' => $result['plain_password'],
+            'mailed' => $delivery['mailed'],
+            'created' => $created,
+            'mail_error' => $delivery['error'],
+        ];
+    }
+
+    /**
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string}
+     */
+    public function resetLinkedLogin(Employee $employee, array $roleIds = []): array
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no linked portal user yet.',
+            ]);
+        }
+
+        $plainPassword = Str::password(12, symbols: false);
+        $user->forceFill([
+            'password' => Hash::make($plainPassword),
+            'property_portal_role' => $user->property_portal_role ?: 'agent',
+            'email_verified_at' => $user->email_verified_at ?? now(),
+        ])->save();
+
+        if ($roleIds !== [] && Schema::hasTable('pm_user_role')) {
+            $user->pmRoles()->sync($roleIds);
+        }
+
+        $this->approvePropertyModule($user);
+
+        return ['user' => $user->fresh(['pmRoles']), 'plain_password' => $plainPassword];
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function defaultRoleIdsForEmployee(Employee $employee): array
+    {
+        $roles = $this->propertyRolesForForm();
+        if ($roles->isEmpty()) {
+            return [];
+        }
+
+        $prefer = [];
+        if ($this->isFieldOfficerEmployee($employee)) {
+            $prefer = ['field-officer', 'field_officer', 'officer'];
+        } else {
+            $title = Str::slug((string) $employee->job_title);
+            if ($title !== '') {
+                $prefer[] = $title;
+            }
+            $prefer[] = 'staff';
+            $prefer[] = 'agent';
+        }
+
+        foreach ($prefer as $needle) {
+            $match = $roles->first(function (PmRole $role) use ($needle) {
+                return str_contains(Str::slug($role->slug), $needle)
+                    || str_contains(Str::slug($role->name), $needle);
+            });
+            if ($match) {
+                return [(int) $match->id];
+            }
+        }
+
+        return [(int) $roles->first()->id];
+    }
+
+    public function revokePortalAccess(Employee $employee): void
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no portal login to revoke.',
+            ]);
+        }
+
+        if (Schema::hasTable('user_module_accesses')) {
+            UserModuleAccess::query()->updateOrCreate(
+                ['user_id' => $user->id, 'module' => 'property'],
+                ['status' => UserModuleAccess::STATUS_REVOKED],
+            );
+        }
+
+        if ($employee->fieldOfficerProfile) {
+            $employee->fieldOfficerProfile->update(['portal_access' => false]);
+        }
+    }
+
+    public function restorePortalAccess(Employee $employee, User $actor): void
+    {
+        $user = $employee->user;
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'provision_login' => 'This employee has no portal login to restore.',
+            ]);
+        }
+
+        $this->approvePropertyModule($user, $actor);
+
+        if ($employee->fieldOfficerProfile) {
+            $employee->fieldOfficerProfile->update(['portal_access' => true]);
+        }
+    }
+
+    public function setEmploymentStatus(Employee $employee, string $status): Employee
+    {
+        $status = Str::lower(trim($status));
+        if (! array_key_exists($status, Employee::STATUSES)) {
+            throw ValidationException::withMessages([
+                'employment_status' => 'Choose onboarding, active, on leave, or offboarded.',
+            ]);
+        }
+
+        if ($status === 'terminated') {
+            return $this->offboardEmployee($employee, [
+                'exit_date' => now()->toDateString(),
+                'exit_reason' => 'other',
+                'offboarding_notes' => null,
+                'unassign_properties' => true,
+                'revoke_portal' => true,
+            ], Auth::user());
+        }
+
+        $payload = ['employment_status' => $status];
+
+        if ($status === 'active') {
+            $payload['onboarding_completed_at'] = $employee->onboarding_completed_at ?? now();
+            $payload['exit_date'] = null;
+            $payload['exit_reason'] = null;
+            $payload['offboarding_notes'] = null;
+            $payload['offboarded_by_user_id'] = null;
+            if (! $employee->hire_date) {
+                $payload['hire_date'] = now()->toDateString();
+            }
+        }
+
+        $employee->update($payload);
+
+        return $employee->fresh();
+    }
+
+    public function completeOnboarding(Employee $employee): Employee
+    {
+        if ($employee->isOffboarded()) {
+            throw ValidationException::withMessages([
+                'employment_status' => 'Re-activate this employee before completing onboarding.',
+            ]);
+        }
+
+        $payload = [
+            'employment_status' => 'active',
+            'onboarding_completed_at' => now(),
+        ];
+        if (! $employee->hire_date) {
+            $payload['hire_date'] = now()->toDateString();
+        }
+
+        $employee->update($payload);
+
+        return $employee->fresh();
+    }
+
+    /**
+     * @return list<array{key: string, label: string, done: bool}>
+     */
+    public function onboardingChecklist(Employee $employee): array
+    {
+        $hasContact = trim((string) $employee->email) !== '' || trim((string) $employee->phone) !== '';
+
+        return [
+            ['key' => 'identity', 'label' => 'National ID on file', 'done' => trim((string) $employee->national_id) !== ''],
+            ['key' => 'contact', 'label' => 'Work email or phone', 'done' => $hasContact],
+            ['key' => 'role', 'label' => 'Department and job title', 'done' => trim((string) $employee->department) !== '' && trim((string) $employee->job_title) !== ''],
+            ['key' => 'hire', 'label' => 'Hire date', 'done' => $employee->hire_date !== null],
+            ['key' => 'kin', 'label' => 'Next of kin', 'done' => trim((string) $employee->next_of_kin_name) !== ''],
+            ['key' => 'payroll', 'label' => 'Bank account for payroll', 'done' => trim((string) $employee->bank_name) !== '' && trim((string) $employee->bank_account_number) !== ''],
+            ['key' => 'login', 'label' => 'Portal login (optional)', 'done' => (bool) $employee->user_id],
+        ];
+    }
+
+    /**
+     * @param  array{
+     *     exit_date?: mixed,
+     *     exit_reason?: mixed,
+     *     offboarding_notes?: mixed,
+     *     unassign_properties?: mixed,
+     *     revoke_portal?: mixed
+     * }  $data
+     */
+    public function offboardEmployee(Employee $employee, array $data, ?User $actor = null): Employee
+    {
+        $exitDate = $data['exit_date'] ?? now()->toDateString();
+        $reason = Str::lower(trim((string) ($data['exit_reason'] ?? 'other')));
+        if (! array_key_exists($reason, Employee::EXIT_REASONS)) {
+            $reason = 'other';
+        }
+
+        $employee->update([
+            'employment_status' => 'terminated',
+            'exit_date' => $exitDate,
+            'exit_reason' => $reason,
+            'offboarding_notes' => trim((string) ($data['offboarding_notes'] ?? '')) ?: null,
+            'offboarded_by_user_id' => $actor?->id,
+        ]);
+
+        $employee = $employee->fresh();
+        $this->unassignAllPropertiesFromEmployee($employee);
+        if ($employee?->user) {
+            $this->revokePortalAccess($employee);
+            $this->stripPortalPermissions($employee);
+        }
+
+        return $employee->fresh();
+    }
+
+    public function stripPortalPermissions(Employee $employee): void
+    {
+        $user = $employee->user;
+        if (! $user) {
+            return;
+        }
+
+        if (Schema::hasTable('pm_user_role')) {
+            $user->pmRoles()->detach();
+        }
+        if (Schema::hasTable('pm_user_permission')) {
+            $user->pmPermissions()->detach();
+        }
+    }
+
+    public function unassignAllPropertiesFromEmployee(Employee $employee): int
+    {
+        $removed = 0;
+        if (Schema::hasTable('employee_property_assignments')) {
+            $removed = DB::table('employee_property_assignments')->where('employee_id', $employee->id)->delete();
+        }
+
+        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
+        if (! $fieldOfficer) {
+            return $removed;
+        }
+
+        return $removed + Property::query()
+            ->where('field_officer_id', $fieldOfficer->id)
+            ->update(['field_officer_id' => null]);
+    }
+
+    /**
+     * @return array{mailed: bool, error: ?string}
+     */
+    public function sendLoginEmail(Employee $employee, User $user, string $plainPassword, ?PmMessageLog $existingLog = null): array
+    {
+        $role = $user->pmRoles->pluck('name')->filter()->join(', ') ?: ($employee->job_title ?: 'Staff');
+        $subject = __('Your property workspace login');
+        $logBody = __('Staff login credentials emailed to :name (:role). Temporary password omitted from this log.', [
+            'name' => $employee->full_name,
+            'role' => $role,
+        ]);
+        $actorId = Auth::id() ?: $employee->agent_user_id;
+        $actorId = $actorId ? (int) $actorId : null;
+
+        try {
+            Mail::to($user->email)->send(new PropertyStaffCredentialsMail(
+                employeeName: $employee->full_name,
+                role: $role,
+                email: $user->email,
+                plainPassword: $plainPassword,
+                loginUrl: route('login'),
+                workspaceUrl: route('property.dashboard'),
+            ));
+
+            $this->logOutboundEmail(
+                toAddress: (string) $user->email,
+                subject: $subject,
+                body: $logBody,
+                userId: $actorId,
+                deliveryStatus: 'sent',
+                existingLog: $existingLog,
+            );
+
+            return ['mailed' => true, 'error' => null];
+        } catch (Throwable $e) {
+            $errorDetail = trim($e->getMessage());
+            if ($errorDetail === '' && $e->getPrevious()) {
+                $errorDetail = trim($e->getPrevious()->getMessage());
+            }
+            if ($errorDetail === '') {
+                $errorDetail = $e::class;
+            }
+
+            Log::error('property_staff_credentials_mail_failed', [
+                'employee_id' => $employee->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'message' => $errorDetail,
+            ]);
+
+            $this->logOutboundEmail(
+                toAddress: (string) $user->email,
+                subject: $subject,
+                body: $logBody,
+                userId: $actorId,
+                deliveryStatus: 'failed',
+                deliveryError: $errorDetail,
+                existingLog: $existingLog,
+            );
+
+            return ['mailed' => false, 'error' => $errorDetail];
+        }
+    }
+
+    /**
+     * Whether a staff-credentials email was already logged for this employee.
+     */
+    public function loginCredentialsWereEmailed(Employee $employee): bool
+    {
+        if (! Schema::hasTable('pm_message_logs')) {
+            return false;
+        }
+
+        $employee->loadMissing('user');
+
+        $emails = collect([
+            $employee->email ?? '',
+            $employee->user?->email ?? '',
+        ])
+            ->map(fn ($value) => Str::lower(trim((string) $value)))
+            ->filter(fn (string $email) => $email !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($emails === []) {
+            return false;
+        }
+
+        return PmMessageLog::query()
+            ->withoutGlobalScopes()
+            ->where('channel', 'email')
+            ->where(function ($query) use ($emails): void {
+                foreach ($emails as $index => $email) {
+                    $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+                    $query->{$method}('LOWER(to_address) = ?', [$email]);
+                }
+            })
+            ->where(function ($query): void {
+                $query->where('subject', 'like', '%workspace login%')
+                    ->orWhere('template_category', 'staff_credentials')
+                    ->orWhere('body', 'like', '%Staff login credentials%');
+            })
+            ->exists();
+    }
+
+    /**
+     * @return array{
+     *     has_email: bool,
+     *     has_login: bool,
+     *     login_emailed: bool,
+     *     can_send_login: bool,
+     *     login_action: 'send'|'resend'|null,
+     *     login_action_label: string|null
+     * }
+     */
+    public function loginActionState(Employee $employee): array
+    {
+        $hasEmail = trim((string) ($employee->email ?? '')) !== '';
+        $hasLogin = (int) ($employee->user_id ?? 0) > 0;
+        $loginEmailed = $hasEmail && $this->loginCredentialsWereEmailed($employee);
+        $offboarded = method_exists($employee, 'isOffboarded')
+            ? $employee->isOffboarded()
+            : $employee->employmentStatusKey() === 'terminated';
+        $canSend = $hasEmail && ! $offboarded;
+        $action = null;
+        if ($canSend) {
+            $action = ($hasLogin || $loginEmailed) ? 'resend' : 'send';
+        }
+
+        return [
+            'has_email' => $hasEmail,
+            'has_login' => $hasLogin,
+            'login_emailed' => $loginEmailed,
+            'can_send_login' => $canSend,
+            'login_action' => $action,
+            'login_action_label' => match ($action) {
+                'send' => 'Send logins',
+                'resend' => 'Resend logins',
+                default => null,
+            },
+        ];
+    }
+
+    private function logOutboundEmail(
+        string $toAddress,
+        string $subject,
+        string $body,
+        ?int $userId,
+        string $deliveryStatus,
+        ?string $deliveryError = null,
+        ?PmMessageLog $existingLog = null,
+    ): void {
+        if (! Schema::hasTable('pm_message_logs') || $toAddress === '') {
+            return;
+        }
+
+        try {
+            $payload = [
+                'user_id' => $userId,
+                'channel' => 'email',
+                'to_address' => $toAddress,
+                'subject' => $subject,
+                'body' => $body,
+                'delivery_status' => $deliveryStatus,
+                'delivery_error' => $deliveryError,
+                'sent_at' => $deliveryStatus === 'sent' ? now() : null,
+            ];
+            if (Schema::hasColumn('pm_message_logs', 'template_category')) {
+                $payload['template_category'] = 'staff_credentials';
+            }
+            if (Schema::hasColumn('pm_message_logs', 'display_stage')) {
+                $payload['display_stage'] = 'Staff login';
+            }
+            if (Schema::hasColumn('pm_message_logs', 'internal_stage')) {
+                $payload['internal_stage'] = 'staff_login';
+            }
+            if ($deliveryStatus === 'sent' && Schema::hasColumn('pm_message_logs', 'superseded_at')) {
+                $payload['superseded_at'] = null;
+            }
+            if ($deliveryStatus === 'sent' && Schema::hasColumn('pm_message_logs', 'superseded_by_log_id')) {
+                $payload['superseded_by_log_id'] = null;
+            }
+
+            if ($existingLog) {
+                $existingLog->forceFill($payload)->save();
+
+                return;
+            }
+
+            PmMessageLog::query()->create($payload);
+        } catch (Throwable $e) {
+            Log::warning('property_outbound_email_log_failed', [
+                'to' => $toAddress,
+                'subject' => $subject,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function existingUserForEmployeeEmail(Employee $employee): ?User
+    {
+        $email = Str::lower(trim((string) ($employee->email ?? '')));
+        if ($email === '') {
+            return null;
+        }
+
+        return User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+    }
+
+    /**
+     * @param  list<int>  $roleIds
+     * @return array{user: User, plain_password: string}
+     */
+    private function linkAndResetExistingUser(Employee $employee, User $user, array $roleIds, User $actor): array
+    {
+        $taken = Employee::query()
+            ->where('user_id', $user->id)
+            ->where('id', '!=', $employee->id)
+            ->exists();
+        if ($taken) {
+            throw ValidationException::withMessages([
+                'email' => 'This email already belongs to another employee login.',
+            ]);
+        }
+
+        $portal = (string) ($user->property_portal_role ?? '');
+        if (in_array($portal, ['landlord', 'tenant'], true)) {
+            throw ValidationException::withMessages([
+                'email' => 'This email is already used by a landlord or tenant portal account.',
+            ]);
+        }
+
+        $plainPassword = Str::password(12, symbols: false);
+        DB::transaction(function () use ($employee, $user, $plainPassword, $roleIds, $actor): void {
+            $user->forceFill([
+                'name' => $employee->full_name,
+                'password' => Hash::make($plainPassword),
+                'property_portal_role' => 'agent',
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ])->save();
+
+            if ($roleIds !== []) {
+                $user->pmRoles()->sync($roleIds);
+            }
+
+            $this->approvePropertyModule($user, $actor);
+            $employee->update(['user_id' => $user->id]);
+        });
+
+        return ['user' => $user->fresh(['pmRoles']), 'plain_password' => $plainPassword];
+    }
+
+    private function approvePropertyModule(User $user, ?User $actor = null): void
+    {
+        if (! Schema::hasTable('user_module_accesses')) {
+            return;
+        }
+
+        UserModuleAccess::query()->updateOrCreate(
+            ['user_id' => $user->id, 'module' => 'property'],
+            [
+                'status' => UserModuleAccess::STATUS_APPROVED,
+                'approved_by' => $actor?->id,
+                'approved_at' => now(),
+            ],
+        );
+    }
+
     public function queryForActor(?User $user = null): Builder
     {
         $user ??= Auth::user();
@@ -172,8 +735,8 @@ class PropertyHrEmployeeService
             ->when(
                 $this->shouldScopeToAgent($user),
                 fn (Builder $q) => $q->where(function (Builder $inner) use ($user) {
-                    $inner->where('agent_user_id', (int) $user->id)
-                        ->orWhereNull('agent_user_id');
+                    $companyId = AgentWorkspaceScope::currentAgentUserId() ?? (int) $user->id;
+                    $inner->where('agent_user_id', $companyId);
                 })
             )
             ->orderBy('last_name')
@@ -183,10 +746,34 @@ class PropertyHrEmployeeService
     public function resolveAgentUserIdForStore(Request $request): int
     {
         if (AgentWorkspaceScope::shouldApply()) {
-            return (int) $request->user()->id;
+            return AgentWorkspaceScope::currentAgentUserId() ?? (int) $request->user()->id;
         }
 
-        return (int) $request->input('agent_user_id', $request->user()->id);
+        $selected = (int) $request->input('agent_user_id', 0);
+        if ($selected <= 0) {
+            throw ValidationException::withMessages([
+                'agent_user_id' => 'Select the company this employee belongs to.',
+            ]);
+        }
+
+        $allowed = User::query()
+            ->where(function ($q) {
+                $q->where('property_portal_role', 'agent')
+                    ->orWhereIn('id', function ($sub) {
+                        $sub->select('agent_user_id')->from('properties')->whereNotNull('agent_user_id');
+                    });
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (! in_array($selected, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'agent_user_id' => 'Select a valid company workspace.',
+            ]);
+        }
+
+        return $selected;
     }
 
     public function generateNextEmployeeNumber(): string
@@ -330,51 +917,105 @@ class PropertyHrEmployeeService
 
     public function assignPropertyToEmployee(Employee $employee, int $propertyId): Property
     {
-        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
-        if (! $fieldOfficer) {
-            throw ValidationException::withMessages([
-                'property_id' => 'Enable the field officer role on this employee before assigning properties.',
-            ]);
-        }
-
         $property = Property::query()->findOrFail($propertyId);
-        $this->assertPropertyAssignableToOfficer($property, $fieldOfficer);
+        $this->assertPropertyInEmployeeWorkspace($property, $employee);
 
-        if ((int) $property->field_officer_id === (int) $fieldOfficer->id) {
-            return $property;
+        $fieldOfficer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($fieldOfficer) {
+            $this->assertPropertyAssignableToOfficer($property, $fieldOfficer);
+            if ((int) $property->field_officer_id !== (int) $fieldOfficer->id && $property->field_officer_id !== null) {
+                throw ValidationException::withMessages([
+                    'property_id' => 'Property is already assigned to another field officer. Unassign it first.',
+                ]);
+            }
+            if ((int) $property->field_officer_id !== (int) $fieldOfficer->id) {
+                $property->update(['field_officer_id' => $fieldOfficer->id]);
+            }
         }
 
-        if ($property->field_officer_id !== null) {
-            throw ValidationException::withMessages([
-                'property_id' => 'Property is already assigned to another field officer. Unassign it first.',
-            ]);
-        }
-
-        $property->update(['field_officer_id' => $fieldOfficer->id]);
+        $this->attachEmployeeProperty($employee, $property);
 
         return $property->fresh();
     }
 
     public function detachPropertyFromEmployee(Employee $employee, int $propertyId): Property
     {
-        $fieldOfficer = $this->resolveFieldOfficerForEmployee($employee);
-        if (! $fieldOfficer) {
-            throw ValidationException::withMessages([
-                'property_id' => 'This employee is not a field officer.',
-            ]);
-        }
-
         $property = Property::query()->findOrFail($propertyId);
+        $this->detachEmployeeProperty($employee, (int) $property->id);
 
-        if ((int) $property->field_officer_id !== (int) $fieldOfficer->id) {
-            throw ValidationException::withMessages([
-                'property_id' => 'This property is not assigned to this employee.',
-            ]);
+        $fieldOfficer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($fieldOfficer && (int) $property->field_officer_id === (int) $fieldOfficer->id) {
+            $property->update(['field_officer_id' => null]);
         }
-
-        $property->update(['field_officer_id' => null]);
 
         return $property->fresh();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function propertyIdsForEmployee(Employee $employee): array
+    {
+        $ids = [];
+        if (Schema::hasTable('employee_property_assignments')) {
+            $ids = DB::table('employee_property_assignments')
+                ->where('employee_id', $employee->id)
+                ->pluck('property_id')
+                ->all();
+        }
+
+        $officer = $this->isFieldOfficerEmployee($employee)
+            ? $this->resolveFieldOfficerForEmployee($employee)
+            : null;
+        if ($officer) {
+            $ids = array_merge($ids, Property::query()->where('field_officer_id', $officer->id)->pluck('id')->all());
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    /**
+     * @return list<array{id: int, name: string, city: string, units: int, tenants: int, rent: float, show_url: string}>
+     */
+    public function assignedPropertyRowsForEmployee(Employee $employee): array
+    {
+        $ids = $this->propertyIdsForEmployee($employee);
+        if ($ids === []) {
+            return [];
+        }
+
+        $properties = Property::query()
+            ->whereIn('id', $ids)
+            ->orderBy('name')
+            ->get(['id', 'name', 'city']);
+
+        return $this->propertyAssignmentRows($properties);
+    }
+
+    /**
+     * @return list<array{id: int, name: string, city: string}>
+     */
+    public function assignablePropertiesForEmployee(Employee $employee): array
+    {
+        $assigned = $this->propertyIdsForEmployee($employee);
+
+        return Property::query()
+            ->operational()
+            ->when((int) $employee->agent_user_id > 0, fn ($query) => $query->where('agent_user_id', (int) $employee->agent_user_id))
+            ->when($assigned !== [], fn ($query) => $query->whereNotIn('id', $assigned))
+            ->orderBy('name')
+            ->get(['id', 'name', 'city'])
+            ->map(fn (Property $property) => [
+                'id' => (int) $property->id,
+                'name' => (string) $property->name,
+                'city' => (string) ($property->city ?: '—'),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -395,6 +1036,15 @@ class PropertyHrEmployeeService
             ->orderBy('name')
             ->get(['id', 'name', 'city']);
 
+        return $this->propertyAssignmentRows($properties);
+    }
+
+    /**
+     * @param  Collection<int, Property>  $properties
+     * @return list<array{id: int, name: string, city: string, units: int, tenants: int, rent: float, show_url: string}>
+     */
+    private function propertyAssignmentRows(Collection $properties): array
+    {
         if ($properties->isEmpty()) {
             return [];
         }
@@ -489,6 +1139,50 @@ class PropertyHrEmployeeService
             ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
+    }
+
+    private function attachEmployeeProperty(Employee $employee, Property $property): void
+    {
+        if (! Schema::hasTable('employee_property_assignments')) {
+            return;
+        }
+
+        $exists = DB::table('employee_property_assignments')
+            ->where('employee_id', $employee->id)
+            ->where('property_id', $property->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        DB::table('employee_property_assignments')->insert([
+            'employee_id' => $employee->id,
+            'property_id' => $property->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function detachEmployeeProperty(Employee $employee, int $propertyId): void
+    {
+        if (! Schema::hasTable('employee_property_assignments')) {
+            return;
+        }
+
+        DB::table('employee_property_assignments')
+            ->where('employee_id', $employee->id)
+            ->where('property_id', $propertyId)
+            ->delete();
+    }
+
+    private function assertPropertyInEmployeeWorkspace(Property $property, Employee $employee): void
+    {
+        $agentId = (int) $employee->agent_user_id;
+        if ($agentId > 0 && (int) $property->agent_user_id !== $agentId) {
+            throw ValidationException::withMessages([
+                'property_id' => 'This property is outside this employee’s company.',
+            ]);
+        }
     }
 
     private function assertPropertyAssignableToOfficer(Property $property, PmFieldOfficer $fieldOfficer): void

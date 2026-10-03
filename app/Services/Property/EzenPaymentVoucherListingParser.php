@@ -65,6 +65,15 @@ final class EzenPaymentVoucherListingParser
      */
     public function parsePath(string $path): array
     {
+        if (! is_file($path) || ! is_readable($path)) {
+            throw new RuntimeException('File not found or not readable: '.$path);
+        }
+
+        $raw = file_get_contents($path);
+        if (is_string($raw) && (str_contains($raw, '<Workbook') || str_contains($raw, 'progid="Excel.Sheet"'))) {
+            return $this->parseCsv($this->spreadsheetToCsv($raw));
+        }
+
         return $this->parseText($this->readText($path), $path);
     }
 
@@ -111,10 +120,13 @@ final class EzenPaymentVoucherListingParser
                 }
                 $header = $normalized;
                 foreach ($header as $i => $name) {
-                    $canonical = $this->canonicalHeader($name);
-                    if ($canonical !== '') {
-                        $map[$canonical] = (int) $i;
-                    }
+                $canonical = $this->canonicalHeader($name);
+                if ($canonical === '' && $name === '' && $i === 0) {
+                    $canonical = 'ezen_voucher_no';
+                }
+                if ($canonical !== '') {
+                    $map[$canonical] = (int) $i;
+                }
                 }
                 continue;
             }
@@ -384,11 +396,11 @@ final class EzenPaymentVoucherListingParser
     {
         $joined = implode(' ', $normalized);
 
-        return str_contains($joined, 'voucher') && (
-            str_contains($joined, 'amount')
-            || str_contains($joined, 'paid_to')
-            || str_contains($joined, 'particulars')
-        );
+        $looksLikeVoucherList = str_contains($joined, 'amount')
+            && (str_contains($joined, 'paid_to') || str_contains($joined, 'particular'));
+
+        return (str_contains($joined, 'voucher') && $looksLikeVoucherList)
+            || (str_contains($joined, 'pmt_method') && $looksLikeVoucherList);
     }
 
     private function normalizeHeader(string $name): string
@@ -404,10 +416,10 @@ final class EzenPaymentVoucherListingParser
     {
         return match ($normalized) {
             'voucher', 'voucher_no', 'voucher_number', 'pm_no', 'pm', 'ezen_voucher_no' => 'ezen_voucher_no',
-            'method', 'payment_method', 'pay_method' => 'method',
+            'method', 'payment_method', 'pay_method', 'pmt_method' => 'method',
             'ref', 'ref_no', 'reference', 'reference_no', 'refno' => 'ref_no',
             'date', 'txn_date', 'payment_date', 'voucher_date' => 'txn_date',
-            'particulars', 'description', 'narration', 'details' => 'particulars',
+            'particulars', 'particular', 'description', 'narration', 'details' => 'particulars',
             'paid_from', 'from', 'account', 'source' => 'paid_from',
             'paid_to', 'to', 'payee', 'beneficiary', 'supplier' => 'paid_to',
             'amount', 'amt', 'value' => 'amount',
@@ -573,6 +585,65 @@ final class EzenPaymentVoucherListingParser
         }
 
         return true;
+    }
+
+    private function spreadsheetToCsv(string $xml): string
+    {
+        $xml = preg_replace('/\sxmlns(:\w+)?="[^"]*"/', '', $xml) ?? $xml;
+        $xml = preg_replace('/\b[a-zA-Z_][\w\-]*:/', '', $xml) ?? $xml;
+        libxml_use_internal_errors(true);
+        $doc = simplexml_load_string($xml);
+        if ($doc === false) {
+            throw new RuntimeException('Could not parse the payment voucher spreadsheet.');
+        }
+
+        $lines = [];
+        foreach ($doc->Worksheet as $sheet) {
+            $table = $sheet->Table ?? null;
+            if ($table === null) {
+                continue;
+            }
+            foreach ($table->Row as $row) {
+                $cells = [];
+                $index = 1;
+                foreach ($row->Cell as $cell) {
+                    $attrs = $cell->attributes();
+                    if (isset($attrs['Index'])) {
+                        $index = (int) $attrs['Index'];
+                    }
+                    $cells[$index] = trim(preg_replace('/\s+/u', ' ', html_entity_decode((string) ($cell->Data ?? ''), ENT_QUOTES | ENT_HTML5)) ?? '');
+                    $index++;
+                }
+                if ($cells === []) {
+                    continue;
+                }
+                $max = max(array_keys($cells));
+                $ordered = [];
+                for ($i = 1; $i <= $max; $i++) {
+                    $ordered[] = $cells[$i] ?? '';
+                }
+                $lines[] = $this->csvLine($ordered);
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  list<string>  $cells
+     */
+    private function csvLine(array $cells): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        if ($handle === false) {
+            return '';
+        }
+        fputcsv($handle, $cells);
+        rewind($handle);
+        $line = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return rtrim($line, "\r\n");
     }
 
     private function readText(string $path): string

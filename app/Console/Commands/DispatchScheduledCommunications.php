@@ -20,6 +20,11 @@ class DispatchScheduledCommunications extends Command
         LoanCommunicationService $loanCommunications,
     ): int {
         $limit = max(1, (int) $this->option('limit'));
+        if (! \App\Models\PropertyPortalSetting::isScheduledDispatchAutomationEnabled()) {
+            $this->info('Scheduled campaign dispatch is off (Communications → Schedules). Skipping.');
+
+            return self::SUCCESS;
+        }
         $property = ['released' => 0, 'skipped' => 0, 'failed' => 0];
         $loan = ['released' => 0, 'skipped' => 0, 'failed' => 0];
 

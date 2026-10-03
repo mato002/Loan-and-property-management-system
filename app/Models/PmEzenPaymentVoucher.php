@@ -6,6 +6,7 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PmEzenPaymentVoucher extends Model
 {
@@ -26,6 +27,32 @@ class PmEzenPaymentVoucher extends Model
     public const CATEGORY_TAX = 'tax';
 
     public const CATEGORY_EXPENSE = 'expense';
+
+    public const SOURCE_IMPORTED = 'imported';
+
+    public const SOURCE_RECORDED = 'recorded';
+
+    /**
+     * @var array<string, array{label: string, category: string}>
+     */
+    public const EXPENSE_GROUPS = [
+        'operating' => ['label' => 'Operating expense', 'category' => self::CATEGORY_EXPENSE],
+        'utilities' => ['label' => 'Utilities', 'category' => self::CATEGORY_EXPENSE],
+        'repairs' => ['label' => 'Repairs & maintenance', 'category' => self::CATEGORY_EXPENSE],
+        'commission' => ['label' => 'Commission', 'category' => self::CATEGORY_COMMISSION],
+        'tax' => ['label' => 'Tax / statutory', 'category' => self::CATEGORY_TAX],
+        'remittance' => ['label' => 'Rent remittance', 'category' => self::CATEGORY_REMITTANCE],
+    ];
+
+    public const PAYMENT_METHODS = [
+        'Cash',
+        'M-Pesa',
+        'Bank Deposit',
+        'Bank Transfer',
+        'Cheque',
+        'EFT',
+        'RTGS',
+    ];
 
     protected $table = 'pm_ezen_payment_vouchers';
 
@@ -49,13 +76,22 @@ class PmEzenPaymentVoucher extends Model
         'pm_landlord_payout_id',
         'pm_accounting_entry_id',
         'link_status',
+        'cheque_no',
+        'cheque_date',
+        'expense_group',
+        'narration',
+        'notes',
+        'tax_amount',
+        'source',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
             'txn_date' => 'date',
+            'cheque_date' => 'date',
         ];
     }
 
@@ -66,7 +102,7 @@ class PmEzenPaymentVoucher extends Model
                 return;
             }
 
-            $query->where('pm_ezen_payment_vouchers.agent_user_id', (int) auth()->id());
+            AgentWorkspaceScope::whereWorkspaceOwner($query, 'pm_ezen_payment_vouchers.agent_user_id');
         });
     }
 
@@ -85,6 +121,11 @@ class PmEzenPaymentVoucher extends Model
         return $this->belongsTo(PmLandlordPayout::class, 'pm_landlord_payout_id');
     }
 
+    public function lines(): HasMany
+    {
+        return $this->hasMany(PmEzenPaymentVoucherLine::class, 'pm_ezen_payment_voucher_id');
+    }
+
     public function accountingEntry(): BelongsTo
     {
         return $this->belongsTo(PmAccountingEntry::class, 'pm_accounting_entry_id');
@@ -98,6 +139,13 @@ class PmEzenPaymentVoucher extends Model
         }
 
         return trim((string) ($this->payee_name ?? '')) ?: '—';
+    }
+
+    public function displayExpenseGroup(): string
+    {
+        $key = (string) ($this->expense_group ?? '');
+
+        return self::EXPENSE_GROUPS[$key]['label'] ?? ($key !== '' ? $key : $this->displayCategory());
     }
 
     public function displayCategory(): string

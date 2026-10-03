@@ -55,14 +55,15 @@ class PmAccountingEntry extends Model
                 return;
             }
 
-            $userId = (int) \Illuminate\Support\Facades\Auth::id();
+            $agentId = AgentWorkspaceScope::currentAgentUserId() ?? (int) \Illuminate\Support\Facades\Auth::id();
+            $staffId = (int) \Illuminate\Support\Facades\Auth::id();
 
-            $query->where(function (Builder $scope) use ($userId) {
-                $scope->whereIn('pm_accounting_entries.property_id', function ($sub) use ($userId) {
-                    $sub->select('id')->from('properties')->where('agent_user_id', $userId);
-                })->orWhere(function (Builder $owned) use ($userId) {
+            $query->where(function (Builder $scope) use ($agentId, $staffId) {
+                $scope->whereIn('pm_accounting_entries.property_id', function ($sub) use ($agentId) {
+                    $sub->select('id')->from('properties')->whereIn('agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [$agentId]);
+                })->orWhere(function (Builder $owned) use ($staffId, $agentId) {
                     $owned->whereNull('pm_accounting_entries.property_id')
-                        ->where('pm_accounting_entries.recorded_by_user_id', $userId);
+                        ->whereIn('pm_accounting_entries.recorded_by_user_id', array_values(array_unique([$staffId, $agentId])));
                 });
             });
         });

@@ -47,6 +47,7 @@ final class EzenRentReceiptsImportService
         ?int $limit = null,
         bool $enrichOnly = false,
         bool $registerOnly = false,
+        bool $relinkExisting = false,
     ): array {
         $rows = $this->parser->parsePath($path);
         if ($propertyCodeFilter !== null && trim($propertyCodeFilter) !== '') {
@@ -70,6 +71,7 @@ final class EzenRentReceiptsImportService
             'enriched_existing' => 0,
             'skipped_no_match' => 0,
             'register_upserted' => 0,
+            'relinked' => 0,
             'allocated' => 0.0,
             'unallocated' => 0.0,
             'warnings' => [],
@@ -79,7 +81,7 @@ final class EzenRentReceiptsImportService
         foreach ($rows as $index => $row) {
             $rowNum = $index + 1;
             try {
-                $result = $this->importRow($row, $agentUserId, $actor, $dryRun, $skipIfNoOpenBalance, $rowNum, $enrichOnly, $registerOnly);
+                $result = $this->importRow($row, $agentUserId, $actor, $dryRun, $skipIfNoOpenBalance, $rowNum, $enrichOnly, $registerOnly, $relinkExisting);
                 $summary['imported'] += $result['imported'] ? 1 : 0;
                 $summary['skipped_existing'] += $result['skipped_existing'] ? 1 : 0;
                 $summary['skipped_no_tenant'] += $result['skipped_no_tenant'] ? 1 : 0;
@@ -88,6 +90,7 @@ final class EzenRentReceiptsImportService
                 $summary['enriched_existing'] += $result['enriched_existing'] ? 1 : 0;
                 $summary['skipped_no_match'] += $result['skipped_no_match'] ? 1 : 0;
                 $summary['register_upserted'] += $result['register_upserted'] ? 1 : 0;
+                $summary['relinked'] += ! empty($result['relinked']) ? 1 : 0;
                 $summary['allocated'] += $result['allocated'];
                 $summary['unallocated'] += $result['unallocated'];
                 $summary['warnings'] = array_merge($summary['warnings'], $result['warnings']);
@@ -421,6 +424,7 @@ final class EzenRentReceiptsImportService
         int $rowNum,
         bool $enrichOnly = false,
         bool $registerOnly = false,
+        bool $relinkExisting = false,
     ): array {
         $warnings = [];
         $receiptNo = strtoupper(trim((string) ($row['ezen_receipt_no'] ?? '')));
@@ -453,7 +457,22 @@ final class EzenRentReceiptsImportService
             ];
         }
 
-        if ($this->findExistingPayment($receiptNo, $refNo) !== null) {
+        $existingPayment = $this->findExistingPayment($receiptNo, $refNo);
+        if ($existingPayment !== null) {
+            if ($relinkExisting) {
+                return $this->relinkExistingPayment(
+                    $existingPayment,
+                    $row,
+                    $agentUserId,
+                    $tenant,
+                    $receiptNo,
+                    $dryRun,
+                    $registerUpserted,
+                    $warnings,
+                    $rowNum,
+                );
+            }
+
             return $this->skipResult('skipped_existing', $warnings, $registerUpserted);
         }
 
@@ -1014,6 +1033,90 @@ final class EzenRentReceiptsImportService
             || data_get($payment->meta, 'source') === 'ezen_rental_invoice_import';
     }
 
+    private function relinkExistingPayment(
+        PmPayment $payment,
+        array $row,
+        int $agentUserId,
+        ?PmTenant $tenant,
+        string $receiptNo,
+        bool $dryRun,
+        bool $registerUpserted,
+        array $warnings,
+        int $rowNum,
+    ): array {
+        if ($tenant === null) {
+            return $this->skipResult('skipped_existing', $warnings, $registerUpserted);
+        }
+
+        $allocatedBefore = $this->nonReversedAllocationSum($payment);
+        $remaining = round((float) $payment->amount - $allocatedBefore, 2);
+        if ($remaining <= 0.009) {
+            return $this->skipResult('skipped_existing', $warnings, $registerUpserted);
+        }
+
+        if ($dryRun) {
+            $open = $this->openInvoiceBalanceForTenant((int) $tenant->id);
+            $delta = round(min($remaining, max(0.0, $open)), 2);
+
+            return [
+                'imported' => false,
+                'skipped_existing' => $delta <= 0.009,
+                'skipped_no_tenant' => false,
+                'skipped_no_open_balance' => $delta <= 0.009 && $open <= 0.009,
+                'skipped_zero_amount' => false,
+                'enriched_existing' => false,
+                'skipped_no_match' => false,
+                'register_upserted' => $registerUpserted,
+                'relinked' => $delta > 0.009,
+                'allocated' => $delta,
+                'unallocated' => round(max(0, $remaining - $delta), 2),
+                'warnings' => $warnings,
+            ];
+        }
+
+        $this->payments->allocatePaymentToOpenInvoices($payment);
+        if ($payment->paid_at === null) {
+            $payment->paid_at = Carbon::parse((string) ($row['banking_date'] ?? $row['txn_date'] ?? now()->toDateString()))->startOfDay();
+            $payment->save();
+        }
+        $this->linkRegisterPayment($receiptNo, $agentUserId, (int) $payment->id, (int) $tenant->id);
+
+        $allocatedAfter = $this->nonReversedAllocationSum($payment->fresh());
+        $delta = round(max(0, $allocatedAfter - $allocatedBefore), 2);
+        if ($delta <= 0.009) {
+            $warnings[] = 'Row '.$rowNum.' '.$receiptNo.': payment already on file, but no open invoice left to allocate.';
+
+            return $this->skipResult('skipped_no_open_balance', $warnings, $registerUpserted);
+        }
+
+        return [
+            'imported' => false,
+            'skipped_existing' => false,
+            'skipped_no_tenant' => false,
+            'skipped_no_open_balance' => false,
+            'skipped_zero_amount' => false,
+            'enriched_existing' => false,
+            'skipped_no_match' => false,
+            'register_upserted' => $registerUpserted,
+            'relinked' => true,
+            'allocated' => $delta,
+            'unallocated' => round(max(0, (float) $payment->amount - $allocatedAfter), 2),
+            'warnings' => $warnings,
+        ];
+    }
+
+    private function nonReversedAllocationSum(PmPayment $payment): float
+    {
+        $query = $payment->allocations();
+        if (Schema::hasColumn('pm_payment_allocations', 'is_reversed')) {
+            $query->where(function ($inner): void {
+                $inner->where('is_reversed', false)->orWhereNull('is_reversed');
+            });
+        }
+
+        return round((float) $query->sum('amount'), 2);
+    }
+
     private function findExistingPayment(string $receiptNo, string $refNo): ?PmPayment
     {
         $payment = PmPayment::query()
@@ -1025,7 +1128,17 @@ final class EzenRentReceiptsImportService
             return $payment;
         }
 
-        if ($refNo !== '') {
+        $byReceiptMeta = PmPayment::query()
+            ->withoutGlobalScopes()
+            ->where('meta->ezen_receipt_no', $receiptNo)
+            ->first();
+        if ($byReceiptMeta !== null) {
+            return $byReceiptMeta;
+        }
+
+        // CASH / BANK / short codes are shared across many receipts — matching them
+        // would skip thousands of rows as "existing" after the first hit.
+        if ($this->isUniquePaymentRef($refNo)) {
             return PmPayment::query()
                 ->withoutGlobalScopes()
                 ->where(function ($query) use ($refNo): void {
@@ -1037,6 +1150,20 @@ final class EzenRentReceiptsImportService
         }
 
         return null;
+    }
+
+    private function isUniquePaymentRef(string $refNo): bool
+    {
+        $ref = strtoupper(trim($refNo));
+        if (strlen($ref) < 8) {
+            return false;
+        }
+
+        if (in_array($ref, ['CASH', 'BANK', 'MPESA', 'M-PESA', 'N/A', 'NA', 'NONE', 'NULL', '-'], true)) {
+            return false;
+        }
+
+        return preg_match('/^[A-Z0-9]{8,}$/', $ref) === 1;
     }
 
     private function openInvoiceBalanceForTenant(int $tenantId): float

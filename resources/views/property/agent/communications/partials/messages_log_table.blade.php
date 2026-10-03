@@ -25,7 +25,7 @@
 
     $resendActions = (array) ($resendActions ?? []);
     $logPresentations = (array) ($logPresentations ?? []);
-    $smsErrorPresenter = app(\App\Services\Property\SmsDeliveryErrorPresenter::class);
+    $errorPresenter = app(\App\Services\Property\SmsDeliveryErrorPresenter::class);
 @endphp
 
 <form method="post" action="{{ route('property.communications.messages.bulk', absolute: false) }}">
@@ -42,7 +42,7 @@
             <span class="text-xs text-rose-600">{{ $message }}</span>
         @enderror
         <p class="ml-auto text-xs text-slate-500 dark:text-slate-400 max-w-lg text-right">
-            <strong>Resend</strong> only appears on failed rows that were never delivered for that invoice.
+            <strong>Resend</strong> appears on failed SMS (invoice not yet delivered) and failed <strong>staff login</strong> emails.
             SENT rows show <strong>Delivered</strong>; resolved failures show <strong>Already sent</strong> or <strong>Resolved</strong>.
         </p>
     </div>
@@ -93,13 +93,15 @@
                             ? 'bg-emerald-50 text-emerald-700'
                             : ($log->channel === 'email' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-700');
                         $preview = $log->delivery_error
-                            ? Str::limit($smsErrorPresenter->forAgent((string) $log->delivery_error), 80)
+                            ? Str::limit($errorPresenter->forChannel((string) $log->channel, (string) $log->delivery_error), 80)
                             : (($canViewBody ?? false) ? Str::limit(strip_tags((string) $log->body), 64) : '[MASKED]');
                         $action = (array) ($resendActions[(int) $log->id] ?? []);
                         $canResend = (bool) ($action['can_resend'] ?? false);
                         $canBulkSelect = (bool) ($action['can_bulk_select'] ?? false);
                         $actionLabel = (string) ($action['label'] ?? '');
                         $actionHint = (string) ($action['hint'] ?? '');
+                        $isEmailResend = $log->channel === 'email' && $canResend;
+                        $isSmsResend = $log->channel === 'sms' && $canResend;
                     @endphp
                     <tr class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 @if(($filters['duplicates'] ?? '') === 'yes') bg-orange-50/40 dark:bg-orange-950/20 @endif">
                         <td class="px-4 py-3 align-top">
@@ -135,11 +137,11 @@
                             <div class="flex flex-col gap-1">
                                 <div class="flex flex-wrap gap-1">
                                     <a href="{{ route('property.communications.messages.show', $log, absolute: false) }}" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40">View</a>
-                                    @if (($canManageCommunications ?? false) && $log->channel === 'sms' && $canResend)
-                                        <button type="submit" form="msg-resend-{{ $log->id }}" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40" data-swal-confirm="Resend this SMS now?">Retry</button>
+                                    @if (($canManageCommunications ?? false) && ($isSmsResend || $isEmailResend))
+                                        <button type="submit" form="msg-resend-{{ $log->id }}" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40" data-swal-confirm="{{ $isEmailResend ? 'Resend staff login email now? A new temporary password will be emailed.' : 'Resend this SMS now?' }}">{{ $isEmailResend ? 'Resend' : 'Retry' }}</button>
                                     @endif
                                 </div>
-                                @if ($log->channel === 'sms' && $actionLabel !== '' && $actionLabel !== '—')
+                                @if (($isSmsResend || $isEmailResend || $actionLabel !== '') && $actionLabel !== '' && $actionLabel !== '—')
                                     <span
                                         class="text-[10px] font-medium {{ $canResend ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400' }}"
                                         title="{{ $actionHint }}"
@@ -169,7 +171,7 @@
         $action = (array) ($resendActions[(int) $log->id] ?? []);
         $canResend = (bool) ($action['can_resend'] ?? false);
     @endphp
-    @if (($canManageCommunications ?? false) && $log->channel === 'sms' && $canResend)
+    @if (($canManageCommunications ?? false) && $canResend && in_array($log->channel, ['sms', 'email'], true))
         <form id="msg-resend-{{ $log->id }}" method="post" action="{{ route('property.communications.messages.resend', $log, absolute: false) }}" class="hidden">@csrf</form>
     @endif
 @endforeach

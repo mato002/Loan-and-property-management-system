@@ -47,12 +47,33 @@ final class AttachedUtilityChargeService
             'skipped_rate_only' => 0,
         ];
 
-        foreach ($this->billingRules($propertyId) as $rule) {
+        $rules = $this->billingRules($propertyId);
+        usort($rules, function (array $a, array $b): int {
+            $aScoped = ($a['property_unit_id'] ?? null) ? 0 : 1;
+            $bScoped = ($b['property_unit_id'] ?? null) ? 0 : 1;
+
+            return $aScoped <=> $bScoped;
+        });
+
+        $specificUnits = [];
+        foreach ($rules as $candidate) {
+            $scopedUnitId = $candidate['property_unit_id'] ?? null;
+            if ($scopedUnitId === null || (int) $scopedUnitId <= 0) {
+                continue;
+            }
+            $specificKey = ((int) $candidate['property_id']).'|'.$this->normalizeChargeType((string) $candidate['charge_type']);
+            $specificUnits[$specificKey][(int) $scopedUnitId] = true;
+        }
+
+        foreach ($rules as $rule) {
             $chargeType = $this->normalizeChargeType((string) $rule['charge_type']);
-            if ($chargeType === '' || in_array($chargeType, self::SKIP_CHARGE_TYPES, true)) {
+            if ($chargeType === '' || (in_array($chargeType, self::SKIP_CHARGE_TYPES, true) && ($chargeType !== 'water' || $this->isVariableRule($rule)))) {
                 continue;
             }
             if ($this->isVariableRule($rule)) {
+                continue;
+            }
+            if ($chargeType === 'water' && (float) ($rule['rate_per_unit'] ?? 0) > 0.009) {
                 continue;
             }
 
@@ -62,6 +83,10 @@ final class AttachedUtilityChargeService
             );
 
             foreach ($unitIds as $unitId) {
+                if (($rule['property_unit_id'] ?? null) === null && isset($specificUnits[((int) $rule['property_id']).'|'.$chargeType][$unitId])) {
+                    continue;
+                }
+
                 if (! $this->unitHasActiveLease($unitId)) {
                     $stats['skipped_no_lease']++;
 
@@ -124,7 +149,7 @@ final class AttachedUtilityChargeService
 
             foreach ($query->get() as $definition) {
                 $chargeType = $this->normalizeChargeType((string) $definition->charge_key);
-                if ($chargeType === '' || in_array($chargeType, self::SKIP_CHARGE_TYPES, true)) {
+                if ($chargeType === '' || (in_array($chargeType, self::SKIP_CHARGE_TYPES, true) && $chargeType !== 'water')) {
                     continue;
                 }
 
@@ -169,7 +194,7 @@ final class AttachedUtilityChargeService
                 }
 
                 $chargeType = $this->normalizeChargeType((string) ($row['charge_type'] ?? ''));
-                if ($chargeType === '' || in_array($chargeType, self::SKIP_CHARGE_TYPES, true)) {
+                if ($chargeType === '' || (in_array($chargeType, self::SKIP_CHARGE_TYPES, true) && $chargeType !== 'water')) {
                     continue;
                 }
 
@@ -183,14 +208,22 @@ final class AttachedUtilityChargeService
                 $seen[$key] = true;
 
                 $label = trim((string) ($row['label'] ?? ''));
+                $rate = is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0;
+                $fixed = is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0;
+                $waterRate = is_numeric($row['water_amount'] ?? null) ? max(0.0, (float) $row['water_amount']) : 0.0;
+                $maintenanceFee = is_numeric($row['maintenance_fee'] ?? null) ? max(0.0, (float) $row['maintenance_fee']) : 0.0;
+                if ($chargeType === 'water' && $waterRate > 0.009) {
+                    $rate = $waterRate;
+                    $fixed = $maintenanceFee;
+                }
                 $rules[] = [
                     'property_id' => $pid,
                     'property_unit_id' => $scopeUnitId,
                     'charge_type' => $chargeType,
                     'label' => $label !== '' ? $label : Str::of($chargeType)->replace('_', ' ')->title()->toString(),
                     'amount_mode' => $this->normalizeAmountMode($row),
-                    'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0,
-                    'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0,
+                    'rate_per_unit' => $rate,
+                    'fixed_charge' => $fixed,
                     'notes' => trim((string) ($row['notes'] ?? '')),
                 ];
             }
@@ -304,7 +337,7 @@ final class AttachedUtilityChargeService
      */
     private function isVariableRule(array $rule): bool
     {
-        return $this->normalizeAmountMode($rule) === 'variable';
+        return in_array($this->normalizeAmountMode($rule), ['variable', 'per_unit'], true);
     }
 
     /**
@@ -313,6 +346,9 @@ final class AttachedUtilityChargeService
     private function normalizeAmountMode(array $row): string
     {
         $mode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
+        if ($mode === 'per_unit') {
+            return 'per_unit';
+        }
         if (in_array($mode, ['variable', 'manual', 'monthly'], true)) {
             return 'variable';
         }

@@ -264,9 +264,7 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Type</label>
-                <input type="text" name="notice_type" value="{{ old('notice_type', 'vacate') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="vacate, rent_increase…" />
-                @error('notice_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @include('property.agent.tenants.partials.notice_type_field')
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
@@ -368,4 +366,137 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit request</button>
         @endif
     </form>
+</x-property.modal>
+
+{{-- Deposit refund --}}
+@php
+    $depositHeld = (float) (($depositSnapshot ?? [])['held'] ?? 0);
+    $creditBalance = (float) ($creditBalance ?? 0);
+    $hubField = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2';
+@endphp
+<x-property.modal
+    show="showHubDepositRefundForm"
+    close="showHubDepositRefundForm = false"
+    name="tenant-hub-deposit-refund"
+    title="Record deposit refund"
+    max-width="2xl"
+>
+    <form method="post" action="{{ route('property.tenants.deposits.refund', $tenant, false) }}" class="space-y-3" data-turbo-frame="property-main">
+        @csrf
+        <input type="hidden" name="refund_form" value="deposit" />
+        <input type="hidden" name="return_to" value="tenant_show" />
+        <input type="hidden" name="return_tenant_id" value="{{ $tenant->id }}" />
+        <input type="hidden" name="return_tab" value="deposits" />
+        <p class="text-xs text-slate-500">Pay a held rent/security deposit back to {{ $tenant->name }}. Held now {{ \App\Services\Property\PropertyMoney::kes($depositHeld) }}. Bank details stay on the tenant profile if they were blank.</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Date</label>
+                <input type="date" name="refunded_at" value="{{ old('refunded_at', now()->toDateString()) }}" required class="{{ $hubField }}" />
+                @error('refunded_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                <input type="number" name="amount" min="0.01" step="0.01" value="{{ old('amount') }}" required class="{{ $hubField }}" placeholder="0.00" />
+                @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank</label>
+                <input type="text" name="bank_name" value="{{ old('bank_name', $tenant->bank_name) }}" maxlength="120" class="{{ $hubField }}" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Branch code</label>
+                <input type="text" name="bank_branch" value="{{ old('bank_branch', $tenant->bank_branch) }}" maxlength="80" class="{{ $hubField }}" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account name</label>
+                <input type="text" name="bank_account_name" value="{{ old('bank_account_name', $tenant->bank_account_name) }}" maxlength="160" class="{{ $hubField }}" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account number</label>
+                <input type="text" name="bank_account_number" value="{{ old('bank_account_number', $tenant->bank_account_number) }}" maxlength="64" class="{{ $hubField }}" />
+            </div>
+            <div class="sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                <input type="text" name="notes" value="{{ old('notes') }}" maxlength="500" class="{{ $hubField }}" placeholder="Optional reference" />
+            </div>
+        </div>
+        <button type="submit" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Save refund</button>
+    </form>
+</x-property.modal>
+
+{{-- Apply tenant credit --}}
+<x-property.modal
+    show="showHubCreditApplyForm"
+    close="showHubCreditApplyForm = false"
+    name="tenant-hub-credit-apply"
+    title="Apply credit"
+    max-width="xl"
+>
+    @if ($hubOpenInvoices->isEmpty() || $creditBalance <= 0)
+        <p class="text-sm text-slate-600">Need both credit balance and an open invoice to apply. Current credit {{ \App\Services\Property\PropertyMoney::kes($creditBalance) }}.</p>
+    @else
+        <form method="post" action="{{ route('property.tenants.credit.apply', $tenant, false) }}" class="space-y-3" data-turbo-frame="property-main">
+            @csrf
+            <input type="hidden" name="credit_form" value="apply" />
+            <input type="hidden" name="return_to" value="tenant_show" />
+            <input type="hidden" name="return_tenant_id" value="{{ $tenant->id }}" />
+            <input type="hidden" name="return_tab" value="credit" />
+            <p class="text-xs text-slate-500">Available credit {{ \App\Services\Property\PropertyMoney::kes($creditBalance) }}.</p>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice</label>
+                <select name="pm_invoice_id" required data-property-searchable="true" class="{{ $hubField }}">
+                    @foreach ($hubOpenInvoices as $inv)
+                        @php $openBal = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
+                        <option value="{{ $inv->id }}" @selected((string) old('pm_invoice_id') === (string) $inv->id)>{{ $inv->invoice_no ?: '#'.$inv->id }} — due {{ \App\Services\Property\PropertyMoney::kes($openBal) }}</option>
+                    @endforeach
+                </select>
+                @error('pm_invoice_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                <input type="number" step="0.01" min="0.01" max="{{ $creditBalance }}" name="amount" value="{{ old('amount') }}" required class="{{ $hubField }}" />
+                @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                <input type="text" name="notes" value="{{ old('notes') }}" maxlength="500" class="{{ $hubField }}" />
+            </div>
+            <button type="submit" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Apply credit</button>
+        </form>
+    @endif
+</x-property.modal>
+
+{{-- Refund unused credit --}}
+<x-property.modal
+    show="showHubCreditRefundForm"
+    close="showHubCreditRefundForm = false"
+    name="tenant-hub-credit-refund"
+    title="Refund unused credit"
+    max-width="xl"
+>
+    @if ($creditBalance <= 0)
+        <p class="text-sm text-slate-600">No credit available to refund.</p>
+    @else
+        <form method="post" action="{{ route('property.tenants.credit.refund', $tenant, false) }}" class="space-y-3" data-turbo-frame="property-main">
+            @csrf
+            <input type="hidden" name="credit_form" value="refund" />
+            <input type="hidden" name="return_to" value="tenant_show" />
+            <input type="hidden" name="return_tenant_id" value="{{ $tenant->id }}" />
+            <input type="hidden" name="return_tab" value="credit" />
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (max {{ \App\Services\Property\PropertyMoney::kes($creditBalance) }})</label>
+                <input type="number" step="0.01" min="0.01" max="{{ $creditBalance }}" name="amount" value="{{ old('amount') }}" required class="{{ $hubField }}" />
+                @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference</label>
+                <input type="text" name="reference" value="{{ old('reference') }}" maxlength="128" class="{{ $hubField }}" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                <input type="text" name="notes" value="{{ old('notes') }}" maxlength="500" class="{{ $hubField }}" />
+            </div>
+            <button type="submit" class="rounded-xl bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800">Process refund</button>
+        </form>
+    @endif
 </x-property.modal>

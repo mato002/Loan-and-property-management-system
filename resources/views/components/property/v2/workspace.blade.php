@@ -17,7 +17,7 @@
     /** @var list<string>|null $tableRowTones Optional per-row alert tones (same length as tableRows): vacant, vacant-long, notice, attention */
     'tableRowTones' => null,
     'showSearch' => true,
-    /** When false, toolbar slot renders as-is (e.g. x-property.filter-toolbar) without legacy mobile drawer wrapper */
+    /** When false, skip default search and extra mobile filter slots. Filter toolbars still collapse via x-property.filter-toolbar. */
     'legacyToolbar' => true,
     'tableMinWidth' => '720px',
     /** When true, renders mobile-record-list below md and hides the table on small screens */
@@ -30,6 +30,11 @@
     'showWorkspaceTabs' => true,
     /** Table-first layout: title + actions → filters → compact KPIs → table; actions in page header */
     'compactList' => true,
+    /** Summary cards start open unless a page asks for them collapsed. */
+    'statsExpanded' => true,
+    'statsStorageKey' => 'property.workspace.summaryStatsVisible',
+    /** occupancy | invoices */
+    'rowAlertLegend' => 'occupancy',
 ])
 
 @php
@@ -44,6 +49,7 @@
         && PropertyWorkspaceTabs::shouldShow($routeName);
 
     $hasToolbar = isset($toolbar) && ! $toolbar->isEmpty();
+    $toolbarHasExport = $hasToolbar && str_contains((string) $toolbar, 'property-export-select');
     $hasMobileFiltersExtra = ($legacyToolbar ?? true) && isset($mobile_filters_extra) && ! $mobile_filters_extra->isEmpty();
     $useLegacyToolbar = (bool) ($legacyToolbar ?? true);
     $hasTableActions = isset($table_actions) && ! $table_actions->isEmpty();
@@ -95,6 +101,15 @@
     $hasTabs = isset($tabs) && ! $tabs->isEmpty();
     $hasSecondary = isset($secondary) && ! $secondary->isEmpty();
     $hasPageActions = isset($actions) && ! $actions->isEmpty();
+@endphp
+
+@php
+    if ($hasTable) {
+        $autoExport = \App\Support\WorkspaceTableExport::fromRequest((string) $title, $columns, $tableRows);
+        if ($autoExport !== null) {
+            abort($autoExport);
+        }
+    }
 @endphp
 
 <x-property-layout>
@@ -171,35 +186,52 @@
                     </a>
                 @endif
             </div>
-            <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 justify-start sm:justify-end [&>button]:w-full [&>button]:sm:w-auto">
+            <div class="print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible [&>button]:w-auto [&>a]:w-auto">
                 {{ $actions ?? '' }}
             </div>
         </div>
 
         @if (count($stats) > 0)
-            <x-property.collapsible-stats>
+            <x-property.collapsible-stats :storage-key="$statsStorageKey" :default-visible="$statsExpanded">
                 <x-property.responsive.stat-card-grid :stats="$stats" />
             </x-property.collapsible-stats>
         @endif
         @endif
 
         @if ($hasToolbar || $hasTable || ($slotHasContent && ! $hasTable))
-            <div class="property-ws-wrap property-erp-surface w-full min-w-0 space-y-2.5 md:space-y-3">
+            <div @class([
+                'property-ws-wrap property-erp-surface w-full min-w-0',
+                'space-y-2' => $compactList,
+                'space-y-2.5 md:space-y-3' => ! $compactList,
+            ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
-                    <div @class([
-                        'print-hide w-full min-w-0',
-                        'space-y-2' => $useLegacyToolbar,
-                    ])>
-                        @if ($useLegacyToolbar && $canShowDefaultSearch)
-                            <input
-                                type="search"
-                                data-table-filter="parent"
-                                autocomplete="off"
-                                placeholder="Search…"
-                                class="w-full min-w-0 min-h-[44px] sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5"
-                            />
+                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:block md:overflow-visible">
+                        @if ($compactList && $hasPageActions)
+                            <div class="property-inline-actions flex shrink-0 flex-nowrap items-center gap-2 md:hidden">
+                                {{ $actions }}
+                            </div>
                         @endif
-
+                        @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
+                            <div class="flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible">
+                                @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                    <input
+                                        type="search"
+                                        data-table-filter="parent"
+                                        autocomplete="off"
+                                        placeholder="Search…"
+                                        class="h-[38px] w-52 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                    />
+                                @endif
+                                @if ($hasTable)
+                                    @include('property.agent.partials.export_dropdown', [
+                                        'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
+                                        'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
+                                        'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
+                                        'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
+                                    ])
+                                @endif
+                            </div>
+                        @endif
                         @if ($hasToolbar || $hasMobileFiltersExtra)
                             <x-property.responsive.mobile-filter-drawer
                                 :label="'Filters'"
@@ -214,28 +246,61 @@
                                 @if ($hasToolbar)
                                     <x-slot name="desktop">
                                         @php
-                                            $__propertyToolbarViewport = 'desktop';
+                                            \App\Support\Property\FilterToolbarViewport::set('desktop');
                                         @endphp
-                                        <div class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 [&_form]:flex [&_form]:flex-row [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-2 [&_form]:w-full [&_form]:min-w-0">
+                                        <div class="flex w-full min-w-0 flex-wrap items-end gap-2 overflow-visible">
+                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                                <input
+                                                    type="search"
+                                                    data-table-filter="parent"
+                                                    autocomplete="off"
+                                                    placeholder="Search…"
+                                                    class="h-[38px] w-52 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                                />
+                                            @endif
                                             {{ $toolbar }}
+                                            @if ($hasTable && ! $toolbarHasExport)
+                                                @include('property.agent.partials.export_dropdown', [
+                                                    'csvUrl' => request()->fullUrlWithQuery(['export' => 'csv']),
+                                                    'xlsUrl' => request()->fullUrlWithQuery(['export' => 'xls']),
+                                                    'pdfUrl' => request()->fullUrlWithQuery(['export' => 'pdf']),
+                                                    'wordUrl' => request()->fullUrlWithQuery(['export' => 'word']),
+                                                ])
+                                            @endif
                                         </div>
                                     </x-slot>
                                     <x-slot name="mobile">
                                         @php
-                                            $__propertyToolbarViewport = 'mobile';
+                                            \App\Support\Property\FilterToolbarViewport::set('mobile');
                                         @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
+                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
+                                                <input
+                                                    type="search"
+                                                    data-table-filter="parent"
+                                                    autocomplete="off"
+                                                    placeholder="Search…"
+                                                    class="min-h-[44px] w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
+                                                />
+                                            @endif
                                             {{ $toolbar }}
                                         </div>
                                     </x-slot>
                                 @endif
                             </x-property.responsive.mobile-filter-drawer>
+                            @php
+                                \App\Support\Property\FilterToolbarViewport::set('all');
+                            @endphp
                         @endif
+                    </div>
+                @elseif ($compactList && $hasPageActions)
+                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
+                        {{ $actions }}
                     </div>
                 @endif
 
                 @if ($compactList && count($stats) > 0)
-                    <x-property.collapsible-stats>
+                    <x-property.collapsible-stats :storage-key="$statsStorageKey" :default-visible="$statsExpanded">
                         <x-property.compact-stat-strip :stats="$stats" />
                     </x-property.collapsible-stats>
                 @endif
@@ -253,30 +318,12 @@
                     <div class="w-full min-w-0 space-y-2.5">
                     @if ($showRowToneLegend)
                         <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--occupied" aria-hidden="true"></span>
-                                Occupied
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--owner-occupied" aria-hidden="true"></span>
-                                Owner occupied
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
-                                Vacant / empty
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant-long" aria-hidden="true"></span>
-                                Aging 90+ days
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--notice" aria-hidden="true"></span>
-                                Notice / pending
-                            </span>
-                            <span class="property-row-alert-legend__item">
-                                <span class="property-row-alert-swatch property-row-alert-swatch--attention" aria-hidden="true"></span>
-                                Needs attention
-                            </span>
+                            @foreach (\App\Support\Property\WorkspaceRowAlert::legendItems((string) $rowAlertLegend) as $legendItem)
+                                <span class="property-row-alert-legend__item">
+                                    <span class="property-row-alert-swatch property-row-alert-swatch--{{ $legendItem['tone'] }}" aria-hidden="true"></span>
+                                    {{ $legendItem['label'] }}
+                                </span>
+                            @endforeach
                         </div>
                     @endif
                     <div @class([

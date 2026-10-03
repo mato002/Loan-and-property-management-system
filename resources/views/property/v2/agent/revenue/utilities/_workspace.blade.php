@@ -248,6 +248,10 @@
                 <x-property.utility.compact-kpi-strip :items="$opsKpis" />
             @endif
 
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-sm text-cyan-950">
+                <p>The phone install is not on this page. Open the meter app, then tap <strong>Install</strong> in the green bar.</p>
+                <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[40px] items-center rounded-lg bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-800">Open meter app</a>
+            </div>
             <nav class="utility-ops-tabbar" aria-label="Utility operations">
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Register</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'overview' ? 'is-active' : ''" @click="setTab('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Overview</button>
@@ -262,6 +266,7 @@
                     <a href="{{ route('property.revenue.utilities.reconciliation', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-teal-200 bg-teal-50 text-teal-900 hover:bg-teal-100">Reconcile</a>
                     <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Periods</a>
                     <button type="button" @click="setTab('readings')" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
+                    <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="quick-action-btn border border-cyan-300 bg-white text-cyan-900 hover:bg-cyan-50">Meter app</a>
                     <button type="button" @click="setTab('standing')" class="quick-action-btn bg-slate-800 text-white hover:bg-slate-900">Standing register</button>
                 </x-property.responsive.quick-action-grid>
             </div>
@@ -277,8 +282,6 @@
                     </template>
                 </select>
                 @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                <p x-show="!hasSelectedWaterProperty()" x-cloak class="mt-1 text-xs text-amber-600">Select a water-enabled property to load units.</p>
-                <p x-show="hasSelectedWaterProperty() && filteredWaterUnits().length === 0" x-cloak class="mt-1 text-xs text-amber-600">No units found for this property.</p>
             </div>
             <div class="grid gap-4 lg:grid-cols-2 items-start">
             <form method="post" action="{{ route('property.revenue.utilities.water_readings.store') }}" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -295,10 +298,9 @@
                 <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label><input type="month" x-model="selectedWaterMonth" name="billing_month" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
                     <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Previous reading <span class="font-normal text-slate-400">(optional)</span></label>
-                        <input type="number" step="0.001" min="0" name="previous_reading" x-ref="singlePreviousReadingInput" value="{{ old('previous_reading') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Loads from last reading when you pick unit & month" />
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Previous reading</label>
+                        <input type="number" step="0.001" min="0" name="previous_reading" x-ref="singlePreviousReadingInput" value="{{ old('previous_reading') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                         @error('previous_reading')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Auto-fills from the last saved <span class="font-medium">current</span> reading for this unit (before the billing month). Edit if you need a different baseline (new meter, correction).</p>
                     </div>
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" value="{{ old('current_reading') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input x-ref="singleRatePerUnit" type="number" step="0.01" min="0" name="rate_per_unit" value="{{ old('rate_per_unit') }}" required :readonly="hasSelectedWaterTemplate()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white read-only:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" /></div>
@@ -306,7 +308,6 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
                     <input x-ref="singleFixedCharge" type="number" step="0.01" min="0" name="fixed_charge" :disabled="selectedWaterTemplateMode() === 'rate_only'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white disabled:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" />
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-text="waterFixedChargeHelpText()"></p>
                 </div>
                 <button type="submit" :disabled="!hasSelectedWaterProperty()" class="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-400">Save reading</button>
             </form>
@@ -317,7 +318,6 @@
                 >
                     @csrf
                     <h4 class="text-sm font-semibold text-slate-900 dark:text-white">Bulk water readings</h4>
-                    <p class="text-xs text-slate-600 dark:text-slate-400">Uses the same property selected above. Fill many units and save once.</p>
                 <input type="hidden" name="property_id" :value="selectedWaterPropertyId || ''" />
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div>
@@ -333,11 +333,7 @@
                         <input x-ref="bulkFixedCharge" type="number" name="fixed_charge" value="{{ old('fixed_charge') }}" step="0.01" min="0" :disabled="selectedWaterTemplateMode() === 'rate_only'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white disabled:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" />
                     </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Shared notes (optional)</label>
-                    <input type="text" name="notes" value="{{ old('notes') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('current_readings')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
+                @error('current_readings')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
 
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="search" x-model="bulkFilter" placeholder="Filter units…" class="flex-1 min-w-[140px] rounded-lg border border-slate-200 text-sm px-3 py-2 min-h-[44px]" />
@@ -364,7 +360,7 @@
                         <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                             <tr>
                                 <th class="px-3 py-2">Unit</th>
-                                <th class="px-3 py-2">Previous <span class="font-normal normal-case text-slate-400">(opt.)</span></th>
+                                <th class="px-3 py-2">Previous</th>
                                 <th class="px-3 py-2">Current reading</th>
                             </tr>
                         </thead>
@@ -381,7 +377,6 @@
                                             data-water-bulk-prev="{{ (int) $unit['id'] }}"
                                             value="{{ old('previous_readings.'.(int) $unit['id']) }}"
                                             class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                                            placeholder="Loads when month/property set"
                                         />
                                         @error('previous_readings.'.(int) $unit['id'])<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                     </td>
@@ -393,7 +388,6 @@
                                             name="current_readings[{{ (int) $unit['id'] }}]" data-bulk-current @input="updateBulkFilledCount()"
                                             value="{{ old('current_readings.'.(int) $unit['id']) }}"
                                             class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                                            placeholder="Leave blank to skip"
                                         />
                                         @error('current_readings.'.(int) $unit['id'])<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                     </td>

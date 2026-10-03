@@ -12,6 +12,10 @@
     $shareToDate = $shareToDate ?? LandlordMonthlyShareTotals::toDateForProperties($propertyBreakdown ?? [], $uptoMonth);
     $openMonth = $isMonthScoped ? (string) ($monthValue ?? '') : '';
     $currentShareMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($monthValue ?? '')) ? (string) $monthValue : now()->format('Y-m');
+    $linkedProperties = collect($propertyBreakdown ?? [])->map(fn ($row) => [
+        'id' => (int) ($row['property_id'] ?? 0),
+        'name' => (string) ($row['property_name'] ?? ''),
+    ])->filter(fn ($row) => $row['id'] > 0)->values();
 
     $fyOverviewUrl = route('property.landlords.show', [
         'landlord' => $landlord->id,
@@ -19,7 +23,23 @@
         'fy' => $fy,
     ], false);
 
-    $breakdownColumns = ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'];
+    $reportUrl = function (array $extra = []) use ($landlord, $fy) {
+        return route('property.landlords.show', array_filter(array_merge([
+            'landlord' => $landlord->id,
+            'tab' => 'statement',
+            'fy' => $fy,
+        ], $extra), static fn ($v) => $v !== null && $v !== ''), false);
+    };
+
+    $printUrlFor = function (array $extra = []) use ($landlord, $fy) {
+        return route('property.landlords.statement.print', array_filter(array_merge([
+            'landlord' => $landlord->id,
+            'fy' => $fy,
+            'print' => 1,
+        ], $extra), static fn ($v) => $v !== null && $v !== ''), false);
+    };
+
+    $breakdownColumns = ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection', 'Reports'];
     $breakdownRows = [];
     $breakdownExpansions = [];
     foreach ($propertyBreakdown as $row) {
@@ -32,6 +52,14 @@
                 'currentMonth' => $currentShareMonth,
             ])->render()
         );
+
+        $summaryPrint = $printUrlFor(['property_id' => $pid, 'report' => 'summary']);
+        $detailPrint = $printUrlFor(['property_id' => $pid, 'report' => 'detail']);
+        $summaryCsv = $reportUrl(['property_id' => $pid, 'report' => 'summary', 'export' => 'csv', 'export_scope' => 'properties']);
+        $detailCsv = $reportUrl(['property_id' => $pid, 'report' => 'detail', 'export' => 'csv']);
+        $detailXls = $reportUrl(['property_id' => $pid, 'report' => 'detail', 'export' => 'xls']);
+        $detailPdf = $reportUrl(['property_id' => $pid, 'report' => 'detail', 'export' => 'pdf']);
+
         $breakdownRows[] = [
             new HtmlString(
                 view('property.agent.landlords.partials.monthly-share-toggle', [
@@ -44,43 +72,57 @@
             \App\Services\Property\PropertyMoney::kes($ytd['pending_share'] > 0.009 ? $ytd['pending_share'] : (float) ($row['pending_share'] ?? 0)),
             \App\Services\Property\PropertyMoney::kes($ytd['agent_earning']),
             ! empty($row['last_paid_at']) ? \Illuminate\Support\Carbon::parse((string) $row['last_paid_at'])->format('Y-m-d') : '—',
+            new HtmlString(
+                '<div class="flex flex-col gap-1 text-xs font-semibold">'
+                .'<a href="'.e($summaryPrint).'" target="_blank" rel="noopener" data-turbo="false" class="text-slate-700 hover:underline">Print FY summary</a>'
+                .'<a href="'.e($detailPrint).'" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print FY full</a>'
+                .'<a href="'.e($summaryCsv).'" data-turbo="false" class="text-slate-600 hover:underline">CSV summary</a>'
+                .'<a href="'.e($detailCsv).'" data-turbo="false" class="text-slate-600 hover:underline">CSV full</a>'
+                .'<a href="'.e($detailXls).'" data-turbo="false" class="text-slate-600 hover:underline">Excel full</a>'
+                .'<a href="'.e($detailPdf).'" data-turbo="false" class="text-indigo-700 hover:underline">PDF full</a>'
+                .'</div>'
+            ),
         ];
     }
 @endphp
 
-<div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0">
+<div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0 overflow-visible">
     <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
             <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
-            <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement under that row. Export / Print stay available for that month.</p>
+            <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement. Use Print / Export Statement for any property, period, summary, or full detail.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
-            @if (! $isMonthScoped)
-                <a
-                    href="{{ route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'statement', 'fy' => $fy], ['export' => 'csv', 'export_scope' => 'monthly']), false) }}"
-                    data-turbo="false"
-                    class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >Export months CSV</a>
-            @else
-                <a
-                    href="{{ route('property.landlords.show', ['landlord' => $landlord->id, 'tab' => 'statement', 'month' => $monthValue, 'fy' => $fy, 'export' => 'csv', 'export_scope' => 'statement'], false) }}"
-                    data-turbo="false"
-                    class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >Export month CSV</a>
-                <a
-                    href="{{ route('property.landlords.show', ['landlord' => $landlord->id, 'tab' => 'statement', 'month' => $monthValue, 'fy' => $fy, 'export' => 'pdf', 'export_scope' => 'statement'], false) }}"
-                    data-turbo="false"
-                    class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >Export month PDF</a>
-            @endif
+        <div class="flex flex-wrap items-center gap-2">
+            @include('property.agent.partials.statement_report_builder', [
+                'showUrl' => route('property.landlords.show', ['landlord' => $landlord->id], false),
+                'printUrl' => route('property.landlords.statement.print', ['landlord' => $landlord->id], false),
+                'properties' => $linkedProperties,
+                'showProperty' => true,
+                'showDetailLevel' => true,
+                'defaultPeriod' => $isMonthScoped ? 'month' : 'fy',
+                'defaultReport' => 'detail',
+                'defaultFy' => $fy,
+                'defaultMonth' => $openMonth !== '' ? $openMonth : now()->format('Y-m'),
+                'extraQuery' => ['tab' => 'statement'],
+                'layout' => 'split',
+                'buttonLabel' => 'Print / Export Statement',
+                'formats' => ['pdf', 'xls', 'csv', 'word'],
+            ])
             <a
-                href="{{ route('property.landlords.statement.print', array_filter(['landlord' => $landlord->id, 'month' => $monthValue ?? null, 'fy' => $fyValue ?? null, 'print' => 1]), false) }}"
+                href="{{ $printUrlFor(['report' => 'summary']) }}"
                 target="_blank"
                 rel="noopener"
                 data-turbo="false"
-                class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-            >{{ $isMonthScoped ? 'Print month statement' : 'Print FY overview' }}</a>
+                class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >Print FY summary</a>
+            <a
+                href="{{ $printUrlFor(['report' => 'detail']) }}"
+                target="_blank"
+                rel="noopener"
+                data-turbo="false"
+                class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800"
+            >Print FY full</a>
         </div>
     </div>
 
@@ -142,20 +184,26 @@
                             ], false);
                             $collapseUrl = $fyOverviewUrl;
                             $toggleUrl = $isOpen ? $collapseUrl : $expandUrl;
-                            $exportUrl = route('property.landlords.show', [
-                                'landlord' => $landlord->id,
-                                'tab' => 'statement',
+                            $exportDetailUrl = $reportUrl([
                                 'month' => $ym,
-                                'fy' => $fy,
+                                'report' => 'detail',
                                 'export' => 'csv',
                                 'export_scope' => 'statement',
-                            ], false);
-                            $printUrl = route('property.landlords.statement.print', [
-                                'landlord' => $landlord->id,
+                            ]);
+                            $exportSummaryUrl = $reportUrl([
                                 'month' => $ym,
-                                'fy' => $fy,
-                                'print' => 1,
-                            ], false);
+                                'report' => 'summary',
+                                'export' => 'csv',
+                                'export_scope' => 'properties',
+                            ]);
+                            $printDetailUrl = $printUrlFor([
+                                'month' => $ym,
+                                'report' => 'detail',
+                            ]);
+                            $printSummaryUrl = $printUrlFor([
+                                'month' => $ym,
+                                'report' => 'summary',
+                            ]);
                         @endphp
                         <tr @class([
                             'border-t border-slate-100 dark:border-slate-700/80',
@@ -182,9 +230,11 @@
                             <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{{ \App\Services\Property\PropertyMoney::kes((float) ($row['agent_earning'] ?? 0)) }}</td>
                             <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ (int) ($row['active_properties'] ?? 0) }}</td>
                             <td class="px-3 sm:px-4 py-2.5 sm:py-3 text-slate-700 dark:text-slate-200 align-top">
-                                <div class="flex flex-wrap gap-2 text-xs font-semibold">
-                                    <a href="{{ $exportUrl }}" data-turbo="false" class="text-slate-700 hover:underline">Export statement</a>
-                                    <a href="{{ $printUrl }}" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print statement</a>
+                                <div class="flex flex-col gap-1 text-xs font-semibold">
+                                    <a href="{{ $printDetailUrl }}" target="_blank" rel="noopener" data-turbo="false" class="text-teal-700 hover:underline">Print full</a>
+                                    <a href="{{ $printSummaryUrl }}" target="_blank" rel="noopener" data-turbo="false" class="text-slate-700 hover:underline">Print summary</a>
+                                    <a href="{{ $exportDetailUrl }}" data-turbo="false" class="text-slate-600 hover:underline">CSV full</a>
+                                    <a href="{{ $exportSummaryUrl }}" data-turbo="false" class="text-slate-600 hover:underline">CSV summary</a>
                                 </div>
                             </td>
                         </tr>
@@ -227,5 +277,5 @@
         'columnConfig' => ResponsiveTableColumns::landlordStatementBreakdown(),
         'emptyTitle' => 'No linked properties',
         'emptyHint' => 'Link this landlord to a property to see breakdown rows.',
-        'tableMinWidth' => '720px',
+        'tableMinWidth' => '860px',
     ])

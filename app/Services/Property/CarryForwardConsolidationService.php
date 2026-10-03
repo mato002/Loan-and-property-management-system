@@ -138,6 +138,12 @@ class CarryForwardConsolidationService
             return 0.0;
         }
 
+        // A tenant-statement import already posted the real charge lines. Keeping the
+        // take-on snapshot would double-count (Veronica: B/F 4,150 plus Oct invoices).
+        if ($this->tenantHasStatementImportCharges($tenant)) {
+            return 0.0;
+        }
+
         return $amount;
     }
 
@@ -155,9 +161,12 @@ class CarryForwardConsolidationService
             ->withoutGlobalScopes()
             ->where('pm_tenant_id', $tenant->id)
             ->where(function ($inner): void {
-                $inner->where('description', 'like', '[EZEN INV%');
+                $inner->where('description', 'like', '[EZEN %');
                 if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
-                    $inner->orWhere('carry_forward_origin->source', 'ezen_rental_invoice_import');
+                    $inner->orWhereIn('carry_forward_origin->source', [
+                        'ezen_rental_invoice_import',
+                        'ezen_tenant_statement_dbn',
+                    ]);
                 }
             })
             ->selectRaw('COUNT(*) as invoice_count')
@@ -169,6 +178,22 @@ class CarryForwardConsolidationService
 
         // Complete cutover: enough history lines, or billed amount at least covers take-on B/F.
         return $count >= 6 || $billed + 0.009 >= $bf;
+    }
+
+    public function tenantHasStatementImportCharges(PmTenant $tenant): bool
+    {
+        return PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('pm_tenant_id', $tenant->id)
+            ->where(function ($inner): void {
+                $inner->where('description', 'like', '[EZEN DN%')
+                    ->orWhere('description', 'like', '[EZEN DBN%')
+                    ->orWhere('description', 'like', '[EZEN RVS%');
+                if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
+                    $inner->orWhere('carry_forward_origin->source', 'ezen_tenant_statement_dbn');
+                }
+            })
+            ->exists();
     }
 
     /**

@@ -37,11 +37,12 @@ class PmPropertyTakeonBalance extends Model
                 return;
             }
 
-            $userId = (int) auth()->id();
+            $userId = AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id();
             $query->where(function (Builder $scope) use ($userId): void {
-                $scope->where('pm_property_takeon_balances.agent_user_id', $userId)
-                    ->orWhereIn('pm_property_takeon_balances.property_id', function ($sub) use ($userId): void {
-                        $sub->select('id')->from('properties')->where('agent_user_id', $userId);
+                $ownerIds = AgentWorkspaceScope::workspaceOwnerIds() ?: [$userId];
+                $scope->whereIn('pm_property_takeon_balances.agent_user_id', $ownerIds)
+                    ->orWhereIn('pm_property_takeon_balances.property_id', function ($sub) use ($ownerIds): void {
+                        $sub->select('id')->from('properties')->whereIn('agent_user_id', $ownerIds);
                     });
             });
         });

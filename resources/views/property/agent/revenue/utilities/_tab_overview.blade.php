@@ -1,6 +1,10 @@
-    <div class="rounded-2xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm space-y-3">
+    <details class="group rounded-2xl border border-amber-200 bg-amber-50/40 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-slate-900 marker:content-none dark:text-white [&::-webkit-details-marker]:hidden">
+            <span>Billing readiness</span>
+            <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+        </summary>
+        <div class="space-y-3 border-t border-amber-200/80 px-4 py-3">
         <div class="flex flex-wrap items-end justify-between gap-3">
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Billing readiness</h3>
             <form method="get" action="{{ route('property.revenue.utilities', absolute: false) }}" class="flex flex-wrap items-end gap-2">
                 <label class="text-xs text-slate-600">Month</label>
                 <input type="month" name="rr_month" value="{{ $billingReadiness['month'] ?? now()->format('Y-m') }}" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
@@ -85,4 +89,5 @@
                 @endif
             </div>
         </div>
-    </div>
+        </div>
+    </details>

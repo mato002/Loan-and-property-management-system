@@ -3,63 +3,46 @@
     $hasFields = (bool) ($hasFields ?? false);
     $submitFilters = (bool) ($submitFilters ?? true);
     $hasPrimary = (bool) ($hasPrimary ?? false);
+    $toolbarViewport = \App\Support\Property\FilterToolbarViewport::current();
+    $embedded = $toolbarViewport === 'mobile';
+    $drawerLabel = $drawerLabel ?? 'Filters';
+    $activeFilterCount = (int) ($activeFilterCount ?? 0);
 @endphp
 
 @if ($hasFields && ($submitFilters || $hasPrimary))
-    <div @class([
-        'w-full min-w-0 space-y-3',
-        'md:hidden' => ($__propertyToolbarViewport ?? 'all') === 'all',
-    ]) data-filter-toolbar-mobile-panel>
-        @if (! empty($showSavedFiltersUi))
-            <div class="property-filter-toolbar__mobile-quick flex flex-wrap items-center gap-2">
-                @if ($submitFilters && ($action ?? null))
-                    <button
-                        type="button"
-                        data-property-save-filter
-                        class="inline-flex min-h-[36px] items-center rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200"
-                    >
-                        <i class="fa-regular fa-bookmark mr-1.5" aria-hidden="true"></i>
-                        Save filter
-                    </button>
-                @endif
-                @if (! empty($resetUrl))
-                    <a
-                        href="{{ $resetUrl }}"
-                        @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
-                        class="inline-flex min-h-[36px] items-center rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300"
-                    >Clear</a>
-                @endif
-            </div>
-            <div data-property-saved-filters hidden class="flex flex-wrap gap-1.5"></div>
-        @endif
+    @once
+        <style>
+            @media (max-width: 767.98px) {
+                [data-property-filter-form-desktop],
+                .property-filter-toolbar__static {
+                    display: none !important;
+                }
+            }
+            details.property-filter-mobile-toggle > summary {
+                list-style: none;
+            }
+            details.property-filter-mobile-toggle > summary::-webkit-details-marker {
+                display: none;
+            }
+        </style>
+    @endonce
 
-        @if ($submitFilters && ($action ?? null))
-            <form
-                id="{{ $formId }}-mobile"
-                method="{{ $method ?? 'get' }}"
-                action="{{ $action }}"
-                @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
-                @if (! empty($revenueDateFilter)) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
-                class="space-y-3"
-            >
-                @include('components.property.partials.filter-toolbar-fields', ['layout' => 'mobile', 'fieldFormId' => $formId.'-mobile'])
-            </form>
-            <div class="flex flex-col gap-2">
-                <button
-                    type="submit"
-                    form="{{ $formId }}-mobile"
-                    class="w-full min-h-[44px] rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-                >Apply filters</button>
-                @if (! empty($resetUrl))
-                    <a
-                        href="{{ $resetUrl }}"
-                        @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
-                        class="flex w-full min-h-[44px] items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                    >Reset</a>
+    @if ($embedded)
+        <div class="w-full min-w-0 space-y-3" data-filter-toolbar-mobile-panel>
+            @include('components.property.partials.filter-toolbar-mobile-fields')
+        </div>
+    @else
+        <details class="property-filter-mobile-toggle md:hidden w-full min-w-0 rounded-xl border border-slate-300 bg-white shadow-sm dark:border-slate-600 dark:bg-gray-800" data-filter-toolbar-mobile-panel>
+            <summary class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <i class="fa-solid fa-sliders text-slate-500" aria-hidden="true"></i>
+                {{ $drawerLabel }}
+                @if ($activeFilterCount > 0)
+                    <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold text-white">{{ $activeFilterCount }}</span>
                 @endif
+            </summary>
+            <div class="space-y-3 border-t border-slate-200 px-3 py-3 dark:border-slate-700">
+                @include('components.property.partials.filter-toolbar-mobile-fields')
             </div>
-        @else
-            @include('components.property.partials.filter-toolbar-fields', ['layout' => 'mobile'])
-        @endif
-    </div>
+        </details>
+    @endif
 @endif

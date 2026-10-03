@@ -18,15 +18,16 @@
     x-on:keydown.escape.window="filterOpen = false"
     x-on:turbo:before-visit.window="filterOpen = false"
     x-on:turbo:frame-load.window="if ($event.target?.id === @js($turboFrame)) filterOpen = false"
-    {{ $attributes->merge(['class' => 'w-full min-w-0']) }}
+    data-property-filter-drawer-host
+    {{ $attributes->merge(['class' => 'min-w-0 w-auto shrink-0 md:w-full']) }}
 >
     {{-- Desktop: filters inline --}}
     <div class="hidden md:block w-full min-w-0">
         {{ $desktopContent }}
     </div>
 
-    {{-- Mobile: collapsed trigger --}}
-    <div class="md:hidden w-full min-w-0 space-y-2">
+    {{-- Mobile: compact trigger, kept in the horizontal action row --}}
+    <div class="md:hidden w-auto shrink-0">
         @isset($chips)
             @if (! $chips->isEmpty())
                 <div class="flex flex-wrap gap-1.5">
@@ -38,7 +39,7 @@
         <button
             type="button"
             @click="filterOpen = true; $nextTick(() => window.dispatchEvent(new CustomEvent('property:filter-drawer-open')))"
-            class="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            class="inline-flex w-auto shrink-0 min-h-[40px] items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             <i class="fa-solid fa-sliders text-slate-500" aria-hidden="true"></i>
             {{ $label }}

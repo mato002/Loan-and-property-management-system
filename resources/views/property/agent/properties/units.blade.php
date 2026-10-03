@@ -13,7 +13,6 @@
             $unitFieldCfg = $unitFields ?? [];
             $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
             $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
-            $unitExportQuery = request()->query();
         @endphp
 <x-property.workspace
     title="Unit status"
@@ -31,12 +30,6 @@
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showUnitCreateForms' => $unitCreateFormHasErrors]) !!}" ></x-slot>
 
     <x-slot name="actions">
-        @include('property.agent.partials.export_dropdown', [
-            'csvUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'csv']), false),
-            'pdfUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'pdf']), false),
-            'wordUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'word']), false),
-            'class' => 'inline-flex min-h-[40px] items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50',
-        ])
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
@@ -351,15 +344,6 @@
 
     <x-slot name="secondary">
         <div class="space-y-4">
-<div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All units</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'vacant']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Vacant</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'occupied']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Occupied</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'notice']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Notice</a>
-            </div>
-        </div>
-
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Setup flow: Units → Tenants → Rent</p>
             <p class="mt-1 text-sm text-slate-600">Add units (doors) here. Then allocate a vacant unit to a tenant using a Lease, then bill rent using an Invoice.</p>

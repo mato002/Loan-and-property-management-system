@@ -125,7 +125,7 @@ final class ResponsiveTableColumns
     public static function landlordStatementBreakdown(): array
     {
         return self::build(
-            ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection'],
+            ['Property', 'Ownership %', 'Owner share', 'Pending share', 'Agent earning', 'Last collection', 'Reports'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
                 1 => ['priority' => 3, 'mobile_label' => 'Ownership'],
@@ -133,6 +133,7 @@ final class ResponsiveTableColumns
                 3 => ['priority' => 4, 'mobile_label' => 'Pending'],
                 4 => ['priority' => 5, 'mobile_label' => 'Agent earning'],
                 5 => ['priority' => 6, 'mobile_label' => 'Last paid'],
+                6 => ['is_action' => true, 'priority' => 1, 'mobile_label' => 'Reports'],
             ]
         );
     }
@@ -214,15 +215,16 @@ final class ResponsiveTableColumns
     public static function units(): array
     {
         return self::build(
-            ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
+            ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'A/C balance', 'Vacant since', 'Actions'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
                 1 => ['is_subtitle' => true, 'priority' => 2],
-                4 => ['is_amount' => true, 'priority' => 3],
-                5 => ['is_status' => true, 'priority' => 4],
-                6 => ['priority' => 5, 'mobile_label' => 'Tenant'],
-                7 => ['priority' => 7, 'hide_on_mobile' => true],
-                8 => ['is_action' => true],
+                4 => ['is_amount' => true, 'priority' => 4],
+                5 => ['is_status' => true, 'priority' => 5],
+                6 => ['priority' => 6, 'mobile_label' => 'Tenant'],
+                7 => ['is_amount' => true, 'priority' => 3, 'mobile_label' => 'A/C balance'],
+                8 => ['priority' => 7, 'hide_on_mobile' => true],
+                9 => ['is_action' => true],
             ]
         );
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingChartAccount;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
@@ -19,6 +20,7 @@ use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,10 +32,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmPaymentController extends Controller
 {
-    public function mpesaInbox(Request $request): View
+    public function mpesaInbox(Request $request): View|StreamedResponse
     {
         $channel = strtolower(trim((string) $request->query('channel', '')));
         $status = strtolower(trim((string) $request->query('status', '')));
+        $q = trim((string) $request->query('q', ''));
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
         $allowedChannels = ['mpesa_stk', 'mpesa_sms_ingest', 'mpesa_c2b', 'mpesa'];
 
         $query = PmPayment::query()
@@ -41,7 +46,49 @@ class PmPaymentController extends Controller
             ->whereIn('channel', $allowedChannels)
             ->when($channel !== '' && in_array($channel, $allowedChannels, true), fn ($q) => $q->where('channel', $channel))
             ->when(in_array($status, ['pending', 'completed', 'failed'], true), fn ($q) => $q->where('status', $status))
+            ->when($from !== '', fn ($builder) => $builder->whereDate('paid_at', '>=', $from))
+            ->when($to !== '', fn ($builder) => $builder->whereDate('paid_at', '<=', $to))
+            ->when($q !== '', function ($builder) use ($q): void {
+                $builder->where(function ($w) use ($q): void {
+                    $w->where('external_ref', 'like', '%'.$q.'%')
+                        ->orWhereHas('tenant', function ($tenant) use ($q): void {
+                            $tenant->where('name', 'like', '%'.$q.'%')
+                                ->orWhere('phone', 'like', '%'.$q.'%')
+                                ->orWhere('account_number', 'like', '%'.$q.'%');
+                        });
+                });
+            })
             ->orderByDesc('id');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $exportRows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'mpesa-inbox-'.now()->format('Ymd_His'),
+                ['When', 'Tenant', 'Account', 'Phone', 'Channel', 'Amount', 'Status', 'Receipt'],
+                function () use ($exportRows) {
+                    foreach ($exportRows as $payment) {
+                        $tenant = $payment->tenant;
+                        yield [
+                            optional($payment->paid_at ?? $payment->created_at)->format('Y-m-d H:i') ?? '',
+                            (string) ($tenant?->name ?? ''),
+                            (string) ($tenant?->account_number ?? ''),
+                            (string) ($tenant?->phone ?? ''),
+                            str_replace('_', ' ', (string) ($payment->channel ?? '')),
+                            number_format((float) $payment->amount, 2, '.', ''),
+                            (string) ($payment->status ?? ''),
+                            (string) ($payment->external_ref ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'M-Pesa inbox',
+                    'subtitle' => $exportRows->count().' payment'.($exportRows->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
 
         $rows = $query->paginate(40)->withQueryString();
 
@@ -57,7 +104,7 @@ class PmPaymentController extends Controller
 
         return property_view('property.agent.revenue.mpesa_inbox', [
             'rows' => $rows,
-            'filters' => compact('channel', 'status'),
+            'filters' => compact('channel', 'status', 'q', 'from', 'to'),
             'todaySum' => $todaySum,
             'pendingCount' => $pendingCount,
             'stkConfigured' => app(MpesaDarajaService::class)->isConfigured(),
@@ -164,38 +211,21 @@ class PmPaymentController extends Controller
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
-            $rows = (clone $baseQuery)->limit(5000)->get();
+            $lines = $this->paymentExportLines($baseQuery);
+
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
                 ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status'],
-                function () use ($rows) {
-                    foreach ($rows as $p) {
-                        $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
-                        if ($allocatedTo === '' && $p->tenant) {
-                            $allocatedTo = $p->tenant->name;
-                        }
-                        $source = (string) data_get($p->meta, 'source', 'manual');
-                        $provider = (string) data_get($p->meta, 'provider', '');
-                        $sourceLabel = match ($source) {
-                            'equity_api' => 'Equity API',
-                            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
-                            default => 'Manual / Legacy',
-                        };
-                        yield [
-                            'PAY-'.$p->id,
-                            strip_tags((string) PmPaymentPresentation::propertyUnit($p, '')),
-                            PmPaymentPresentation::payerPhone($p, ''),
-                            PmPaymentPresentation::transactionRef($p, ''),
-                            PmPaymentPresentation::paymentMethod($p, ''),
-                            number_format((float) $p->amount, 2, '.', ''),
-                            $p->paid_at?->format('Y-m-d H:i:s') ?? '',
-                            $sourceLabel,
-                            $allocatedTo,
-                            ucfirst((string) $p->status),
-                        ];
+                function () use ($lines) {
+                    foreach ($lines as $line) {
+                        yield $line;
                     }
                 },
-                $export
+                $export,
+                [
+                    'title' => 'Payments',
+                    'subtitle' => count($lines).' payment'.(count($lines) === 1 ? '' : 's'),
+                ],
             );
         }
 
@@ -307,10 +337,7 @@ class PmPaymentController extends Controller
                 'canSettle' => $canSettle,
             ])->render());
 
-            $statusLabel = ucfirst((string) $p->status);
-            if (! blank($p->reversal_status)) {
-                $statusLabel .= ' / Reversal '.ucfirst((string) $p->reversal_status);
-            }
+            $statusLabel = $this->statusBadge($p);
 
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
@@ -350,11 +377,40 @@ class PmPaymentController extends Controller
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
             'filterCascadeCatalog' => $cascade->fromPayments(),
-            'openInvoices' => PmInvoice::query()
-                ->with('tenant')
+            'openInvoices' => $openInvoices = PmInvoice::query()
+                ->with(['tenant:id,name,phone,account_number', 'unit:id,label,property_id', 'unit.property:id,name'])
+                ->billableAr()
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->orderBy('due_date')
                 ->get(),
+            'receiptInvoices' => $openInvoices->map(function (PmInvoice $invoice) {
+                $due = max(0, round((float) $invoice->amount - (float) $invoice->amount_paid, 2));
+                $particulars = trim((string) ($invoice->description ?: str_replace('_', ' ', (string) $invoice->invoice_type)));
+
+                return [
+                    'id' => (int) $invoice->id,
+                    'tenant_id' => (int) $invoice->pm_tenant_id,
+                    'property_id' => (int) ($invoice->unit?->property_id ?? 0),
+                    'invoice_no' => (string) $invoice->invoice_no,
+                    'issue_date' => $invoice->issue_date?->format('d/m/Y') ?? '',
+                    'due_date' => $invoice->due_date?->format('d/m/Y') ?? '',
+                    'particulars' => $particulars !== '' ? $particulars : 'Charge',
+                    'amount' => round((float) $invoice->amount, 2),
+                    'paid' => round((float) $invoice->amount_paid, 2),
+                    'due' => $due,
+                ];
+            })->values()->all(),
+            'receiptTenants' => PmTenant::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone', 'account_number'])
+                ->map(fn (PmTenant $tenant) => [
+                    'id' => (int) $tenant->id,
+                    'name' => (string) $tenant->name,
+                    'phone' => (string) ($tenant->phone ?? ''),
+                    'account' => (string) ($tenant->account_number ?? ''),
+                ])
+                ->all(),
+            'cashAccounts' => $this->cashAccountsForReceipt(),
             // Only show tenants that actually have an open invoice (this screen posts against invoices).
             'tenants' => PmTenant::query()
                 ->whereHas('invoices', function ($q) {
@@ -365,6 +421,69 @@ class PmPaymentController extends Controller
             'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
         ]);
+    }
+
+    /**
+     * Plain rows for export. Loaded in small batches so a full month (thousands of receipts) does not exhaust memory before the PDF is built.
+     *
+     * @param  Builder<PmPayment>  $query
+     * @return list<list<string>>
+     */
+    private function paymentExportLines(Builder $query): array
+    {
+        $lines = [];
+        $remaining = 5000;
+        $page = 1;
+        $with = [
+            'tenant:id,name,phone',
+            'allocations.invoice:id,invoice_no,property_unit_id',
+            'allocations.invoice.unit:id,label,property_id',
+            'allocations.invoice.unit.property:id,name,code',
+        ];
+
+        do {
+            $size = min(250, $remaining);
+            $batch = (clone $query)->with($with)->forPage($page, $size)->get();
+            foreach ($batch as $payment) {
+                $lines[] = $this->paymentExportLine($payment);
+            }
+            $count = $batch->count();
+            $remaining -= $count;
+            $page++;
+        } while ($count === $size && $remaining > 0);
+
+        return $lines;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function paymentExportLine(PmPayment $payment): array
+    {
+        $allocatedTo = $payment->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+        if ($allocatedTo === '' && $payment->tenant) {
+            $allocatedTo = (string) $payment->tenant->name;
+        }
+        $source = (string) data_get($payment->meta, 'source', 'manual');
+        $provider = (string) data_get($payment->meta, 'provider', '');
+        $sourceLabel = match ($source) {
+            'equity_api' => 'Equity API',
+            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
+            default => 'Manual / Legacy',
+        };
+
+        return [
+            'PAY-'.$payment->id,
+            trim(html_entity_decode(strip_tags((string) PmPaymentPresentation::propertyUnit($payment, '')), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+            PmPaymentPresentation::payerPhone($payment, ''),
+            PmPaymentPresentation::transactionRef($payment, ''),
+            PmPaymentPresentation::paymentMethod($payment, ''),
+            number_format((float) $payment->amount, 2, '.', ''),
+            $payment->paid_at?->format('Y-m-d H:i:s') ?? '',
+            $sourceLabel,
+            $allocatedTo,
+            ucfirst((string) $payment->status),
+        ];
     }
 
     private function channelLabel(?string $channel): string
@@ -384,6 +503,34 @@ class PmPaymentController extends Controller
         };
     }
 
+    private function statusBadge(PmPayment $payment): HtmlString
+    {
+        $status = strtolower((string) $payment->status);
+        [$statusText, $statusClass] = match ($status) {
+            PmPayment::STATUS_COMPLETED => ['Completed', 'property-status-pill--occupied'],
+            PmPayment::STATUS_PENDING => ['Pending', 'property-status-pill--vacant'],
+            PmPayment::STATUS_FAILED => ['Failed', 'property-status-pill--attention'],
+            default => [ucfirst($status !== '' ? $status : 'Unknown'), 'property-status-pill--notice'],
+        };
+
+        $html = '<span class="inline-flex flex-wrap items-center gap-1">'
+            .'<span class="property-status-pill '.$statusClass.'">'.e($statusText).'</span>';
+
+        $reversal = strtolower(trim((string) $payment->reversal_status));
+        if ($reversal !== '') {
+            [$reversalText, $reversalClass] = match ($reversal) {
+                PmPayment::REVERSAL_STATUS_REVERSED => ['Reversed', 'property-status-pill--vacant-long'],
+                PmPayment::REVERSAL_STATUS_PENDING => ['Reversal pending', 'property-status-pill--notice'],
+                PmPayment::REVERSAL_STATUS_APPROVED => ['Reversal approved', 'property-status-pill--occupied'],
+                PmPayment::REVERSAL_STATUS_REJECTED => ['Reversal rejected', 'property-status-pill--attention'],
+                default => ['Reversal '.ucfirst($reversal), 'property-status-pill--notice'],
+            };
+            $html .= '<span class="property-status-pill '.$reversalClass.'">'.e($reversalText).'</span>';
+        }
+
+        return new HtmlString($html.'</span>');
+    }
+
     private function sourceBadge(PmPayment $payment): HtmlString
     {
         $source = (string) data_get($payment->meta, 'source', 'manual');
@@ -400,58 +547,101 @@ class PmPaymentController extends Controller
     {
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
-            'pm_invoice_id' => ['required', 'exists:pm_invoices,id'],
+            'property_id' => ['nullable', 'integer'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'channel' => ['required', 'in:mpesa,bank,cash,card,cheque'],
             'external_ref' => ['nullable', 'string', 'max:128'],
-            'paid_at' => ['nullable', 'date'],
+            'record_date' => ['required', 'date'],
+            'banking_date' => ['required', 'date'],
+            'payer_bank' => ['nullable', 'string', 'max:120'],
+            'memo' => ['nullable', 'string', 'max:500'],
+            'receipt_to' => ['nullable', 'in:landlord,general_ledger'],
+            'bank_account_id' => ['nullable', 'integer'],
+            'vat_mode' => ['nullable', 'in:inclusive,exclusive'],
+            'skip_notification' => ['nullable', 'boolean'],
+            'allocations' => ['nullable', 'array'],
+            'allocations.*' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $invoice = PmInvoice::query()->findOrFail($data['pm_invoice_id']);
-        if ((int) $invoice->pm_tenant_id !== (int) $data['pm_tenant_id']) {
-            return back()->withErrors(['pm_invoice_id' => 'Invoice does not belong to this tenant.'])->withInput();
-        }
-
-        $remaining = (float) $invoice->amount - (float) $invoice->amount_paid;
-        if ((float) $data['amount'] > $remaining + 0.0001) {
-            return back()->withErrors(['amount' => 'Amount exceeds open balance on invoice.'])->withInput();
-        }
-
         if ($data['channel'] !== 'cash' && blank($data['external_ref'] ?? null)) {
-            return back()->withErrors(['external_ref' => 'Reference is required for non-cash payments.'])->withInput();
+            return back()->withErrors(['external_ref' => 'Payment ref. no. is required unless the method is cash.'])->withInput();
         }
 
         $agentUserId = null;
         if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
-            $agentUserId = (int) ($invoice->agent_user_id ?? 0);
-            if ($agentUserId <= 0) {
-                $invoice->loadMissing('unit.property');
-                $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
-            }
+            $tenant = PmTenant::query()->find($data['pm_tenant_id']);
+            $agentUserId = (int) ($tenant?->agent_user_id ?? 0);
         }
 
-        app(PropertyPaymentSettlementService::class)->recordPaymentToInvoice(
-            $invoice,
-            (float) $data['amount'],
-            (string) $data['channel'],
-            $data['external_ref'] ?? null,
-            $data['paid_at'] ?? now(),
-            $request->user(),
-            null,
-            $agentUserId > 0 ? $agentUserId : null,
-        );
+        try {
+            $payment = app(PropertyPaymentSettlementService::class)->recordManualRentReceipt([
+                'pm_tenant_id' => (int) $data['pm_tenant_id'],
+                'property_id' => (int) ($data['property_id'] ?? 0),
+                'amount' => (float) $data['amount'],
+                'channel' => (string) $data['channel'],
+                'external_ref' => $data['external_ref'] ?? null,
+                'record_date' => (string) $data['record_date'],
+                'banking_date' => (string) $data['banking_date'],
+                'payer_bank' => $data['payer_bank'] ?? null,
+                'memo' => $data['memo'] ?? null,
+                'receipt_to' => $data['receipt_to'] ?? 'general_ledger',
+                'bank_account_id' => (int) ($data['bank_account_id'] ?? 0),
+                'vat_mode' => $data['vat_mode'] ?? 'inclusive',
+                'skip_notification' => $request->boolean('skip_notification'),
+                'allocations' => (array) ($data['allocations'] ?? []),
+                'agent_user_id' => $agentUserId > 0 ? $agentUserId : null,
+            ], $request->user());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['amount' => $e->getMessage()])->withInput();
+        }
+
+        $allocated = round((float) $payment->allocations->sum('amount'), 2);
+        $credit = max(0.0, round((float) $payment->amount - $allocated, 2));
+        $parts = ['Rent receipt saved.'];
+        if ($allocated > 0) {
+            $parts[] = PropertyMoney::kes($allocated).' applied to invoice(s).';
+        }
+        if ($credit > 0.009) {
+            $parts[] = PropertyMoney::kes($credit).' held on account.';
+        }
+        $message = implode(' ', $parts);
+
+        if ($request->boolean('save_and_print')) {
+            return redirect()
+                ->route('property.payments.receipt.show', $payment)
+                ->with('success', $message);
+        }
 
         $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
             $request,
             (int) $data['pm_tenant_id'],
             'payments',
-            'Payment recorded and allocated.'
+            $message
         );
         if ($hubRedirect) {
             return $hubRedirect;
         }
 
-        return back()->with('success', 'Payment recorded and allocated.');
+        return back()->with('success', $message);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, AccountingChartAccount>
+     */
+    private function cashAccountsForReceipt()
+    {
+        if (! Schema::hasTable('accounting_chart_accounts') || ! Schema::hasColumn('accounting_chart_accounts', 'is_cash_account')) {
+            return collect();
+        }
+
+        $query = AccountingChartAccount::query()->where('is_cash_account', true)->orderBy('name');
+        if (Schema::hasColumn('accounting_chart_accounts', 'is_active')) {
+            $query->where(function ($inner) {
+                $inner->where('is_active', true)->orWhereNull('is_active');
+            });
+        }
+
+        return $query->get(['id', 'code', 'name']);
     }
 
     /**

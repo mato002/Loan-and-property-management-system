@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Support\Facades\Schema;
 
 class PmMaintenanceJob extends Model
@@ -37,21 +37,21 @@ class PmMaintenanceJob extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->whereExists(function ($sub) use ($user) {
+            $query->whereExists(function ($sub) use ($agentId) {
                 $sub->selectRaw('1')
                     ->from('pm_maintenance_requests as r')
                     ->join('property_units as pu', 'pu.id', '=', 'r.property_unit_id')
                     ->join('properties as p', 'p.id', '=', 'pu.property_id')
                     ->whereColumn('r.id', 'pm_maintenance_jobs.pm_maintenance_request_id')
-                    ->where('p.agent_user_id', $user->id);
+                    ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
             });
         });
     }

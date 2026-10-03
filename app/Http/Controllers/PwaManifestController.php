@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Support\Property\PropertyBrandPalette;
 use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PwaManifestController extends Controller
 {
@@ -30,7 +31,56 @@ class PwaManifestController extends Controller
         );
     }
 
-    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false): JsonResponse
+    public function meterIcon(string $size): BinaryFileResponse
+    {
+        abort_unless(in_array($size, ['192', '512'], true), 404);
+        $path = public_path('pwa/meters-'.$size.'.png');
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => 'image/png',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
+    public function fieldScript(): BinaryFileResponse
+    {
+        $path = public_path('js/field-readings.js');
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => 'text/javascript; charset=UTF-8',
+            'Cache-Control' => 'no-cache',
+        ]);
+    }
+
+    public function field(): JsonResponse
+    {
+        return $this->manifest(
+            startUrl: url('/property/field/readings'),
+            scope: rtrim(url('/property/field'), '/').'/',
+            descriptionSuffix: 'record water, electricity, and other meters while in the field.',
+            shortNameSuffix: '',
+            usePublicSiteBranding: false,
+            appName: 'Meter capture',
+            icons: [
+                [
+                    'src' => asset('pwa/meters-192.png'),
+                    'sizes' => '192x192',
+                    'type' => 'image/png',
+                    'purpose' => 'any',
+                ],
+                [
+                    'src' => asset('pwa/meters-512.png'),
+                    'sizes' => '512x512',
+                    'type' => 'image/png',
+                    'purpose' => 'any',
+                ],
+            ],
+        );
+    }
+
+    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null, ?array $icons = null): JsonResponse
     {
         $companyName = $usePublicSiteBranding
             ? (PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Portal')) ?? config('app.name', 'Property Portal'))
@@ -56,7 +106,7 @@ class PwaManifestController extends Controller
             ? 'image/svg+xml'
             : 'image/png';
 
-        $icons = [
+        $icons ??= [
             [
                 'src' => $iconUrl,
                 'sizes' => '192x192',
@@ -67,7 +117,7 @@ class PwaManifestController extends Controller
                 'src' => $iconUrl,
                 'sizes' => '512x512',
                 'type' => $iconType,
-                'purpose' => 'any maskable',
+                'purpose' => 'any',
             ],
         ];
 
@@ -78,8 +128,8 @@ class PwaManifestController extends Controller
 
         return response()->json([
             'id' => $startUrl,
-            'name' => $companyName.($shortNameSuffix !== '' ? ' — Property Portal' : ''),
-            'short_name' => $shortName,
+            'name' => $appName ?: ($companyName.($shortNameSuffix !== '' ? ' — Property Portal' : '')),
+            'short_name' => $appName ? 'Meters' : $shortName,
             'description' => $companyName.' — '.$descriptionSuffix,
             'start_url' => $startUrl,
             'scope' => $scope,

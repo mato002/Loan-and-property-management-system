@@ -87,19 +87,7 @@
         </x-property.modal>
     </x-slot>
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.listings.leads', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All leads</a>
-            <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'new']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">New</a>
-            <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'contacted']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Contacted</a>
-            <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'won']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Won</a>
-            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.listings.leads.export', 'query' => (array) ($filters ?? [])])
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
-        <div class="w-full min-w-0 space-y-3">
-            <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search leads…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <form method="get" action="{{ route('property.listings.leads') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3 w-full min-w-0">
                 <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
                     <div class="lg:col-span-2">
@@ -133,12 +121,12 @@
                         <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </div>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
                     <a href="{{ route('property.listings.leads', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+                    @include('property.agent.partials.table_export_dropdown', ['route' => 'property.listings.leads.export', 'query' => (array) ($filters ?? [])])
                 </div>
             </form>
-        </div>
     </x-slot>
 
 </x-property.workspace>

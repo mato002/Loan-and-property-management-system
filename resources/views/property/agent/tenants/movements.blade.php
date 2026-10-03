@@ -90,22 +90,12 @@
         </x-property.modal>
     </x-slot>
 
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.tenants.movements', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All movements</a>
-            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'planned', 'status' => 'planned']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Planned</a>
-            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'in_progress', 'status' => 'in_progress']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">In progress</a>
-            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'done', 'status' => 'done']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Done</a>
-            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'move_out', 'movement_type' => 'move_out']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Move-outs</a>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.tenants.movements') }}" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
                 <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Unit, property, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, account, phone, unit..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>

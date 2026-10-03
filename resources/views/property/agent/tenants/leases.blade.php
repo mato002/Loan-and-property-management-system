@@ -93,10 +93,6 @@
         @endif
     </x-slot>
 
-    <x-slot name="tabs">
-        @include('property.agent.tenants.partials.leases_workspace_tabs')
-    </x-slot>
-
     @if (($activeTab ?? 'leases') === 'leases')
         <x-slot name="modals">
             <x-property.modal

@@ -305,7 +305,12 @@
         const roundMoney = (value) => {
             const n = Number(value);
             if (!Number.isFinite(n)) return 0;
-            return Math.round(n * 100) / 100;
+            return Math.round((n + (n >= 0 ? 1e-8 : -1e-8)) * 100) / 100;
+        };
+        const rateForCharge = (rate) => {
+            if (!Number.isFinite(rate)) return 0;
+            const shown = Math.round(rate * 100) / 100;
+            return Math.abs(rate - shown) <= 0.0005 ? shown : rate;
         };
 
         const selectedProductRule = () => {
@@ -427,7 +432,7 @@
         const recalculateBalanceFromInputs = () => {
             if (!balanceInput || (balanceTouched && !selectedProductRule())) return;
             const principal = Number(String(principalInput?.value || '').replace(/,/g, ''));
-            const rate = Number(String(interestRateInput?.value || '').replace(/,/g, ''));
+            const rate = rateForCharge(Number(String(interestRateInput?.value || '').replace(/,/g, '')));
             if (!Number.isFinite(principal) || principal <= 0) {
                 return;
             }

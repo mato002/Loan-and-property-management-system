@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -71,8 +72,14 @@ class User extends Authenticatable
      */
     public function pmPermissions(): BelongsToMany
     {
-        return $this->belongsToMany(PmPermission::class, 'pm_user_permission', 'user_id', 'pm_permission_id')
+        $relation = $this->belongsToMany(PmPermission::class, 'pm_user_permission', 'user_id', 'pm_permission_id')
             ->withTimestamps();
+
+        if (Schema::hasTable('pm_user_permission') && Schema::hasColumn('pm_user_permission', 'effect')) {
+            $relation->withPivot('effect');
+        }
+
+        return $relation;
     }
 
     public function moduleAccesses(): HasMany
@@ -496,8 +503,20 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->isTerminatedEmployee()) {
+            return false;
+        }
+
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_user_role')) {
             return true; // Legacy-safe until RBAC tables are migrated.
+        }
+
+        $effect = $this->directPmPermissionEffect($permissionKey);
+        if ($effect === 'deny') {
+            return false;
+        }
+        if ($effect === 'allow') {
+            return true;
         }
 
         $roles = $this->pmRoles()->with('permissions:id,key')->get();
@@ -505,15 +524,44 @@ class User extends Authenticatable
             return true; // Keep existing behavior until roles are assigned.
         }
 
-        $roleHas = $roles
+        return $roles
             ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
             ->contains($permissionKey);
+    }
 
-        if ($roleHas) {
-            return true;
+    /**
+     * Direct employee override: allow, deny, or null when the role decides.
+     */
+    public function directPmPermissionEffect(string $permissionKey): ?string
+    {
+        if (! Schema::hasTable('pm_user_permission') || ! Schema::hasTable('pm_permissions')) {
+            return null;
         }
 
-        return $this->pmPermissions()->where('key', $permissionKey)->exists();
+        $query = DB::table('pm_user_permission as up')
+            ->join('pm_permissions as p', 'p.id', '=', 'up.pm_permission_id')
+            ->where('up.user_id', $this->id)
+            ->where('p.key', $permissionKey);
+
+        if (! Schema::hasColumn('pm_user_permission', 'effect')) {
+            return $query->exists() ? 'allow' : null;
+        }
+
+        $effect = $query->value('up.effect');
+
+        return in_array($effect, ['allow', 'deny'], true) ? $effect : null;
+    }
+
+    public function isTerminatedEmployee(): bool
+    {
+        if (! Schema::hasTable('employees') || ! Schema::hasColumn('employees', 'employment_status')) {
+            return false;
+        }
+
+        return Employee::query()
+            ->where('user_id', $this->id)
+            ->where('employment_status', 'terminated')
+            ->exists();
     }
 
     public function agentSubscription(): ?AgentSubscription

@@ -15,6 +15,8 @@
                 <div><label class="block text-xs text-slate-500 mb-1">KRA PIN</label><input name="kra_pin" value="{{ old('kra_pin', $profile->kra_pin) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
                 <div><label class="block text-xs text-slate-500 mb-1">M-Pesa phone</label><input name="mpesa_phone" value="{{ old('mpesa_phone', $profile->mpesa_phone) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
                 <div><label class="block text-xs text-slate-500 mb-1">Bank name</label><input name="bank_name" value="{{ old('bank_name', $profile->bank_name) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
+                <div><label class="block text-xs text-slate-500 mb-1">Bank branch</label><input name="bank_branch" value="{{ old('bank_branch', $profile->bank_branch) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
+                <div><label class="block text-xs text-slate-500 mb-1">Account name</label><input name="bank_account_name" value="{{ old('bank_account_name', $profile->bank_account_name) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
                 <div><label class="block text-xs text-slate-500 mb-1">Bank account</label><input name="bank_account" value="{{ old('bank_account', $profile->bank_account) }}" class="w-full rounded-lg border px-3 py-2 text-sm" /></div>
             </div>
             <div class="flex flex-wrap gap-4 text-sm">

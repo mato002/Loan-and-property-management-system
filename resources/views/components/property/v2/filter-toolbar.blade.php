@@ -10,9 +10,10 @@
     $hasActions = isset($actions) && ! $actions->isEmpty();
     $hasBulk = isset($bulk) && ! $bulk->isEmpty();
     $hasFields = $hasPrimary || $hasSecondary || $hasDateRange || $hasExport || $hasActions;
-    $toolbarViewport = $__propertyToolbarViewport ?? 'all';
+    $toolbarViewport = \App\Support\Property\FilterToolbarViewport::current();
     $showDesktopToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'desktop';
     $showMobileToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'mobile';
+    $filterSingleRow = $attributes->has('single-row');
 @endphp
 
 @php
@@ -28,16 +29,25 @@
         <script type="application/json" data-filter-cascade-catalog-json>{!! $filterCascadeCatalogJson !!}</script>
     @endif
     @if ($showDesktopToolbar && $submitFilters && $action)
+        <div @class([
+            'w-full min-w-0 items-end gap-2',
+            'flex flex-col md:flex-row flex-nowrap overflow-visible' => $filterSingleRow,
+            'contents' => ! $filterSingleRow,
+        ])>
         <form
             id="{{ $formId }}"
             method="{{ $method }}"
             action="{{ $action }}"
             @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
             @if ($revenueDateFilter) data-revenue-date-filter="{{ $revenueDateFilter }}" @endif
-            class="property-filter-toolbar__form hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0"
+            @class([
+                'property-filter-toolbar__form hidden max-md:!hidden md:flex min-w-0 w-full flex-1 flex-row items-end gap-2 overflow-visible',
+                'flex-nowrap' => $filterSingleRow,
+                'flex-wrap' => ! $filterSingleRow,
+            ])
             data-property-filter-form-desktop
         >
-            @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId])
+            @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop', 'fieldFormId' => $formId, 'filterSingleRow' => $filterSingleRow])
             <button type="submit" class="inline-flex min-h-[38px] items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 shrink-0">Apply</button>
             @if ($resetUrl)
                 <a
@@ -47,8 +57,14 @@
                 >Reset</a>
             @endif
         </form>
+        @if ($filterSingleRow && $hasBulk)
+            <div class="flex shrink-0 items-center gap-2" data-filter-bulk>
+                {{ $bulk }}
+            </div>
+        @endif
+        </div>
     @elseif ($showDesktopToolbar && $hasFields)
-        <div class="property-filter-toolbar__static hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0">
+        <div class="property-filter-toolbar__static hidden max-md:!hidden md:flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0">
             @include('components.property.partials.filter-toolbar-fields', ['layout' => 'desktop'])
             @if ($hasBulk)
                 <div class="flex flex-wrap items-center gap-2 md:ml-auto" data-filter-bulk>
@@ -70,17 +86,24 @@
             'revenueDateFilter' => $revenueDateFilter,
             'resetUrl' => $resetUrl,
             'showSavedFiltersUi' => true,
+            'drawerLabel' => $drawerLabel,
+            'activeFilterCount' => $activeFilterCount(),
+            'chips' => $chips,
         ])
     @endif
 
-    @if ($hasBulk && $submitFilters && $showMobileToolbar)
+    @if ($hasBulk && $submitFilters && $showMobileToolbar && ! $filterSingleRow)
         <div class="md:hidden w-full min-w-0 pt-1" data-filter-bulk-mobile>
             {{ $bulk }}
         </div>
     @endif
 
-    @if ($showDesktopToolbar && $chips->isNotEmpty())
-        <div class="property-filter-toolbar__chips flex flex-wrap items-center gap-1.5" data-property-filter-chips>
+    @if (($showDesktopToolbar || $toolbarViewport === 'mobile') && $chips->isNotEmpty())
+        <div @class([
+            'property-filter-toolbar__chips flex-wrap items-center gap-1.5',
+            'hidden md:flex' => $toolbarViewport === 'all',
+            'flex' => $toolbarViewport !== 'all',
+        ]) data-property-filter-chips>
             <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 shrink-0">Active</span>
             @foreach ($chips as $chip)
                 <a

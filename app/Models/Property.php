@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
 class Property extends Model
@@ -47,6 +48,36 @@ class Property extends Model
         'city',
         'agent_user_id',
         'field_officer_id',
+        'acquired_at',
+        'management_mode',
+        'lr_number',
+        'category',
+        'property_type',
+        'specification',
+        'storey_type',
+        'floors_count',
+        'country',
+        'estate',
+        'zone',
+        'notes',
+        'contact_info',
+        'latitude',
+        'longitude',
+        'gross_lettable_area',
+        'net_lettable_area',
+        'area_unit',
+        'rent_per_measure',
+        'statement_balance_cutoff_day',
+        'listing_notes',
+        'listing_agent_name',
+        'listing_contact_email',
+        'listing_contact_phone',
+        'listing_min_rent',
+        'listing_max_rent',
+        'listing_min_service_charge',
+        'listing_max_service_charge',
+        'exclude_from_fee_summary',
+        'communication_exemptions',
         'rent_due_day',
         'management_status',
         'management_ended_at',
@@ -60,6 +91,20 @@ class Property extends Model
     {
         return [
             'rent_due_day' => 'integer',
+            'acquired_at' => 'date',
+            'floors_count' => 'integer',
+            'latitude' => 'decimal:7',
+            'longitude' => 'decimal:7',
+            'gross_lettable_area' => 'decimal:2',
+            'net_lettable_area' => 'decimal:2',
+            'rent_per_measure' => 'decimal:2',
+            'statement_balance_cutoff_day' => 'integer',
+            'listing_min_rent' => 'decimal:2',
+            'listing_max_rent' => 'decimal:2',
+            'listing_min_service_charge' => 'decimal:2',
+            'listing_max_service_charge' => 'decimal:2',
+            'exclude_from_fee_summary' => 'boolean',
+            'communication_exemptions' => 'array',
             'management_ended_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
@@ -142,15 +187,18 @@ class Property extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function ($query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
                 return;
             }
 
-            $query->where('properties.agent_user_id', $user->id);
+            $query->where(function ($scope) use ($ownerIds) {
+                $scope->whereIn('properties.agent_user_id', $ownerIds)
+                    ->orWhereNull('properties.agent_user_id');
+            });
         });
     }
 

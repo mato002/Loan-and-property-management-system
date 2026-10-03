@@ -4,6 +4,7 @@ namespace App\Services\Property;
 
 use App\Models\PmAccountingEntry;
 use App\Models\PmEzenPaymentVoucher;
+use App\Models\PmEzenPaymentVoucherLine;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
 use App\Models\PmLandlordPayoutItem;
@@ -13,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 final class EzenPaymentVouchersImportService
@@ -607,6 +609,279 @@ final class EzenPaymentVouchersImportService
         }
 
         return null;
+    }
+
+    /**
+     * Record a payment voucher from the workspace and post it as an expense or landlord remittance.
+     *
+     * @param  array<string, mixed>  $header
+     * @param  list<array<string, mixed>>  $lines
+     */
+    public function recordManual(int $agentUserId, User $actor, array $header, array $lines): PmEzenPaymentVoucher
+    {
+        $prepared = $this->prepareManualLines($lines, (string) ($header['expense_group'] ?? 'operating'));
+        if ($prepared === []) {
+            throw ValidationException::withMessages([
+                'lines' => 'Add at least one line with an amount.',
+            ]);
+        }
+
+        $lineTotal = round(array_sum(array_column($prepared, 'line_total')), 2);
+        $taxTotal = round(array_sum(array_column($prepared, 'tax_amount')), 2);
+        $control = round((float) ($header['control_amount'] ?? 0), 2);
+        if (abs($control - $lineTotal) > 0.009) {
+            throw ValidationException::withMessages([
+                'control_amount' => 'Control amount '.number_format($control, 2).' does not match line totals '.number_format($lineTotal, 2).'.',
+            ]);
+        }
+
+        $group = (string) ($header['expense_group'] ?? 'operating');
+        $category = PmEzenPaymentVoucher::EXPENSE_GROUPS[$group]['category'] ?? PmEzenPaymentVoucher::CATEGORY_EXPENSE;
+
+        return DB::transaction(function () use ($agentUserId, $actor, $header, $prepared, $lineTotal, $taxTotal, $control, $group, $category): PmEzenPaymentVoucher {
+            $voucherNo = $this->nextRecordedVoucherNumber($agentUserId);
+            $property = null;
+            $firstPropertyId = (int) ($prepared[0]['property_id'] ?? 0);
+            if ($firstPropertyId > 0) {
+                $property = Property::query()->find($firstPropertyId);
+            }
+
+            $landlord = null;
+            $landlordId = (int) ($header['landlord_id'] ?? 0);
+            if ($landlordId > 0) {
+                $landlord = User::query()->find($landlordId);
+            }
+            if ($category === PmEzenPaymentVoucher::CATEGORY_REMITTANCE && ! $landlord && $property) {
+                $property->loadMissing('landlords');
+                $landlord = $property->landlords->count() === 1 ? $property->landlords->first() : null;
+            }
+            if ($category === PmEzenPaymentVoucher::CATEGORY_REMITTANCE && ! $landlord) {
+                throw ValidationException::withMessages([
+                    'landlord_id' => 'Choose the landlord for a rent remittance voucher.',
+                ]);
+            }
+
+            $narration = trim((string) ($header['narration'] ?? ''));
+            $payee = trim((string) ($header['payee'] ?? ''));
+            $row = [
+                'ezen_voucher_no' => $voucherNo,
+                'method' => (string) ($header['method'] ?? ''),
+                'ref_no' => (string) ($header['ref_no'] ?? ''),
+                'txn_date' => (string) $header['txn_date'],
+                'particulars' => $narration !== '' ? $narration : ($prepared[0]['description'] ?: $payee),
+                'paid_from' => (string) ($header['paid_from'] ?? ''),
+                'paid_to' => $payee,
+                'payee_name' => $payee,
+                'property_code' => (string) ($property?->code ?? ''),
+                'category' => $category,
+                'period_month' => substr((string) $header['txn_date'], 0, 7),
+                'amount' => $control,
+                'recorded_by' => (string) $actor->name,
+            ];
+
+            $resolved = [
+                'property' => $property,
+                'landlord' => $landlord,
+                'code' => (string) ($property?->code ?? ''),
+                'name' => $payee,
+            ];
+
+            $voucher = PmEzenPaymentVoucher::query()->create([
+                ...$this->registerPayload($row, $agentUserId, $resolved, PmEzenPaymentVoucher::LINK_IMPORTED),
+                'cheque_no' => trim((string) ($header['cheque_no'] ?? '')) ?: null,
+                'cheque_date' => ($header['cheque_date'] ?? null) ?: null,
+                'expense_group' => $group,
+                'narration' => $narration !== '' ? $narration : null,
+                'notes' => trim((string) ($header['notes'] ?? '')) ?: null,
+                'tax_amount' => $taxTotal,
+                'source' => PmEzenPaymentVoucher::SOURCE_RECORDED,
+            ]);
+
+            foreach ($prepared as $line) {
+                PmEzenPaymentVoucherLine::query()->create([
+                    'pm_ezen_payment_voucher_id' => $voucher->id,
+                    ...$line,
+                ]);
+            }
+
+            if ($category === PmEzenPaymentVoucher::CATEGORY_REMITTANCE) {
+                $payout = $this->postRecordedRemittance($voucher->fresh('lines'), $actor, $landlord, $row);
+                $voucher->update([
+                    'pm_landlord_payout_id' => $payout->id,
+                    'landlord_id' => $landlord->id,
+                    'link_status' => PmEzenPaymentVoucher::LINK_REMITTANCE,
+                ]);
+            } else {
+                $entry = $this->postRecordedExpenses($voucher->fresh('lines'), $actor, $row);
+                $voucher->update([
+                    'pm_accounting_entry_id' => $entry?->id,
+                    'link_status' => $entry ? PmEzenPaymentVoucher::LINK_EXPENSE : PmEzenPaymentVoucher::LINK_SKIPPED,
+                ]);
+            }
+
+            return $voucher->fresh(['lines.property', 'property', 'landlord']);
+        });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return list<array<string, mixed>>
+     */
+    private function prepareManualLines(array $lines, string $defaultGroup): array
+    {
+        $prepared = [];
+        foreach ($lines as $line) {
+            $amount = round((float) ($line['amount'] ?? 0), 2);
+            if ($amount <= 0) {
+                continue;
+            }
+            $rate = $line['tax_rate'] !== null && $line['tax_rate'] !== '' ? round((float) $line['tax_rate'], 2) : null;
+            $tax = $rate !== null ? round($amount * $rate / 100, 2) : 0.0;
+            $prepared[] = [
+                'property_id' => (int) ($line['property_id'] ?? 0) > 0 ? (int) $line['property_id'] : null,
+                'expense_group' => trim((string) ($line['expense_group'] ?? '')) ?: $defaultGroup,
+                'utility_account' => trim((string) ($line['utility_account'] ?? '')) ?: null,
+                'description' => trim((string) ($line['description'] ?? '')) ?: null,
+                'amount' => $amount,
+                'tax_rate' => $rate,
+                'tax_amount' => $tax,
+                'line_total' => round($amount + $tax, 2),
+            ];
+        }
+
+        return $prepared;
+    }
+
+    private function nextRecordedVoucherNumber(int $agentUserId): string
+    {
+        $latest = PmEzenPaymentVoucher::query()
+            ->withoutGlobalScopes()
+            ->where('agent_user_id', $agentUserId)
+            ->where('ezen_voucher_no', 'like', 'PV%')
+            ->orderByDesc('id')
+            ->value('ezen_voucher_no');
+        $next = 1;
+        if (is_string($latest) && preg_match('/(\d+)/', $latest, $match) === 1) {
+            $next = ((int) $match[1]) + 1;
+        }
+
+        do {
+            $candidate = 'PV'.str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+            $exists = PmEzenPaymentVoucher::query()
+                ->withoutGlobalScopes()
+                ->where('agent_user_id', $agentUserId)
+                ->where('ezen_voucher_no', $candidate)
+                ->exists();
+            $next++;
+        } while ($exists);
+
+        return $candidate;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function postRecordedRemittance(PmEzenPaymentVoucher $voucher, User $actor, User $landlord, array $row): PmLandlordPayout
+    {
+        $txnDate = Carbon::parse((string) $row['txn_date'])->startOfDay();
+        $payout = PmLandlordPayout::query()->create([
+            'agent_user_id' => (int) ($voucher->agent_user_id ?: $actor->id),
+            'total_amount' => (float) $voucher->amount,
+            'status' => 'paid',
+            'created_by' => (int) $actor->id,
+            'approved_by' => (int) $actor->id,
+            'paid_at' => $txnDate->copy()->setTime(12, 0),
+        ]);
+
+        foreach ($voucher->lines as $line) {
+            $property = $line->property_id ? Property::query()->find((int) $line->property_id) : $voucher->property;
+            $description = $this->voucherDescription($row);
+            if ($line->description) {
+                $description = trim($description.' '.$line->description);
+            }
+            PmLandlordPayoutItem::query()->create([
+                'payout_id' => (int) $payout->id,
+                'landlord_id' => (int) $landlord->id,
+                'property_id' => $property?->id,
+                'amount' => (float) $line->line_total,
+                'line_type' => LandlordSettlementService::LINE_REMITTANCE,
+                'description' => $description,
+                'period_month' => $row['period_month'] ?? $txnDate->format('Y-m'),
+                'payment_reference' => (string) ($row['ref_no'] ?? ''),
+            ]);
+            LandlordLedger::post(
+                $landlord,
+                PmLandlordLedgerEntry::DIRECTION_DEBIT,
+                (float) $line->line_total,
+                $description,
+                $property,
+                'ezen_payment_voucher',
+                $this->voucherNumericId((string) $voucher->ezen_voucher_no),
+                $txnDate,
+                (int) $actor->id,
+            );
+        }
+
+        return $payout->fresh(['items']) ?? $payout;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function postRecordedExpenses(PmEzenPaymentVoucher $voucher, User $actor, array $row): ?PmAccountingEntry
+    {
+        $first = null;
+        foreach ($voucher->lines as $index => $line) {
+            $sourceKey = $this->expenseSourceKey((string) $voucher->ezen_voucher_no.($index === 0 ? '' : ':'.($index + 1)));
+            if (PmAccountingEntry::query()->withoutGlobalScopes()->where('source_key', $sourceKey)->exists()) {
+                continue;
+            }
+            $group = (string) ($line->expense_group ?: $voucher->expense_group);
+            $label = PmEzenPaymentVoucher::EXPENSE_GROUPS[$group]['label'] ?? 'Operating expense';
+            $entry = PmAccountingEntry::query()->create([
+                'property_id' => $line->property_id,
+                'recorded_by_user_id' => (int) $actor->id,
+                'entry_date' => (string) $row['txn_date'],
+                'account_name' => $label,
+                'category' => PmAccountingEntry::CATEGORY_EXPENSE,
+                'entry_type' => PmAccountingEntry::TYPE_DEBIT,
+                'amount' => (float) $line->line_total,
+                'reference' => (string) $voucher->ezen_voucher_no,
+                'description' => $this->voucherDescription($row).($line->description ? ' '.$line->description : ''),
+                'source_key' => $sourceKey,
+            ]);
+            $first ??= $entry;
+        }
+
+        return $first;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array{property:?Property, landlord:?User, code:string, name:string}  $resolved
+     * @return array<string, mixed>
+     */
+    private function registerPayload(array $row, int $agentUserId, array $resolved, string $linkStatus): array
+    {
+        return [
+            'agent_user_id' => $agentUserId,
+            'ezen_voucher_no' => (string) $row['ezen_voucher_no'],
+            'method' => (string) ($row['method'] ?? ''),
+            'ref_no' => (string) ($row['ref_no'] ?? ''),
+            'txn_date' => (string) $row['txn_date'],
+            'particulars' => (string) ($row['particulars'] ?? ''),
+            'paid_from' => (string) ($row['paid_from'] ?? ''),
+            'paid_to' => (string) ($row['paid_to'] ?? ''),
+            'payee_name' => $resolved['name'] !== '' ? $resolved['name'] : (string) ($row['payee_name'] ?? ''),
+            'property_code' => $resolved['code'] !== '' ? $resolved['code'] : (string) ($row['property_code'] ?? ''),
+            'category' => (string) $row['category'],
+            'period_month' => $row['period_month'] ?? null,
+            'amount' => (float) $row['amount'],
+            'recorded_by' => (string) ($row['recorded_by'] ?? ''),
+            'property_id' => $resolved['property']?->id,
+            'landlord_id' => $resolved['landlord']?->id,
+            'link_status' => $linkStatus,
+        ];
     }
 
     /**

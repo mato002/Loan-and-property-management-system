@@ -6,7 +6,15 @@
     $hasDateRange = isset($dateRange) && ! $dateRange->isEmpty();
     $hasExport = isset($export) && ! $export->isEmpty();
     $hasActions = isset($actions) && ! $actions->isEmpty();
-    $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary;
+    $pageSizeHaystack = strtolower(implode("\n", array_filter([
+        isset($primary) ? (string) $primary : '',
+        isset($secondary) ? (string) $secondary : '',
+        isset($dateRange) ? (string) $dateRange : '',
+    ])));
+    $injectPageSize = ! str_contains($pageSizeHaystack, 'name="per_page"')
+        && ! str_contains($pageSizeHaystack, "name='per_page'")
+        && ! str_contains($pageSizeHaystack, 'name=per_page');
+    $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary || $injectPageSize;
 @endphp
 
 @if ($hasFilterFields)
@@ -32,24 +40,58 @@
                 </div>
             </div>
         @endif
+        @if ($injectPageSize)
+            <x-property.v2.filter-field
+                type="select"
+                name="per_page"
+                label="Rows"
+                :form="$fieldFormId ?? null"
+                :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+            />
+        @endif
     @else
-        <div class="flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0 flex-1" data-filter-main-row>
+        <div @class([
+            'flex min-w-0 flex-1 flex-row items-end gap-2',
+            'flex-nowrap' => ! empty($filterSingleRow),
+            'flex-wrap' => empty($filterSingleRow),
+        ]) data-filter-main-row>
             @if ($hasDateRange)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-date-range>
+                <div @class([
+                    'flex shrink-0 flex-row items-end gap-2',
+                    'flex-nowrap' => ! empty($filterSingleRow),
+                    'flex-wrap' => empty($filterSingleRow),
+                ]) data-filter-date-range>
                     {{ $dateRange }}
                 </div>
             @endif
 
             @if ($hasPrimary)
-                <div class="flex flex-row flex-wrap items-end gap-2 min-w-0 flex-1" data-filter-primary>
+                <div @class([
+                    'flex min-w-0 flex-1 flex-row items-end gap-2',
+                    'flex-nowrap' => ! empty($filterSingleRow),
+                    'flex-wrap' => empty($filterSingleRow),
+                ]) data-filter-primary>
                     {{ $primary }}
                 </div>
             @endif
 
             @if ($hasSecondary)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-secondary>
+                <div @class([
+                    'flex shrink-0 flex-row items-end gap-2',
+                    'flex-nowrap' => ! empty($filterSingleRow),
+                    'flex-wrap' => empty($filterSingleRow),
+                ]) data-filter-secondary>
                     {{ $secondary }}
                 </div>
+            @endif
+            @if ($injectPageSize)
+                <x-property.v2.filter-field
+                    type="select"
+                    name="per_page"
+                    label="Rows"
+                    :form="$fieldFormId ?? null"
+                    :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+                />
             @endif
         </div>
     @endif

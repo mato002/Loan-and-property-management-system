@@ -18,6 +18,12 @@
     title="Arrears for {{ $tenant->name }}"
     subtitle="All unpaid invoices for this tenant. Send targeted reminders or escalate."
     back-route="property.revenue.arrears"
+    :stats="[
+        ['label' => 'Balance', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($summary['total_balance'] ?? 0)), 'hint' => ($summary['invoice_count'] ?? 0).' unpaid'],
+        ['label' => 'Oldest due', 'value' => (string) ($summary['oldest_due'] ?? '—'), 'hint' => (string) ($summary['aging_label'] ?? (($summary['days_late'] ?? 0).' days late'))],
+        ['label' => 'Workflow', 'value' => (string) ($summary['workflow'] ?? 'Reminder'), 'hint' => 'Last contact '.($summary['last_contact'] ?? '—')],
+        ['label' => 'Account', 'value' => (string) ($tenant->account_number ?: '—'), 'hint' => (string) ($tenant->phone ?: '—')],
+    ]"
     :columns="$columns"
     :table-rows="$tableRows"
     :table-footer-row="$tableFooterRow ?? null"
@@ -25,8 +31,8 @@
     empty-hint="This tenant has no unpaid invoices right now."
 >
     <x-slot name="actions">
-        <div class="flex flex-wrap items-end gap-2">
-            <form id="arrears-reminder-form" method="post" action="{{ route('property.revenue.arrears.reminders', absolute: false) }}" class="flex flex-wrap items-end gap-2">
+        <div class="flex flex-nowrap items-end gap-2 overflow-x-auto">
+            <form id="arrears-reminder-form" method="post" action="{{ route('property.revenue.arrears.reminders', absolute: false) }}" class="flex flex-nowrap items-end gap-2">
                 @csrf
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Template</label>
@@ -84,32 +90,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <div class="flex flex-wrap items-stretch gap-3 w-full">
-            <div class="flex-1 min-w-[260px] rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Tenant</p>
-                <p class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ $tenant->name }}</p>
-                @include('property.agent.partials.tenant_contact_inline', [
-                    'tenant' => $tenant,
-                    'phoneE164' => $tenantPhoneE164,
-                ])
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Total balance</p>
-                <p class="text-base font-semibold text-rose-700">{{ \App\Services\Property\PropertyMoney::kes((float) ($summary['total_balance'] ?? 0)) }}</p>
-                <p class="text-xs text-slate-500 mt-1">{{ $summary['invoice_count'] ?? 0 }} unpaid invoice(s)</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Oldest due</p>
-                <p class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ $summary['oldest_due'] ?? '—' }}</p>
-                <p class="text-xs text-slate-500 mt-1">{{ $summary['aging_label'] ?? (($summary['days_late'] ?? 0).' days late') }}, {{ $summary['workflow'] ?? 'Reminder' }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Last contact</p>
-                <p class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ $summary['last_contact'] ?? '—' }}</p>
-                <a href="{{ route('property.tenants.notices', ['tenant_id' => $tenant->id, 'view' => 1], absolute: false) }}" class="mt-1 inline-block text-xs text-indigo-600 hover:text-indigo-700">Open notices →</a>
-            </div>
-        </div>
-        <form method="get" action="{{ route('property.revenue.arrears.tenant', ['tenant' => $tenant->id], absolute: false) }}" class="flex flex-wrap items-end gap-2 w-full mt-3">
+        <form method="get" action="{{ route('property.revenue.arrears.tenant', ['tenant' => $tenant->id], absolute: false) }}" class="flex flex-nowrap items-center gap-2">
             <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="due_date" @selected(($filters['sort'] ?? 'due_date') === 'due_date')>Sort: Due date</option>
                 <option value="balance" @selected(($filters['sort'] ?? '') === 'balance')>Sort: Amount</option>

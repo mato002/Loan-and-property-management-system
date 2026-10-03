@@ -19,6 +19,7 @@
     :columns="[]"
 >
     <x-slot name="actions">
+        <a href="{{ route('property.field.readings', absolute: false) }}" data-turbo="false" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-cyan-800">Meter app</a>
         @if ($canManage ?? false)
             <a href="{{ route('property.field_officers.edit', $fieldOfficer, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Edit officer</a>
         @endif

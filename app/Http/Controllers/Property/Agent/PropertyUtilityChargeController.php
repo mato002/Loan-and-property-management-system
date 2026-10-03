@@ -88,24 +88,27 @@ class PropertyUtilityChargeController extends Controller
         $query->orderBy($sortBy, $dir)->orderByDesc('id');
 
         $standingRegister = $this->standingChargeRegister($request, $filters, $perPage);
+        $billedRegister = $this->billedUtilityChargeRegister($request, $filters, $perPage);
 
         $export = strtolower((string) $request->query('export', ''));
         if ($export === 'standing') {
-            $rows = $standingRegister['rows'];
+            $rows = (clone $billedRegister['query'])->limit(5000)->get();
 
             return TabularExport::stream(
-                'utility-standing-charges-'.now()->format('Ymd_His'),
-                ['Tenant', 'Account', 'Property', 'Unit', 'Charge type', 'Monthly amount', 'Lease'],
+                'utility-billed-charges-'.now()->format('Ymd_His'),
+                ['Month', 'Tenant', 'Account', 'Property', 'Unit', 'Charge', 'Amount', 'Status', 'Invoice'],
                 function () use ($rows) {
-                    foreach ($rows as $row) {
+                    foreach ($rows as $invoice) {
                         yield [
-                            (string) ($row['tenant_name'] ?? ''),
-                            (string) ($row['account_number'] ?? ''),
-                            (string) ($row['property_name'] ?? ''),
-                            (string) ($row['unit_label'] ?? ''),
-                            (string) ($row['type_label'] ?? ''),
-                            (string) PropertyMoney::kes((float) ($row['amount'] ?? 0)),
-                            (string) ($row['lease_id'] ?? ''),
+                            $this->billedChargeMonthKey($invoice),
+                            (string) ($invoice->tenant?->name ?? ''),
+                            (string) ($invoice->tenant?->account_number ?? ''),
+                            (string) ($invoice->unit?->property?->name ?? ''),
+                            (string) ($invoice->unit?->label ?? ''),
+                            $invoice->chargeCategoryLabel(),
+                            (string) PropertyMoney::kes((float) $invoice->amount),
+                            $this->billedChargeStatusLabel($invoice),
+                            (string) ($invoice->invoice_no ?? ''),
                         ];
                     }
                 },
@@ -117,18 +120,15 @@ class PropertyUtilityChargeController extends Controller
 
             return TabularExport::stream(
                 'utility-charges-'.now()->format('Ymd_His'),
-                ['Label', 'Unit', 'Type', 'Billing month', 'Usage (units/rate/fixed)', 'Added', 'Amount', 'Notes'],
+                ['Label', 'Unit', 'Type', 'Billing month', 'How billed', 'Added', 'Amount', 'Notes'],
                 function () use ($rows) {
                     foreach ($rows as $c) {
-                        $usage = (($c->units_consumed ?? null) !== null || ($c->rate_per_unit ?? null) !== null || ($c->fixed_charge ?? null) !== null)
-                            ? 'U: '.number_format((float) ($c->units_consumed ?? 0), 3).' | R: '.number_format((float) ($c->rate_per_unit ?? 0), 2).' | F: '.number_format((float) ($c->fixed_charge ?? 0), 2)
-                            : '';
                         yield [
                             (string) $c->label,
                             (string) (($c->unit?->property?->name ?? '').' / '.($c->unit?->label ?? '')),
                             (string) ($c->charge_type ?? ''),
                             (string) ($c->billing_month ?? ''),
-                            $usage,
+                            $c->billingExplanation(),
                             $c->created_at?->format('Y-m-d') ?? '',
                             (string) PropertyMoney::kes((float) $c->amount),
                             (string) ($c->notes ?? ''),
@@ -183,7 +183,7 @@ class PropertyUtilityChargeController extends Controller
         if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
             $waterChargePropertyIdsQuery
                 ->join('properties as wp', 'wp.id', '=', 'units.property_id')
-                ->where('wp.agent_user_id', (int) auth()->id());
+                ->where('wp.agent_user_id', \App\Models\Concerns\AgentWorkspaceScope::currentAgentUserId() ?? (int) auth()->id());
         }
         $waterChargePropertyIds = $waterChargePropertyIdsQuery
             ->pluck('units.property_id')
@@ -205,13 +205,23 @@ class PropertyUtilityChargeController extends Controller
                     continue;
                 }
                 $type = strtolower(trim((string) ($row['charge_type'] ?? '')));
+                $label = trim((string) ($row['label'] ?? ''));
+                if ($type !== 'electricity' && str_contains(strtolower($label), 'electric')) {
+                    $type = 'electricity';
+                }
                 if ($type === '') {
                     continue;
                 }
+                $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
+                $fixed = is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0;
+                if ($type === 'electricity' && $rate <= 0.009 && $fixed > 0.009) {
+                    $rate = $fixed;
+                    $fixed = 0.0;
+                }
                 $effectiveByType[$type] = [
-                    'rate_per_unit' => is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0,
-                    'fixed_charge' => is_numeric($row['fixed_charge'] ?? null) ? (float) $row['fixed_charge'] : 0.0,
-                    'label' => trim((string) ($row['label'] ?? '')),
+                    'rate_per_unit' => $rate,
+                    'fixed_charge' => $fixed,
+                    'label' => $label,
                 ];
             }
             if ($effectiveByType !== []) {
@@ -378,6 +388,8 @@ class PropertyUtilityChargeController extends Controller
             'standingCharges' => $standingRegister['paginator'],
             'standingMonthlyTotal' => $standingRegister['monthly_total'],
             'standingLeaseCount' => $standingRegister['lease_count'],
+            'billedCharges' => $billedRegister['paginator'],
+            'billedTotal' => $billedRegister['total'],
             'charges' => $charges,
             'waterReadings' => $waterReadings,
             'readingAnomalies' => $readingAnomalies,
@@ -530,11 +542,8 @@ class PropertyUtilityChargeController extends Controller
                     );
                 }
 
-                $usageMeta = (($charge->units_consumed ?? null) !== null || ($charge->rate_per_unit ?? null) !== null || ($charge->fixed_charge ?? null) !== null)
-                    ? ' | U: '.number_format((float) ($charge->units_consumed ?? 0), 3)
-                        .' R: '.number_format((float) ($charge->rate_per_unit ?? 0), 2)
-                        .' F: '.number_format((float) ($charge->fixed_charge ?? 0), 2)
-                    : '';
+                $howBilled = $charge->billingExplanation();
+                $usageMeta = ($howBilled !== '' && $howBilled !== '—') ? ' · '.$howBilled : '';
 
                 $invoice = PmInvoice::query()->create([
                     'pm_lease_id' => $lease->id,
@@ -1094,6 +1103,121 @@ class PropertyUtilityChargeController extends Controller
 
         app(UtilityIntelligenceService::class)->forgetCache($agentUserId);
         RefreshUtilityIntelligenceCacheJob::dispatch($agentUserId);
+    }
+
+    /**
+     * Utility charges that were billed to tenants, one row per invoice and month.
+     * Property charge rates stay on the property page; this is the billed result.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{query: \Illuminate\Database\Eloquent\Builder<PmInvoice>, paginator: LengthAwarePaginator, total: float}
+     */
+    private function billedUtilityChargeRegister(Request $request, array $filters, int $perPage): array
+    {
+        $query = PmInvoice::query()
+            ->billableAr()
+            ->with([
+                'tenant:id,name,account_number',
+                'unit' => function ($q): void {
+                    $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
+                        $pq->withoutGlobalScopes()->select(['id', 'name']);
+                    }]);
+                },
+            ])
+            ->whereNotIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT])
+            ->where(function ($q): void {
+                $q->whereNull('invoice_kind')
+                    ->orWhereNotIn('invoice_kind', [PmInvoice::KIND_CREDIT_NOTE, PmInvoice::KIND_RENT_SUPPLEMENT]);
+            })
+            ->where(function ($q): void {
+                $q->whereNull('description')
+                    ->orWhere(function ($inner): void {
+                        $inner->where('description', 'not like', '%RENT DEPOSIT%')
+                            ->where('description', 'not like', '%WATER DEPOSIT%')
+                            ->where('description', 'not like', '%ELECTRICITY DEPOSIT%')
+                            ->where('description', 'not like', PmInvoice::LEASE_OPENING_ARREARS_PREFIX.'%');
+                    });
+            });
+
+        $wantedType = $this->normalizeUtilityTypeForRules((string) ($filters['charge_type'] ?? ''));
+        if ($wantedType === 'service_charge') {
+            $wantedType = 'service';
+        }
+        if ($wantedType !== '') {
+            $query->where('invoice_type', $wantedType);
+        }
+
+        $month = trim((string) ($filters['month'] ?? ''));
+        if ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $query->where(function ($q) use ($month): void {
+                $q->where('billing_period', $month)
+                    ->orWhere(function ($inner) use ($month): void {
+                        $inner->where(function ($blank): void {
+                            $blank->whereNull('billing_period')->orWhere('billing_period', '');
+                        })->whereRaw("DATE_FORMAT(issue_date, '%Y-%m') = ?", [$month]);
+                    });
+            });
+        }
+
+        if ((int) ($filters['property_id'] ?? 0) > 0) {
+            $propertyId = (int) $filters['property_id'];
+            $query->whereHas('unit', fn ($uq) => $uq->where('property_units.property_id', $propertyId));
+        }
+        if ((int) ($filters['unit_id'] ?? 0) > 0) {
+            $query->where('property_unit_id', (int) $filters['unit_id']);
+        }
+        $term = trim((string) ($filters['q'] ?? ''));
+        if ($term !== '') {
+            $query->where(function ($inner) use ($term): void {
+                $inner->where('description', 'like', '%'.$term.'%')
+                    ->orWhere('invoice_no', 'like', '%'.$term.'%')
+                    ->orWhere('invoice_type', 'like', '%'.$term.'%')
+                    ->orWhereHas('tenant', function ($tq) use ($term): void {
+                        $tq->where('name', 'like', '%'.$term.'%')
+                            ->orWhere('account_number', 'like', '%'.$term.'%');
+                    })
+                    ->orWhereHas('unit', function ($uq) use ($term): void {
+                        $uq->where('label', 'like', '%'.$term.'%')
+                            ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$term.'%'));
+                    });
+            });
+        }
+
+        $query->orderByDesc('billing_period')->orderByDesc('issue_date')->orderByDesc('id');
+
+        $exportQuery = clone $query;
+        $total = (float) (clone $query)->sum('amount');
+        $paginator = $query->paginate($perPage, ['*'], 'standing_page')->withQueryString();
+        $paginator->appends(['ops_tab' => 'standing']);
+
+        return [
+            'query' => $exportQuery,
+            'paginator' => $paginator,
+            'total' => $total,
+        ];
+    }
+
+    private function billedChargeMonthKey(PmInvoice $invoice): string
+    {
+        $period = trim((string) ($invoice->billing_period ?? ''));
+        if (preg_match('/^\d{4}-\d{2}$/', $period) === 1) {
+            return $period;
+        }
+
+        return $invoice->issue_date?->format('Y-m') ?? '';
+    }
+
+    private function billedChargeStatusLabel(PmInvoice $invoice): string
+    {
+        $balance = round(max(0, (float) $invoice->amount - (float) $invoice->amount_paid), 2);
+        if ($balance <= 0.009) {
+            return 'Paid';
+        }
+        if ((float) $invoice->amount_paid > 0.009) {
+            return 'Partial';
+        }
+
+        return 'Unpaid';
     }
 
     /**

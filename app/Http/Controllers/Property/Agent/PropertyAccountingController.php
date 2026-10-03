@@ -1251,7 +1251,7 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
-    public function payroll(Request $request): View
+    public function payroll(Request $request): View|StreamedResponse
     {
         $user = $request->user();
         $agentUserId = (int) $user->id;
@@ -1286,6 +1286,35 @@ class PropertyAccountingController extends Controller
         }
         if ($filters['employee_id'] > 0) {
             $runsQuery->whereHas('lines', fn ($q) => $q->where('employee_id', $filters['employee_id']));
+        }
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $runs = (clone $runsQuery)->orderByDesc('period_year')->orderByDesc('period_month')->orderByDesc('id')->limit(2000)->get();
+
+            return TabularExport::stream(
+                'payroll-runs-'.now()->format('Ymd_His'),
+                ['Run', 'Period', 'Gross', 'Deductions', 'Net', 'Status', 'Created by', 'Posted at'],
+                function () use ($runs) {
+                    foreach ($runs as $run) {
+                        yield [
+                            (string) $run->id,
+                            (string) ($run->label ?: ($run->period_start?->format('M Y') ?? '')),
+                            number_format((float) $run->total_gross, 2, '.', ''),
+                            number_format((float) $run->total_deductions, 2, '.', ''),
+                            number_format((float) $run->total_net, 2, '.', ''),
+                            (string) $run->status,
+                            (string) ($run->createdByUser?->name ?? ''),
+                            $run->posted_at?->format('Y-m-d H:i') ?? '',
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Payroll runs',
+                    'subtitle' => $runs->count().' run'.($runs->count() === 1 ? '' : 's'),
+                ],
+            );
         }
 
         $paginator = $runsQuery->orderByDesc('period_year')->orderByDesc('period_month')->orderByDesc('id')
@@ -2104,16 +2133,13 @@ class PropertyAccountingController extends Controller
             ->sum('amount');
         $deductions = max(0.0, $credits - (float) ($meta['net_pay'] ?? 0));
         $net = (float) ($meta['net_pay'] ?? ($gross - $deductions));
-        $companyName = PropertyPortalSetting::getValue('company_name', 'Property Management');
-        $logoRaw = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
-        $logoUrl = null;
-        if ($logoRaw !== '') {
-            $logoUrl = str_starts_with($logoRaw, 'http://')
-                || str_starts_with($logoRaw, 'https://')
-                || str_starts_with($logoRaw, '/')
-                ? $logoRaw
-                : asset($logoRaw);
-        }
+        $branding = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+            (int) ($request->user()?->id ?? 0) > 0 && strtolower((string) ($request->user()?->property_portal_role ?? '')) === 'agent'
+                ? (int) $request->user()->id
+                : null
+        );
+        $companyName = (string) ($branding['company_name'] ?? config('app.name', 'Property Management'));
+        $logoUrl = trim((string) (($branding['logo_url'] ?? '') ?: ($branding['company_logo_url'] ?? ''))) ?: null;
 
         return property_view('property.agent.accounting.payroll.payslip', [
             'reference' => $reference,
@@ -2468,7 +2494,7 @@ class PropertyAccountingController extends Controller
         );
     }
 
-    public function journalBatches(Request $request): View
+    public function journalBatches(Request $request): View|StreamedResponse
     {
         $agentUserId = (int) $request->user()->id;
         $status = strtolower(trim($request->string('status')->toString()));
@@ -2520,6 +2546,47 @@ class PropertyAccountingController extends Controller
             'posted_batches' => (int) (clone $summaryQuery)->where('status', AccountingJournalBatch::STATUS_POSTED)->count(),
             'reversed_batches' => (int) (clone $summaryQuery)->where('status', AccountingJournalBatch::STATUS_REVERSED)->count(),
         ];
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $exportBatches = (clone $batchQuery)->orderByDesc('date')->orderByDesc('id')->limit(5000)->get();
+            $exportIds = $exportBatches->pluck('id')->all();
+            $exportTotals = collect();
+            if ($exportIds !== []) {
+                $exportTotals = AccountingJournalLine::query()
+                    ->whereIn('batch_id', $exportIds)
+                    ->where('agent_user_id', $agentUserId)
+                    ->selectRaw('batch_id, COALESCE(SUM(debit),0) as debit_total, COALESCE(SUM(credit),0) as credit_total')
+                    ->groupBy('batch_id')
+                    ->get()
+                    ->keyBy('batch_id');
+            }
+
+            return TabularExport::stream(
+                'journal-batches-'.now()->format('Ymd_His'),
+                ['Batch', 'Date', 'Source', 'Description', 'Debit', 'Credit', 'Status', 'Created by'],
+                function () use ($exportBatches, $exportTotals) {
+                    foreach ($exportBatches as $batch) {
+                        $totals = $exportTotals->get($batch->id);
+                        yield [
+                            (string) $batch->id,
+                            optional($batch->date)->format('Y-m-d') ?? '',
+                            (string) ($batch->source_type ?? ''),
+                            (string) ($batch->description ?? ''),
+                            number_format((float) ($totals->debit_total ?? 0), 2, '.', ''),
+                            number_format((float) ($totals->credit_total ?? 0), 2, '.', ''),
+                            (string) ($batch->status ?? ''),
+                            (string) ($batch->createdByUser?->name ?? ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Journal batches',
+                    'subtitle' => $exportBatches->count().' batch'.($exportBatches->count() === 1 ? '' : 'es'),
+                ],
+            );
+        }
 
         $batches = $batchQuery
             ->orderByDesc('date')
@@ -2662,13 +2729,56 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
-    public function tenantStatements(Request $request): View
+    public function tenantStatements(Request $request): View|StreamedResponse
     {
         $formulas = app(FinancialReportingFormulaService::class);
+        $q = trim((string) $request->query('q', ''));
+        $propertyId = max(0, (int) $request->query('property_id', 0));
 
-        $tenants = PmTenant::query()
+        $tenantQuery = PmTenant::query()
             ->withCount('invoices')
-            ->orderBy('name')
+            ->when($q !== '', function ($tenant) use ($q): void {
+                $tenant->where(function ($w) use ($q): void {
+                    $w->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%')
+                        ->orWhere('account_number', 'like', '%'.$q.'%');
+                });
+            })
+            ->when($propertyId > 0, function ($tenant) use ($propertyId): void {
+                $tenant->whereHas('leases.units', fn ($unit) => $unit->where('property_units.property_id', $propertyId));
+            })
+            ->orderBy('name');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            @set_time_limit(180);
+            $exportTenants = (clone $tenantQuery)->limit(3000)->get();
+
+            return TabularExport::stream(
+                'tenant-statements-'.now()->format('Ymd_His'),
+                ['Tenant', 'Ac/No', 'Phone', 'Opening balance', 'Invoices', 'Payments', 'Closing balance'],
+                function () use ($exportTenants, $formulas) {
+                    foreach ($exportTenants as $tenant) {
+                        yield [
+                            (string) $tenant->name,
+                            (string) ($tenant->account_number ?? ''),
+                            (string) ($tenant->phone ?? ''),
+                            '0.00',
+                            (string) (int) ($tenant->invoices_count ?? 0),
+                            number_format($formulas->tenantCollectionsTotal((int) $tenant->id), 2, '.', ''),
+                            number_format($formulas->tenantStatementClosingBalance((int) $tenant->id), 2, '.', ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Tenant statements',
+                    'subtitle' => $exportTenants->count().' tenant'.($exportTenants->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
+
+        $tenants = $tenantQuery
             ->paginate(50)
             ->withQueryString();
 
@@ -2686,14 +2796,16 @@ class PropertyAccountingController extends Controller
         return property_view('property.agent.accounting.receivables_tenant_statements', [
             'tenants' => $tenants,
             'statementRows' => $statementRows,
+            'filters' => ['q' => $q, 'property_id' => $propertyId],
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
-    public function landlordPayables(Request $request): View
+    public function landlordPayables(Request $request): View|StreamedResponse
     {
         $propertyId = (int) $request->integer('property_id');
         $landlord = trim($request->string('landlord')->toString());
-        $rows = PmLandlordLedgerEntry::query()
+        $query = PmLandlordLedgerEntry::query()
             ->selectRaw('user_id, property_id')
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END),0) - COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END),0) as amount_due")
             ->when($propertyId > 0, fn ($q) => $q->where('property_id', $propertyId))
@@ -2701,9 +2813,38 @@ class PropertyAccountingController extends Controller
             ->havingRaw('amount_due > 0')
             ->with(['user', 'property'])
             ->when($landlord !== '', fn ($q) => $q->whereHas('user', fn ($uq) => $uq->where('name', 'like', '%'.$landlord.'%')))
-            ->orderByDesc('amount_due')
-            ->paginate(50)
-            ->withQueryString();
+            ->orderByDesc('amount_due');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+            $exportRows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'landlord-payables-'.now()->format('Ymd_His'),
+                ['Landlord', 'Property', 'Amount due', 'Commission', 'Net payable'],
+                function () use ($exportRows, $commissionPct) {
+                    foreach ($exportRows as $row) {
+                        $due = (float) $row->amount_due;
+                        $commission = $due * ($commissionPct / 100);
+                        yield [
+                            (string) ($row->user?->name ?? ''),
+                            (string) ($row->property?->name ?? ''),
+                            number_format($due, 2, '.', ''),
+                            number_format($commission, 2, '.', ''),
+                            number_format(max(0, $due - $commission), 2, '.', ''),
+                        ];
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Landlord payables',
+                    'subtitle' => $exportRows->count().' balance'.($exportRows->count() === 1 ? '' : 's'),
+                ],
+            );
+        }
+
+        $rows = $query->paginate(50)->withQueryString();
 
         return property_view('property.agent.accounting.payables_landlord', [
             'rows' => $rows,
@@ -2763,7 +2904,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -2827,7 +2968,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -2935,7 +3076,7 @@ class PropertyAccountingController extends Controller
 
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -2960,8 +3101,10 @@ class PropertyAccountingController extends Controller
                 'landlords' => $landlords,
             ])->render());
 
+            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
+
             return [
-                $voucher->ezen_voucher_no,
+                new HtmlString('<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-indigo-700 hover:underline">'.e($voucher->ezen_voucher_no).'</a>'),
                 $voucher->txn_date?->format('Y-m-d') ?? '—',
                 $voucher->method !== null && $voucher->method !== '' ? $voucher->method : '—',
                 $voucher->ref_no !== null && $voucher->ref_no !== '' ? $voucher->ref_no : '—',
@@ -2982,6 +3125,145 @@ class PropertyAccountingController extends Controller
             'paginator' => $vouchers,
             'filters' => $filters,
         ]);
+    }
+
+    public function createPaymentVoucher(Request $request): View
+    {
+        return property_view('property.agent.accounting.payment_voucher_create', $this->paymentVoucherFormData($request));
+    }
+
+    public function storePaymentVoucher(Request $request, EzenPaymentVouchersImportService $vouchers): RedirectResponse
+    {
+        $data = $request->validate([
+            'txn_date' => ['required', 'date'],
+            'payee' => ['required', 'string', 'max:191'],
+            'paid_from' => ['required', 'string', 'max:128'],
+            'method' => ['required', 'in:'.implode(',', PmEzenPaymentVoucher::PAYMENT_METHODS)],
+            'ref_no' => ['required', 'string', 'max:128'],
+            'cheque_no' => ['nullable', 'string', 'max:64'],
+            'cheque_date' => ['nullable', 'date'],
+            'expense_group' => ['required', 'in:'.implode(',', array_keys(PmEzenPaymentVoucher::EXPENSE_GROUPS))],
+            'landlord_id' => ['nullable', 'integer', 'exists:users,id'],
+            'narration' => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'control_amount' => ['required', 'numeric', 'gt:0'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'lines.*.expense_group' => ['nullable', 'string', 'max:80'],
+            'lines.*.utility_account' => ['nullable', 'string', 'max:120'],
+            'lines.*.description' => ['nullable', 'string', 'max:500'],
+            'lines.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $voucher = $vouchers->recordManual(
+            (int) $request->user()->id,
+            $request->user(),
+            $data,
+            $data['lines'],
+        );
+
+        if (\App\Support\Property\PropertyFormModal::fromModal($request)) {
+            return response()->view('property.agent.partials.form_modal_success', [
+                'message' => 'Voucher '.$voucher->ezen_voucher_no.' recorded.',
+            ]);
+        }
+
+        return redirect()
+            ->route('property.accounting.payables.payment_vouchers.show', $voucher)
+            ->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded.');
+    }
+
+    public function showPaymentVoucher(PmEzenPaymentVoucher $voucher): View
+    {
+        $voucher->load(['lines.property', 'property', 'landlord', 'payout']);
+
+        return property_view('property.agent.accounting.payment_voucher_show', [
+            'voucher' => $voucher,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentVoucherFormData(Request $request): array
+    {
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        $paidFromAccounts = $this->voucherAccountOptions(cash: true);
+        if ($paidFromAccounts === []) {
+            $paidFromAccounts = ['Cash account', 'Co-operative Bank', 'M-Pesa', 'Equity Bank', 'KCB Bank'];
+        }
+
+        $serviceAccounts = $this->voucherAccountOptions(cash: false);
+        foreach (['Water', 'Electricity', 'Garbage', 'Service charge', 'Security', 'Airtime', 'Repairs'] as $fallback) {
+            if (! in_array($fallback, $serviceAccounts, true)) {
+                $serviceAccounts[] = $fallback;
+            }
+        }
+
+        return [
+            'inPropertyFormModal' => \App\Support\Property\PropertyFormModal::wants($request),
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
+            'landlords' => $landlords,
+            'expenseGroups' => PmEzenPaymentVoucher::EXPENSE_GROUPS,
+            'methods' => PmEzenPaymentVoucher::PAYMENT_METHODS,
+            'paidFromAccounts' => $paidFromAccounts,
+            'serviceAccounts' => $serviceAccounts,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function voucherAccountOptions(bool $cash): array
+    {
+        if (! Schema::hasTable('accounting_chart_accounts')) {
+            return [];
+        }
+
+        $query = AccountingChartAccount::query()->orderBy('code')->orderBy('name');
+        if (Schema::hasColumn('accounting_chart_accounts', 'is_active')) {
+            $query->where('is_active', true);
+        }
+        if ($cash) {
+            $query->where(function ($inner): void {
+                if (Schema::hasColumn('accounting_chart_accounts', 'is_cash_account')) {
+                    $inner->where('is_cash_account', true);
+                }
+                $inner->orWhere('name', 'like', '%bank%')
+                    ->orWhere('name', 'like', '%cash%')
+                    ->orWhere('name', 'like', '%mpesa%')
+                    ->orWhere('name', 'like', '%m-pesa%');
+            });
+        } elseif (Schema::hasColumn('accounting_chart_accounts', 'type')) {
+            $query->where('type', AccountingChartAccount::TYPE_EXPENSE);
+            if (Schema::hasColumn('accounting_chart_accounts', 'account_class')) {
+                $query->where(function ($inner): void {
+                    $inner->whereNull('account_class')
+                        ->orWhere('account_class', AccountingChartAccount::CLASS_DETAIL);
+                });
+            }
+        } else {
+            return [];
+        }
+
+        return $query->get(['code', 'name'])
+            ->map(function (AccountingChartAccount $account): string {
+                $code = trim((string) $account->code);
+                $name = trim((string) $account->name);
+
+                return $code !== '' ? $code.' '.$name : $name;
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function batchLandlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): RedirectResponse
@@ -3037,12 +3319,40 @@ class PropertyAccountingController extends Controller
         $propertyId = (int) $request->integer('property_id');
         $landlordId = (int) $request->integer('landlord_id');
         $month = trim($request->string('month')->toString());
-        if ($month === '') {
-            $month = now()->format('Y-m');
+        $fromYm = trim($request->string('from')->toString());
+        $toYm = trim($request->string('to')->toString());
+        $fy = (int) $request->integer('fy');
+        $reportMode = strtolower(trim($request->string('report')->toString()));
+        $exportScope = strtolower(trim($request->string('export_scope')->toString()));
+        if (in_array($exportScope, ['summary', 'detail'], true) && $reportMode === '') {
+            $reportMode = $exportScope;
+        }
+        if ($reportMode === '') {
+            $reportMode = 'detail';
         }
 
-        $periodStart = Carbon::createFromFormat('Y-m', $month)?->startOfMonth() ?? now()->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
+        if (preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1) {
+            $periodStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+            }
+            $month = $fromYm === $toYm ? $fromYm : $periodStart->format('Y-m');
+        } elseif ($fy >= 2000 && $fy <= 2100 && $month === '') {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $month = '';
+            $fromYm = $periodStart->format('Y-m');
+            $toYm = $periodEnd->format('Y-m');
+        } else {
+            if ($month === '') {
+                $month = now()->format('Y-m');
+            }
+            $periodStart = Carbon::createFromFormat('Y-m', $month)?->startOfMonth() ?? now()->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $fromYm = $periodStart->format('Y-m');
+            $toYm = $periodEnd->format('Y-m');
+        }
 
         $properties = Property::query()->orderBy('name')->get(['id', 'name']);
         $landlords = collect();
@@ -3061,10 +3371,29 @@ class PropertyAccountingController extends Controller
                 $settlement = $settlements->buildSettlement($propertyId, $landlordId, $periodStart, $periodEnd);
 
                 $export = strtolower(trim($request->string('export')->toString()));
-                if ($export === 'pdf') {
+                if ($reportMode === 'summary' && in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
+                    return TabularExport::stream(
+                        'landlord-settlement-summary-'.$propertyId.'-'.$landlordId.'-'.$periodStart->format('Y-m').'-'.$periodEnd->format('Y-m'),
+                        ['Metric', 'Value'],
+                        function () use ($settlement, $periodStart, $periodEnd) {
+                            yield ['Property', (string) ($settlement['property_name'] ?? '')];
+                            yield ['Landlord', (string) ($settlement['landlord_name'] ?? '')];
+                            yield ['Period', $periodStart->format('M Y').' – '.$periodEnd->format('M Y')];
+                            yield ['Rent received', number_format((float) ($settlement['rent_received'] ?? 0), 2, '.', '')];
+                            yield ['Utility received', number_format((float) ($settlement['utility_received'] ?? 0), 2, '.', '')];
+                            yield ['Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
+                            yield ['Additions', number_format((float) ($settlement['additions_total'] ?? 0), 2, '.', '')];
+                            yield ['Deductions', number_format((float) ($settlement['deductions_total'] ?? 0), 2, '.', '')];
+                            yield ['Balance B/F', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
+                            yield ['Net amount due', number_format((float) ($settlement['net_amount_due'] ?? 0), 2, '.', '')];
+                        },
+                        $export,
+                    );
+                }
+                if ($export === 'pdf' || $export === 'word' || $request->boolean('print')) {
                     return $this->streamLandlordSettlementPdf($settlement);
                 }
-                if (in_array($export, ['csv', 'xls'], true)) {
+                if (in_array($export, ['csv', 'xls', 'xlsx'], true)) {
                     return $this->streamLandlordSettlementCsv($settlement);
                 }
             } catch (\Throwable $e) {
@@ -3081,6 +3410,10 @@ class PropertyAccountingController extends Controller
                 'property_id' => $propertyId,
                 'landlord_id' => $landlordId,
                 'month' => $month,
+                'from' => $fromYm,
+                'to' => $toYm,
+                'fy' => $fy > 0 ? $fy : (int) $periodStart->year,
+                'report' => $reportMode,
             ],
         ]);
     }
@@ -3377,7 +3710,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3465,7 +3798,7 @@ class PropertyAccountingController extends Controller
         $landlords = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->distinct()
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
@@ -3798,7 +4131,7 @@ class PropertyAccountingController extends Controller
             return property_view('property.agent.accounting.reports.aged_payables', ['rows' => $rows]);
         }
 
-        $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
+        $agentId = AgentWorkspaceScope::currentAgentUserId();
         $rows = Schema::hasTable('pm_supplier_invoices')
             ? DB::table('pm_supplier_invoices as i')
                 ->leftJoin('pm_suppliers as s', 's.id', '=', 'i.supplier_id')
@@ -3812,7 +4145,7 @@ class PropertyAccountingController extends Controller
 
     public function depositLiabilityReport(Request $request): View
     {
-        $agentId = AgentWorkspaceScope::shouldApply() ? (int) $request->user()?->id : null;
+        $agentId = AgentWorkspaceScope::currentAgentUserId();
         $rows = Schema::hasTable('pm_tenant_deposits')
             ? DB::table('pm_tenant_deposits as d')
                 ->leftJoin('pm_tenants as t', 't.id', '=', 'd.tenant_id')
@@ -4063,16 +4396,11 @@ class PropertyAccountingController extends Controller
      */
     private function buildRunPayslipPayload(AccountingPayrollPeriod $period, AccountingPayrollLine $line): array
     {
-        $companyName = PropertyPortalSetting::getValue('company_name', 'Property Management');
-        $logoRaw = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
-        $logoUrl = null;
-        if ($logoRaw !== '') {
-            $logoUrl = str_starts_with($logoRaw, 'http://')
-                || str_starts_with($logoRaw, 'https://')
-                || str_starts_with($logoRaw, '/')
-                ? $logoRaw
-                : asset($logoRaw);
-        }
+        $branding = \App\Support\Property\PropertyWorkspaceBranding::documentSnapshot(
+            (int) ($period->agent_user_id ?? 0) > 0 ? (int) $period->agent_user_id : null
+        );
+        $companyName = (string) ($branding['company_name'] ?? config('app.name', 'Property Management'));
+        $logoUrl = trim((string) (($branding['logo_url'] ?? '') ?: ($branding['company_logo_url'] ?? ''))) ?: null;
         $raw = PropertyPortalSetting::query()->where('key', 'property_payroll_settings')->value('value');
         $settings = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
         $expenseAccount = (string) ($settings['expense_account'] ?? 'Payroll Expense');

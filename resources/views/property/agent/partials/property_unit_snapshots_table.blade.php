@@ -38,8 +38,9 @@
     </div>
 @endif
 
+<div class="max-h-[22rem] overflow-auto">
 <table class="property-erp-table min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+    <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
         <tr>
             <th class="px-4 py-3">Unit</th>
             <th class="px-4 py-3">Status</th>
@@ -128,3 +129,4 @@
         @endforelse
     </tbody>
 </table>
+</div>

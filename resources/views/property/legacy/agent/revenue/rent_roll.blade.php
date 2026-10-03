@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Rent roll"
-    subtitle="Active leases by unit — scheduled rent vs paid vs balance."
+    subtitle="Scheduled rent, and what was billed and collected in the selected month."
     back-route="property.revenue.index"
     :stats="$stats"
     :columns="$columns"
@@ -13,13 +13,14 @@
     </x-slot>
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.revenue.rent_roll', absolute: false) }}" class="w-full flex flex-wrap items-end gap-2">
+            <input type="month" name="month" value="{{ $filters['month'] ?? now()->format('Y-m') }}" aria-label="Month" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" autocomplete="off" placeholder="Search unit, tenant…" class="w-full min-w-0 sm:w-64 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="unit" @selected(($filters['sort'] ?? 'unit') === 'unit')>Sort: Unit</option>
                 <option value="tenant" @selected(($filters['sort'] ?? '') === 'tenant')>Sort: Tenant</option>
                 <option value="period" @selected(($filters['sort'] ?? '') === 'period')>Sort: Period</option>
                 <option value="due" @selected(($filters['sort'] ?? '') === 'due')>Sort: Rent due</option>
-                <option value="paid" @selected(($filters['sort'] ?? '') === 'paid')>Sort: Paid</option>
+                <option value="paid" @selected(($filters['sort'] ?? '') === 'paid')>Sort: Collected</option>
                 <option value="balance" @selected(($filters['sort'] ?? '') === 'balance')>Sort: Balance</option>
                 <option value="status" @selected(($filters['sort'] ?? '') === 'status')>Sort: Status</option>
             </select>

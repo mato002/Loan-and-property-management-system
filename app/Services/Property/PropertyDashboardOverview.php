@@ -45,8 +45,9 @@ final class PropertyDashboardOverview
      */
     public static function lightForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::lightKey($userId, $scoped);
 
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildLightForAgent());
@@ -59,8 +60,9 @@ final class PropertyDashboardOverview
      */
     public static function metricsForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped).':metrics';
 
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildMetricsForAgent());
@@ -73,8 +75,9 @@ final class PropertyDashboardOverview
      */
     public static function heavyForAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
+        $agentUserId = AgentWorkspaceScope::currentAgentUserId();
+        $scoped = $agentUserId !== null;
+        $userId = $agentUserId ?? (int) (Auth::id() ?? 0);
         $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped);
 
         return Cache::remember($cacheKey, self::HEAVY_CACHE_TTL_SECONDS, static fn () => self::buildHeavyForAgent());
@@ -109,13 +112,14 @@ final class PropertyDashboardOverview
         $maintInProgress = PmMaintenanceRequest::query()->where('status', 'in_progress')->count();
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
-        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $agentUserId = $applyAgentFilter ? AgentWorkspaceScope::currentAgentUserId() : null;
         $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
 
         $linkedLandlordsQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id');
-        if ($applyAgentFilter && $agentUserId) {
-            $linkedLandlordsQuery->where('p.agent_user_id', $agentUserId);
+        $ownerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+        if ($ownerIds !== []) {
+            $linkedLandlordsQuery->whereIn('p.agent_user_id', $ownerIds);
         }
         $linkedLandlords = (int) $linkedLandlordsQuery->distinct('pl.user_id')->count('pl.user_id');
 
@@ -366,12 +370,16 @@ final class PropertyDashboardOverview
             })
             ->all();
 
+        $rentComparison = self::rentChargeVsCollectionByMonth($year);
+
         return [
             'financialKpis' => $financialKpis,
             'chartYear' => $year,
             'chartLabels' => $chartLabels,
             'chartInvoices' => $chartInvoices,
             'chartPayments' => $chartPayments,
+            'chartRentCharges' => $rentComparison['charges'],
+            'chartRentCollections' => $rentComparison['collections'],
             'chartCommissionByProperty' => $commissionByProperty,
             'chartCommissionSplit' => $commissionSplit,
             'chartOccupancy' => $chartOccupancy,
@@ -380,6 +388,60 @@ final class PropertyDashboardOverview
             'commissionSplitFallback' => ($commissionSplit['fallback'] ?? '') === 'collections',
             'recentRequests' => $recentRequests,
             'recentPayments' => $recentPayments,
+        ];
+    }
+
+    /**
+     * Rent invoiced versus rent collected, by calendar month.
+     *
+     * @return array{charges: list<float>, collections: list<float>}
+     */
+    private static function rentChargeVsCollectionByMonth(int $year): array
+    {
+        $chargeByMonth = PmInvoice::query()
+            ->billableAr()
+            ->where('invoice_type', PmInvoice::TYPE_RENT)
+            ->whereYear('issue_date', $year)
+            ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(issue_date)')
+            ->pluck('total', 'month_num');
+
+        $collectionQuery = PmPayment::query()
+            ->join('pm_payment_allocations as rent_alloc', 'rent_alloc.pm_payment_id', '=', 'pm_payments.id')
+            ->join('pm_invoices as rent_inv', 'rent_inv.id', '=', 'rent_alloc.pm_invoice_id')
+            ->where('pm_payments.status', PmPayment::STATUS_COMPLETED)
+            ->whereNotNull('pm_payments.paid_at')
+            ->whereYear('pm_payments.paid_at', $year)
+            ->where(function ($query) {
+                $query->whereNull('pm_payments.channel')
+                    ->orWhere('pm_payments.channel', '!=', 'tenant_credit');
+            })
+            ->where('rent_inv.invoice_type', PmInvoice::TYPE_RENT)
+            ->where('rent_inv.status', '!=', PmInvoice::STATUS_CANCELLED)
+            ->where('rent_inv.status', '!=', PmInvoice::STATUS_DRAFT)
+            ->whereNull('rent_inv.deleted_at');
+
+        if (Schema::hasColumn('pm_payment_allocations', 'is_reversed')) {
+            $collectionQuery->where(function ($query) {
+                $query->where('rent_alloc.is_reversed', false)->orWhereNull('rent_alloc.is_reversed');
+            });
+        }
+
+        $collectionByMonth = $collectionQuery
+            ->selectRaw('MONTH(pm_payments.paid_at) as month_num, COALESCE(SUM(rent_alloc.amount), 0) as total')
+            ->groupByRaw('MONTH(pm_payments.paid_at)')
+            ->pluck('total', 'month_num');
+
+        $charges = [];
+        $collections = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $charges[] = round((float) ($chargeByMonth[$m] ?? 0), 2);
+            $collections[] = round((float) ($collectionByMonth[$m] ?? 0), 2);
+        }
+
+        return [
+            'charges' => $charges,
+            'collections' => $collections,
         ];
     }
 
@@ -399,7 +461,7 @@ final class PropertyDashboardOverview
         );
 
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
-        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $agentUserId = $applyAgentFilter ? AgentWorkspaceScope::currentAgentUserId() : null;
         $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
 
         $financialKpis = [
@@ -615,8 +677,9 @@ final class PropertyDashboardOverview
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->orderByDesc('pl.id')
             ->limit(6);
-        if ($applyAgentFilter) {
-            $recentLandlordLinksQuery->where('p.agent_user_id', $agentUserId);
+        $recentOwnerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+        if ($recentOwnerIds !== []) {
+            $recentLandlordLinksQuery->whereIn('p.agent_user_id', $recentOwnerIds);
         }
         $recentLandlordLinks = $recentLandlordLinksQuery
             ->get([
@@ -704,8 +767,9 @@ final class PropertyDashboardOverview
         $landlordUsers = (int) (clone $landlordsQuery)->count();
 
         $linkedQuery = (clone $landlordsQuery)->whereHas('landlordProperties', function ($q) use ($applyAgentFilter, $agentUserId) {
-            if ($applyAgentFilter && $agentUserId) {
-                $q->where('properties.agent_user_id', $agentUserId);
+            $ownerIds = $applyAgentFilter ? AgentWorkspaceScope::workspaceOwnerIds() : [];
+            if ($ownerIds !== []) {
+                $q->whereIn('properties.agent_user_id', $ownerIds);
             }
         });
         $linkedLandlordUsers = (int) $linkedQuery->count();

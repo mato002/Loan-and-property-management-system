@@ -281,7 +281,7 @@ final class CoopBankAccountStatementImportService
                 ->first();
             if ($unassigned) {
                 return [
-                    'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                    'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
                     'matched_type' => 'unassigned',
                     'pm_payment_id' => null,
                     'pm_ezen_receipt_register_id' => null,

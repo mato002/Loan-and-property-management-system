@@ -17,6 +17,7 @@ class ImportEzenRentReceiptsCommand extends Command
         {--enrich-only : Backfill M-Pesa ref / payment method on existing invoice-import payments only}
         {--register-only : Import all EZEN receipt rows into the receipt register (no payments created)}
         {--sync-from-register : Copy refs from receipt register onto existing payments (no file needed)}
+        {--relink-existing : Allocate leftover amount on receipts that already have a payment row}
         {--dry-run : Parse and match without saving}';
 
     protected $description = 'Import EZEN tenant rent receipts and allocate to open invoices (skips duplicates and already-paid tenants by default).';
@@ -68,6 +69,7 @@ class ImportEzenRentReceiptsCommand extends Command
             $limit,
             (bool) $this->option('enrich-only'),
             (bool) $this->option('register-only'),
+            (bool) $this->option('relink-existing'),
         );
 
         $this->line('Parsed: '.$summary['parsed']);
@@ -79,6 +81,7 @@ class ImportEzenRentReceiptsCommand extends Command
         } else {
             $this->line('Imported: '.$summary['imported']);
             $this->line('Skipped existing: '.$summary['skipped_existing']);
+            $this->line('Relinked existing: '.($summary['relinked'] ?? 0));
             $this->line('Skipped no tenant: '.$summary['skipped_no_tenant']);
             $this->line('Skipped no open balance: '.$summary['skipped_no_open_balance']);
             $this->line('Enriched existing payments: '.$summary['enriched_existing']);

@@ -110,6 +110,9 @@
                             <tr class="opening-arrears-row border-t border-amber-100">
                                 <td class="px-3 py-2">
                                     <select name="opening_arrears[{{ $idx }}][charge_type]" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                        <option value="rent" @selected(($row['charge_type'] ?? '') === 'rent')>Rent</option>
+                                        <option value="standing_charge" @selected(($row['charge_type'] ?? '') === 'standing_charge')>Other standing charge</option>
+                                        <option value="on_account" @selected(($row['charge_type'] ?? '') === 'on_account')>On account</option>
                                         <option value="water" @selected(($row['charge_type'] ?? '') === 'water')>Water</option>
                                         <option value="electricity" @selected(($row['charge_type'] ?? '') === 'electricity')>Electricity</option>
                                         <option value="service" @selected(($row['charge_type'] ?? '') === 'service')>Service</option>
@@ -200,6 +203,9 @@
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
             <select id="arrears-line-edit-charge-type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <option value="rent">Rent</option>
+                <option value="standing_charge">Other standing charge</option>
+                <option value="on_account">On account</option>
                 <option value="water">Water</option>
                 <option value="electricity">Electricity</option>
                 <option value="service">Service</option>

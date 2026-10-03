@@ -193,8 +193,46 @@ class LoanBookLoanUpdateService
             default => ($unit === 'daily' ? $value / 365 : ($unit === 'weekly' ? $value / 52 : $value / 12)),
         };
 
-        // Nudge binary float dust (for example 5999.999999999) onto the cent boundary before rounding.
-        return round(($principal * ($ratePercent / 100) * max(0.0, $periodCount)) + 1.0e-8, 2);
+        return $this->interestAmount($principal, $ratePercent, max(0.0, $periodCount));
+    }
+
+    /**
+     * Rates are stored to 4 decimals but the loan page shows 2. A value such as 29.9998
+     * displays as 30.00% and then prices interest two cents short (10,000 → 12,999.98).
+     */
+    public function normalizeRatePercent(float $ratePercent): float
+    {
+        $rate = round($ratePercent, 4);
+        $shown = round($rate, 2);
+        if (abs($rate - $shown) <= 0.0005) {
+            return $shown;
+        }
+
+        return $rate;
+    }
+
+    public function interestAmount(float $principal, float $ratePercent, float $periodCount): float
+    {
+        if ($principal <= 0 || $ratePercent <= 0 || $periodCount <= 0) {
+            return 0.0;
+        }
+
+        $rate = $this->normalizeRatePercent($ratePercent);
+        $principalCents = (string) (int) round($principal * 100);
+        $rateUnits = (string) (int) round($rate * 10000);
+        $periodUnits = (string) (int) round($periodCount * 1000000);
+        if (function_exists('bcmul')) {
+            $numerator = bcmul(bcmul($principalCents, $rateUnits, 0), $periodUnits, 0);
+            $cents = bcdiv($numerator, '1000000000000', 0);
+            $remainder = bcmod($numerator, '1000000000000');
+            if (bccomp($remainder, '500000000000') >= 0) {
+                $cents = bcadd($cents, '1', 0);
+            }
+
+            return ((int) $cents) / 100;
+        }
+
+        return round(($principal * ($rate / 100) * $periodCount) + 1.0e-8, 2);
     }
 }
 

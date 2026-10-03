@@ -22,6 +22,7 @@ use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyReversalFinalizeService;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Services\Property\TenantCreditService;
 use App\Services\Property\UtilityPeriodGuardService;
@@ -612,18 +613,21 @@ class PmInvoiceController extends Controller
             $items = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'invoices-'.now()->format('Ymd_His'),
-                ['Invoice #', 'Charge', 'Charge detail', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Balance', 'Issued', 'Due', 'Status'],
+                ['Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status'],
                 function () use ($items) {
                     foreach ($items as $i) {
+                        $charge = (string) $i->chargeCategoryLabel();
+                        $detail = trim((string) ($i->chargeDetailHint() ?? ''));
+                        if ($detail !== '') {
+                            $charge .= ' — '.$detail;
+                        }
                         yield [
                             (string) $i->invoice_no,
-                            $i->chargeCategoryLabel(),
-                            (string) ($i->chargeDetailHint() ?? ''),
+                            $charge,
                             (string) ($i->tenant->name ?? ''),
                             (string) (($i->unit->property->name ?? '').'/'.($i->unit->label ?? '')),
                             $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? ''),
                             number_format((float) $i->amount, 2, '.', ''),
-                            number_format((float) $i->amount_paid, 2, '.', ''),
                             number_format(max(0, (float) $i->amount - (float) $i->amount_paid), 2, '.', ''),
                             $i->issue_date?->format('Y-m-d') ?? '',
                             $i->due_date?->format('Y-m-d') ?? '',
@@ -631,7 +635,8 @@ class PmInvoiceController extends Controller
                         ];
                     }
                 },
-                $export
+                $export,
+                ['title' => 'Invoices'],
             );
         }
 
@@ -702,9 +707,14 @@ class PmInvoiceController extends Controller
 
         $deliverySummaries = PmInvoice::prefetchTenantDeliverySummaries($invoices->getCollection());
 
-        $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries) {
+        $tableRowTones = [];
+        $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries, &$tableRowTones) {
             $showAction = route('property.revenue.invoices.show', $i, false);
             $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
+            $pastDue = $balance > 0.009
+                && $i->due_date
+                && $i->due_date->endOfDay()->isPast();
+            $tableRowTones[] = WorkspaceRowAlert::forInvoice((string) $i->status, $balance, $pastDue);
 
             $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
@@ -752,6 +762,7 @@ class PmInvoiceController extends Controller
             'billingRangeLabel' => $billingRangeLabel,
             'columns' => ['Select', 'Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
             'paginator' => $invoices,
             'filters' => [
                 ...$filters,

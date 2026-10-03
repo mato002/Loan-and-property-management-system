@@ -50,7 +50,7 @@
             <p class="text-xs text-slate-500 dark:text-slate-400">Error</p>
             <p class="text-sm text-slate-800 dark:text-slate-200">
                 @if ($log->delivery_error)
-                    {{ app(\App\Services\Property\SmsDeliveryErrorPresenter::class)->forAgent((string) $log->delivery_error) }}
+                    {{ app(\App\Services\Property\SmsDeliveryErrorPresenter::class)->forChannel((string) $log->channel, (string) $log->delivery_error) }}
                 @else
                     —
                 @endif
@@ -59,18 +59,20 @@
             @php
                 $resendAction = (array) ($resendAction ?? []);
                 $canResend = (bool) ($resendAction['can_resend'] ?? false);
+                $isEmailResend = $log->channel === 'email' && $canResend;
+                $isSmsResend = $log->channel === 'sms' && $canResend;
             @endphp
             <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
                 <div class="flex flex-wrap gap-2">
                     <a href="{{ route($backRoute ?? 'property.communications.messages', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">{{ $backLabel ?? 'Back to messages' }}</a>
-                    @if (($canManageCommunications ?? false) && $log->channel === 'sms' && $canResend)
-                        <form method="post" action="{{ route('property.communications.messages.resend', $log, absolute: false) }}" data-swal-confirm="Resend this SMS now?">
+                    @if (($canManageCommunications ?? false) && ($isSmsResend || $isEmailResend))
+                        <form method="post" action="{{ route('property.communications.messages.resend', $log, absolute: false) }}" data-swal-confirm="{{ $isEmailResend ? 'Resend staff login email now? A new temporary password will be emailed.' : 'Resend this SMS now?' }}">
                             @csrf
-                            <button type="submit" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700">Retry SMS</button>
+                            <button type="submit" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700">{{ $isEmailResend ? 'Resend logins' : 'Retry SMS' }}</button>
                         </form>
                     @endif
                 </div>
-                @if ($log->channel === 'sms' && ! $canResend && ! empty($resendAction['hint']))
+                @if (($log->channel === 'sms' || $log->channel === 'email') && ! $canResend && ! empty($resendAction['hint']))
                     <p class="text-xs text-slate-500 dark:text-slate-400 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
                         <span class="font-semibold text-slate-700 dark:text-slate-200">{{ $resendAction['label'] ?? 'No resend' }}:</span>
                         {{ $resendAction['hint'] }}

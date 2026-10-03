@@ -9,37 +9,16 @@ use App\Services\Property\PropertyOffboardingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyOffboardingController extends Controller
 {
-    public function show(Request $request, Property $property, PropertyOffboardingService $offboarding): View
+    public function show(Request $request, Property $property): RedirectResponse
     {
-        $step = max(1, min(5, (int) $request->query('step', 1)));
-        $loads = ['landlords' => fn ($q) => $q->orderBy('name')];
-        if (Schema::hasColumn('properties', 'archived_by')) {
-            $loads['archivedByUser'] = fn ($q) => $q->select('id', 'name');
-        }
-        $property->load($loads);
-
-        $check = $offboarding->statusCheck($property);
-        $canDetach = $offboarding->canDetachLandlord(
-            $property,
-            $request->user()?->hasPmPermission('property.archive.override') ?? false
-        );
-        $canArchive = $offboarding->canArchive(
-            $property,
-            $request->user()?->hasPmPermission('property.archive.override') ?? false
-        );
-
-        return property_view('property.agent.properties.offboarding', [
-            'property' => $property,
-            'step' => $step,
-            'check' => $check,
-            'canDetach' => $canDetach,
-            'canArchive' => $canArchive,
+        return redirect()->route('property.properties.show', [
+            'property' => $property->id,
+            'tab' => 'offboarding',
+            'step' => max(1, min(5, (int) $request->query('step', 1))),
         ]);
     }
 
@@ -61,7 +40,7 @@ class PropertyOffboardingController extends Controller
         );
 
         return redirect()
-            ->route('property.properties.offboarding', ['property' => $property->id, 'step' => 1])
+            ->route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding', 'step' => 1])
             ->with('success', 'Offboarding started for '.$property->name.'.');
     }
 
@@ -110,7 +89,7 @@ class PropertyOffboardingController extends Controller
         }
 
         return redirect()
-            ->route('property.properties.show', $property)
+            ->route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding', 'step' => 5])
             ->with('success', $message);
     }
 
@@ -123,7 +102,7 @@ class PropertyOffboardingController extends Controller
         $offboarding->restore($property);
 
         return redirect()
-            ->route('property.properties.show', $property)
+            ->route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding'])
             ->with('success', 'Property restored to active management.');
     }
 

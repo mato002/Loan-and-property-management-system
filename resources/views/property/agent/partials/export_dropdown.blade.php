@@ -7,7 +7,7 @@
     'query' => [],
     'routeParams' => [],
     'formats' => null,
-    'class' => 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50',
+    'class' => 'property-export-select w-auto max-w-[9.5rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50',
 ])
 
 @php
@@ -24,7 +24,7 @@
         $wordUrl = $wordUrl ?? ($generated['wordUrl'] ?? null);
     }
 
-    foreach (['pdf' => 'pdfUrl', 'word' => 'wordUrl'] as $format => $urlKey) {
+    foreach (['xls' => 'xlsUrl', 'pdf' => 'pdfUrl', 'word' => 'wordUrl'] as $format => $urlKey) {
         if (! empty($$urlKey) || empty($csvUrl)) {
             continue;
         }
@@ -42,7 +42,8 @@
 @endphp
 
 <select
-    class="{{ $class }}"
+    class="property-export-select {{ $class }}"
+    data-turbo="false"
     onchange="if(this.value){ window.location.href=this.value; this.selectedIndex=0; }"
 >
     <option value="">Export</option>

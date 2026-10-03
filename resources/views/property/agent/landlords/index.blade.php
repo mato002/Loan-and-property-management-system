@@ -5,9 +5,13 @@
         || $errors->has('property_id')
         || $errors->has('ownership_percent')
         || $errors->has('legacy_landlord_code')
+        || $errors->has('landlord_type')
         || $errors->has('id_number')
         || $errors->has('kra_pin')
-        || $errors->has('address_line');
+        || $errors->has('address_line')
+        || $errors->has('location')
+        || $errors->has('document')
+        || $errors->has('document_name');
     $landlordFieldCfg = $landlordFields ?? [];
     $landlordRequired = fn (string $k, bool $d = false) => (bool) (($landlordFieldCfg[$k]['required'] ?? $d) && ($landlordFieldCfg[$k]['enabled'] ?? true));
     $onboardLandlord = null;
@@ -57,6 +61,7 @@
             <form
                 method="post"
                 action="{{ route('property.landlords.onboard') }}"
+                enctype="multipart/form-data"
                 class="space-y-3 w-full min-w-0"
             >
                 @csrf
@@ -80,6 +85,26 @@
                     </div>
                 </div>
                 @include('property.agent.landlords.partials.profile_fields')
+                <details class="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-900/40 p-3">
+                    <summary class="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">Optional first file (ID, PIN, contract…)</summary>
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Document name</label>
+                            <input type="text" name="document_name" value="{{ old('document_name') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            @error('document_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">File</label>
+                            <input type="file" name="document" class="mt-1 w-full text-sm" />
+                            @error('document')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Description</label>
+                            <textarea name="document_description" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('document_description') }}</textarea>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-slate-500">More files can be added later on the landlord Files tab.</p>
+                </details>
                 <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Link to property (optional)</label>
                         <x-property.quick-create-select
@@ -100,15 +125,6 @@
                 <button type="submit" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Create landlord account</button>
             </form>
             </x-property.modal>
-    </x-slot>
-
-    <x-slot name="tabs">
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.landlords.index', absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All landlords</a>
-            <a href="{{ route('property.landlords.index', array_merge((array) ($filters ?? []), ['linked' => 'linked']), absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-indigo-300 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Linked only</a>
-            <a href="{{ route('property.landlords.index', array_merge((array) ($filters ?? []), ['linked' => 'unlinked']), absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-amber-300 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50">Unlinked only</a>
-            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.landlords.index', 'query' => request()->query()])
-        </div>
     </x-slot>
 
     <x-slot name="toolbar">

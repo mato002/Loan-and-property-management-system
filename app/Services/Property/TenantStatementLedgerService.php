@@ -37,21 +37,41 @@ final class TenantStatementLedgerService
         $openingArrearsAsOf = $tenant->opening_arrears_as_of
             ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
             : null;
-        $hasEzenInvoiceHistory = $invoices->contains(function (PmInvoice $invoice): bool {
-            $origin = $invoice->carry_forward_origin;
-            if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
-                return true;
-            }
+        $hasRentalInvoiceReplay = $invoices->contains(
+            fn (PmInvoice $invoice): bool => $this->isEzenRentalInvoiceReplay($invoice)
+        );
+        $hasStatementImport = $invoices->contains(
+            fn (PmInvoice $invoice): bool => $this->isEzenTenantStatementInvoice($invoice)
+        );
+        $hasEzenInvoiceHistory = $hasRentalInvoiceReplay || $hasStatementImport
+            || $invoices->contains(fn (PmInvoice $invoice): bool => str_starts_with(trim((string) $invoice->description), '[EZEN INV'));
 
-            return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
-        });
-
-        // Residual B/F kept beside a rent-only EZEN replay (late fees / DBNs not imported):
-        // present B/F as the EZEN closing residual and hide the misleading rent replay lines.
-        $residualBfWithEzenRentHistory = $openingArrears > 0.009 && $hasEzenInvoiceHistory;
+        // Residual B/F kept beside a rent-only EZEN listing replay (late fees / DBNs not imported).
+        // A full tenant-statement import already has the real charge lines — do not hide them
+        // and do not keep the take-on snapshot as a second debit.
+        // A full rent-invoice history already is the charge list. Keep those lines
+        // (a vacated tenant's Jan–Aug rent) and drop the take-on snapshot so it is
+        // not a second debit. A thin replay still sits beside residual B/F, but only
+        // invoices already inside the snapshot date are hidden.
+        $replayReplacesOpeningArrears = $hasRentalInvoiceReplay
+            && ! $hasStatementImport
+            && app(CarryForwardConsolidationService::class)->tenantEzenInvoicesReplaceOpeningArrears($tenant);
+        $residualBfWithEzenRentHistory = $openingArrears > 0.009
+            && $hasRentalInvoiceReplay
+            && ! $hasStatementImport
+            && ! $replayReplacesOpeningArrears;
         if ($residualBfWithEzenRentHistory) {
             $invoices = $invoices
-                ->reject(fn (PmInvoice $invoice): bool => $this->isEzenImportedInvoice($invoice))
+                ->reject(function (PmInvoice $invoice) use ($openingArrearsAsOf): bool {
+                    if (! $this->isEzenRentalInvoiceReplay($invoice)) {
+                        return false;
+                    }
+                    if ($openingArrearsAsOf === null || $invoice->issue_date === null) {
+                        return true;
+                    }
+
+                    return $invoice->issue_date->copy()->startOfDay()->lt($openingArrearsAsOf);
+                })
                 ->values();
         }
 
@@ -75,6 +95,13 @@ final class TenantStatementLedgerService
         } elseif ($hasEzenInvoiceHistory) {
             $payments = $this->dedupeInvoiceImportsAgainstReceiptImports($payments);
         }
+
+        // Applying wallet credit creates a second completed payment (channel
+        // tenant_credit). The cash was already credited on the source payment,
+        // so counting this line again leaves a fake CR after the invoice is paid.
+        $payments = $payments
+            ->reject(fn (PmPayment $payment): bool => $this->isWalletReallocationPayment($payment))
+            ->values();
 
         $registerReceipts = $suppressRegisterCredits
             ? collect()
@@ -108,7 +135,11 @@ final class TenantStatementLedgerService
 
             $openingPaymentsQuery = PmPayment::query()
                 ->whereIn('id', $openingPaymentIds)
-                ->where('status', PmPayment::STATUS_COMPLETED);
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->where(function ($query): void {
+                    $query->whereNull('channel')
+                        ->orWhere('channel', '!=', 'tenant_credit');
+                });
             if ($snapshotBfMode) {
                 $openingPaymentsQuery->where(function ($query): void {
                     $query->whereNull('meta->source')
@@ -142,21 +173,43 @@ final class TenantStatementLedgerService
         foreach ($invoices as $invoice) {
             $label = $invoice->invoice_no ?: 'INV-'.$invoice->id;
             $unitLabel = trim(($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—'));
+            $typeLabel = $invoice->invoice_type
+                ? strtoupper((string) $invoice->invoice_type)
+                : 'CHARGE';
+            if ((string) $invoice->invoice_type === PmInvoice::TYPE_LATE_PAYMENT) {
+                $typeLabel = 'LATE PAYMENT';
+            }
+            $memo = trim((string) ($invoice->description ?? ''));
+            if (preg_match('/^\[EZEN [^\]]+\]\s*(.+?)(?:\s*·\s*|$)/u', $memo, $m) === 1) {
+                $memo = trim($m[1]);
+            }
+            $desc = $typeLabel;
+            if ($memo !== '') {
+                $desc .= ' · '.$memo;
+            }
+            if ($unitLabel !== '— / —') {
+                $desc .= ' · '.$unitLabel;
+            }
 
             $entries->push([
                 'date' => $invoice->issue_date?->toDateString(),
                 'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
                 'type' => 'Invoice',
                 'ref' => $label,
-                'description' => ($invoice->invoice_type ? strtoupper((string) $invoice->invoice_type) : 'CHARGE').($unitLabel !== '— / —' ? ' · '.$unitLabel : ''),
+                'description' => $desc,
                 'debit' => (float) $invoice->amount,
                 'credit' => 0.0,
                 'payment_id' => null,
-                'status' => 'Issued',
+                'status' => match ((string) $invoice->status) {
+                    PmInvoice::STATUS_PAID => 'Paid',
+                    PmInvoice::STATUS_PARTIAL => 'Partial',
+                    PmInvoice::STATUS_CANCELLED => 'Cancelled',
+                    default => 'Issued',
+                },
             ]);
         }
 
-        if ($openingArrears > 0) {
+        if ($openingArrears > 0 && ! $hasStatementImport && ! $replayReplacesOpeningArrears) {
             $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
             $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
             $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
@@ -266,6 +319,21 @@ final class TenantStatementLedgerService
     }
 
     /**
+     * Same figure as the tenant statement closing balance with no date filter.
+     * Positive is debt. Negative is extra money on the account.
+     */
+    public function closingBalance(PmTenant $tenant): float
+    {
+        $ledger = $this->build($tenant, null, null);
+        $balance = (float) ($ledger['openingBalance'] ?? 0);
+        foreach ($ledger['entries'] as $entry) {
+            $balance += (float) ($entry['debit'] ?? 0) - (float) ($entry['credit'] ?? 0);
+        }
+
+        return round($balance, 2);
+    }
+
+    /**
      * @param  Collection<int, \App\Models\PmLease>  $leases
      * @return \Illuminate\Database\Eloquent\Builder<PmInvoice>
      */
@@ -280,8 +348,14 @@ final class TenantStatementLedgerService
                     if ($unitIds === []) {
                         continue;
                     }
-                    $query->orWhere(function ($inner) use ($unitIds, $lease): void {
-                        $inner->whereIn('property_unit_id', $unitIds);
+                    // Same unit can be re-let after a tenant vacates. Only pick up
+                    // invoices that are still hers (or unassigned), not the next occupant's.
+                    $query->orWhere(function ($inner) use ($unitIds, $lease, $tenant): void {
+                        $inner->whereIn('property_unit_id', $unitIds)
+                            ->where(function ($owner) use ($tenant): void {
+                                $owner->where('pm_tenant_id', $tenant->id)
+                                    ->orWhereNull('pm_tenant_id');
+                            });
                         if ($lease->start_date) {
                             $inner->whereDate('issue_date', '>=', $lease->start_date->toDateString());
                         }
@@ -506,6 +580,11 @@ final class TenantStatementLedgerService
         return $digits;
     }
 
+    private function isWalletReallocationPayment(PmPayment $payment): bool
+    {
+        return (string) $payment->channel === 'tenant_credit';
+    }
+
     private function isEzenRentReceiptImportPayment(PmPayment $payment): bool
     {
         $meta = is_array($payment->meta) ? $payment->meta : [];
@@ -520,14 +599,27 @@ final class TenantStatementLedgerService
         return ($meta['source'] ?? '') === 'ezen_rental_invoice_import';
     }
 
-    private function isEzenImportedInvoice(PmInvoice $invoice): bool
+    private function isEzenRentalInvoiceReplay(PmInvoice $invoice): bool
     {
         $origin = $invoice->carry_forward_origin;
-        if (is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import') {
+
+        return is_array($origin) && ($origin['source'] ?? '') === 'ezen_rental_invoice_import';
+    }
+
+    private function isEzenTenantStatementInvoice(PmInvoice $invoice): bool
+    {
+        $origin = $invoice->carry_forward_origin;
+        $source = is_array($origin) ? (string) ($origin['source'] ?? '') : '';
+        if ($source === 'ezen_tenant_statement_dbn') {
             return true;
         }
+        if ($source === 'ezen_rental_invoice_import') {
+            return false;
+        }
 
-        return str_starts_with(trim((string) $invoice->description), '[EZEN INV');
+        $description = trim((string) $invoice->description);
+
+        return str_starts_with($description, '[EZEN ');
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Support\Property;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +64,10 @@ final class LandlordWorkspaceScope
         }
 
         $agentId = (int) $actor->id;
+        $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+        if ($ownerIds === []) {
+            $ownerIds = [$agentId];
+        }
 
         $hasUserAgentColumn = Schema::hasColumn('users', 'agent_user_id');
         $hasOnboardAudit = Schema::hasTable('pm_portal_actions');
@@ -74,9 +79,9 @@ final class LandlordWorkspaceScope
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where(function (Builder $scoped) use ($agentId, $hasUserAgentColumn, $hasOnboardAudit, $hasPropertyLinks) {
+        return $query->where(function (Builder $scoped) use ($agentId, $ownerIds, $hasUserAgentColumn, $hasOnboardAudit, $hasPropertyLinks) {
             if ($hasUserAgentColumn) {
-                $scoped->where('users.agent_user_id', $agentId);
+                $scoped->whereIn('users.agent_user_id', $ownerIds);
             }
 
             if ($hasOnboardAudit) {
@@ -93,12 +98,12 @@ final class LandlordWorkspaceScope
 
             if ($hasPropertyLinks) {
                 $method = ($hasUserAgentColumn || $hasOnboardAudit) ? 'orWhereExists' : 'whereExists';
-                $scoped->{$method}(function ($sub) use ($agentId) {
+                $scoped->{$method}(function ($sub) use ($ownerIds) {
                     $sub->selectRaw('1')
                         ->from('property_landlord as pl')
                         ->join('properties as p', 'p.id', '=', 'pl.property_id')
                         ->whereColumn('pl.user_id', 'users.id')
-                        ->where('p.agent_user_id', $agentId);
+                        ->whereIn('p.agent_user_id', $ownerIds);
                 });
             }
         });
@@ -116,9 +121,10 @@ final class LandlordWorkspaceScope
 
         $agentId = (int) $actor->id;
 
+        $ownerIds = AgentWorkspaceScope::workspaceOwnerIds() ?: [$agentId];
         if (
             Schema::hasColumn('users', 'agent_user_id')
-            && (int) ($landlord->agent_user_id ?? 0) === $agentId
+            && in_array((int) ($landlord->agent_user_id ?? 0), $ownerIds, true)
         ) {
             return true;
         }
@@ -142,7 +148,7 @@ final class LandlordWorkspaceScope
         return DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->where('pl.user_id', $landlord->id)
-            ->where('p.agent_user_id', $agentId)
+            ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [$agentId])
             ->exists();
     }
 

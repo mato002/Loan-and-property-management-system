@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Support\Facades\Schema;
 
 class PmVendor extends Model
@@ -32,20 +32,20 @@ class PmVendor extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $user = Auth::user();
-            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+            $agentId = AgentWorkspaceScope::currentAgentUserId();
+            if ($agentId === null) {
                 return;
             }
 
-            $query->where(function (Builder $vendorQuery) use ($user) {
+            $query->where(function (Builder $vendorQuery) use ($agentId) {
                 $vendorQuery->whereRaw('0 = 1');
 
                 if (Schema::hasColumn('pm_vendors', 'agent_user_id')) {
-                    $vendorQuery->orWhere('pm_vendors.agent_user_id', $user->id);
+                    $vendorQuery->orWhereIn('pm_vendors.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                 }
 
                 $vendorQuery
-                    ->orWhereExists(function ($sub) use ($user) {
+                    ->orWhereExists(function ($sub) use ($agentId) {
                         if (! Schema::hasColumn('properties', 'agent_user_id')) {
                             $sub->selectRaw('1')->whereRaw('0 = 1');
 
@@ -57,7 +57,7 @@ class PmVendor extends Model
                             ->join('property_units as pu', 'pu.id', '=', 'r.property_unit_id')
                             ->join('properties as p', 'p.id', '=', 'pu.property_id')
                             ->whereColumn('j.pm_vendor_id', 'pm_vendors.id')
-                            ->where('p.agent_user_id', $user->id);
+                            ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
                     });
             });
         });

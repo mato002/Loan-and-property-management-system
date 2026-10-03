@@ -1203,6 +1203,9 @@ class LoanBookLoansController extends Controller
         }
 
         $validated = $request->validate($rules);
+        if (isset($validated['interest_rate'])) {
+            $validated['interest_rate'] = $this->loanMath->normalizeRatePercent((float) $validated['interest_rate']);
+        }
         if (isset($validated['interest_rate_period'])) {
             $validated['interest_rate_period'] = strtolower((string) $validated['interest_rate_period']);
         }
@@ -1634,6 +1637,7 @@ class LoanBookLoansController extends Controller
         $originalTermValue = (int) ($loan->term_value ?? 0);
         $originalTermUnit = strtolower((string) ($loan->term_unit ?? ''));
         $originalRatePeriod = strtolower((string) ($loan->interest_rate_period ?? ''));
+        $originalRate = round((float) ($loan->interest_rate ?? 0), 4);
         $originalPrincipalOutstanding = round((float) ($loan->principal_outstanding ?? 0), 2);
         $originalInterestOutstanding = round((float) ($loan->interest_outstanding ?? 0), 2);
         $originalBalance = round((float) ($loan->balance ?? 0), 2);
@@ -1646,6 +1650,8 @@ class LoanBookLoansController extends Controller
         $catalogPeriod = $this->catalogInterestRatePeriod((string) ($loan->product_name ?? ''));
         $ratePeriod = $catalogPeriod
             ?? strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
+        $normalizedRate = $this->loanMath->normalizeRatePercent((float) $loan->interest_rate);
+        $loan->interest_rate = $normalizedRate;
 
         $hasProcessedRepayments = $loan->processedRepayments()->exists();
         $bookedPrincipal = max(0.0, (float) $loan->principal);
@@ -1675,6 +1681,7 @@ class LoanBookLoansController extends Controller
             $originalTermValue === $termValue
             && $originalTermUnit === $normalizedTermUnit
             && $originalRatePeriod === $normalizedRatePeriod
+            && $originalRate === round($normalizedRate, 4)
             && $originalPrincipalOutstanding === $principalOutstanding
             && $originalInterestOutstanding === round((float) $computedInterestOutstanding, 2)
             && $originalBalance === round((float) $computedBalance, 2)
@@ -1687,6 +1694,7 @@ class LoanBookLoansController extends Controller
         $loan->term_value = $termValue;
         $loan->term_unit = $normalizedTermUnit;
         $loan->interest_rate_period = $normalizedRatePeriod;
+        $loan->interest_rate = $normalizedRate;
         $loan->principal_outstanding = $principalOutstanding;
         $loan->interest_outstanding = $computedInterestOutstanding;
         $loan->balance = $computedBalance;
@@ -1706,7 +1714,7 @@ class LoanBookLoansController extends Controller
     }
 
     /**
-     * @return array{principal_outstanding: float, interest_outstanding: float, fees_outstanding: float, balance: float, status: string, interest_rate_period: ?string}
+     * @return array{principal_outstanding: float, interest_outstanding: float, fees_outstanding: float, balance: float, status: string, interest_rate_period: ?string, interest_rate: float}
      */
     private function computeLoanRepaymentSnapshotState(LoanBookLoan $loan): array
     {
@@ -1714,6 +1722,8 @@ class LoanBookLoansController extends Controller
         if ($catalogPeriod !== null) {
             $loan->interest_rate_period = $catalogPeriod;
         }
+        $normalizedRate = $this->loanMath->normalizeRatePercent((float) $loan->interest_rate);
+        $loan->interest_rate = $normalizedRate;
 
         $disbursedPrincipal = (float) $loan->disbursements()->sum('amount');
         $storedPrincipal = max(0.0, (float) $loan->principal);
@@ -1790,17 +1800,21 @@ class LoanBookLoansController extends Controller
             'balance' => $balance,
             'status' => $newStatus,
             'interest_rate_period' => $catalogPeriod,
+            'interest_rate' => $normalizedRate,
         ];
     }
 
     private function applyRebuildSnapshotIfNeeded(LoanBookLoan $loan, string $actorName): bool
     {
         $originalPeriod = strtolower(trim((string) ($loan->interest_rate_period ?? '')));
+        $originalRate = round((float) $loan->interest_rate, 4);
         $snap = $this->computeLoanRepaymentSnapshotState($loan);
         $periodToStore = is_string($snap['interest_rate_period'] ?? null) ? $snap['interest_rate_period'] : null;
         $periodChanged = $periodToStore !== null && $periodToStore !== $originalPeriod;
+        $rateChanged = round((float) $snap['interest_rate'], 4) !== $originalRate;
 
         $unchanged = ! $periodChanged
+            && ! $rateChanged
             && round((float) $snap['principal_outstanding'], 2) === round((float) $loan->principal_outstanding, 2)
             && round((float) $snap['interest_outstanding'], 2) === round((float) $loan->interest_outstanding, 2)
             && round((float) $snap['fees_outstanding'], 2) === round((float) $loan->fees_outstanding, 2)
@@ -1826,6 +1840,9 @@ class LoanBookLoansController extends Controller
         ];
         if ($periodToStore !== null) {
             $payload['interest_rate_period'] = $periodToStore;
+        }
+        if ($rateChanged) {
+            $payload['interest_rate'] = $snap['interest_rate'];
         }
 
         $loan->update($payload);

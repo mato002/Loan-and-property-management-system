@@ -3,8 +3,8 @@
     $showMessageFormByDefault = $errors->hasAny(['channel', 'to_address', 'subject', 'body']);
 @endphp
 <x-property.workspace
-    title="SMS / email"
-    subtitle="Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications."
+    :title="$pageTitle ?? 'SMS / email'"
+    :subtitle="$pageSubtitle ?? 'Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications.'"
     back-route="property.communications.index"
     :stats="$stats"
     :columns="[]"
@@ -58,7 +58,7 @@
                 max-width="4xl"
             >
             <form method="post" action="{{ route('property.communications.messages.store') }}" class="space-y-3" x-data="{
-                channel: '{{ old('channel', 'email') }}',
+                channel: '{{ old('channel', $defaultComposeChannel ?? 'email') }}',
                 bodyText: @js(old('body', '')),
                 subjectText: @js(old('subject', '')),
                 templateId: @js(old('message_template_id', '')),
@@ -191,8 +191,8 @@
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
                         <select name="channel" x-model="channel" @change="onChannelChange()" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                            <option value="email" @selected(old('channel') === 'email')>Email</option>
-                            <option value="sms" @selected(old('channel') === 'sms')>SMS</option>
+                            <option value="email" @selected(old('channel', $defaultComposeChannel ?? 'email') === 'email')>Email</option>
+                            <option value="sms" @selected(old('channel', $defaultComposeChannel ?? 'email') === 'sms')>SMS</option>
                         </select>
                     </div>
                     <div>

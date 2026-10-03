@@ -2,17 +2,17 @@
     $readingAnomalies = $readingAnomalies ?? [];
 @endphp
 <div class="space-y-3">
-    <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="space-y-2">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Recorded readings</h3>
-        <form method="get" action="{{ route('property.revenue.utilities', absolute: false) }}" class="flex flex-wrap items-end gap-2 w-full sm:w-auto">
-            <input type="search" name="wr_q" value="{{ $filters['wr_q'] ?? '' }}" placeholder="Search unit…" class="flex-1 min-w-[140px] rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px]" />
-            <input type="month" name="wr_month" value="{{ $filters['wr_month'] ?? '' }}" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px]" />
-            <select name="wr_status" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px]">
+        <form method="get" action="{{ route('property.revenue.utilities', absolute: false) }}" class="flex flex-nowrap items-center gap-2 overflow-x-auto">
+            <input type="search" name="wr_q" value="{{ $filters['wr_q'] ?? '' }}" placeholder="Search unit…" class="w-44 shrink-0 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[38px]" />
+            <input type="month" name="wr_month" value="{{ $filters['wr_month'] ?? '' }}" class="w-36 shrink-0 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[38px]" />
+            <select name="wr_status" class="w-36 shrink-0 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[38px]">
                 <option value="">All statuses</option>
                 <option value="recorded" @selected(($filters['wr_status'] ?? '') === 'recorded')>Recorded</option>
                 <option value="invoiced" @selected(($filters['wr_status'] ?? '') === 'invoiced')>Invoiced</option>
             </select>
-            <select name="wr_property_id" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px] max-w-[160px]">
+            <select name="wr_property_id" class="w-44 shrink-0 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[38px]">
                 <option value="0">All properties</option>
                 @foreach(($wrProperties ?? []) as $p)
                     <option value="{{ (int) $p->id }}" @selected((int) ($filters['wr_property_id'] ?? 0) === (int) $p->id)>{{ $p->name }}</option>
@@ -21,7 +21,7 @@
             <input type="hidden" name="q" value="{{ $filters['q'] ?? '' }}" />
             <input type="hidden" name="charge_type" value="{{ $filters['charge_type'] ?? '' }}" />
             <input type="hidden" name="month" value="{{ $filters['month'] ?? '' }}" />
-            <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white min-h-[44px]">Filter</button>
+            <button type="submit" class="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white min-h-[38px]">Filter</button>
         </form>
     </div>
 

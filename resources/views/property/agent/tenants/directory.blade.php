@@ -57,6 +57,7 @@
         <form
             method="post"
             action="{{ route('property.tenants.store') }}"
+            enctype="multipart/form-data"
             x-data="{
                 showOpeningArrearsSection: @js($errors->hasAny(['opening_arrears_items','opening_arrears_items.*.type','opening_arrears_items.*.period','opening_arrears_items.*.amount','opening_arrears_amount','opening_arrears_as_of','opening_arrears_notes']) || count((array) old('opening_arrears_items', [])) > 0 || (float) old('opening_arrears_amount', 0) > 0 || trim((string) old('opening_arrears_notes', '')) !== ''),
                 arrearsItems: @js(array_values((array) old('opening_arrears_items', []))),
@@ -78,7 +79,7 @@
             <h3 class="property-attention-title dark:text-white">Add Tenant</h3>
             <p class="property-attention-hint dark:text-slate-300">Create the tenant profile first, then move to lease allocation in the next step.</p>
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Surname / display name</label>
                 <input type="text" name="name" value="{{ old('name') }}" @required($tenantRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
@@ -106,11 +107,7 @@
                     @error('account_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Emergency contact</label>
-                <input type="text" name="emergency_contact" value="{{ old('emergency_contact') }}" @required($tenantRequired('emergency_contact', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Next of kin name & phone" />
-                @error('emergency_contact')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
+            @include('property.agent.tenants.partials.tenant_record_fields')
             <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Risk</label>

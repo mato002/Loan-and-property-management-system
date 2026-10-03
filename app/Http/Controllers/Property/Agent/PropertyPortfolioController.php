@@ -9,8 +9,10 @@ use App\Models\ExpenseDefinition;
 use App\Models\PmFieldOfficer;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPortalProfile;
+use App\Models\PmLandlordDocument;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
+use App\Models\PmUnitUtilityCharge;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
 use App\Models\Property;
@@ -22,6 +24,7 @@ use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\PhoneLink;
 use App\Support\Property\PropertyEntityHub;
+use App\Support\Property\PropertyWorkspaceBranding;
 use App\Services\Property\LandlordHubDataService;
 use App\Support\Property\ResponsiveTableColumns;
 use App\Support\Property\UnitListPresentation;
@@ -33,6 +36,7 @@ use App\Services\Property\LandlordPortalOnboardingService;
 use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyOffboardingService;
 use App\Services\Property\PropertyRegisterImportService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -196,9 +200,13 @@ class PropertyPortfolioController extends Controller
         ];
 
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
+        $chargeTypeLabelsByPropertyId = $this->chargeTypeLabelsByPropertyId(
+            $portfolio->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $propertyChargeTemplatesByPropertyId,
+        );
 
         $tableRowTones = [];
-        $rows = $portfolio->getCollection()->map(function (Property $p) use ($propertyChargeTemplatesByPropertyId, &$tableRowTones) {
+        $rows = $portfolio->getCollection()->map(function (Property $p) use ($chargeTypeLabelsByPropertyId, &$tableRowTones) {
             $landlordCount = $p->landlords->count();
             $landlordCell = $landlordCount === 0
                 ? '—'
@@ -247,8 +255,7 @@ class PropertyPortfolioController extends Controller
                 e($p->managementStatusLabel()).
                 '</span>'
             );
-            $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-            $chargeTypeLabels = $this->uniqueChargeTypeLabels($chargeTemplates);
+            $chargeTypeLabels = $chargeTypeLabelsByPropertyId[(string) $p->id] ?? [];
             $chargeBreakdownCell = $chargeTypeLabels === []
                 ? '—'
                 : new HtmlString(
@@ -288,9 +295,10 @@ class PropertyPortfolioController extends Controller
                 '</div>'
             );
 
+            $showUrl = route('property.properties.show', $p, false);
             $nameCodeCell = new HtmlString(
                 '<div class="space-y-0.5">'.
-                '<div class="font-medium text-slate-900">'.e((string) $p->name).'</div>'.
+                '<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 hover:text-indigo-700">'.e((string) $p->name).'</a>'.
                 '<div class="text-xs text-slate-500">'.e((string) ($p->code ?? '—')).'</div>'.
                 '</div>'
             );
@@ -398,6 +406,10 @@ class PropertyPortfolioController extends Controller
 
         $rows = $q->orderBy('name')->get();
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
+        $chargeTypeLabelsByPropertyId = $this->chargeTypeLabelsByPropertyId(
+            $rows->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $propertyChargeTemplatesByPropertyId,
+        );
         $format = TabularExport::requestedFormat(
             $request->query('export'),
             $request->query('format'),
@@ -405,17 +417,15 @@ class PropertyPortfolioController extends Controller
 
         return TabularExport::stream(
             'properties_'.now()->format('Ymd_His'),
-            ['ID', 'Name', 'Code', 'Address', 'City', 'Total Units', 'Occupied Units', 'Vacant Units', 'Utility charges', 'Landlords', 'Status'],
-            function () use ($rows, $propertyChargeTemplatesByPropertyId) {
+            ['Name', 'Code', 'Address', 'City', 'Units', 'Occupied', 'Vacant', 'Utility charges', 'Landlords', 'Management', 'Occupancy'],
+            function () use ($rows, $chargeTypeLabelsByPropertyId) {
                 foreach ($rows as $p) {
                     $status = $p->units_count === 0
                         ? 'No units'
                         : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
-                    $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
-                    $chargeSummary = implode('; ', $this->uniqueChargeTypeLabels($chargeTemplates));
+                    $chargeSummary = implode('; ', $chargeTypeLabelsByPropertyId[(string) $p->id] ?? []);
 
                     yield [
-                        $p->id,
                         $p->name,
                         $p->code,
                         $p->address_line,
@@ -425,11 +435,13 @@ class PropertyPortfolioController extends Controller
                         $p->vacant_units_count,
                         $chargeSummary,
                         $p->landlords->pluck('name')->join(', '),
+                        $p->managementStatusLabel(),
                         $status,
                     ];
                 }
             },
             $format,
+            ['title' => 'Properties'],
         );
     }
 
@@ -635,7 +647,9 @@ class PropertyPortfolioController extends Controller
         $collectionRate = $invoiced > 0 ? round(($collected / $invoiced) * 100, 1) : 0.0;
         $avgArrearsPerUnit = $totalUnits > 0 ? ($arrears / $totalUnits) : 0.0;
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+        $isStatementsExport = (string) $request->query('tab') === 'statements'
+            && (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true) || $request->boolean('print') || (string) $request->query('print_scope') !== '');
+        if (! $isStatementsExport && in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
             if ($exportReport === 'units') {
                 return TabularExport::stream(
                     'property-'.$property->id.'-units',
@@ -765,6 +779,141 @@ class PropertyPortfolioController extends Controller
 
         $activeTab = PropertyEntityHub::activeTabFromRequest($request, 'property');
 
+        $offboardingStep = 1;
+        $offboardingCheck = [];
+        $offboardingCanDetach = ['allowed' => false, 'reasons' => []];
+        $offboardingCanArchive = ['allowed' => false, 'reasons' => []];
+        if ($activeTab === 'offboarding') {
+            $offboarding = app(PropertyOffboardingService::class);
+            $loads = ['landlords' => fn ($q) => $q->orderBy('name')];
+            if (Schema::hasColumn('properties', 'archived_by')) {
+                $loads['archivedByUser'] = fn ($q) => $q->select('id', 'name');
+            }
+            $property->load($loads);
+            $override = (bool) ($request->user()?->hasPmPermission('property.archive.override'));
+            $offboardingStep = max(1, min(5, (int) $request->query('step', 1)));
+            $offboardingCheck = $offboarding->statusCheck($property);
+            $offboardingCanDetach = $offboarding->canDetachLandlord($property, $override);
+            $offboardingCanArchive = $offboarding->canArchive($property, $override);
+        }
+
+        $propertyStatement = [
+            'fy' => $fy,
+            'open_month' => '',
+            'year_settlement' => null,
+            'month_settlement' => null,
+            'monthly' => [],
+            'unit_months' => [],
+            'month_keys' => [],
+        ];
+        if ($activeTab === 'statements') {
+            $landlordId = (int) ($property->landlords->first()?->id ?? 0);
+            $openMonth = preg_match('/^\d{4}-\d{2}$/', $month) === 1 ? $month : '';
+            $fromYm = (string) $request->query('from', '');
+            $toYm = (string) $request->query('to', '');
+            $reportMode = strtolower((string) $request->query('report', ''));
+            $exportScope = strtolower((string) $request->query('export_scope', ''));
+            if (in_array($exportScope, ['summary', 'detail'], true) && $reportMode === '') {
+                $reportMode = $exportScope;
+            }
+            $isCustomRange = preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1;
+
+            $propertyStatement = app(LandlordSettlementService::class)->buildPropertyStatementHub(
+                (int) $property->id,
+                $fy,
+                $openMonth !== '' ? $openMonth : null,
+                $landlordId > 0 ? $landlordId : null,
+            );
+
+            $printScope = strtolower((string) $request->query('print_scope', ''));
+            $export = strtolower((string) $request->query('export', ''));
+            $wantsOutput = in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
+                || $request->boolean('print')
+                || $printScope !== '';
+
+            if ($wantsOutput) {
+                $settlementService = app(LandlordSettlementService::class);
+
+                if ($isCustomRange) {
+                    $rangeStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+                    $rangeEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+                    if ($rangeEnd->lt($rangeStart)) {
+                        [$rangeStart, $rangeEnd] = [$rangeEnd->copy()->startOfMonth(), $rangeStart->copy()->endOfMonth()];
+                    }
+                    $rangeLabel = $fromYm === $toYm
+                        ? $rangeStart->format('F Y')
+                        : $rangeStart->format('M Y').' – '.$rangeEnd->format('M Y');
+                    $rangeSettlement = $settlementService->buildPropertyPeriodStatement(
+                        (int) $property->id,
+                        $rangeStart,
+                        $rangeEnd,
+                        $landlordId > 0 ? $landlordId : null,
+                    );
+
+                    if ($reportMode === 'summary' || in_array($exportScope, ['summary', 'months'], true)) {
+                        $monthly = [];
+                        for ($year = (int) $rangeStart->year; $year <= (int) $rangeEnd->year; $year++) {
+                            $monthly = array_merge(
+                                $monthly,
+                                $settlementService->monthlyActivityForProperty((int) $property->id, $year)
+                            );
+                        }
+                        $monthly = array_values(array_filter(
+                            $monthly,
+                            static fn (array $row): bool => ($row['month'] ?? '') >= min($fromYm, $toYm) && ($row['month'] ?? '') <= max($fromYm, $toYm)
+                        ));
+
+                        return TabularExport::stream(
+                            'property-'.$property->id.'-months-'.Str::slug($rangeLabel),
+                            ['Month', 'Month label', 'Invoiced', 'Received'],
+                            function () use ($monthly) {
+                                foreach ($monthly as $row) {
+                                    yield [
+                                        (string) ($row['month'] ?? ''),
+                                        (string) ($row['month_label'] ?? ''),
+                                        number_format((float) ($row['billed'] ?? 0), 2, '.', ''),
+                                        number_format((float) ($row['received'] ?? 0), 2, '.', ''),
+                                    ];
+                                }
+                            },
+                            $export !== '' ? $export : 'csv',
+                        );
+                    }
+
+                    return $this->streamPropertyAccountStatement(
+                        $property,
+                        [$rangeSettlement],
+                        $rangeLabel,
+                        $export !== '' ? $export : 'print',
+                    );
+                }
+
+                if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)
+                    && in_array($exportScope, ['year_units', 'month_units', 'months', 'unit_grid', 'year', 'month'], true)) {
+                    return $this->streamPropertyStatementTable($property, $propertyStatement, $exportScope, $export);
+                }
+
+                if ($reportMode === 'summary' || $exportScope === 'summary') {
+                    return $this->streamPropertyStatementTable($property, $propertyStatement, 'months', $export !== '' ? $export : 'csv');
+                }
+
+                $wantYear = $printScope === 'year'
+                    || in_array($exportScope, ['year', 'year_units', 'detail'], true)
+                    || ($reportMode === 'detail' && $openMonth === '' && $printScope === '');
+                $settlement = $wantYear
+                    ? ($propertyStatement['year_settlement'] ?? null)
+                    : ($propertyStatement['month_settlement'] ?? $propertyStatement['year_settlement'] ?? null);
+                if (is_array($settlement)) {
+                    return $this->streamPropertyAccountStatement(
+                        $property,
+                        [$settlement],
+                        (string) ($settlement['period_label'] ?? $periodLabel),
+                        $export !== '' ? $export : 'print',
+                    );
+                }
+            }
+        }
+
         $maintenanceRequests = collect();
         if ($unitIds !== [] && in_array($activeTab, ['maintenance', 'overview'], true)) {
             $maintenanceRequests = PmMaintenanceRequest::query()
@@ -885,6 +1034,7 @@ class PropertyPortfolioController extends Controller
                 'collection_rate' => $collectionRate,
                 'avg_arrears_per_unit' => $avgArrearsPerUnit,
             ],
+            'propertyStatement' => $propertyStatement,
             'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
             'propertyExpenseDefinitions' => $this->propertyExpenseDefinitions((int) $property->id),
             'propertyDepositDefinitions' => $this->propertyDepositDefinitions((int) $property->id),
@@ -892,6 +1042,10 @@ class PropertyPortfolioController extends Controller
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(['id', 'name', 'email', 'phone']),
             'isManagementReadOnly' => $property->isManagementReadOnly(),
             'managementStatusLabel' => $property->managementStatusLabel(),
+            'step' => $offboardingStep,
+            'check' => $offboardingCheck,
+            'canDetach' => $offboardingCanDetach,
+            'canArchive' => $offboardingCanArchive,
         ]);
     }
 
@@ -922,14 +1076,19 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
             'expense_definitions' => ['nullable', 'array', 'max:50'],
             'expense_definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'expense_definitions.*.charge_key' => ['nullable', 'string', 'max:64'],
@@ -956,7 +1115,10 @@ class PropertyPortfolioController extends Controller
         $hasChargeTemplates = $request->boolean('utility_templates_save') || $request->has('charge_templates');
         $hasExpenseDefinitions = $request->has('expense_definitions');
         $hasDepositDefinitions = $request->boolean('deposit_rules_save') || $request->has('deposit_definitions');
-        $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
+        $chargeTemplates = $this->appendBilledUtilityTemplates(
+            (int) $property->id,
+            $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? [])),
+        );
         $expenseDefinitions = $this->normalizePropertyExpenseDefinitions((int) $property->id, (array) ($data['expense_definitions'] ?? []));
         $depositDefinitions = $this->normalizePropertyDepositDefinitions((int) $property->id, (array) ($data['deposit_definitions'] ?? []));
         if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
@@ -968,6 +1130,7 @@ class PropertyPortfolioController extends Controller
         unset($data['charge_templates']);
         unset($data['expense_definitions']);
         unset($data['deposit_definitions']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -1342,7 +1505,7 @@ class PropertyPortfolioController extends Controller
                 'p.name as property_name',
             ]);
         if ($actor && $this->isAgentActor($actor)) {
-            $linksQuery->where('p.agent_user_id', (int) $actor->id);
+            $linksQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $actor->id]);
         }
         $links = $linksQuery->get();
 
@@ -1619,15 +1782,34 @@ class PropertyPortfolioController extends Controller
      *   recentCollections:\Illuminate\Support\Collection<int,object>
      * }
      */
-    private function buildLandlordSnapshot(User $landlord, string $month, int $fy): array
-    {
+    private function buildLandlordSnapshot(
+        User $landlord,
+        string $month,
+        int $fy,
+        string $fromYm = '',
+        string $toYm = '',
+        ?int $propertyId = null,
+    ): array {
         if ($fy < 2000 || $fy > 2100) {
             $fy = (int) now()->year;
         }
-        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+        $isRange = preg_match('/^\d{4}-\d{2}$/', $fromYm) === 1 && preg_match('/^\d{4}-\d{2}$/', $toYm) === 1;
+        if ($isRange) {
+            $periodStart = Carbon::createFromFormat('Y-m', $fromYm)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $toYm)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+            }
+            $periodLabel = $fromYm === $toYm
+                ? $periodStart->format('M Y')
+                : $periodStart->format('M Y').' – '.$periodEnd->format('M Y');
+            $fy = (int) $periodStart->year;
+            $month = $fromYm === $toYm ? $fromYm : '';
+        } elseif (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
             $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
             $periodEnd = $periodStart->copy()->endOfMonth();
             $periodLabel = $periodStart->format('M Y');
+            $fy = (int) $periodStart->year;
         } else {
             $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
             $periodEnd = $periodStart->copy()->endOfYear();
@@ -1647,8 +1829,11 @@ class PropertyPortfolioController extends Controller
                 'p.name as property_name',
             ])
             ->orderBy('p.name');
+        if ($propertyId !== null && $propertyId > 0) {
+            $propertyLinksQuery->where('pl.property_id', $propertyId);
+        }
         if (AgentWorkspaceScope::shouldApply()) {
-            $propertyLinksQuery->where('p.agent_user_id', (int) Auth::id());
+            $propertyLinksQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
         }
         $propertyLinks = $propertyLinksQuery->get();
 
@@ -1693,8 +1878,8 @@ class PropertyPortfolioController extends Controller
         $commissionOverrides = [];
         $decodedOverrides = json_decode($commissionOverridesRaw, true);
         if (is_array($decodedOverrides)) {
-            foreach ($decodedOverrides as $propertyId => $pct) {
-                $pid = (int) $propertyId;
+            foreach ($decodedOverrides as $overridePropertyId => $pct) {
+                $pid = (int) $overridePropertyId;
                 if ($pid <= 0 || ! is_numeric($pct)) {
                     continue;
                 }
@@ -1780,8 +1965,8 @@ class PropertyPortfolioController extends Controller
         $monthlyPack = $this->buildLandlordMonthlyBreakdown(
             $propertyLinks,
             $propertyIds,
-            Carbon::create($fy, 1, 1)->startOfDay(),
-            Carbon::create($fy, 12, 31)->endOfDay(),
+            $isRange ? $periodStart->copy()->startOfMonth() : Carbon::create($fy, 1, 1)->startOfDay(),
+            $isRange ? $periodEnd->copy()->endOfMonth() : Carbon::create($fy, 12, 31)->endOfDay(),
             (int) $landlord->id,
         );
         $monthlyBreakdown = $monthlyPack['months'];
@@ -2007,31 +2192,48 @@ class PropertyPortfolioController extends Controller
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
-        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+        $report = $this->resolveLandlordStatementReportOptions($request, $landlord, $fy, $month);
+        $snapshot = $this->buildLandlordSnapshot(
+            $landlord,
+            $report['month'],
+            $report['fy'],
+            $report['from'],
+            $report['to'],
+            $report['property_id'],
+        );
 
         $export = $request->string('export')->toString();
-        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+        if (in_array($export, ['csv', 'xls', 'xlsx', 'pdf', 'word'], true)) {
             $exportScope = strtolower((string) $request->query('export_scope', ''));
-            $isMonthScoped = preg_match('/^\d{4}-\d{2}$/', $month) === 1;
+            $wantDetail = $report['report'] === 'detail'
+                || in_array($exportScope, ['detail', 'statement'], true)
+                || ($report['report'] !== 'summary' && $report['is_month'] && ! in_array($exportScope, ['monthly', 'summary', 'properties'], true));
 
-            // Single-month export = full property account statement (units / B/F / invoiced / received), not FY summaries.
-            if ($isMonthScoped && $exportScope !== 'monthly') {
-                return $this->streamLandlordMonthAccountStatements($landlord, $month, $export);
+            if ($wantDetail && ! in_array($exportScope, ['monthly', 'summary', 'properties'], true)) {
+                return $this->streamLandlordAccountStatementsForPeriod(
+                    $landlord,
+                    $report['period_start'],
+                    $report['period_end'],
+                    $report['period_label'],
+                    $export,
+                    $report['property_id'],
+                );
             }
 
-            $wantMonthly = $exportScope === 'monthly' || ! $isMonthScoped;
-            if ($wantMonthly) {
+            $wantMonthly = $exportScope === 'monthly'
+                || ($exportScope === '' && ! $report['is_month'] && $report['report'] === 'summary');
+            if ($wantMonthly && ! in_array($exportScope, ['summary', 'properties', 'detail', 'statement'], true)) {
                 return TabularExport::stream(
-                    'landlord-'.$landlord->id.'-monthly-'.$snapshot['fyValue'],
+                    'landlord-'.$landlord->id.'-monthly-'.Str::slug($report['period_label']),
                     [
-                        'Landlord Name', 'Landlord Email', 'FY', 'Month', 'Month label', 'Gross collected', 'Paid to landlord', 'Pending', 'Owner share', 'Agent earning', 'Properties with collections',
+                        'Landlord Name', 'Landlord Email', 'Period', 'Month', 'Month label', 'Gross collected', 'Paid to landlord', 'Pending', 'Owner share', 'Agent earning', 'Properties with collections',
                     ],
-                    function () use ($landlord, $snapshot) {
-                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $snapshot) {
+                    function () use ($landlord, $snapshot, $report) {
+                        return collect($snapshot['monthlyBreakdown'] ?? [])->map(function (array $row) use ($landlord, $report) {
                             return [
                                 (string) $landlord->name,
                                 (string) $landlord->email,
-                                (string) ($snapshot['fyValue'] ?? ''),
+                                (string) $report['period_label'],
                                 (string) ($row['month'] ?? ''),
                                 (string) ($row['month_label'] ?? ''),
                                 (string) number_format((float) ($row['gross_collected'] ?? 0), 2, '.', ''),
@@ -2048,16 +2250,16 @@ class PropertyPortfolioController extends Controller
             }
 
             return TabularExport::stream(
-                'landlord-'.$landlord->id.'-snapshot'.($month !== '' ? '-'.$month : ''),
+                'landlord-'.$landlord->id.'-snapshot-'.Str::slug($report['period_label']),
                 [
                     'Landlord Name', 'Landlord Email', 'Period', 'Property', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection',
                 ],
-                function () use ($landlord, $snapshot) {
-                    return $snapshot['propertyBreakdown']->map(function (array $row) use ($landlord, $snapshot) {
+                function () use ($landlord, $snapshot, $report) {
+                    return $snapshot['propertyBreakdown']->map(function (array $row) use ($landlord, $report) {
                         return [
                             (string) $landlord->name,
                             (string) $landlord->email,
-                            (string) $snapshot['periodLabel'],
+                            (string) $report['period_label'],
                             (string) ($row['property_name'] ?? ''),
                             (string) number_format((float) ($row['ownership_percent'] ?? 0), 2),
                             (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
@@ -2092,13 +2294,17 @@ class PropertyPortfolioController extends Controller
         }
 
         $linkableProperties = Property::query()
-            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', (int) $request->user()->id))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->whereIn('agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) $request->user()->id]))
             ->whereDoesntHave('landlords')
             ->orderBy('name')
             ->get(['id', 'name']);
 
         return property_view('property.agent.landlords.show', [
             'landlord' => $landlord,
+            'landlordProfile' => PmLandlordPortalProfile::forUser($landlord),
+            'landlordDocuments' => Schema::hasTable('pm_landlord_documents')
+                ? PmLandlordDocument::query()->where('user_id', $landlord->id)->latest()->get()
+                : collect(),
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             'activeTab' => $activeTab,
             'linkableProperties' => $linkableProperties,
@@ -2126,31 +2332,179 @@ class PropertyPortfolioController extends Controller
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
+        $report = $this->resolveLandlordStatementReportOptions($request, $landlord, $fy, $month);
 
-        // Month print = Ezen-style property account statement(s) for that month only.
-        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
-            $settlements = $this->buildLandlordMonthSettlements($landlord, $month);
-            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        if ($report['report'] === 'detail') {
+            $settlements = $this->buildLandlordSettlementsForPeriod(
+                $landlord,
+                $report['period_start'],
+                $report['period_end'],
+                $report['property_id'],
+            );
 
             return view('property.agent.landlords.landlord_monthly_account_statements_print', [
                 'landlord' => $landlord,
                 'settlements' => $settlements,
-                'periodLabel' => $periodStart->format('F').' - '.$periodStart->format('Y'),
-                'branding' => $this->landlordStatementBranding(),
+                'periodLabel' => $report['period_label'],
+                'branding' => $this->landlordStatementBranding(
+                    $report['property_id'] ? Property::query()->find($report['property_id']) : null,
+                    $landlord
+                ),
                 'generatedAt' => now()->format('d M Y H:i'),
                 'autoPrint' => $request->boolean('print'),
             ]);
         }
 
-        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+        $snapshot = $this->buildLandlordSnapshot(
+            $landlord,
+            $report['month'],
+            $report['fy'],
+            $report['from'],
+            $report['to'],
+            $report['property_id'],
+        );
 
         return view('property.agent.landlords.landlord_statement_print', [
             'landlord' => $landlord,
-            'branding' => $this->landlordStatementBranding(),
+            'branding' => $this->landlordStatementBranding(
+                $report['property_id'] ? Property::query()->find($report['property_id']) : null,
+                $landlord
+            ),
             'generatedAt' => now()->format('Y-m-d H:i'),
             'autoPrint' => $request->boolean('print'),
             ...$snapshot,
         ]);
+    }
+
+    /**
+     * Resolve landlord statement report options: property, period, summary vs full detail.
+     *
+     * @return array{
+     *     report: string,
+     *     property_id: int|null,
+     *     period_start: \Illuminate\Support\Carbon,
+     *     period_end: \Illuminate\Support\Carbon,
+     *     period_label: string,
+     *     month: string,
+     *     fy: int,
+     *     from: string,
+     *     to: string,
+     *     is_month: bool,
+     *     is_range: bool
+     * }
+     */
+    private function resolveLandlordStatementReportOptions(Request $request, User $landlord, int $defaultFy, string $defaultMonth = ''): array
+    {
+        $fy = (int) $request->query('fy', $defaultFy);
+        if ($fy < 2000 || $fy > 2100) {
+            $fy = (int) now()->year;
+        }
+
+        $month = (string) $request->query('month', $defaultMonth);
+        $from = (string) $request->query('from', '');
+        $to = (string) $request->query('to', '');
+        $propertyId = (int) $request->query('property_id', 0);
+        if ($propertyId > 0 && ! $this->landlordOwnsProperty($landlord, $propertyId)) {
+            $propertyId = 0;
+        }
+
+        $isRange = preg_match('/^\d{4}-\d{2}$/', $from) === 1 && preg_match('/^\d{4}-\d{2}$/', $to) === 1;
+        $isMonth = ! $isRange && preg_match('/^\d{4}-\d{2}$/', $month) === 1;
+
+        if ($isRange) {
+            $periodStart = Carbon::createFromFormat('Y-m', $from)->startOfMonth();
+            $periodEnd = Carbon::createFromFormat('Y-m', $to)->endOfMonth();
+            if ($periodEnd->lt($periodStart)) {
+                [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfMonth(), $periodStart->copy()->endOfMonth()];
+                [$from, $to] = [$to, $from];
+            }
+            $periodLabel = $from === $to
+                ? $periodStart->format('F Y')
+                : $periodStart->format('M Y').' – '.$periodEnd->format('M Y');
+            $fy = (int) $periodStart->year;
+            $month = $from === $to ? $from : '';
+        } elseif ($isMonth) {
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('F Y');
+            $fy = (int) $periodStart->year;
+            $from = $month;
+            $to = $month;
+        } else {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $periodLabel = 'FY '.$fy;
+            $month = '';
+            $from = '';
+            $to = '';
+        }
+
+        $reportRaw = strtolower(trim((string) $request->query('report', '')));
+        if (! in_array($reportRaw, ['summary', 'detail'], true)) {
+            // Month defaults to full unit statement; year/range defaults to summary unless explicitly detailed.
+            $reportRaw = $isMonth ? 'detail' : 'summary';
+        }
+
+        if ($propertyId > 0) {
+            $propertyName = (string) (Property::query()->whereKey($propertyId)->value('name') ?? 'Property');
+            $periodLabel .= ' · '.$propertyName;
+        }
+
+        return [
+            'report' => $reportRaw,
+            'property_id' => $propertyId > 0 ? $propertyId : null,
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'period_label' => $periodLabel,
+            'month' => $month,
+            'fy' => $fy,
+            'from' => $from,
+            'to' => $to,
+            'is_month' => $isMonth || ($isRange && $from === $to),
+            'is_range' => $isRange && $from !== $to,
+        ];
+    }
+
+    private function landlordOwnsProperty(User $landlord, int $propertyId): bool
+    {
+        $query = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->where('pl.property_id', $propertyId);
+        if (AgentWorkspaceScope::shouldApply()) {
+            $query->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * Full property-account statements for linked properties over any period.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildLandlordSettlementsForPeriod(User $landlord, Carbon $periodStart, Carbon $periodEnd, ?int $propertyId = null): array
+    {
+        $propertyIdsQuery = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->orderBy('p.name')
+            ->select('pl.property_id');
+        if ($propertyId !== null && $propertyId > 0) {
+            $propertyIdsQuery->where('pl.property_id', $propertyId);
+        }
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertyIdsQuery->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds() ?: [(int) Auth::id()]);
+        }
+
+        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+        $service = app(LandlordSettlementService::class);
+        $settlements = [];
+        foreach ($propertyIds as $pid) {
+            $settlements[] = $service->buildSettlement($pid, (int) $landlord->id, $periodStart, $periodEnd);
+        }
+
+        return $settlements;
     }
 
     /**
@@ -2161,43 +2515,43 @@ class PropertyPortfolioController extends Controller
     private function buildLandlordMonthSettlements(User $landlord, string $monthYm): array
     {
         $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
 
-        $propertyIdsQuery = DB::table('property_landlord as pl')
-            ->join('properties as p', 'p.id', '=', 'pl.property_id')
-            ->where('pl.user_id', $landlord->id)
-            ->orderBy('p.name')
-            ->select('pl.property_id');
-        if (AgentWorkspaceScope::shouldApply()) {
-            $propertyIdsQuery->where('p.agent_user_id', (int) Auth::id());
-        }
-
-        $propertyIds = $propertyIdsQuery->pluck('property_id')->map(fn ($id) => (int) $id)->all();
-        $service = app(LandlordSettlementService::class);
-        $settlements = [];
-        foreach ($propertyIds as $propertyId) {
-            $settlements[] = $service->buildSettlement($propertyId, (int) $landlord->id, $periodStart, $periodEnd);
-        }
-
-        return $settlements;
+        return $this->buildLandlordSettlementsForPeriod(
+            $landlord,
+            $periodStart,
+            $periodStart->copy()->endOfMonth(),
+            null,
+        );
     }
 
     /**
      * @param  list<array<string, mixed>>  $settlements
      */
-    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export): StreamedResponse|Response
-    {
-        $settlements = $this->buildLandlordMonthSettlements($landlord, $monthYm);
-        $slug = Str::slug((string) $landlord->name).'-'.$monthYm;
+    private function streamLandlordAccountStatementsForPeriod(
+        User $landlord,
+        Carbon $periodStart,
+        Carbon $periodEnd,
+        string $periodLabel,
+        string $export,
+        ?int $propertyId = null,
+    ): StreamedResponse|Response {
+        $settlements = $this->buildLandlordSettlementsForPeriod($landlord, $periodStart, $periodEnd, $propertyId);
+        $slug = Str::slug((string) $landlord->name).'-'.Str::slug($periodLabel);
+        if ($propertyId) {
+            $slug .= '-p'.$propertyId;
+        }
 
-        if (in_array($export, ['pdf', 'word'], true)) {
+        if (in_array($export, ['pdf', 'word', 'print'], true)) {
             $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
                 'landlord' => $landlord,
                 'settlements' => $settlements,
-                'periodLabel' => Carbon::createFromFormat('Y-m', $monthYm)->format('F').' - '.Carbon::createFromFormat('Y-m', $monthYm)->format('Y'),
-                'branding' => $this->landlordStatementBranding(),
+                'periodLabel' => $periodLabel,
+                'branding' => $this->landlordStatementBranding(
+                    $propertyId ? Property::query()->find($propertyId) : null,
+                    $landlord
+                ),
                 'generatedAt' => now()->format('d M Y H:i'),
-                'autoPrint' => false,
+                'autoPrint' => $export === 'print',
             ])->render();
 
             if ($export === 'word') {
@@ -2205,6 +2559,10 @@ class PropertyPortfolioController extends Controller
                     'Content-Type' => 'application/msword; charset=UTF-8',
                     'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
                 ]);
+            }
+
+            if ($export === 'print') {
+                return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
             }
 
             try {
@@ -2229,6 +2587,28 @@ class PropertyPortfolioController extends Controller
             }
         }
 
+        return $this->streamLandlordMonthAccountStatementsRows($settlements, $slug, $periodLabel, $export);
+    }
+
+    private function streamLandlordMonthAccountStatements(User $landlord, string $monthYm, string $export, ?int $propertyId = null): StreamedResponse|Response
+    {
+        $periodStart = Carbon::createFromFormat('Y-m', $monthYm)->startOfMonth();
+
+        return $this->streamLandlordAccountStatementsForPeriod(
+            $landlord,
+            $periodStart,
+            $periodStart->copy()->endOfMonth(),
+            $periodStart->format('F').' - '.$periodStart->format('Y'),
+            $export,
+            $propertyId,
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamLandlordMonthAccountStatementsRows(array $settlements, string $slug, string $periodLabel, string $export): StreamedResponse|Response
+    {
         $n = static fn (float $v): string => number_format($v, 2, '.', '');
 
         return TabularExport::stream(
@@ -2251,7 +2631,7 @@ class PropertyPortfolioController extends Controller
                 'Amount',
                 'Notes',
             ],
-            function () use ($settlements, $n, $monthYm) {
+            function () use ($settlements, $n, $periodLabel) {
                 foreach ($settlements as $settlement) {
                     $propertyName = (string) ($settlement['property_name'] ?? '');
                     yield [
@@ -2261,7 +2641,7 @@ class PropertyPortfolioController extends Controller
                         (string) ($settlement['landlord_name'] ?? ''),
                         '', '', '', '', '', '', '', '', '', '',
                         '',
-                        (string) (($settlement['period_label'] ?? $monthYm).' '.($settlement['period_range_label'] ?? '')),
+                        (string) (($settlement['period_label'] ?? $periodLabel).' '.($settlement['period_range_label'] ?? '')),
                     ];
 
                     foreach ($settlement['unit_lines'] ?? [] as $line) {
@@ -2359,25 +2739,232 @@ class PropertyPortfolioController extends Controller
                     yield [$propertyName, 'Summary', '', 'Net amount due', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['net_amount_due'] ?? 0)), ''];
                 }
             },
-            TabularExport::FORMAT_CSV,
+            $export === 'xls' || $export === 'xlsx' ? 'xls' : ($export === 'pdf' || $export === 'word' ? $export : TabularExport::FORMAT_CSV),
         );
     }
 
     /**
+     * Tabular export for the property Statements tab (year units, months, unit grid).
+     *
+     * @param  array<string, mixed>  $packet
+     */
+    private function streamPropertyStatementTable(Property $property, array $packet, string $scope, string $export): StreamedResponse|Response
+    {
+        $fy = (int) ($packet['fy'] ?? now()->year);
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+        $slug = Str::slug((string) $property->name).'-'.$fy.'-'.$scope;
+        $title = $property->name.' — statement '.$scope.' FY '.$fy;
+
+        if (in_array($scope, ['year_units', 'year', 'month_units', 'month'], true)) {
+            $settlement = in_array($scope, ['month_units', 'month'], true)
+                ? ($packet['month_settlement'] ?? $packet['year_settlement'] ?? [])
+                : ($packet['year_settlement'] ?? []);
+            $headers = [
+                'Unit', 'Tenant', 'Per month',
+                'B/F rent', 'B/F garbage', 'B/F water',
+                'Inv. rent', 'Inv. garbage', 'Inv. water',
+                'Rec. rent', 'Rec. garbage', 'Rec. water',
+                'Total inv.', 'Total rec.',
+            ];
+            $lines = $settlement['unit_lines'] ?? [];
+
+            return TabularExport::stream(
+                $slug,
+                $headers,
+                function () use ($lines, $n) {
+                    foreach ($lines as $line) {
+                        yield [
+                            (string) ($line['unit_label'] ?? ''),
+                            (string) ($line['tenant_name'] ?? ''),
+                            $n((float) ($line['rent_per_month'] ?? 0)),
+                            $n((float) ($line['rent_bf'] ?? 0)),
+                            $n((float) ($line['garbage_bf'] ?? 0)),
+                            $n((float) ($line['water_bf'] ?? 0)),
+                            $n((float) ($line['rent_billed'] ?? 0)),
+                            $n((float) ($line['garbage_billed'] ?? 0)),
+                            $n((float) ($line['water_billed'] ?? 0)),
+                            $n((float) ($line['rent_received'] ?? 0)),
+                            $n((float) ($line['garbage_received'] ?? 0)),
+                            $n((float) ($line['water_received'] ?? 0)),
+                            $n((float) ($line['total_billed'] ?? 0)),
+                            $n((float) ($line['total_received'] ?? 0)),
+                        ];
+                    }
+                },
+                $export,
+                ['title' => $title, 'pdf_orientation' => 'landscape', 'pdf_paper' => 'a3'],
+            );
+        }
+
+        if ($scope === 'months') {
+            return TabularExport::stream(
+                $slug,
+                ['Month', 'Invoiced', 'Received'],
+                function () use ($packet, $n) {
+                    foreach ($packet['monthly'] ?? [] as $row) {
+                        yield [
+                            (string) ($row['month_label'] ?? $row['month'] ?? ''),
+                            $n((float) ($row['billed'] ?? 0)),
+                            $n((float) ($row['received'] ?? 0)),
+                        ];
+                    }
+                },
+                $export,
+                ['title' => $title],
+            );
+        }
+
+        $monthKeys = $packet['month_keys'] ?? [];
+        $headers = ['Unit', 'Tenant'];
+        foreach ($monthKeys as $ym) {
+            $label = Carbon::createFromFormat('Y-m', (string) $ym)->format('M');
+            $headers[] = $label.' invoiced';
+            $headers[] = $label.' received';
+        }
+        $headers[] = 'Year invoiced';
+        $headers[] = 'Year received';
+
+        return TabularExport::stream(
+            $slug,
+            $headers,
+            function () use ($packet, $monthKeys, $n) {
+                foreach ($packet['unit_months'] ?? [] as $unit) {
+                    $row = [
+                        (string) ($unit['unit_label'] ?? ''),
+                        (string) ($unit['tenant_name'] ?? ''),
+                    ];
+                    foreach ($monthKeys as $ym) {
+                        $cell = $unit['months'][$ym] ?? ['billed' => 0, 'received' => 0];
+                        $row[] = $n((float) ($cell['billed'] ?? 0));
+                        $row[] = $n((float) ($cell['received'] ?? 0));
+                    }
+                    $row[] = $n((float) ($unit['year_billed'] ?? 0));
+                    $row[] = $n((float) ($unit['year_received'] ?? 0));
+                    yield $row;
+                }
+            },
+            $export,
+            ['title' => $title, 'pdf_orientation' => 'landscape', 'pdf_paper' => 'a3'],
+        );
+    }
+
+    /**
+     * Print or export this property's account statement (year or a single month).
+     *
+     * @param  list<array<string, mixed>>  $settlements
+     */
+    private function streamPropertyAccountStatement(Property $property, array $settlements, string $periodLabel, string $export): StreamedResponse|Response
+    {
+        $slug = Str::slug((string) $property->name).'-'.Str::slug($periodLabel);
+        $landlord = $property->landlords->first() ?? (object) ['name' => (string) $property->name];
+        $n = static fn (float $v): string => number_format($v, 2, '.', '');
+
+        if ($export === 'csv') {
+            return TabularExport::stream(
+                'property-statement-'.$slug,
+                [
+                    'Unit', 'Tenant', 'Per month',
+                    'B/F rent', 'B/F garbage', 'B/F water',
+                    'Inv. rent', 'Inv. garbage', 'Inv. water',
+                    'Rec. rent', 'Rec. garbage', 'Rec. water',
+                    'Total inv.', 'Total rec.',
+                ],
+                function () use ($settlements, $n) {
+                    foreach ($settlements as $settlement) {
+                        foreach ($settlement['unit_lines'] ?? [] as $line) {
+                            yield [
+                                (string) ($line['unit_label'] ?? ''),
+                                (string) ($line['tenant_name'] ?? ''),
+                                $n((float) ($line['rent_per_month'] ?? 0)),
+                                $n((float) ($line['rent_bf'] ?? 0)),
+                                $n((float) ($line['garbage_bf'] ?? 0)),
+                                $n((float) ($line['water_bf'] ?? 0)),
+                                $n((float) ($line['rent_billed'] ?? 0)),
+                                $n((float) ($line['garbage_billed'] ?? 0)),
+                                $n((float) ($line['water_billed'] ?? 0)),
+                                $n((float) ($line['rent_received'] ?? 0)),
+                                $n((float) ($line['garbage_received'] ?? 0)),
+                                $n((float) ($line['water_received'] ?? 0)),
+                                $n((float) ($line['total_billed'] ?? 0)),
+                                $n((float) ($line['total_received'] ?? 0)),
+                            ];
+                        }
+                    }
+                },
+                'csv',
+            );
+        }
+
+        $html = view('property.agent.landlords.landlord_monthly_account_statements_print', [
+            'landlord' => $landlord,
+            'settlements' => $settlements,
+            'periodLabel' => $periodLabel,
+            'branding' => $this->landlordStatementBranding($property),
+            'generatedAt' => now()->format('d M Y H:i'),
+            'autoPrint' => $export === 'print',
+        ])->render();
+
+        if ($export === 'word') {
+            return response($html, 200, [
+                'Content-Type' => 'application/msword; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.doc"',
+            ]);
+        }
+
+        if ($export === 'pdf') {
+            try {
+                $options = new Options;
+                $options->set('isRemoteEnabled', true);
+                $options->set('chroot', public_path());
+                $options->set('defaultFont', 'DejaVu Sans');
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'landscape');
+                $dompdf->render();
+
+                return response($dompdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="property-account-statement-'.$slug.'.pdf"',
+                ]);
+            } catch (Throwable) {
+                return response($html, 200, [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="property-account-statement-'.$slug.'.html"',
+                ]);
+            }
+        }
+
+        return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+    }
+
+    /**
+     * Letterhead for landlord / property account statements.
+     * Uses the agent workspace branding (name, logo, address, phone, email).
+     *
      * @return array<string, mixed>
      */
-    private function landlordStatementBranding(): array
+    private function landlordStatementBranding(?Property $property = null, ?User $landlord = null): array
     {
-        $brandingRaw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($brandingRaw) ? json_decode($brandingRaw, true) : (is_array($brandingRaw) ? $brandingRaw : []);
+        $agentUserId = null;
+        if ($property !== null && (int) ($property->agent_user_id ?? 0) > 0) {
+            $agentUserId = (int) $property->agent_user_id;
+        }
 
-        return array_merge([
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'address' => '',
-            'phone' => '',
-            'email' => '',
-            'colour' => '#0f766e',
-        ], is_array($decoded) ? $decoded : []);
+        if ($agentUserId === null && $landlord !== null
+            && Schema::hasTable('property_landlord')
+            && Schema::hasColumn('properties', 'agent_user_id')) {
+            $linked = DB::table('property_landlord as pl')
+                ->join('properties as p', 'p.id', '=', 'pl.property_id')
+                ->where('pl.user_id', (int) $landlord->id)
+                ->whereNotNull('p.agent_user_id')
+                ->where('p.agent_user_id', '>', 0)
+                ->value('p.agent_user_id');
+            if ($linked) {
+                $agentUserId = (int) $linked;
+            }
+        }
+
+        return PropertyWorkspaceBranding::documentSnapshot($agentUserId);
     }
 
     public function resendLandlordPortalLogin(Request $request, User $landlord): RedirectResponse
@@ -2496,6 +3083,103 @@ class PropertyPortfolioController extends Controller
         );
     }
 
+    public function storeLandlordDocument(Request $request, User $landlord): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $request->validate($this->landlordDocumentUploadRules(true));
+        $this->persistLandlordDocumentFromRequest($request, $landlord);
+
+        return redirect()
+            ->route('property.landlords.show', [
+                'landlord' => $landlord->id,
+                'tab' => 'files',
+                'month' => $request->input('month'),
+                'fy' => $request->input('fy'),
+            ])
+            ->with('success', 'File saved.');
+    }
+
+    public function downloadLandlordDocument(Request $request, User $landlord, PmLandlordDocument $document)
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $this->assertLandlordDocument($landlord, $document);
+
+        if ($document->path === '' || ! Storage::disk('local')->exists($document->path)) {
+            abort(404);
+        }
+
+        $downloadName = (string) ($document->original_filename ?: $document->name);
+
+        return Storage::disk('local')->download($document->path, $downloadName);
+    }
+
+    public function destroyLandlordDocument(Request $request, User $landlord, PmLandlordDocument $document): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+        $this->assertLandlordDocument($landlord, $document);
+
+        if ($document->path !== '' && Storage::disk('local')->exists($document->path)) {
+            Storage::disk('local')->delete($document->path);
+        }
+        $document->delete();
+
+        return redirect()
+            ->route('property.landlords.show', ['landlord' => $landlord->id, 'tab' => 'files'])
+            ->with('success', 'File deleted.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function landlordDocumentUploadRules(bool $fileRequired): array
+    {
+        return [
+            'document_name' => [$fileRequired ? 'required' : 'nullable', 'required_with:document', 'string', 'max:160'],
+            'document_description' => ['nullable', 'string', 'max:2000'],
+            'document' => [$fileRequired ? 'required' : 'nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx,webp'],
+        ];
+    }
+
+    private function persistLandlordDocumentFromRequest(Request $request, User $landlord): void
+    {
+        if (! Schema::hasTable('pm_landlord_documents') || ! $request->hasFile('document')) {
+            return;
+        }
+
+        $file = $request->file('document');
+        if ($file === null) {
+            return;
+        }
+
+        $name = trim((string) $request->input('document_name', ''));
+        if ($name === '') {
+            $name = (string) pathinfo((string) $file->getClientOriginalName(), PATHINFO_FILENAME);
+        }
+        if ($name === '') {
+            $name = 'Document';
+        }
+
+        $path = $file->store('landlord-documents/'.$landlord->id, 'local');
+
+        PmLandlordDocument::query()->create([
+            'user_id' => $landlord->id,
+            'name' => Str::limit($name, 160, ''),
+            'description' => Str::limit(trim((string) $request->input('document_description', '')), 2000, '') ?: null,
+            'path' => $path,
+            'original_filename' => Str::limit((string) $file->getClientOriginalName(), 255, ''),
+            'size_bytes' => (int) $file->getSize(),
+            'mime' => (string) ($file->getMimeType() ?: ''),
+            'uploaded_by' => $request->user()?->id,
+        ]);
+    }
+
+    private function assertLandlordDocument(User $landlord, PmLandlordDocument $document): void
+    {
+        if ((int) $document->user_id !== (int) $landlord->id) {
+            abort(404);
+        }
+    }
+
     public function onboardLandlord(Request $request): RedirectResponse
     {
         $landlordFields = $this->landlordFieldConfig();
@@ -2509,12 +3193,13 @@ class PropertyPortfolioController extends Controller
         $extra = $request->validate(array_merge([
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ], $this->agreedPayScheduleRules(), $this->landlordProfileFieldRules($landlordFields)));
+        ], $this->agreedPayScheduleRules(), $this->landlordProfileFieldRules($landlordFields), $this->landlordDocumentUploadRules(false)));
 
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
         $landlord = $onboarding->createLandlordUser($data, $agentUserId);
         $onboarding->syncLandlordProfile($landlord, $extra);
+        $this->persistLandlordDocumentFromRequest($request, $landlord);
 
         if (! empty($extra['property_id'])) {
             $property = Property::query()->findOrFail((int) $extra['property_id']);
@@ -2615,14 +3300,19 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
@@ -2633,6 +3323,7 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -2695,14 +3386,19 @@ class PropertyPortfolioController extends Controller
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
+            ...$this->propertyRecordFieldRules(),
             'charge_templates' => ['nullable', 'array', 'max:200'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
             'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
             'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.water_amount' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.maintenance_fee' => ['nullable', 'numeric', 'min:0'],
             'charge_templates.*.amount_mode' => ['nullable', 'in:fixed,variable'],
             'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
+            'charge_templates.*.vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates.*.escalates_with_rent' => ['nullable', 'in:0,1'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
@@ -2713,6 +3409,7 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+        $data = $this->applyPropertyRecordAttributes($request, $data);
 
         if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
             $data['field_officer_id'] = null;
@@ -2954,19 +3651,36 @@ class PropertyPortfolioController extends Controller
             $isVariable = $amountMode === 'variable';
             $rate = $isVariable ? 0.0 : (is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0);
             $fixed = $isVariable ? 0.0 : (is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0);
+            $maintenance = $isVariable ? 0.0 : (is_numeric($row['maintenance_fee'] ?? null) ? max(0.0, (float) $row['maintenance_fee']) : 0.0);
+            $waterAmount = (! $isVariable && $chargeType === 'water' && is_numeric($row['water_amount'] ?? null))
+                ? max(0.0, (float) $row['water_amount'])
+                : null;
+            if ($chargeType === 'water' && $waterAmount !== null) {
+                $rate = $waterAmount;
+                $fixed = round($maintenance, 2);
+            }
             $notes = trim((string) ($row['notes'] ?? ''));
             if (! $isVariable && $label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
                 continue;
             }
-            $normalized[] = [
+            $entry = [
                 'property_unit_id' => $propertyUnitId,
                 'charge_type' => $chargeType,
                 'label' => $label !== '' ? $label : ucfirst(str_replace('_', ' ', $chargeType)),
                 'amount_mode' => $amountMode,
                 'rate_per_unit' => round($rate, 2),
                 'fixed_charge' => round($fixed, 2),
+                'vat_rate' => is_numeric($row['vat_rate'] ?? null) ? round(max(0.0, (float) $row['vat_rate']), 2) : null,
+                'escalates_with_rent' => in_array($row['escalates_with_rent'] ?? 0, [1, '1', true, 'true'], true),
                 'notes' => Str::limit($notes, 500, ''),
             ];
+            if ($chargeType === 'water' && $waterAmount !== null && $waterAmount > 0.009) {
+                $entry['water_amount'] = round($waterAmount, 2);
+            }
+            if ($chargeType === 'water' && $maintenance > 0.009) {
+                $entry['maintenance_fee'] = round($maintenance, 2);
+            }
+            $normalized[] = $entry;
         }
 
         return array_slice($normalized, 0, 200);
@@ -3049,6 +3763,9 @@ class PropertyPortfolioController extends Controller
 
             $label = trim((string) ($template['label'] ?? ''));
             $rate = is_numeric($template['rate_per_unit'] ?? null) ? max(0.0, (float) $template['rate_per_unit']) : 0.0;
+            if ($chargeKey === 'water' && $rate > 0.009) {
+                continue;
+            }
             $fixed = is_numeric($template['fixed_charge'] ?? null) ? max(0.0, (float) $template['fixed_charge']) : 0.0;
             $isRatePerUnit = $rate > 0.0 && $fixed <= 0.0;
             $defaultAmount = $isRatePerUnit ? $rate : $fixed;
@@ -3079,7 +3796,7 @@ class PropertyPortfolioController extends Controller
         $managedTypes = [];
         foreach (array_merge($previous, $templates) as $row) {
             $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
-            if ($type === '' || $type === 'water') {
+            if ($type === '' || ($type === 'water' && $this->isVariableChargeTemplate($row))) {
                 continue;
             }
             $managedTypes[$type] = $type;
@@ -3090,9 +3807,19 @@ class PropertyPortfolioController extends Controller
 
         $defaults = [];
         $byUnit = [];
+        $variableUnits = [];
         foreach ($templates as $row) {
             $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
-            if ($type === '' || $type === 'water' || $this->isVariableChargeTemplate($row)) {
+            $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
+                ? (int) $row['property_unit_id']
+                : 0;
+            if ($type !== '' && $unitId > 0 && $this->isVariableChargeTemplate($row)) {
+                $variableUnits[$unitId][$type] = true;
+            }
+            if ($type === '' || $this->isVariableChargeTemplate($row)) {
+                continue;
+            }
+            if ($type === 'water' && (float) ($row['rate_per_unit'] ?? 0) > 0.009) {
                 continue;
             }
             $amount = $this->templateStandingAmount($row);
@@ -3105,9 +3832,11 @@ class PropertyPortfolioController extends Controller
                 'fixed_charge' => number_format($amount, 2, '.', ''),
                 'label' => (string) ($row['label'] ?? ''),
             ];
-            $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
-                ? (int) $row['property_unit_id']
-                : 0;
+            $maintenanceFee = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+            if ($type === 'water' && $maintenanceFee > 0.009) {
+                $payload['water_amount'] = number_format((float) ($row['water_amount'] ?? 0), 2, '.', '');
+                $payload['maintenance_fee'] = number_format($maintenanceFee, 2, '.', '');
+            }
             if ($unitId > 0) {
                 $byUnit[$unitId][$type] = $payload;
             } else {
@@ -3126,6 +3855,9 @@ class PropertyPortfolioController extends Controller
             $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->all();
             $applied = $defaults;
             foreach ($unitIds as $unitId) {
+                foreach ($variableUnits[$unitId] ?? [] as $type => $_) {
+                    unset($applied[$type]);
+                }
                 foreach ($byUnit[$unitId] ?? [] as $type => $payload) {
                     $applied[$type] = $payload;
                 }
@@ -3199,8 +3931,57 @@ class PropertyPortfolioController extends Controller
         $all = json_decode($raw, true);
         $all = is_array($all) ? $all : [];
         $rows = $all[(string) $propertyId] ?? [];
+        $normalized = $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
+        $merged = $this->appendBilledUtilityTemplates($propertyId, $normalized);
+        if ($merged !== $normalized) {
+            $this->setPropertyChargeTemplates($propertyId, $merged);
+        }
 
-        return $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
+        return $merged;
+    }
+
+    /**
+     * Metered types billed on this property (invoices / posted lines) that have no template yet.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function appendBilledUtilityTemplates(int $propertyId, array $rows): array
+    {
+        $have = [];
+        foreach ($rows as $row) {
+            $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+            if ($type !== '') {
+                $have[$type] = true;
+            }
+        }
+
+        $billed = $this->chargeTypeLabelsByPropertyId(
+            [$propertyId],
+            [(string) $propertyId => []],
+        );
+        $extra = [];
+        foreach ($billed[(string) $propertyId] ?? [] as $label) {
+            $type = $this->normalizeUtilityChargeType($label);
+            if ($type === '' || isset($have[$type])) {
+                continue;
+            }
+            if (! in_array($type, ['water', 'electricity'], true)) {
+                continue;
+            }
+            $extra[] = [
+                'property_unit_id' => null,
+                'charge_type' => $type,
+                'label' => $label,
+                'amount_mode' => 'variable',
+                'rate_per_unit' => 0.0,
+                'fixed_charge' => 0.0,
+                'notes' => '',
+            ];
+            $have[$type] = true;
+        }
+
+        return $extra === [] ? $rows : array_values(array_merge($extra, $rows));
     }
 
     /**
@@ -3393,24 +4174,97 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
-     * Unique charge types on a property (names only) for the register list.
+     * Charge types actually billed on each property: templates, posted lines, and invoices.
      *
-     * @param  array<int, array{charge_type?:string}>  $templates
-     * @return list<string>
+     * @param  list<int>  $propertyIds
+     * @param  array<string, array<int, array<string, mixed>>>  $templatesByProperty
+     * @return array<string, list<string>>
      */
-    private function uniqueChargeTypeLabels(array $templates): array
+    private function chargeTypeLabelsByPropertyId(array $propertyIds, array $templatesByProperty): array
     {
+        $propertyIds = array_values(array_unique(array_filter(array_map('intval', $propertyIds))));
         $types = [];
-        foreach ($templates as $template) {
-            $type = $this->normalizeUtilityChargeType((string) ($template['charge_type'] ?? ''));
-            if ($type === '') {
-                continue;
+        foreach ($propertyIds as $propertyId) {
+            $types[$propertyId] = [];
+            foreach ((array) ($templatesByProperty[(string) $propertyId] ?? []) as $row) {
+                $this->rememberPropertyChargeType($types, $propertyId, (string) ($row['charge_type'] ?? ''));
             }
-            $types[$type] = ucfirst(str_replace('_', ' ', $type));
         }
-        ksort($types);
+        if ($propertyIds === []) {
+            return [];
+        }
 
-        return array_values($types);
+        if (Schema::hasTable('expense_definitions')) {
+            $expenseRows = ExpenseDefinition::query()
+                ->whereIn('property_id', $propertyIds)
+                ->where('is_active', true)
+                ->get(['property_id', 'charge_key']);
+            foreach ($expenseRows as $row) {
+                $this->rememberPropertyChargeType($types, (int) $row->property_id, (string) $row->charge_key);
+            }
+        }
+
+        $units = PropertyUnit::query()
+            ->whereIn('property_id', $propertyIds)
+            ->get(['id', 'property_id']);
+        $unitToProperty = $units->mapWithKeys(fn ($unit) => [(int) $unit->id => (int) $unit->property_id])->all();
+        $unitIds = array_keys($unitToProperty);
+
+        if ($unitIds !== [] && Schema::hasTable('pm_unit_utility_charges')) {
+            $chargeRows = PmUnitUtilityCharge::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->select('property_unit_id', 'charge_type')
+                ->distinct()
+                ->get();
+            foreach ($chargeRows as $row) {
+                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
+                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->charge_type);
+            }
+        }
+
+        if ($unitIds !== [] && Schema::hasTable('pm_invoices') && Schema::hasColumn('pm_invoices', 'invoice_type')) {
+            $invoiceQuery = PmInvoice::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereNotIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT, PmInvoice::TYPE_MIXED, PmInvoice::TYPE_OTHER]);
+            if (Schema::hasColumn('pm_invoices', 'status')) {
+                $invoiceQuery->where('status', '!=', PmInvoice::STATUS_CANCELLED);
+            }
+            $invoiceRows = $invoiceQuery
+                ->select('property_unit_id', 'invoice_type')
+                ->distinct()
+                ->get();
+            foreach ($invoiceRows as $row) {
+                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
+                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->invoice_type);
+            }
+        }
+
+        $labels = [];
+        foreach ($propertyIds as $propertyId) {
+            $named = [];
+            foreach ($types[$propertyId] ?? [] as $type) {
+                $named[$type] = ucfirst(str_replace('_', ' ', $type));
+            }
+            ksort($named);
+            $labels[(string) $propertyId] = array_values($named);
+        }
+
+        return $labels;
+    }
+
+    /**
+     * @param  array<int, list<string>>  $types
+     */
+    private function rememberPropertyChargeType(array &$types, int $propertyId, string $rawType): void
+    {
+        if ($propertyId <= 0) {
+            return;
+        }
+        $type = $this->normalizeUtilityChargeType($rawType);
+        if ($type === '' || in_array($type, ['rent', 'late_payment', 'mixed', 'other'], true)) {
+            return;
+        }
+        $types[$propertyId][$type] = $type;
     }
 
     private function userCanAccessOffboarding(): bool
@@ -3584,13 +4438,16 @@ class PropertyPortfolioController extends Controller
 
         $headers = [
             'Unit ID', 'Property Code', 'Property', 'Unit', 'Type', 'Bedrooms', 'Listed Rent',
-            'Status', 'Tenant', 'Tenant Phone', 'Tenant Account', 'Lease Rent', 'Vacant Since',
+            'Status', 'Tenant', 'Tenant Phone', 'Tenant Account', 'Lease Rent', 'A/C Balance', 'Vacant Since',
         ];
+        $balanceByUnit = $this->unitAccountBalances(
+            $rows->pluck('id')->map(static fn ($id): int => (int) $id)->all()
+        );
 
         return TabularExport::stream(
             'property_units_'.now()->format('Ymd_His'),
             $headers,
-            function () use ($rows) {
+            function () use ($rows, $balanceByUnit) {
                 foreach ($rows as $u) {
                     $activeLease = $u->leases->first();
                     $tenant = $activeLease?->pmTenant;
@@ -3609,6 +4466,7 @@ class PropertyPortfolioController extends Controller
                         (string) ($tenant?->phone ?? ''),
                         (string) ($tenant?->account_number ?? ''),
                         $activeLease ? number_format((float) $activeLease->monthly_rent, 2, '.', '') : '',
+                        number_format(round((float) ($balanceByUnit[$u->id] ?? 0), 2), 2, '.', ''),
                         $u->vacant_since?->format('Y-m-d') ?? '',
                     ];
                 }
@@ -4038,6 +4896,126 @@ class PropertyPortfolioController extends Controller
     }
 
     /**
+     * Extra property records (title, area, listing, alerts) — optional, not required to create.
+     *
+     * @return array<string, mixed>
+     */
+    private function propertyRecordFieldRules(): array
+    {
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $rules = [
+            'acquired_at' => ['sometimes', 'nullable', 'date'],
+            'management_mode' => ['sometimes', 'nullable', 'in:managing,letting'],
+            'lr_number' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'category' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'property_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'specification' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'storey_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'floors_count' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:200'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'estate' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'zone' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'contact_info' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'gross_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'net_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'area_unit' => ['sometimes', 'nullable', 'in:sqm,sqft,acre'],
+            'rent_per_measure' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'statement_balance_cutoff_day' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:31'],
+            'listing_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'listing_agent_name' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'listing_contact_email' => ['sometimes', 'nullable', 'email', 'max:255'],
+            'listing_contact_phone' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'listing_min_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_min_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'exclude_from_fee_summary' => ['sometimes', 'nullable', 'in:0,1'],
+            'property_details_save' => ['sometimes', 'nullable'],
+        ];
+        foreach ($exemptKeys as $key) {
+            $rules['exempt_'.$key] = ['sometimes', 'nullable', 'in:0,1'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function applyPropertyRecordAttributes(Request $request, array $data): array
+    {
+        unset($data['property_details_save']);
+
+        $stringKeys = [
+            'management_mode', 'lr_number', 'category', 'property_type', 'specification',
+            'storey_type', 'country', 'estate', 'zone', 'notes', 'contact_info', 'area_unit',
+            'listing_notes', 'listing_agent_name', 'listing_contact_email', 'listing_contact_phone',
+        ];
+        foreach ($stringKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = is_string($data[$key]) ? trim($data[$key]) : $data[$key];
+            $data[$key] = ($value === '' || $value === null) ? null : $value;
+        }
+
+        $numericKeys = [
+            'floors_count', 'latitude', 'longitude', 'gross_lettable_area', 'net_lettable_area',
+            'rent_per_measure', 'statement_balance_cutoff_day', 'listing_min_rent', 'listing_max_rent',
+            'listing_min_service_charge', 'listing_max_service_charge',
+        ];
+        foreach ($numericKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($data[$key] === '' || $data[$key] === null) {
+                $data[$key] = null;
+            }
+        }
+
+        if (array_key_exists('acquired_at', $data) && ($data['acquired_at'] === '' || $data['acquired_at'] === null)) {
+            $data['acquired_at'] = null;
+        }
+
+        if (array_key_exists('exclude_from_fee_summary', $data) || $request->has('exclude_from_fee_summary')) {
+            $data['exclude_from_fee_summary'] = $request->boolean('exclude_from_fee_summary');
+        }
+
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $hasExempt = false;
+        $exemptions = [];
+        foreach ($exemptKeys as $key) {
+            $field = 'exempt_'.$key;
+            if ($request->has($field)) {
+                $hasExempt = true;
+            }
+            $exemptions[$key] = $request->boolean($field);
+            unset($data[$field]);
+        }
+        if ($hasExempt && Schema::hasColumn('properties', 'communication_exemptions')) {
+            $data['communication_exemptions'] = $exemptions;
+        }
+
+        foreach (array_keys($data) as $key) {
+            if (! Schema::hasColumn('properties', $key)) {
+                unset($data[$key]);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
      * @return array<string,array{enabled:bool,required:bool}>
      */
     private function landlordFieldConfig(): array
@@ -4135,6 +5113,7 @@ class PropertyPortfolioController extends Controller
                 'string',
                 'max:64',
             ],
+            'landlord_type' => ['nullable', 'in:individual,corporation,organization,institution,government'],
             'id_number' => [
                 Rule::requiredIf($this->isFieldRequired($landlordFields, 'id_number')),
                 'nullable',
@@ -4153,6 +5132,12 @@ class PropertyPortfolioController extends Controller
                 'string',
                 'max:255',
             ],
+            'location' => ['nullable', 'string', 'max:128'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:120'],
+            'bank_account_name' => ['nullable', 'string', 'max:120'],
+            'bank_account' => ['nullable', 'string', 'max:64'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
         ];
     }
 
@@ -4187,6 +5172,25 @@ class PropertyPortfolioController extends Controller
                 'date',
             ],
             'furnished' => ['sometimes', 'boolean'],
+            'bathrooms' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:20'],
+            'parking_spaces' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:50'],
+            'rent_per_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'charge_frequency' => ['sometimes', 'nullable', 'in:monthly,one_off,daily,weekly,biweekly,bimonthly,quarterly,semiannually,annually,biennially,triennially,none'],
+            'take_on_letting_date' => ['sometimes', 'nullable', 'date'],
+            'unit_sequence' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            'floor_number' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'location_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'electricity_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'electricity_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'extra_meters' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'extra_meters.*.meter_no' => ['nullable', 'string', 'max:64'],
+            'extra_meters.*.reading_setup' => ['nullable', 'string', 'max:120'],
+            'features' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'features.*.name' => ['nullable', 'string', 'max:120'],
+            'features.*.feature_type' => ['nullable', 'string', 'max:64'],
         ];
     }
 
@@ -4219,6 +5223,70 @@ class PropertyPortfolioController extends Controller
         if (array_key_exists('furnished', $data) || $request->has('furnished')) {
             $raw = $data['furnished'] ?? $request->input('furnished');
             $attrs['furnished'] = in_array($raw, [true, 1, '1', 'true', 'on', 'yes'], true);
+        }
+
+        foreach (['bathrooms', 'parking_spaces', 'unit_sequence'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : (int) $data[$key];
+        }
+
+        foreach (['rent_per_area'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : $data[$key];
+        }
+
+        foreach ([
+            'charge_frequency', 'floor_number', 'notes', 'location_notes',
+            'electricity_account', 'electricity_meter', 'water_account', 'water_meter',
+        ] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = trim((string) ($data[$key] ?? ''));
+            $attrs[$key] = $value !== '' ? $value : null;
+        }
+
+        if (array_key_exists('take_on_letting_date', $data)) {
+            $value = $data['take_on_letting_date'];
+            $attrs['take_on_letting_date'] = ($value === null || $value === '') ? null : $value;
+        }
+
+        if (array_key_exists('extra_meters', $data) || $request->has('extra_meters')) {
+            $rows = is_array($data['extra_meters'] ?? null) ? $data['extra_meters'] : (array) $request->input('extra_meters', []);
+            $attrs['extra_meters'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $no = trim((string) ($row['meter_no'] ?? ''));
+                $setup = trim((string) ($row['reading_setup'] ?? ''));
+                if ($no === '' && $setup === '') {
+                    return null;
+                }
+
+                return ['meter_no' => $no, 'reading_setup' => $setup];
+            }, $rows)));
+        }
+
+        if (array_key_exists('features', $data) || $request->has('features')) {
+            $rows = is_array($data['features'] ?? null) ? $data['features'] : (array) $request->input('features', []);
+            $attrs['features'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $name = trim((string) ($row['name'] ?? ''));
+                $type = trim((string) ($row['feature_type'] ?? ''));
+                if ($name === '' && $type === '') {
+                    return null;
+                }
+
+                return ['name' => $name, 'feature_type' => $type];
+            }, $rows)));
+        }
+
+        foreach (array_keys($attrs) as $key) {
+            if (! Schema::hasColumn('property_units', $key)) {
+                unset($attrs[$key]);
+            }
         }
 
         return $attrs;
@@ -4621,9 +5689,7 @@ class PropertyPortfolioController extends Controller
             $status = PropertyUnit::STATUS_NOTICE;
         } elseif ($preset === 'long_vacant') {
             $status = PropertyUnit::STATUS_VACANT;
-            if ($ageBucket === '') {
-                $ageBucket = '90_plus';
-            }
+            $ageBucket = '90_plus';
         }
 
         $today = Carbon::today();
@@ -4661,7 +5727,8 @@ class PropertyPortfolioController extends Controller
             ->orderBy('label');
 
         $units = (clone $baseQuery)->get();
-        $unitsPage = (clone $baseQuery)->paginate(50)->withQueryString();
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
+        $unitsPage = (clone $baseQuery)->paginate($perPage)->withQueryString();
 
         $total = $units->count();
         $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
@@ -4800,6 +5867,7 @@ class PropertyPortfolioController extends Controller
                 'age_bucket' => $ageBucket,
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '',
                 'q' => $search,
+                'per_page' => (string) $request->query('per_page', '30'),
             ],
             'propertyOptions' => $this->operationalPropertiesQuery($includeArchived)
                 ->whereIn('id', $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->select('property_id')->distinct())

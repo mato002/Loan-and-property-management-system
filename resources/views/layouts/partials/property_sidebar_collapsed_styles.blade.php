@@ -118,6 +118,20 @@
         .property-sidebar[data-collapsed="1"] a[aria-current="page"] svg {
             color: rgb(197 235 232) !important;
         }
+
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] [data-section-active] > .property-section-toggle,
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] a[aria-current="page"],
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] button[aria-current="page"] {
+            border-left-color: #1b75bc !important;
+            background-color: #f0f9ff !important;
+            color: #1b75bc !important;
+        }
+
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] [data-section-active] > .property-section-toggle i,
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] a[aria-current="page"] i,
+        html[data-brand-palette='passion-homes'] .property-sidebar[data-collapsed="1"] a[aria-current="page"] svg {
+            color: #1b75bc !important;
+        }
     }
 
     .property-section-rail-icon {

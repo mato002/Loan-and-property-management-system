@@ -13,6 +13,7 @@ use App\Models\PmConversation;
 use App\Models\PmConversationMessage;
 use App\Models\PmTenant;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyCommunicationService;
@@ -39,6 +40,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyCommunicationsWebController extends Controller
 {
@@ -237,6 +239,8 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         $filters = $this->normalizeMessageFilters($rawFilters);
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        $channelLocked = in_array($channel, ['sms', 'email'], true);
         $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 25);
 
         $query = $this->messageLogsQuery($filters);
@@ -258,7 +262,22 @@ class PropertyCommunicationsWebController extends Controller
         $inlineCompose = $this->shouldInlineComposeContext($request);
         $quickFilterCounts = $this->quickMessageFilterCounts();
 
+        $pageTitle = match ($channel) {
+            'sms' => 'SMS',
+            'email' => 'Emails',
+            default => 'SMS / email',
+        };
+        $pageSubtitle = match ($channel) {
+            'sms' => 'Outbound SMS delivery log (tenant and staff sends).',
+            'email' => 'Outbound email outbox (tenant, landlord, and staff sends).',
+            default => 'Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications.',
+        };
+
         return property_view('property.agent.communications.messages', [
+            'pageTitle' => $pageTitle,
+            'pageSubtitle' => $pageSubtitle,
+            'channelLocked' => $channelLocked,
+            'defaultComposeChannel' => $channelLocked ? $channel : 'email',
             'stats' => $stats,
             'logs' => $logs,
             'resendActions' => $resendActions,
@@ -540,8 +559,12 @@ class PropertyCommunicationsWebController extends Controller
 
     public function resendMessage(Request $request, PmMessageLog $log): RedirectResponse
     {
+        if ($log->channel === 'email') {
+            return $this->resendFailedStaffCredentialsEmail($request, $log);
+        }
+
         if ($log->channel !== 'sms') {
-            return back()->withErrors(['channel' => 'Only SMS messages can be resent from this action.']);
+            return back()->withErrors(['channel' => 'Only SMS or staff login emails can be resent from this action.']);
         }
 
         /** @var BulkSmsService $sms */
@@ -562,6 +585,103 @@ class PropertyCommunicationsWebController extends Controller
         return back()->with('success', 'SMS resent to '.implode(', ', $phones).'.');
     }
 
+    private function resendFailedStaffCredentialsEmail(Request $request, PmMessageLog $log): RedirectResponse
+    {
+        if (! $this->isStaffCredentialsLog($log)) {
+            return back()->withErrors(['channel' => 'Only failed staff login emails can be resent from this outbox. Use HR → Employees → Resend logins for other cases.']);
+        }
+
+        if (strtolower((string) ($log->delivery_status ?? '')) !== 'failed') {
+            return back()->withErrors(['status' => 'Only failed staff login emails can be resent.']);
+        }
+
+        $employee = $this->employeeForStaffCredentialsLog($log);
+        if (! $employee) {
+            return back()->withErrors(['to_address' => 'No employee matches '.$log->to_address.'. Open HR and resend from the employee record.']);
+        }
+
+        if (method_exists($employee, 'isOffboarded') && $employee->isOffboarded()) {
+            return back()->withErrors(['status' => 'Re-activate this employee before resending login credentials.']);
+        }
+
+        try {
+            $result = app(\App\Services\Property\PropertyHrEmployeeService::class)
+                ->issueLoginAndEmail($employee->fresh(), $request->user(), [], $log);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors(['body' => collect($e->errors())->flatten()->first() ?: 'Could not resend login email.']);
+        }
+
+        if (! ($result['mailed'] ?? false)) {
+            $error = app(SmsDeliveryErrorPresenter::class)->forEmail((string) ($result['mail_error'] ?? ''));
+
+            return back()->withErrors(['body' => 'Login was reset, but email still failed: '.$error]);
+        }
+
+        return back()->with('success', 'Staff login email resent to '.$result['user']->email.'.');
+    }
+
+    private function isStaffCredentialsLog(PmMessageLog $log): bool
+    {
+        if ($log->channel !== 'email') {
+            return false;
+        }
+
+        $category = strtolower(trim((string) ($log->template_category ?? '')));
+        $stage = strtolower(trim((string) ($log->internal_stage ?? '')));
+        $subject = strtolower(trim((string) ($log->subject ?? '')));
+
+        return $category === 'staff_credentials'
+            || $stage === 'staff_login'
+            || str_contains($subject, 'workspace login');
+    }
+
+    private function employeeForStaffCredentialsLog(PmMessageLog $log): ?Employee
+    {
+        $email = Str::lower(trim((string) $log->to_address));
+        if ($email === '' || ! str_contains($email, '@')) {
+            return null;
+        }
+
+        $employee = Employee::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
+        if ($employee) {
+            return $employee;
+        }
+
+        $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if (! $user) {
+            return null;
+        }
+
+        return Employee::query()->where('user_id', $user->id)->first();
+    }
+
+    /**
+     * Hide a failed staff-login row once a later send to the same address succeeded,
+     * so the outbox shows one row and nothing retries the old failure.
+     */
+    private function excludeResolvedStaffLoginFailures(Builder $query, string $table): void
+    {
+        $query->whereNotExists(function ($sub) use ($table): void {
+            $sub->selectRaw('1')
+                ->from('pm_message_logs as later_staff')
+                ->whereColumn('later_staff.to_address', $table.'.to_address')
+                ->where('later_staff.channel', 'email')
+                ->whereIn('later_staff.delivery_status', ['sent', 'delivered'])
+                ->whereColumn('later_staff.id', '>', $table.'.id')
+                ->where(function ($kind): void {
+                    $kind->where('later_staff.template_category', 'staff_credentials')
+                        ->orWhere('later_staff.internal_stage', 'staff_login');
+                })
+                ->where($table.'.delivery_status', 'failed')
+                ->where(function ($staff) use ($table): void {
+                    $staff->where($table.'.template_category', 'staff_credentials')
+                        ->orWhere($table.'.internal_stage', 'staff_login');
+                });
+        });
+    }
+
     public function messagesExport(Request $request)
     {
         if (! ($request->user()->hasPmPermission('communications.export') || $request->user()->hasPmPermission('communications.manage'))) {
@@ -580,27 +700,34 @@ class PropertyCommunicationsWebController extends Controller
 
         return TabularExport::stream(
             'communications-messages',
-            ['ID', 'When', 'Channel', 'Internal Stage', 'Display Label', 'Status', 'To', 'Subject', 'Body', 'Delivery Error', 'Sent At', 'By'],
+            ['When', 'Channel', 'Internal stage', 'Display label', 'Status', 'To', 'Subject', 'Preview / error', 'By'],
             function () use ($rows, $canViewBody) {
+                $presenter = app(SmsDeliveryErrorPresenter::class);
                 foreach ($rows as $l) {
                     $parsed = app(TenantCommunicationStageService::class)->parseStaffSubject($l->subject);
+                    $preview = trim((string) ($l->delivery_error ?? ''));
+                    if ($preview !== '') {
+                        $preview = $presenter->forChannel((string) $l->channel, $preview);
+                    } elseif ($canViewBody) {
+                        $preview = trim(strip_tags((string) $l->body));
+                    } else {
+                        $preview = '';
+                    }
                     yield [
-                        $l->id,
-                        optional($l->created_at)->format('Y-m-d H:i:s'),
+                        optional($l->created_at)->format('Y-m-d H:i'),
                         strtoupper((string) $l->channel),
                         (string) ($l->internal_stage ?: ($parsed['internal_stage'] ?? '')),
                         (string) ($l->display_stage ?: ($parsed['display_label'] ?? '')),
                         strtoupper((string) ($l->delivery_status ?? 'unknown')),
                         $this->maskAddress((string) $l->to_address),
                         (string) ($l->subject ?? ''),
-                        $canViewBody ? strip_tags((string) $l->body) : '[MASKED]',
-                        (string) ($l->delivery_error ?? ''),
-                        optional($l->sent_at)->format('Y-m-d H:i:s') ?? '',
+                        $preview,
                         (string) ($l->user?->name ?? 'System'),
                     ];
                 }
             },
-            $format
+            $format,
+            ['title' => 'Emails and SMS'],
         );
     }
 
@@ -623,19 +750,29 @@ class PropertyCommunicationsWebController extends Controller
             );
         }
 
-        $resendAction = app(RentReminderEligibilityService::class)->smsResendActionForLog(
-            $log,
-            app(RentReminderEligibilityService::class)->deliveredInvoiceKeysForInvoiceNumbers([
-                app(RentReminderEligibilityService::class)->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body),
-            ])
-        );
+        $resendAction = null;
+        if ($log->channel === 'sms') {
+            $resendAction = app(RentReminderEligibilityService::class)->smsResendActionForLog(
+                $log,
+                app(RentReminderEligibilityService::class)->deliveredInvoiceKeysForInvoiceNumbers([
+                    app(RentReminderEligibilityService::class)->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body),
+                ])
+            );
+        } elseif ($this->isStaffCredentialsLog($log) && strtolower((string) ($log->delivery_status ?? '')) === 'failed') {
+            $resendAction = [
+                'can_resend' => true,
+                'can_bulk_select' => false,
+                'label' => 'Resend logins',
+                'hint' => 'Resets the temporary password and emails it again.',
+            ];
+        }
 
         return property_view('property.agent.communications.message_show', [
             'log' => $log,
             'backRoute' => $backRoute,
             'backLabel' => $backLabel,
             'canManageCommunications' => $this->canManageCommunications(request()),
-            'resendAction' => $resendAction,
+            'resendAction' => $resendAction ?? [],
         ]);
     }
 
@@ -1391,6 +1528,10 @@ class PropertyCommunicationsWebController extends Controller
             $q->where($table.'.delivery_status', $status);
         }
 
+        if ($status !== 'failed_all') {
+            $this->excludeResolvedStaffLoginFailures($q, $table);
+        }
+
         $sender = trim((string) ($filters['sender'] ?? ''));
         if ($sender !== '' && ctype_digit($sender)) {
             $q->where($table.'.user_id', (int) $sender);
@@ -1547,6 +1688,13 @@ class PropertyCommunicationsWebController extends Controller
             ['label' => 'SMS / Email', 'value' => $sms.' / '.$email, 'hint' => 'Channel split'],
         ];
 
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        if ($channel === 'sms') {
+            $stats[3] = ['label' => 'SMS', 'value' => (string) $sms, 'hint' => 'SMS only'];
+        } elseif ($channel === 'email') {
+            $stats[3] = ['label' => 'Emails', 'value' => (string) $email, 'hint' => 'Email only'];
+        }
+
         if (trim((string) ($filters['duplicates'] ?? '')) === 'yes') {
             $stats[] = [
                 'label' => 'Duplicate rows',
@@ -1619,16 +1767,38 @@ class PropertyCommunicationsWebController extends Controller
             return [];
         }
 
+        $actions = [];
+
+        foreach ($logs as $log) {
+            if (! $log instanceof PmMessageLog) {
+                continue;
+            }
+            if ($log->channel === 'email'
+                && $this->isStaffCredentialsLog($log)
+                && strtolower((string) ($log->delivery_status ?? '')) === 'failed'
+            ) {
+                $actions[(int) $log->id] = [
+                    'can_resend' => true,
+                    'can_bulk_select' => false,
+                    'label' => 'Resend logins',
+                    'hint' => 'Resets the temporary password and emails it again.',
+                ];
+            }
+        }
+
         $failedSms = $logs->filter(static function (PmMessageLog $log): bool {
             return $log->channel === 'sms'
                 && strtolower((string) ($log->delivery_status ?? '')) === 'failed';
         });
 
-        if ($failedSms->isEmpty()) {
-            return [];
+        if ($failedSms->isNotEmpty()) {
+            $smsActions = app(RentReminderEligibilityService::class)->resendActionsForLogs($failedSms);
+            foreach ($smsActions as $id => $action) {
+                $actions[(int) $id] = $action;
+            }
         }
 
-        return app(RentReminderEligibilityService::class)->resendActionsForLogs($failedSms);
+        return $actions;
     }
 
     /**
@@ -1951,6 +2121,60 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
+    }
+
+    public function schedules(Request $request): View|StreamedResponse
+    {
+        $envOverride = PropertyPortalSetting::workflowAutomationEnvOverride();
+        $jobs = PropertyPortalSetting::scheduledAutomationCatalog();
+        $envForcesOff = $envOverride === false;
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
+            return TabularExport::stream(
+                'message-schedules-'.now()->format('Ymd_His'),
+                ['Group', 'Job', 'Command', 'When', 'Sends', 'Status'],
+                function () use ($jobs, $envForcesOff) {
+                    foreach ($jobs as $job) {
+                        $on = (bool) ($job['enabled'] ?? false) && ! $envForcesOff;
+                        yield [
+                            (string) ($job['group'] ?? ''),
+                            (string) ($job['label'] ?? ''),
+                            (string) ($job['command'] ?? ''),
+                            (string) ($job['when'] ?? ''),
+                            (string) ($job['sends'] ?? ''),
+                            $on ? 'On' : 'Off',
+                        ];
+                    }
+                },
+                $export,
+                ['title' => 'Message schedules'],
+            );
+        }
+
+        return property_view('property.agent.communications.schedules', [
+            'jobs' => $jobs,
+            'envForcesOff' => $envForcesOff,
+            'timezone' => (string) config('app.timezone'),
+        ]);
+    }
+
+    public function updateSchedule(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'key' => ['required', 'string'],
+            'enabled' => ['required', 'in:0,1'],
+        ]);
+
+        $key = (string) $data['key'];
+        if (! in_array($key, PropertyPortalSetting::scheduledAutomationKeys(), true)) {
+            return back()->withErrors(['key' => 'Unknown scheduler.']);
+        }
+
+        PropertyPortalSetting::setValue($key, (string) $data['enabled']);
+        $label = collect(PropertyPortalSetting::scheduledAutomationCatalog())->firstWhere('key', $key)['label'] ?? $key;
+
+        return back()->with('success', ($data['enabled'] === '1' ? 'Turned on: ' : 'Turned off: ').$label.'.');
     }
 
     private function logExportAudit(Request $request, string $reportType, string $format, int $rowCount, array $filters): void

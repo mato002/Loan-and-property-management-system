@@ -37,13 +37,76 @@ class Employee extends Model
         'nssf_number',
         'employment_contract_scan',
         'hire_date',
+        'probation_ends_on',
+        'onboarding_completed_at',
+        'exit_date',
+        'exit_reason',
+        'offboarding_notes',
+        'offboarded_by_user_id',
+    ];
+
+    public const STATUSES = [
+        'onboarding' => 'Onboarding',
+        'active' => 'Active',
+        'on_leave' => 'On leave',
+        'terminated' => 'Offboarded',
+    ];
+
+    public const EXIT_REASONS = [
+        'resignation' => 'Resignation',
+        'end_of_contract' => 'End of contract',
+        'dismissal' => 'Dismissal',
+        'redundancy' => 'Redundancy',
+        'retirement' => 'Retirement',
+        'other' => 'Other',
     ];
 
     protected function casts(): array
     {
         return [
             'hire_date' => 'date',
+            'probation_ends_on' => 'date',
+            'onboarding_completed_at' => 'datetime',
+            'exit_date' => 'date',
         ];
+    }
+
+    public function employmentStatusKey(): string
+    {
+        $status = strtolower(trim((string) $this->employment_status));
+
+        return array_key_exists($status, self::STATUSES) ? $status : 'active';
+    }
+
+    public function employmentStatusLabel(): string
+    {
+        return self::STATUSES[$this->employmentStatusKey()] ?? 'Active';
+    }
+
+    public function isOnboarding(): bool
+    {
+        return $this->employmentStatusKey() === 'onboarding';
+    }
+
+    public function isActiveEmployment(): bool
+    {
+        return in_array($this->employmentStatusKey(), ['active', 'on_leave'], true);
+    }
+
+    public function isOffboarded(): bool
+    {
+        return $this->employmentStatusKey() === 'terminated';
+    }
+
+    public function offboardedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'offboarded_by_user_id');
+    }
+
+    public function assignedProperties(): BelongsToMany
+    {
+        return $this->belongsToMany(Property::class, 'employee_property_assignments', 'employee_id', 'property_id')
+            ->withTimestamps();
     }
 
     public function user(): BelongsTo
