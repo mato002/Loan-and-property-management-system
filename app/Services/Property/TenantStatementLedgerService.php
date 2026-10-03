@@ -196,6 +196,10 @@ final class TenantStatementLedgerService
                 'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
                 'type' => 'Invoice',
                 'ref' => $label,
+                'invoice_id' => (int) $invoice->id,
+                'invoice_no' => $label,
+                'charge_label' => $memo !== '' ? $memo : $typeLabel,
+                'is_rent' => (string) $invoice->invoice_type === PmInvoice::TYPE_RENT,
                 'description' => $desc,
                 'debit' => (float) $invoice->amount,
                 'credit' => 0.0,
@@ -236,6 +240,10 @@ final class TenantStatementLedgerService
                     'timestamp' => $entryTs,
                     'type' => 'Opening arrears',
                     'ref' => 'B/F-'.$tenant->id,
+                    'invoice_id' => 0,
+                    'invoice_no' => 'B/F-'.$tenant->id,
+                    'charge_label' => 'Opening arrears',
+                    'is_rent' => false,
                     'description' => trim((string) (($tenant->opening_arrears_notes ?: 'Brought-forward debt captured at tenant onboarding.').$partsText)),
                     'debit' => $openingArrears,
                     'credit' => 0.0,
@@ -310,12 +318,115 @@ final class TenantStatementLedgerService
                 ->sortBy([
                     ['timestamp', 'asc'],
                     ['type', 'asc'],
+                    ['ref', 'asc'],
                 ])
                 ->values(),
             'openingBalance' => $openingBalance,
             'openingArrears' => $openingArrears,
             'unpostedReceiptTotal' => round($unpostedReceiptTotal, 2),
         ];
+    }
+
+    /**
+     * Split each statement receipt across the charges it settles.
+     * Older open invoices are paid first. Money left over settles later invoices.
+     *
+     * @param  Collection<int, array<string, mixed>>  $entries
+     * @return array<int, list<array{invoice_no:string, label:string, amount:float, is_rent:bool}>>
+     */
+    public function applicationsByPayment(Collection $entries): array
+    {
+        /** @var list<array{invoice_no:string, label:string, remaining:float, is_rent:bool}> $open */
+        $open = [];
+        /** @var list<array{payment_id:?int, remaining:float}> $pools */
+        $pools = [];
+        /** @var array<int, list<array{invoice_no:string, label:string, amount:float, is_rent:bool}>> $applied */
+        $applied = [];
+
+        $add = function (?int $paymentId, string $invoiceNo, string $label, bool $isRent, float $amount) use (&$applied): void {
+            if ($paymentId === null || $paymentId <= 0 || $amount <= 0.009) {
+                return;
+            }
+            $rows = $applied[$paymentId] ?? [];
+            $last = array_key_last($rows);
+            if ($last !== null && $rows[$last]['invoice_no'] === $invoiceNo) {
+                $rows[$last]['amount'] = round($rows[$last]['amount'] + $amount, 2);
+                $applied[$paymentId] = $rows;
+
+                return;
+            }
+            $rows[] = [
+                'invoice_no' => $invoiceNo,
+                'label' => $label,
+                'amount' => round($amount, 2),
+                'is_rent' => $isRent,
+            ];
+            $applied[$paymentId] = $rows;
+        };
+
+        foreach ($entries as $entry) {
+            $debit = round((float) ($entry['debit'] ?? 0), 2);
+            $credit = round((float) ($entry['credit'] ?? 0), 2);
+            $type = (string) ($entry['type'] ?? '');
+
+            if ($debit > 0.009 && in_array($type, ['Invoice', 'Opening arrears'], true)) {
+                $invoiceNo = (string) ($entry['invoice_no'] ?? $entry['ref'] ?? 'Charge');
+                $label = (string) ($entry['charge_label'] ?? 'Charge');
+                $isRent = (bool) ($entry['is_rent'] ?? false);
+                $need = $debit;
+                foreach ($pools as $index => $pool) {
+                    if ($need <= 0.009) {
+                        break;
+                    }
+                    $available = round((float) $pool['remaining'], 2);
+                    if ($available <= 0.009) {
+                        continue;
+                    }
+                    $take = round(min($available, $need), 2);
+                    $pools[$index]['remaining'] = round($available - $take, 2);
+                    $need = round($need - $take, 2);
+                    $add($pool['payment_id'], $invoiceNo, $label, $isRent, $take);
+                }
+                if ($need > 0.009) {
+                    $open[] = [
+                        'invoice_no' => $invoiceNo,
+                        'label' => $label,
+                        'remaining' => $need,
+                        'is_rent' => $isRent,
+                    ];
+                }
+
+                continue;
+            }
+
+            if ($credit <= 0.009 || ! in_array($type, ['Payment', 'Receipt'], true)) {
+                continue;
+            }
+
+            $paymentId = $type === 'Payment' ? (int) ($entry['payment_id'] ?? 0) : 0;
+            $remaining = $credit;
+            foreach ($open as $index => $charge) {
+                if ($remaining <= 0.009) {
+                    break;
+                }
+                $due = round((float) $charge['remaining'], 2);
+                if ($due <= 0.009) {
+                    continue;
+                }
+                $take = round(min($remaining, $due), 2);
+                $open[$index]['remaining'] = round($due - $take, 2);
+                $remaining = round($remaining - $take, 2);
+                $add($paymentId > 0 ? $paymentId : null, (string) $charge['invoice_no'], (string) $charge['label'], (bool) $charge['is_rent'], $take);
+            }
+            if ($remaining > 0.009) {
+                $pools[] = [
+                    'payment_id' => $paymentId > 0 ? $paymentId : null,
+                    'remaining' => $remaining,
+                ];
+            }
+        }
+
+        return $applied;
     }
 
     /**
