@@ -2,7 +2,7 @@
     :legacy-toolbar="false"
     :show-search="false"
     title="Rent roll"
-    subtitle="Active leases by unit — scheduled rent vs paid vs balance."
+    subtitle="Scheduled rent, and what was billed and collected in the selected month."
     back-route="property.revenue.index"
     :stats="$stats"
     :columns="$columns"

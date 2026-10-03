@@ -43,31 +43,36 @@ class RevenueController extends Controller
 {
     public function collectionsOverview(): View
     {
+        $overview = app(FinancialReportingFormulaService::class)->collectionsOverviewByChargeType();
+        $totals = $overview['totals'];
+
         $stats = [
             [
-                'label' => 'Billed (MTD)',
-                'value' => PropertyMoney::kes(PropertyDashboardStats::mtdBilled()),
-                'hint' => 'Issued billable invoices',
+                'label' => 'Billed ('.$overview['period_label'].')',
+                'value' => PropertyMoney::kes($totals['billed']),
+                'hint' => 'Invoices issued this month',
             ],
             [
-                'label' => 'Collections (MTD)',
-                'value' => PropertyMoney::kes(PropertyDashboardStats::mtdCollected()),
-                'hint' => 'Completed payment allocations',
+                'label' => 'Collected ('.$overview['period_label'].')',
+                'value' => PropertyMoney::kes($totals['collected']),
+                'hint' => 'Payments allocated this month',
             ],
             [
-                'label' => 'Tenant arrears',
-                'value' => PropertyMoney::kes(PropertyDashboardStats::outstandingBalance()),
-                'hint' => 'Open billable balances',
+                'label' => 'Outstanding',
+                'value' => PropertyMoney::kes($totals['outstanding']),
+                'hint' => 'Open balances across charge types',
             ],
             [
                 'label' => 'Collection rate',
-                'value' => $this->formatCollectionRateLabel(PropertyDashboardStats::collectionRateMtd()),
-                'hint' => 'MTD collected vs billed',
+                'value' => $totals['rate'] === null ? '—' : number_format($totals['rate'], 1).'%',
+                'hint' => 'Collected this month vs billed this month',
             ],
         ];
 
         return property_view('property.agent.revenue.collections_overview', [
             'stats' => $stats,
+            'chargeSummaries' => $overview['types'],
+            'periodLabel' => $overview['period_label'],
         ]);
     }
 
@@ -87,7 +92,9 @@ class RevenueController extends Controller
     public function rentRoll(Request $request): View|StreamedResponse
     {
         $cascade = app(PropertyFilterCascadeCatalog::class);
+        $month = RentRollQuery::normalizeMonth((string) $request->query('month', ''));
         $filters = [
+            'month' => $month,
             'q' => trim((string) $request->query('q', '')),
             'property_id' => max(0, (int) $request->query('property_id', 0)),
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
@@ -100,23 +107,24 @@ class RevenueController extends Controller
         $dir = (string) $filters['dir'];
         $perPage = (int) $filters['per_page'];
 
-        $records = RentRollQuery::rowRecords();
+        $records = RentRollQuery::rowRecords($month);
         $records = array_values(array_filter(
             $records,
             static fn (array $row) => $cascade->matchesLeaseScope($row, $filters)
         ));
 
-        $rows = array_map(static fn (array $row) => $row['cells'], $records);
         $q = (string) $filters['q'];
 
         if ($q !== '') {
             $needle = mb_strtolower($q);
-            $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
-                $text = mb_strtolower(implode(' ', array_map(static fn ($c) => (string) $c, $row)));
+            $records = array_values(array_filter($records, static function (array $row) use ($needle): bool {
+                $text = mb_strtolower(implode(' ', array_map(static fn ($c) => (string) $c, $row['cells'])));
 
                 return str_contains($text, $needle);
             }));
         }
+
+        $rows = array_map(static fn (array $row) => $row['cells'], $records);
         $sortMap = ['unit' => 0, 'tenant' => 1, 'period' => 2, 'due' => 3, 'paid' => 5, 'balance' => 6, 'status' => 7];
         $sortIndex = $sortMap[$sort] ?? 0;
         usort($rows, static function (array $a, array $b) use ($sortIndex, $dir): int {
@@ -135,8 +143,8 @@ class RevenueController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return TabularExport::stream(
-                'rent-roll-'.now()->format('Ymd_His'),
-                ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Paid', 'Balance', 'Status'],
+                'rent-roll-'.$month.'-'.now()->format('Ymd_His'),
+                ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Collected', 'Balance', 'Status'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield $row;
@@ -148,9 +156,17 @@ class RevenueController extends Controller
         $paginator = $this->paginateRows($rows, $perPage, $request);
         $pageRows = $paginator->getCollection()->all();
 
+        $periodStart = Carbon::createFromFormat('!Y-m', $month)->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+        $monthLabel = $periodStart->format('M Y');
+        $scoped = $filters['property_id'] > 0 || $filters['unit_id'] > 0 || $filters['tenant_id'] > 0 || $q !== '';
+        $unitIds = $scoped
+            ? array_values(array_unique(array_map(static fn (array $row): int => (int) $row['unit_id'], $records)))
+            : [];
+        $formula = app(FinancialReportingFormulaService::class);
         $stats = [
-            ['label' => 'Billed (MTD)', 'value' => PropertyMoney::kes(app(FinancialReportingFormulaService::class)->billedMtd()), 'hint' => 'Billable issued'],
-            ['label' => 'Collections (MTD)', 'value' => PropertyMoney::kes(PropertyDashboardStats::mtdCollected()), 'hint' => 'Completed allocation sums'],
+            ['label' => 'Billed ('.$monthLabel.')', 'value' => PropertyMoney::kes($formula->billedForPeriod($periodStart, $periodEnd, null, $unitIds)), 'hint' => 'Invoices issued'],
+            ['label' => 'Collected ('.$monthLabel.')', 'value' => PropertyMoney::kes($formula->collectedOnIssuedBills($periodStart, $periodEnd, null, $unitIds)), 'hint' => 'Paid on those invoices'],
             ['label' => 'Tenant arrears', 'value' => PropertyMoney::kes(PropertyDashboardStats::outstandingBalance()), 'hint' => 'Billable open balances'],
             ['label' => 'Units on roll', 'value' => (string) count($rows), 'hint' => 'Filtered total'],
         ];
@@ -161,7 +177,7 @@ class RevenueController extends Controller
 
         return property_view('property.agent.revenue.rent_roll', [
             'stats' => $stats,
-            'columns' => ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Paid', 'Balance', 'Status'],
+            'columns' => ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Collected', 'Balance', 'Status'],
             'tableRows' => $pageRows,
             'paginator' => $paginator,
             'filters' => $filters,

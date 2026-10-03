@@ -12,6 +12,7 @@
     data-filter-cascade-catalog="{!! \Illuminate\Support\Js::from($filterCascadeCatalog ?? ['units' => [], 'tenants' => []]) !!}"
     data-filter-cascade-auto-apply="true"
     :chip-labels="[
+        'month' => 'Month',
         'q' => 'Search',
         'property_id' => 'Property',
         'unit_id' => 'Unit',
@@ -19,6 +20,7 @@
     ]"
 >
     <x-slot name="primary">
+        <x-property.filter-field type="month" name="month" label="Month" :value="$filters['month'] ?? now()->format('Y-m')" />
         <x-property.filter-field type="search" name="q" placeholder="Search unit, tenant…" :value="$filters['q'] ?? ''" wide />
         @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
             'filters' => $filters,
@@ -34,7 +36,7 @@
                 ['value' => 'tenant', 'label' => 'Tenant'],
                 ['value' => 'period', 'label' => 'Period'],
                 ['value' => 'due', 'label' => 'Rent due'],
-                ['value' => 'paid', 'label' => 'Paid'],
+                ['value' => 'paid', 'label' => 'Collected'],
                 ['value' => 'balance', 'label' => 'Balance'],
                 ['value' => 'status', 'label' => 'Status'],
             ]"
