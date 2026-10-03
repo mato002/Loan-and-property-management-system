@@ -310,6 +310,10 @@ class SuperAdminAgentWorkspaceController extends Controller
     {
         abort_unless((string) ($agent->property_portal_role ?? '') === 'agent', 404);
 
+        if (! $request->isMethod('post')) {
+            return redirect()->route('superadmin.agent_workspaces.show', $agent);
+        }
+
         $actor = $request->user();
         if (! $actor || ! ($actor->is_super_admin ?? false)) {
             abort(403);
