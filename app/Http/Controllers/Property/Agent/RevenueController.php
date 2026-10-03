@@ -58,9 +58,14 @@ class RevenueController extends Controller
                 'hint' => 'Paid against invoices issued this month',
             ],
             [
+                'label' => 'Still due this month',
+                'value' => PropertyMoney::kes($totals['due_this_month'] ?? max(0.0, $totals['billed'] - $totals['applied'])),
+                'hint' => 'Billed minus collected on this month’s invoices',
+            ],
+            [
                 'label' => 'Outstanding',
                 'value' => PropertyMoney::kes($totals['outstanding']),
-                'hint' => 'Open balances across charge types',
+                'hint' => 'All open balances, including older months',
             ],
             [
                 'label' => 'Collection rate',

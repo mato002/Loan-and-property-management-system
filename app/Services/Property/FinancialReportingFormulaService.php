@@ -289,6 +289,7 @@ final class FinancialReportingFormulaService
                 'billed' => $billed,
                 'collected' => $collected,
                 'applied' => $applied,
+                'due_this_month' => round(max(0.0, $billed - $applied), 2),
                 'outstanding' => $outstanding,
                 'rate' => $billed > 0.009 ? round(100.0 * $applied / $billed, 1) : null,
             ];
@@ -297,6 +298,7 @@ final class FinancialReportingFormulaService
         $totalsBilled = round((float) collect($types)->sum('billed'), 2);
         $totalsCollected = round((float) collect($types)->sum('collected'), 2);
         $totalsApplied = round((float) collect($types)->sum('applied'), 2);
+        $totalsDueThisMonth = round((float) collect($types)->sum('due_this_month'), 2);
         $totalsOutstanding = round((float) collect($types)->sum('outstanding'), 2);
 
         return [
@@ -306,6 +308,7 @@ final class FinancialReportingFormulaService
                 'billed' => $totalsBilled,
                 'collected' => $totalsCollected,
                 'applied' => $totalsApplied,
+                'due_this_month' => $totalsDueThisMonth,
                 'outstanding' => $totalsOutstanding,
                 'rate' => $totalsBilled > 0.009 ? round(100.0 * $totalsApplied / $totalsBilled, 1) : null,
             ],

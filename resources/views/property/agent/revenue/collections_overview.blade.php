@@ -8,7 +8,7 @@
     >
         <x-property.module-status label="Collections" class="mb-4" />
 
-        <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             @foreach ($stats as $stat)
                 <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
                     <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{{ $stat['label'] }}</p>
@@ -23,7 +23,7 @@
         <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">By charge type</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Collected is paid against this month’s invoices. Outstanding is everything still open for that charge.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Still due this month is billed minus collected. Outstanding also includes older unpaid invoices.</p>
             </div>
         </div>
 
@@ -35,6 +35,7 @@
                     $received = (float) ($row['collected'] ?? 0);
                     $applied = (float) ($row['applied'] ?? 0);
                     $billed = (float) ($row['billed'] ?? 0);
+                    $dueThisMonth = (float) ($row['due_this_month'] ?? max(0.0, $billed - $applied));
                     $caughtUp = $billed <= 0.009 && $received > 0.009;
                     $tone = match (true) {
                         $caughtUp => 'bg-amber-500',
@@ -62,6 +63,10 @@
                         <div class="flex items-center justify-between gap-3">
                             <dt class="text-slate-500">Collected</dt>
                             <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes($applied) }}</dd>
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                            <dt class="text-slate-500">Still due this month</dt>
+                            <dd class="tabular-nums font-medium text-slate-900 dark:text-slate-100">{{ \App\Services\Property\PropertyMoney::kes($dueThisMonth) }}</dd>
                         </div>
                         <div class="flex items-center justify-between gap-3">
                             <dt class="text-slate-500">Outstanding</dt>

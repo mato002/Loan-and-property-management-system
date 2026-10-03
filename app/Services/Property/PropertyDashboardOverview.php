@@ -236,7 +236,10 @@ final class PropertyDashboardOverview
     private static function buildMetricsForAgent(): array
     {
         $year = (int) now()->year;
-        $mtdCollected = PropertyDashboardStats::mtdCollected();
+        $mtdCollected = app(FinancialReportingFormulaService::class)->collectedOnIssuedBills(
+            now()->startOfMonth(),
+            now()->endOfMonth(),
+        );
         $mtdBilled = PropertyDashboardStats::mtdBilled();
         $openBalance = PropertyDashboardStats::outstandingBalance();
         $commissionService = app(AgentCommissionService::class);
@@ -392,7 +395,8 @@ final class PropertyDashboardOverview
     }
 
     /**
-     * Rent invoiced versus rent collected, by calendar month.
+     * Rent invoiced versus what has been paid on those invoices, by the invoice month.
+     * Payment dates are often in an earlier month, so paid_at would leave the later bars empty.
      *
      * @return array{charges: list<float>, collections: list<float>}
      */
@@ -406,30 +410,12 @@ final class PropertyDashboardOverview
             ->groupByRaw('MONTH(issue_date)')
             ->pluck('total', 'month_num');
 
-        $collectionQuery = PmPayment::query()
-            ->join('pm_payment_allocations as rent_alloc', 'rent_alloc.pm_payment_id', '=', 'pm_payments.id')
-            ->join('pm_invoices as rent_inv', 'rent_inv.id', '=', 'rent_alloc.pm_invoice_id')
-            ->where('pm_payments.status', PmPayment::STATUS_COMPLETED)
-            ->whereNotNull('pm_payments.paid_at')
-            ->whereYear('pm_payments.paid_at', $year)
-            ->where(function ($query) {
-                $query->whereNull('pm_payments.channel')
-                    ->orWhere('pm_payments.channel', '!=', 'tenant_credit');
-            })
-            ->where('rent_inv.invoice_type', PmInvoice::TYPE_RENT)
-            ->where('rent_inv.status', '!=', PmInvoice::STATUS_CANCELLED)
-            ->where('rent_inv.status', '!=', PmInvoice::STATUS_DRAFT)
-            ->whereNull('rent_inv.deleted_at');
-
-        if (Schema::hasColumn('pm_payment_allocations', 'is_reversed')) {
-            $collectionQuery->where(function ($query) {
-                $query->where('rent_alloc.is_reversed', false)->orWhereNull('rent_alloc.is_reversed');
-            });
-        }
-
-        $collectionByMonth = $collectionQuery
-            ->selectRaw('MONTH(pm_payments.paid_at) as month_num, COALESCE(SUM(rent_alloc.amount), 0) as total')
-            ->groupByRaw('MONTH(pm_payments.paid_at)')
+        $collectionByMonth = PmInvoice::query()
+            ->billableAr()
+            ->where('invoice_type', PmInvoice::TYPE_RENT)
+            ->whereYear('issue_date', $year)
+            ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount_paid), 0) as total')
+            ->groupByRaw('MONTH(issue_date)')
             ->pluck('total', 'month_num');
 
         $charges = [];
@@ -454,7 +440,10 @@ final class PropertyDashboardOverview
         $formulas = app(FinancialReportingFormulaService::class);
         $openInvoiceBalance = $formulas->outstandingGlobal();
         $overdueCount = PmInvoice::countPastDueOpen();
-        $mtdCollected = PropertyDashboardStats::mtdCollected();
+        $mtdCollected = $formulas->collectedOnIssuedBills(
+            now()->startOfMonth(),
+            now()->endOfMonth(),
+        );
         $billedYtd = $formulas->billedForPeriod(
             Carbon::create($year, 1, 1)->startOfYear(),
             Carbon::create($year, 12, 31)->endOfYear(),
