@@ -35,6 +35,44 @@ class TenantCreditService
     }
 
     /**
+     * Credit still sitting on each payment. Unallocated receipt money is not
+     * credit unless a credit-created row remains after reversals.
+     *
+     * @param  list<int>  $paymentIds
+     * @return array<int, float>
+     */
+    public function openCreditByPaymentIds(array $paymentIds): array
+    {
+        $paymentIds = array_values(array_unique(array_filter(array_map('intval', $paymentIds))));
+        if (! $this->isEnabled() || $paymentIds === []) {
+            return [];
+        }
+
+        $rows = PmTenantCreditTransaction::query()
+            ->whereIn('pm_payment_id', $paymentIds)
+            ->whereIn('type', [
+                PmTenantCreditTransaction::TYPE_CREDIT_CREATED,
+                PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+            ])
+            ->get(['pm_payment_id', 'type', 'amount']);
+
+        $held = [];
+        foreach ($rows as $row) {
+            $paymentId = (int) $row->pm_payment_id;
+            $amount = round((float) $row->amount, 2);
+            $held[$paymentId] = round(($held[$paymentId] ?? 0) + (
+                $row->type === PmTenantCreditTransaction::TYPE_CREDIT_CREATED ? $amount : -$amount
+            ), 2);
+        }
+
+        foreach ($held as $paymentId => $amount) {
+            $held[$paymentId] = round(max(0.0, $amount), 2);
+        }
+
+        return $held;
+    }
+
+    /**
      * Reverse tenant advance credit created from an overpayment when the
      * source payment is reversed. Throws if credit has already been applied.
      */

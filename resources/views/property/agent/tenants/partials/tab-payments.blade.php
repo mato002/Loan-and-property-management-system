@@ -20,12 +20,19 @@
             </tr>
         </thead>
         <tbody>
+            @php
+                $creditHeldByPayment = app(\App\Services\Property\TenantCreditService::class)->openCreditByPaymentIds(
+                    collect($recentPayments ?? [])->pluck('id')->all()
+                );
+            @endphp
             @forelse(($recentPayments ?? []) as $payment)
                 @php
                     $appliedRows = collect($payment->allocations ?? [])
                         ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false) && (float) $allocation->amount > 0.009);
                     $appliedSum = round((float) $appliedRows->sum('amount'), 2);
                     $leftover = round(max(0, (float) $payment->amount - $appliedSum), 2);
+                    $heldAsCredit = round(min($leftover, (float) ($creditHeldByPayment[(int) $payment->id] ?? 0)), 2);
+                    $onStatement = round(max(0, $leftover - $heldAsCredit), 2);
                     $rentApplied = round((float) $appliedRows
                         ->filter(fn ($allocation) => (string) ($allocation->invoice?->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT)
                         ->sum('amount'), 2);
@@ -37,8 +44,15 @@
                     <td class="px-4 py-3 font-mono text-xs">{{ $payment->external_ref ?? '—' }}</td>
                     <td class="px-4 py-3 text-xs">
                         @if($appliedRows->isEmpty())
-                            <span class="font-medium text-amber-800">Not applied to any invoice</span>
-                            <div class="mt-0.5 text-[11px] text-amber-700">Does not count on rent collected</div>
+                            <span class="font-medium text-slate-800">Not applied to an invoice line</span>
+                            @if($heldAsCredit > 0.009)
+                                <div class="mt-1 font-medium text-amber-800">Held as credit {{ \App\Services\Property\PropertyMoney::kes($heldAsCredit) }}</div>
+                            @endif
+                            @if($onStatement > 0.009)
+                                <div class="mt-1 text-[11px] text-slate-500">{{ \App\Services\Property\PropertyMoney::kes($onStatement) }} is already on the statement. Credit wallet was not increased.</div>
+                            @elseif($heldAsCredit <= 0.009)
+                                <div class="mt-0.5 text-[11px] text-slate-500">Does not count on rent collected</div>
+                            @endif
                         @else
                             <ul class="space-y-0.5">
                                 @foreach($appliedRows as $allocation)
@@ -59,8 +73,14 @@
                                 @endforeach
                             </ul>
                             @if($leftover > 0.009)
-                                <div class="mt-1 font-medium text-amber-800">Unallocated {{ \App\Services\Property\PropertyMoney::kes($leftover) }}</div>
-                                <div class="text-[11px] text-amber-700">Held as credit — not rent collected</div>
+                                @if($heldAsCredit > 0.009)
+                                    <div class="mt-1 font-medium text-amber-800">Held as credit {{ \App\Services\Property\PropertyMoney::kes($heldAsCredit) }}</div>
+                                    <div class="text-[11px] text-amber-700">In the credit wallet — not rent collected</div>
+                                @endif
+                                @if($onStatement > 0.009)
+                                    <div class="mt-1 font-medium text-slate-700">{{ \App\Services\Property\PropertyMoney::kes($onStatement) }} counted on the statement</div>
+                                    <div class="text-[11px] text-slate-500">Same receipt as the statement. Credit wallet was not increased.</div>
+                                @endif
                             @elseif($rentApplied <= 0.009)
                                 <div class="mt-1 text-[11px] text-amber-700">No rent invoice allocation</div>
                             @endif
