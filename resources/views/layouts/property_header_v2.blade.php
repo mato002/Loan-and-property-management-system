@@ -140,7 +140,7 @@
                     </span>
                     <span class="min-w-0 leading-tight hidden sm:block">
                         @if ($companyName !== '')
-                            <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
+                            <span class="property-brand-name block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
                         @elseif ($portalRole === 'agent')
                             <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">Agent workspace</span>
                         @elseif ($portalRole === 'landlord')

@@ -219,6 +219,48 @@ async function loadHeavyDashboardMetrics(host) {
 
 const PIE_COLORS = ['#4f46e5', '#0891b2', '#059669', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#ec4899'];
 
+function passionPalette() {
+    return document.documentElement.dataset.brandPalette === 'passion-homes';
+}
+
+function paletteColor(token, fallback) {
+    if (!passionPalette()) {
+        return fallback;
+    }
+    const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+
+    return value || fallback;
+}
+
+function chartColors() {
+    if (!passionPalette()) {
+        return {
+            charge: '#ef4444',
+            collection: '#94a3b8',
+            invoices: '#059669',
+            payments: '#0d9488',
+            pies: PIE_COLORS,
+            split: ['#4f46e5', '#7c3aed'],
+            occupancy: ['#059669', '#f59e0b'],
+            billed: ['#0d9488', '#f97316'],
+        };
+    }
+
+    const red = paletteColor('--brand-primary', '#c0392b');
+    const blue = paletteColor('--brand-accent', '#1b75bc');
+
+    return {
+        charge: red,
+        collection: blue,
+        invoices: red,
+        payments: blue,
+        pies: [red, blue, '#922b21', '#155f96', '#f5b7b1', '#7fb3d5'],
+        split: [red, blue],
+        occupancy: [blue, red],
+        billed: [blue, red],
+    };
+}
+
 function pieOptions(showLegend = true) {
     return {
         responsive: true,
@@ -341,6 +383,7 @@ function initPropertyDashboardCharts(root = document) {
         return;
     }
 
+    const colors = chartColors();
     const rentCanvas = root.querySelector?.('#dashboard-chart-rent-comparison') ?? document.getElementById('dashboard-chart-rent-comparison');
     if (rentCanvas?.getContext) {
         new Chart(rentCanvas.getContext('2d'), {
@@ -351,14 +394,14 @@ function initPropertyDashboardCharts(root = document) {
                     {
                         label: 'Rental charge',
                         data: rentCharges,
-                        backgroundColor: '#ef4444',
+                        backgroundColor: colors.charge,
                         borderRadius: 2,
                         maxBarThickness: 22,
                     },
                     {
                         label: 'Rent collection',
                         data: rentCollections,
-                        backgroundColor: '#94a3b8',
+                        backgroundColor: colors.collection,
                         borderRadius: 2,
                         maxBarThickness: 22,
                     },
@@ -374,7 +417,7 @@ function initPropertyDashboardCharts(root = document) {
             type: 'line',
             data: {
                 labels,
-                datasets: [lineDataset('Invoices issued', invoices, '#059669')],
+                datasets: [lineDataset('Invoices issued', invoices, colors.invoices)],
             },
             options: baseOptions(),
         });
@@ -386,16 +429,16 @@ function initPropertyDashboardCharts(root = document) {
             type: 'line',
             data: {
                 labels,
-                datasets: [lineDataset('Payments received', payments, '#0d9488')],
+                datasets: [lineDataset('Payments received', payments, colors.payments)],
             },
             options: baseOptions(),
         });
     }
 
-    renderPieChart('dashboard-chart-commission-properties', commissionByProperty.labels, commissionByProperty.values, PIE_COLORS, root);
-    renderPieChart('dashboard-chart-commission-split', commissionSplit.labels, commissionSplit.values, ['#4f46e5', '#7c3aed'], root);
-    renderPieChart('dashboard-chart-occupancy', occupancy.labels, occupancy.values, ['#059669', '#f59e0b'], root);
-    renderPieChart('dashboard-chart-collections-billed', collectionsBilled.labels, collectionsBilled.values, ['#0d9488', '#f97316'], root);
+    renderPieChart('dashboard-chart-commission-properties', commissionByProperty.labels, commissionByProperty.values, colors.pies, root);
+    renderPieChart('dashboard-chart-commission-split', commissionSplit.labels, commissionSplit.values, colors.split, root);
+    renderPieChart('dashboard-chart-occupancy', occupancy.labels, occupancy.values, colors.occupancy, root);
+    renderPieChart('dashboard-chart-collections-billed', collectionsBilled.labels, collectionsBilled.values, colors.billed, root);
 }
 
 export function bootPropertyDashboard(scope = document) {
