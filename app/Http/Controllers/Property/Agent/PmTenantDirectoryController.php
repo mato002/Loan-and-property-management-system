@@ -1435,7 +1435,7 @@ class PmTenantDirectoryController extends Controller
             'recentInvoices' => $recentInvoices,
             'recentPayments' => $recentPayments,
             'statementApplications' => $statementApplications,
-            'recentRegisterReceipts' => $recentRegisterReceipts
+            'recentRegisterReceipts' => $recentRegisterReceipts,
             'recentNotices' => $recentNotices,
             'utilityReadings' => $utilityReadings,
             'standingExtras' => $standingExtras,
