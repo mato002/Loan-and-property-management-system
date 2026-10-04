@@ -41,6 +41,7 @@ final class LandlordMonthlyShareTotals
             'pending_share' => 0.0,
             'owner_share' => 0.0,
             'agent_earning' => 0.0,
+            'expenses' => 0.0,
         ];
 
         foreach ($months as $month) {
@@ -56,7 +57,7 @@ final class LandlordMonthlyShareTotals
             }
         }
 
-        $totals['landlord_net'] = max(0.0, $totals['owner_share'] - $totals['agent_earning']);
+        $totals['landlord_net'] = max(0.0, $totals['owner_share'] - $totals['agent_earning'] - $totals['expenses']);
 
         return $totals;
     }
@@ -73,6 +74,7 @@ final class LandlordMonthlyShareTotals
             'pending_share' => 0.0,
             'owner_share' => 0.0,
             'agent_earning' => 0.0,
+            'expenses' => 0.0,
             'landlord_net' => 0.0,
         ];
 
@@ -86,7 +88,7 @@ final class LandlordMonthlyShareTotals
             }
         }
 
-        $combined['landlord_net'] = max(0.0, $combined['owner_share'] - $combined['agent_earning']);
+        $combined['landlord_net'] = max(0.0, $combined['owner_share'] - $combined['agent_earning'] - $combined['expenses']);
 
         return $combined;
     }

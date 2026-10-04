@@ -14,6 +14,7 @@ use App\Models\PmLease;
 use App\Models\PmInvoice;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
@@ -2167,6 +2168,30 @@ class PropertyPortfolioController extends Controller
 
         }
 
+        $expensesByMonthProperty = [];
+        if ($propertyIds !== [] && Schema::hasTable('pm_ezen_payment_vouchers')) {
+            $rangeFrom = $periodStart->format('Y-m');
+            $rangeTo = $periodEnd->format('Y-m');
+            $expenseRows = DB::table('pm_ezen_payment_vouchers')
+                ->whereIn('property_id', $propertyIds)
+                ->whereIn('category', [PmEzenPaymentVoucher::CATEGORY_EXPENSE, PmEzenPaymentVoucher::CATEGORY_TAX])
+                ->where('link_status', '!=', PmEzenPaymentVoucher::LINK_SKIPPED)
+                ->where('amount', '>', 0)
+                ->get(['property_id', 'amount', 'period_month', 'txn_date']);
+
+            foreach ($expenseRows as $row) {
+                $periodMonth = trim((string) ($row->period_month ?? ''));
+                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
+                    ? $periodMonth
+                    : ($row->txn_date ? Carbon::parse((string) $row->txn_date)->format('Y-m') : '');
+                if ($ym === '' || $ym < $rangeFrom || $ym > $rangeTo) {
+                    continue;
+                }
+                $pid = (int) $row->property_id;
+                $expensesByMonthProperty[$ym][$pid] = ($expensesByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
+        }
+
         $remittedByMonthProperty = [];
         if ($propertyIds !== [] && $landlordId > 0) {
             $remittanceRows = app(LandlordSettlementService::class)->landlordRemittances(
@@ -2212,21 +2237,24 @@ class PropertyPortfolioController extends Controller
                 $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
                 $share = $gross * $pct;
                 $earning = $share * ($commissionPct / 100);
+                $expenses = (float) ($expensesByMonthProperty[$ym][$pid] ?? 0) * $pct;
                 $remitted = (float) ($remittedByMonthProperty[$ym][$pid] ?? 0);
+                $payable = $share - $earning - $expenses;
                 $lines[] = [
                     'month' => $ym,
                     'month_label' => $monthStart->format('M Y'),
                     'gross_collected' => $gross,
                     'paid_share' => $remitted,
-                    'pending_share' => max(0.0, round($share - $earning - $remitted, 2)),
+                    'pending_share' => max(0.0, round($payable - $remitted, 2)),
                     'owner_share' => $share,
                     'agent_earning' => $earning,
+                    'expenses' => $expenses,
                 ];
             }
             $byProperty[$pid] = $lines;
         }
 
-        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $remittedByMonthProperty, $ownershipByProperty, $propertyLinks) {
+        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $remittedByMonthProperty, $expensesByMonthProperty, $ownershipByProperty, $propertyLinks) {
             $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
             $grossCollected = 0.0;
             $paidShare = 0.0;
@@ -2243,7 +2271,8 @@ class PropertyPortfolioController extends Controller
                 $share = $gross * $pct;
                 $commissionPct = $this->propertyCommissionPercent($pid);
                 $earning = $share * ($commissionPct / 100);
-                $monthPending = max(0.0, round($share - $earning - $monthPaid, 2));
+                $monthExpenses = (float) ($expensesByMonthProperty[$ym][$pid] ?? 0) * $pct;
+                $monthPending = max(0.0, round($share - $earning - $monthExpenses - $monthPaid, 2));
                 if ($gross <= 0.009 && $monthPaid <= 0.009 && $monthPending <= 0.009) {
                     continue;
                 }

@@ -28,7 +28,16 @@
         <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 text-sm space-y-2">
             <p><span class="text-slate-500">Expense group:</span> {{ $voucher->displayExpenseGroup() }}</p>
             <p><span class="text-slate-500">Narration:</span> {{ $voucher->narration ?: ($voucher->particulars ?: '—') }}</p>
-            <p><span class="text-slate-500">Property:</span> {{ $voucher->property?->name ?: '—' }}</p>
+            <p><span class="text-slate-500">Property:</span> {{ $voucher->property?->name ?: ($voucher->property_code ?: 'Unassigned') }}</p>
+            <p><span class="text-slate-500">Unit:</span> {{ $voucher->unit?->label ?: ($voucher->property_id ? 'Whole property' : '—') }}</p>
+            <div class="pt-2">
+                @include('property.agent.partials.payment_voucher_property_fields', [
+                    'voucher' => $voucher,
+                    'properties' => $properties ?? collect(),
+                    'units' => $units ?? collect(),
+                    'selectedPropertyId' => (int) ($voucher->property_id ?? 0),
+                ])
+            </div>
             <p><span class="text-slate-500">Landlord:</span> {{ $voucher->landlord?->name ?: '—' }}</p>
             <p><span class="text-slate-500">Notes:</span> {{ $voucher->notes ?: '—' }}</p>
             @if ($voucher->pm_landlord_payout_id)
