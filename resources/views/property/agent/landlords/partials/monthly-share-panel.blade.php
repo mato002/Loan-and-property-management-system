@@ -4,7 +4,7 @@
 @endphp
 <div class="px-1 py-1">
     <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Monthly share breakdown</p>
-    <p class="mb-2 text-[11px] text-slate-500">Collected is money received for that month's bills, including receipts that were not posted onto an invoice. Paid to landlord is remittances for that month. Pending is what is still owed to the landlord after your earnings and that remittance.</p>
+    <p class="mb-2 text-[11px] text-slate-500">Collected is what has been paid on that month's bills, including money received before the month. Paid to landlord is remittances for that month. Pending is what is still owed to the landlord after your earnings and that remittance.</p>
     <div class="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-gray-800">
         <table class="w-full min-w-full text-xs">
             <thead class="sticky top-0 bg-slate-50 text-slate-500 dark:bg-slate-900/80">

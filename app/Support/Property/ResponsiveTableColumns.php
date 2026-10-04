@@ -75,14 +75,15 @@ final class ResponsiveTableColumns
     public static function landlords(): array
     {
         return self::build(
-            ['Landlord', 'Links', 'Shares (KES)', 'Last collection', 'Buildings', 'Actions'],
+            ['Landlord', 'Links', 'Shares (KES)', 'Last collection', 'Pay date', 'Buildings', 'Actions'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
                 1 => ['priority' => 3, 'mobile_label' => 'Links'],
                 2 => ['is_amount' => true, 'priority' => 2, 'mobile_label' => 'My share'],
                 3 => ['priority' => 5, 'mobile_label' => 'Last paid'],
-                4 => ['priority' => 4, 'mobile_label' => 'Buildings'],
-                5 => ['is_action' => true],
+                4 => ['priority' => 4, 'mobile_label' => 'Pay date'],
+                5 => ['priority' => 6, 'mobile_label' => 'Buildings'],
+                6 => ['is_action' => true],
             ]
         );
     }
