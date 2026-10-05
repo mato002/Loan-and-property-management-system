@@ -1805,6 +1805,8 @@ SQL;
             $this->syncLeaseDepositLines($lease, $depositLines);
 
             $this->syncLeaseRevenuePostings($lease);
+            app(\App\Services\Property\LeaseBillingRentSync::class)
+                ->syncFromLeaseRent($lease->fresh(['units']) ?? $lease);
         });
 
         if ($fromCreateModal) {
@@ -2206,6 +2208,8 @@ SQL;
             $this->syncLeaseDepositLines($lease, $depositLines);
 
             $this->syncLeaseRevenuePostings($lease->fresh(['units.property']));
+            app(\App\Services\Property\LeaseBillingRentSync::class)
+                ->syncFromLeaseRent($lease->fresh(['units']) ?? $lease);
         });
 
         $lease->refresh();
