@@ -15,7 +15,14 @@ class EquityPaymentRepository
 {
     public function transactionExists(string $transactionId): bool
     {
-        return Payment::query()->where('transaction_id', $transactionId)->exists();
+        return Payment::query()
+            ->where(function ($query) use ($transactionId): void {
+                $query->where('transaction_id', $transactionId);
+                if (Schema::hasColumn('payments', 'external_transaction_reference')) {
+                    $query->orWhere('external_transaction_reference', $transactionId);
+                }
+            })
+            ->exists();
     }
 
     public function latestTransactionDate(): ?Carbon
@@ -41,41 +48,88 @@ class EquityPaymentRepository
                 'tenant_id' => $tenantId,
                 'amount' => (float) $tx['amount'],
                 'transaction_id' => (string) $tx['transaction_id'],
-                'account_number' => $tx['account_number'] ?? null,
-                'phone' => $tx['phone'] ?? null,
+                'account_number' => $tx['account_number'] ?? ($tx['tenant_account_number'] ?? null),
+                'phone' => $tx['phone'] ?? ($tx['payer_phone'] ?? null),
                 'reference' => $tx['reference'] ?? null,
                 'payment_method' => $paymentMethod,
                 'status' => 'matched',
                 'transaction_date' => $tx['transaction_date'] ?? now(),
                 'raw_payload' => $tx['raw_payload'] ?? null,
             ];
+            if (Schema::hasColumn('payments', 'tenant_account_number')) {
+                $paymentAttrs['tenant_account_number'] = $tx['tenant_account_number']
+                    ?? $tx['account_number']
+                    ?? null;
+            }
+            if (Schema::hasColumn('payments', 'currency')) {
+                $paymentAttrs['currency'] = (string) ($tx['currency'] ?? 'KES');
+            }
+            if (Schema::hasColumn('payments', 'payment_provider')) {
+                $paymentAttrs['payment_provider'] = (string) ($tx['payment_provider'] ?? $provider);
+            }
+            if (Schema::hasColumn('payments', 'payment_channel')) {
+                $paymentAttrs['payment_channel'] = (string) ($tx['payment_channel'] ?? $channel);
+            }
+            if (Schema::hasColumn('payments', 'external_transaction_reference')) {
+                $paymentAttrs['external_transaction_reference'] = (string) (
+                    $tx['external_transaction_reference'] ?? $tx['transaction_id'] ?? ''
+                );
+            }
+            if (Schema::hasColumn('payments', 'provider_reference')) {
+                $paymentAttrs['provider_reference'] = $tx['provider_reference'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'payer_name')) {
+                $paymentAttrs['payer_name'] = $tx['payer_name'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'payer_phone')) {
+                $paymentAttrs['payer_phone'] = $tx['payer_phone'] ?? ($tx['phone'] ?? null);
+            }
+            if (Schema::hasColumn('payments', 'received_at')) {
+                $paymentAttrs['received_at'] = $tx['received_at'] ?? ($tx['transaction_date'] ?? now());
+            }
+            if (Schema::hasColumn('payments', 'invoice_id')) {
+                $paymentAttrs['invoice_id'] = $tx['invoice_id'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'reconciliation_status')) {
+                $paymentAttrs['reconciliation_status'] = 'matched';
+            }
+            if (Schema::hasColumn('payments', 'reconciliation_notes')) {
+                $paymentAttrs['reconciliation_notes'] = $tx['reconciliation_notes'] ?? ('Matched by '.$matchedBy);
+            }
             if ($agentUserId !== null && Schema::hasColumn('payments', 'agent_user_id')) {
                 $paymentAttrs['agent_user_id'] = $agentUserId;
             }
             $payment = Payment::query()->create($paymentAttrs);
 
+            $meta = [
+                'source' => $source,
+                'provider' => $provider,
+                'matched_by' => $matchedBy,
+                'account_number' => $tx['account_number'] ?? ($tx['tenant_account_number'] ?? null),
+                'tenant_account_number' => $tx['tenant_account_number'] ?? ($tx['account_number'] ?? null),
+                'phone' => $tx['phone'] ?? ($tx['payer_phone'] ?? null),
+                'reference' => $tx['reference'] ?? null,
+                'raw_payload' => $tx['raw_payload'] ?? null,
+                'skip_notification' => (bool) ($options['skip_notification'] ?? false),
+                'match_mode' => $options['match_mode'] ?? null,
+            ];
+            if (! empty($tx['invoice_id'])) {
+                $meta['invoice_id'] = (int) $tx['invoice_id'];
+            }
+
             $pmPayment = PmPayment::query()->create([
                 'pm_tenant_id' => $tenantId,
                 'channel' => $channel,
                 'amount' => (float) $tx['amount'],
-                'external_ref' => (string) $tx['transaction_id'],
+                'external_ref' => (string) ($tx['external_transaction_reference'] ?? $tx['transaction_id']),
                 'paid_at' => $tx['transaction_date'] ?? now(),
                 'status' => PmPayment::STATUS_PENDING,
-                'meta' => [
-                    'source' => $source,
-                    'provider' => $provider,
-                    'matched_by' => $matchedBy,
-                    'account_number' => $tx['account_number'] ?? null,
-                    'phone' => $tx['phone'] ?? null,
-                    'reference' => $tx['reference'] ?? null,
-                    'raw_payload' => $tx['raw_payload'] ?? null,
-                    'skip_notification' => (bool) ($options['skip_notification'] ?? false),
-                ],
+                'meta' => $meta,
             ]);
 
             app(PropertyPaymentSettlementService::class)->complete(
                 $pmPayment,
-                (string) $tx['transaction_id'],
+                (string) ($tx['external_transaction_reference'] ?? $tx['transaction_id']),
                 $tx['transaction_date'] ?? now(),
                 (string) ($options['message'] ?? 'Automatically settled from Equity API sync.'),
                 $source,
@@ -109,14 +163,54 @@ class EquityPaymentRepository
                 'tenant_id' => null,
                 'amount' => (float) $tx['amount'],
                 'transaction_id' => (string) $tx['transaction_id'],
-                'account_number' => $tx['account_number'] ?? null,
-                'phone' => $tx['phone'] ?? null,
+                'account_number' => $tx['account_number'] ?? ($tx['tenant_account_number'] ?? null),
+                'phone' => $tx['phone'] ?? ($tx['payer_phone'] ?? null),
                 'reference' => $tx['reference'] ?? null,
                 'payment_method' => (string) ($options['payment_method'] ?? 'equity'),
                 'status' => 'unmatched',
                 'transaction_date' => $tx['transaction_date'] ?? now(),
                 'raw_payload' => $tx['raw_payload'] ?? null,
             ];
+            if (Schema::hasColumn('payments', 'tenant_account_number')) {
+                $paymentAttrs['tenant_account_number'] = $tx['tenant_account_number']
+                    ?? $tx['account_number']
+                    ?? null;
+            }
+            if (Schema::hasColumn('payments', 'currency')) {
+                $paymentAttrs['currency'] = (string) ($tx['currency'] ?? 'KES');
+            }
+            if (Schema::hasColumn('payments', 'payment_provider')) {
+                $paymentAttrs['payment_provider'] = (string) ($tx['payment_provider'] ?? ($options['provider'] ?? 'equity'));
+            }
+            if (Schema::hasColumn('payments', 'payment_channel')) {
+                $paymentAttrs['payment_channel'] = (string) ($tx['payment_channel'] ?? ($options['channel'] ?? null));
+            }
+            if (Schema::hasColumn('payments', 'external_transaction_reference')) {
+                $paymentAttrs['external_transaction_reference'] = (string) (
+                    $tx['external_transaction_reference'] ?? $tx['transaction_id'] ?? ''
+                );
+            }
+            if (Schema::hasColumn('payments', 'provider_reference')) {
+                $paymentAttrs['provider_reference'] = $tx['provider_reference'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'payer_name')) {
+                $paymentAttrs['payer_name'] = $tx['payer_name'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'payer_phone')) {
+                $paymentAttrs['payer_phone'] = $tx['payer_phone'] ?? ($tx['phone'] ?? null);
+            }
+            if (Schema::hasColumn('payments', 'received_at')) {
+                $paymentAttrs['received_at'] = $tx['received_at'] ?? ($tx['transaction_date'] ?? now());
+            }
+            if (Schema::hasColumn('payments', 'invoice_id')) {
+                $paymentAttrs['invoice_id'] = $tx['invoice_id'] ?? null;
+            }
+            if (Schema::hasColumn('payments', 'reconciliation_status')) {
+                $paymentAttrs['reconciliation_status'] = 'unmatched';
+            }
+            if (Schema::hasColumn('payments', 'reconciliation_notes')) {
+                $paymentAttrs['reconciliation_notes'] = $tx['reconciliation_notes'] ?? $reason;
+            }
             if ($hasPaymentsAgent && $agentUserId !== null) {
                 $paymentAttrs['agent_user_id'] = $agentUserId;
             }

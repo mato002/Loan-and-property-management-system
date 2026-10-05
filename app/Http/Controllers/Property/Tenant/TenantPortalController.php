@@ -20,6 +20,7 @@ use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\LoanClientPortalMatchService;
 use App\Services\Property\FinancialReportingFormulaService;
+use App\Support\Property\TenantBankPaymentInstructions;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\TenantCreditService;
@@ -214,6 +215,8 @@ class TenantPortalController extends Controller
             'paymentChannelCounts' => $channelCounts,
             'monthlyPaidTrend' => $monthlyPaidTrend,
             'loanEligible' => $loanEligible,
+            'tenantAccountNumber' => strtoupper(trim((string) ($tenant?->account_number ?? ''))),
+            'bankPaymentInstructions' => TenantBankPaymentInstructions::forTenant($tenant),
         ]);
     }
 

@@ -179,7 +179,7 @@ Route::post('/webhooks/mpesa/transaction-status', [MpesaDarajaWebhookController:
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.mpesa.transaction_status');
 Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
-    ->whereIn('provider', ['kcb', 'equity', 'coop'])
+    ->whereIn('provider', ['kcb', 'equity', 'coop', 'im'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.property.payments.bank_callback');
 

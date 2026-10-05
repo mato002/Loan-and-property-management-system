@@ -43,6 +43,7 @@ final class CoopBankAccountStatementParser
         $best = null;
         $bestCount = -1;
         $sample = $texts[0];
+        $headerOnly = null;
 
         foreach ($texts as $text) {
             $sample = $text;
@@ -55,10 +56,30 @@ final class CoopBankAccountStatementParser
                 $bestCount = $count;
                 $best = $parsed;
             }
+            if ($count === 0 && $headerOnly === null) {
+                $headerOnly = $parsed;
+            }
         }
 
-        if ($best !== null) {
+        if ($best !== null && $bestCount > 0) {
             return $best;
+        }
+
+        if ($headerOnly !== null) {
+            $account = trim((string) ($headerOnly['account_no'] ?? ''));
+            $period = trim(implode(' to ', array_filter([
+                $headerOnly['period_from'] ?? null,
+                $headerOnly['period_to'] ?? null,
+            ])));
+            $hint = $account !== '' ? ' Account '.$account.'.' : '';
+            if ($period !== '') {
+                $hint .= ' Period '.$period.'.';
+            }
+
+            throw new RuntimeException(
+                'This looks like a Co-operative Bank statement, but no payments could be read from the PDF text.'.$hint
+                .' Export or Save as TXT from the bank portal and upload that file.'
+            );
         }
 
         throw new RuntimeException($this->unrecognizedStatementMessage($sample));
@@ -416,13 +437,42 @@ final class CoopBankAccountStatementParser
     {
         $text = str_replace(["\r\n", "\r", "\t"], ["\n", "\n", ' '], $text);
         $text = trim((string) preg_replace('/[ \n]+/', ' ', $text));
+        // Per-glyph PDF extracts leave "U I 1 0 X 4 M P L S" and "M P E S A C 2 B".
+        $text = $this->joinSpacedGlyphs($text);
+        // After joining, phone digits can sit against MPESA / store number.
+        $text = (string) preg_replace(
+            '/\b([A-Z][A-Z0-9]{7,13})(\d{4,10})(254\d{9})(MPESA)/i',
+            '$1 $2 $3 $4',
+            $text
+        );
+        $text = (string) preg_replace('/(254\d{9})(MPESA)/i', '$1 $2', $text);
+        $text = (string) preg_replace('/(\d{4,10})(254\d{9})/', '$1 $2', $text);
         $text = (string) preg_replace('/(\d\.\d{2})(\d{1,3}(?:,\d{3})*\.\d{2})/', '$1 $2', $text);
         $text = (string) preg_replace('/(\d\.\d{2})(\d{2}\/\d{2}\/\d{4})/', '$1 $2', $text);
         $text = (string) preg_replace('/(254\d{9})(\d{2}\/\d{2}\/\d{4})/', '$1 $2', $text);
         $text = (string) preg_replace('/(CHQ\s*No\.?\s*\d+)(\d{2}\/\d{2}\/\d{4})/i', '$1 $2', $text);
         $text = (string) preg_replace('/(Charges)(\d{2}\/\d{2}\/\d{4})/i', '$1 $2', $text);
+        $text = (string) preg_replace('/MPESA\s*C\s*2\s*B/i', 'MPESAC2B', $text);
+        $text = (string) preg_replace('/MPESAC2B[\s_-]+/', 'MPESAC2B_', $text);
 
         return $text;
+    }
+
+    private function joinSpacedGlyphs(string $text): string
+    {
+        $joined = (string) preg_replace_callback(
+            '/(?:(?<=^)|(?<=\s))(?:[A-Za-z0-9]\s+){4,}[A-Za-z0-9](?=\s|$)/',
+            static fn (array $match): string => str_replace(' ', '', $match[0]),
+            $text
+        );
+        // Dates like "0 1 / 0 9 / 2 0 2 6"
+        $joined = (string) preg_replace(
+            '/(\d)\s+(\d)\s*\/\s*(\d)\s+(\d)\s*\/\s*(\d)\s+(\d)\s+(\d)\s+(\d)/',
+            '$1$2/$3$4/$5$6$7$8',
+            $joined
+        );
+
+        return $joined;
     }
 
     private function toIsoDate(string $value): string
@@ -473,7 +523,7 @@ final class CoopBankAccountStatementParser
     private function looksLikeBankStatement(string $text): bool
     {
         return preg_match('/STATEMENT OF ACCOUNT/i', $text) === 1
-            || preg_match('/MPESAC2B_/i', $text) === 1
+            || preg_match('/MPESA[\s_-]*C2B/i', $text) === 1
             || preg_match('/Account No\s+\d{10,16}/i', $text) === 1
             || preg_match('/Receipt No/i', $text) === 1;
     }

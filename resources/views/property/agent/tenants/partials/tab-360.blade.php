@@ -64,7 +64,7 @@
             <img src="{{ $tenant->photoUrl() }}" alt="" class="mt-3 h-16 w-16 rounded-full object-cover border border-slate-200" />
         @endif
         <dl class="mt-3 space-y-2 text-sm">
-            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Account</dt><dd class="font-mono text-slate-900">{{ $tenant->account_number ?: '—' }}</dd></div>
+            <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Tenant Payment Account / Ac/No</dt><dd class="font-mono text-slate-900">{{ $tenant->account_number ?: '—' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Type</dt><dd class="text-slate-900">{{ $tenant->tenantTypeLabel() }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $tenant->name }}{{ $tenant->other_names ? ' · '.$tenant->other_names : '' }}</dd></div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Gender</dt><dd class="text-slate-900">{{ \App\Models\PmTenant::GENDERS[$tenant->gender] ?? ($tenant->gender ?: '—') }}</dd></div>

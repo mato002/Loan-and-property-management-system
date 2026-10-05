@@ -16,14 +16,26 @@ class Payment extends Model
         'tenant_id',
         'agent_user_id',
         'pm_payment_id',
+        'invoice_id',
         'amount',
+        'currency',
         'transaction_id',
+        'external_transaction_reference',
+        'provider_reference',
         'account_number',
+        'tenant_account_number',
         'phone',
+        'payer_name',
+        'payer_phone',
         'reference',
         'payment_method',
+        'payment_provider',
+        'payment_channel',
         'status',
+        'reconciliation_status',
+        'reconciliation_notes',
         'transaction_date',
+        'received_at',
         'raw_payload',
     ];
 
@@ -32,6 +44,7 @@ class Payment extends Model
         return [
             'amount' => 'decimal:2',
             'transaction_date' => 'datetime',
+            'received_at' => 'datetime',
             'raw_payload' => 'array',
         ];
     }

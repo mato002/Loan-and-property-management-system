@@ -4,6 +4,7 @@ namespace App\Services\Property;
 
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Services\PaymentMatchingService;
+use App\Services\Property\BankCollections\BankCollectionReconciliationService;
 use App\Support\Property\BankIntegrationRegistry;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class PropertyBankTransactionIngestService
     public function __construct(
         private readonly PaymentMatchingService $matcher,
         private readonly EquityPaymentRepository $payments,
+        private readonly BankCollectionReconciliationService $collections,
     ) {}
 
     /**
@@ -24,6 +26,14 @@ class PropertyBankTransactionIngestService
      */
     public function ingest(string $provider, array $payload, ?int $agentUserId = null): array
     {
+        $provider = strtolower(trim($provider));
+
+        // Co-op (and any account-number-primary collection bank) uses the dedicated
+        // reconciler that never auto-matches by phone/name/amount alone.
+        if (in_array($provider, ['coop', 'kcb', 'im'], true)) {
+            return $this->collections->ingest($provider, $payload, $agentUserId);
+        }
+
         if (! BankIntegrationRegistry::isValidProvider($provider)) {
             return ['ok' => false, 'message' => 'Unknown bank provider.'];
         }
