@@ -4946,12 +4946,20 @@ class PropertyPortfolioController extends Controller
             $unit->update(['public_listing_published' => false]);
         }
 
+        $leaseRentSynced = app(\App\Services\Property\LeaseBillingRentSync::class)
+            ->syncFromUnitRent($unit->fresh() ?? $unit);
+
+        $message = 'Unit updated.';
+        if ($leaseRentSynced > 0) {
+            $message .= ' Active lease rent was updated to match so monthly invoices bill the new amount.';
+        }
+
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
             redirect()
                 ->route('property.properties.units', ['property_id' => $unit->property_id])
-                ->with('success', 'Unit updated.'),
-            'Unit updated.',
+                ->with('success', $message),
+            $message,
         );
     }
 

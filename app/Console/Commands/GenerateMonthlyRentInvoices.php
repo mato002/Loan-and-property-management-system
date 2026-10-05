@@ -6,6 +6,8 @@ use App\Models\PmInvoice;
 use App\Models\PmInvoiceEvent;
 use App\Models\PmLease;
 use App\Models\PropertyPortalSetting;
+use App\Models\PropertyUnit;
+use App\Services\Property\LeaseBillingRentSync;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\RentDueDayResolver;
 use App\Services\Property\RentInvoiceGenerator;
@@ -19,7 +21,7 @@ class GenerateMonthlyRentInvoices extends Command
 
     protected $description = 'Generate monthly rent invoices for active leases (per unit), due on configured rent due day (default 5th).';
 
-    public function handle(RentDueDayResolver $dueDays, RentInvoiceGenerator $rentInvoices): int
+    public function handle(RentDueDayResolver $dueDays, RentInvoiceGenerator $rentInvoices, LeaseBillingRentSync $rentSync): int
     {
         $enabled = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
         if (! $enabled) {
@@ -33,6 +35,21 @@ class GenerateMonthlyRentInvoices extends Command
             $this->error('Invalid --month. Use YYYY-MM.');
 
             return self::FAILURE;
+        }
+
+        // Unit "Rent" edits often leave lease.monthly_rent stale. Push unit rent
+        // onto active leases before billing so the 1st uses the updated amount.
+        $syncedLeases = 0;
+        PropertyUnit::query()
+            ->whereHas('leases', fn ($q) => $q->where('pm_leases.status', PmLease::STATUS_ACTIVE))
+            ->orderBy('id')
+            ->chunkById(200, function ($units) use ($rentSync, &$syncedLeases) {
+                foreach ($units as $unit) {
+                    $syncedLeases += $rentSync->syncFromUnitRent($unit);
+                }
+            });
+        if ($syncedLeases > 0) {
+            $this->info("Synced lease rent from unit rent on {$syncedLeases} lease(s).");
         }
 
         $periodStart = now()->setTimezone(config('app.timezone'))->parse($ym.'-01')->startOfDay();
@@ -86,7 +103,20 @@ class GenerateMonthlyRentInvoices extends Command
                     $ym,
                 );
                 if ($invoicedTotal > 0.009) {
-                    $skipped++;
+                    // Lease rent may have increased after the month invoice was issued —
+                    // auto-create the rent-increase supplement instead of permanently skipping.
+                    if (($perUnitAmount - $invoicedTotal) > 0.009) {
+                        $result = $rentInvoices->generateRentSupplements(
+                            $ym,
+                            [(int) $lease->id.'-'.(int) $unit->id],
+                        );
+                        $created += (int) ($result['created'] ?? 0);
+                        if ((int) ($result['created'] ?? 0) === 0) {
+                            $skipped++;
+                        }
+                    } else {
+                        $skipped++;
+                    }
 
                     continue;
                 }
