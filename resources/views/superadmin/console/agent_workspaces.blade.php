@@ -165,7 +165,7 @@
                                             x-cloak
                                             class="absolute right-0 z-20 mt-1 w-56 origin-top-right rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
                                         >
-                                            <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}">
+                                            <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}" data-turbo="false">
                                                 @csrf
                                                 <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">View / impersonate dashboard</button>
                                             </form>

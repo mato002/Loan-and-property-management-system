@@ -72,7 +72,7 @@
                 @endif
             </span>
             <span class="property-collapse-text flex flex-col min-w-0 leading-tight text-left">
-                <span class="text-sm font-bold tracking-tight text-white truncate">{{ $companyName !== '' ? $companyName : 'Property' }}</span>
+                <span class="property-brand-name text-sm font-bold tracking-tight text-white truncate">{{ $companyName !== '' ? $companyName : 'Property' }}</span>
             </span>
         </a>
     </div>

@@ -710,7 +710,21 @@ function afterMainFrameSwap(frame, source) {
     schedulePropertyWorkspaceHydration(frame, source, workspaceHydrationHooks);
 }
 
-document.addEventListener('turbo:before-fetch-request', () => {
+document.addEventListener('turbo:before-fetch-request', (event) => {
+    // Turbo 8 hover-prefetch also fires this event. Closing menus here makes the
+    // Actions popup vanish as soon as the pointer reaches a link.
+    const headers = event.detail?.fetchOptions?.headers || {};
+    const purpose = String(
+        headers['Sec-Purpose']
+        || headers['Purpose']
+        || headers['X-Sec-Purpose']
+        || headers['sec-purpose']
+        || '',
+    ).toLowerCase();
+    if (purpose.includes('prefetch') || event.detail?.prefetch === true) {
+        return;
+    }
+
     closeAllPropertyDropdowns();
 });
 

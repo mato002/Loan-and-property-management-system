@@ -88,15 +88,30 @@
 
                 @if ($authType === 'api_key')
                     <div>
-                        <label class="block text-xs font-medium text-slate-500">Merchant / till code</label>
-                        <input type="text" name="bank_merchant_code" value="{{ old('bank_merchant_code', $merchantCode) }}" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" />
+                        <label class="block text-xs font-medium text-slate-500">{{ $provider === 'coop' ? 'Collection Till / business code' : 'Merchant / till code' }}</label>
+                        <input type="text" name="bank_merchant_code" value="{{ old('bank_merchant_code', $merchantCode) }}" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" placeholder="{{ $provider === 'coop' ? 'Provided after Co-op onboarding' : '' }}" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500">Client ID (optional)</label>
+                        <input type="text" name="bank_client_id" value="{{ old('bank_client_id', $clientId ?? '') }}" autocomplete="off" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500">Client secret (optional)</label>
+                        <input type="password" name="bank_client_secret" autocomplete="new-password" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" placeholder="{{ ($hasClientSecret ?? false) ? 'Leave blank to keep saved value' : 'Not set' }}" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500">Environment</label>
+                        <select name="bank_environment" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2">
+                            <option value="sandbox" @selected(old('bank_environment', $environment ?? 'sandbox') === 'sandbox')>Sandbox</option>
+                            <option value="production" @selected(old('bank_environment', $environment ?? 'sandbox') === 'production')>Production</option>
+                        </select>
                     </div>
                 @endif
 
                 <div>
-                    <label class="block text-xs font-medium text-slate-500">Paybill / till number (shown to staff)</label>
-                    <input type="text" name="bank_paybill_number" value="{{ old('bank_paybill_number', $paybillNumber) }}" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" placeholder="e.g. 247247" />
-                    <p class="mt-1 text-[11px] text-slate-500">Tenants should enter their <strong>TNT account</strong> (e.g. TNT000416) as the account number when paying.</p>
+                    <label class="block text-xs font-medium text-slate-500">{{ $provider === 'coop' ? 'Collection number / Till (shown to tenants)' : 'Paybill / till number (shown to staff)' }}</label>
+                    <input type="text" name="bank_paybill_number" value="{{ old('bank_paybill_number', $paybillNumber) }}" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 text-sm px-3 py-2" placeholder="{{ $provider === 'coop' ? 'One Till for the agency — not one Till per tenant' : 'e.g. 247247' }}" />
+                    <p class="mt-1 text-[11px] text-slate-500">Tenants must enter their existing <strong>Ac/No</strong> (e.g. TNT001324) as the payment reference. Do not invent a second tenant account number.</p>
                 </div>
 
                 @if ($hasAutoSync)
@@ -183,12 +198,32 @@
 
                 <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-3">
                     <h2 class="text-sm font-semibold text-slate-900 dark:text-white">How matching works</h2>
-                    <ul class="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
-                        <li>Bank paybill transactions arrive via auto sync or webhook.</li>
-                        <li>Each payment is matched to a tenant by <strong>TNT account</strong>, phone, or invoice number.</li>
-                        <li>Matched payments allocate to open invoices automatically (oldest first).</li>
-                        <li>Unmatched payments appear under <a href="{{ route('property.equity.unmatched', [], false) }}" class="text-blue-600 hover:underline">Collections → Unmatched</a>.</li>
-                    </ul>
+                    @if (($matchMode ?? '') === 'account_phone_name_with_phone' || ($matchMode ?? '') === 'account_phone_name')
+                        <p class="text-xs text-slate-500">{{ $providerGuide ?: 'One collection Till for the agency. Prefer Ac/No; phone is allowed; name only with phone.' }}</p>
+                        <ul class="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                            <li>Bank collection notifications arrive on the webhook URL below.</li>
+                            <li>Matching order: <strong>Ac/No</strong>, then <strong>name + phone</strong> together, then unique <strong>phone</strong>.</li>
+                            <li><strong>Name alone never matches</strong> — many tenants share names. Amount alone also never matches.</li>
+                            <li>Matched payments allocate to open invoices and generate a receipt.</li>
+                            <li>Unmatched payments appear under <a href="{{ route('property.equity.unmatched', [], false) }}" class="text-blue-600 hover:underline">Collections → Unmatched</a>.</li>
+                        </ul>
+                    @elseif (($matchMode ?? '') === 'account_number_only')
+                        <p class="text-xs text-slate-500">{{ $providerGuide ?: 'One collection Till for the agency. Each tenant is identified by their existing Ac/No.' }}</p>
+                        <ul class="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                            <li>Bank collection notifications arrive on the webhook URL below.</li>
+                            <li>The payment reference is matched only to the tenant <strong>Ac/No</strong> (e.g. TNT001324).</li>
+                            <li>Name, phone, and amount are never used alone for automatic assignment.</li>
+                            <li>Matched payments allocate to open invoices and generate a receipt.</li>
+                            <li>Unmatched payments appear under <a href="{{ route('property.equity.unmatched', [], false) }}" class="text-blue-600 hover:underline">Collections → Unmatched</a>.</li>
+                        </ul>
+                    @else
+                        <ul class="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                            <li>Bank paybill transactions arrive via auto sync or webhook.</li>
+                            <li>Each payment is matched to a tenant by <strong>Ac/No</strong>, phone, or invoice number.</li>
+                            <li>Matched payments allocate to open invoices automatically (oldest first).</li>
+                            <li>Unmatched payments appear under <a href="{{ route('property.equity.unmatched', [], false) }}" class="text-blue-600 hover:underline">Collections → Unmatched</a>.</li>
+                        </ul>
+                    @endif
                 </div>
 
                 @if ($supportsWebhook)

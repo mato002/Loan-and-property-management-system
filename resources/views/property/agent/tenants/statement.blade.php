@@ -99,7 +99,9 @@
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 class="text-sm font-semibold text-slate-900">Billing snapshot</h3>
-                @php($totalDue = $totalDue ?? ['invoice_ar' => 0.0, 'uninvoiced_cf' => 0.0, 'tenant_credit' => 0.0, 'total_due' => 0.0])
+                @php
+                    $totalDue = $totalDue ?? ['invoice_ar' => 0.0, 'uninvoiced_cf' => 0.0, 'tenant_credit' => 0.0, 'total_due' => 0.0];
+                @endphp
                 <div class="mt-2 text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Invoices:</span> {{ $invoiceSummary['count'] }}</p>
                     <p><span class="text-slate-500">Opening arrears:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears'] ?? 0)) }}</p>

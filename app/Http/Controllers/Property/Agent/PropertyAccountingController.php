@@ -27,6 +27,7 @@ use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Models\PmPropertyTakeonBalance;
 use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Models\PropertyPortalSetting;
 use App\Services\Property\AccountingPeriodService;
@@ -2991,13 +2992,17 @@ class PropertyAccountingController extends Controller
         if (! Schema::hasTable('pm_ezen_payment_vouchers')) {
             return property_view('property.agent.accounting.payment_vouchers', [
                 'stats' => [['label' => 'Vouchers', 'value' => '0', 'hint' => 'Run migrations, then import the EZEN listing']],
-                'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status'],
+                'columns' => ['Voucher #', 'Date', 'Property / unit', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status'],
                 'tableRows' => [],
                 'paginator' => null,
+                'properties' => collect(),
+                'filterUnits' => collect(),
                 'filters' => [
                     'q' => '',
                     'category' => '',
                     'status' => '',
+                    'property_id' => '',
+                    'property_unit_id' => '',
                     'from' => '',
                     'to' => '',
                 ],
@@ -3008,12 +3013,23 @@ class PropertyAccountingController extends Controller
             'q' => trim((string) $request->query('q', '')),
             'category' => strtolower(trim((string) $request->query('category', ''))),
             'status' => strtolower(trim((string) $request->query('status', ''))),
+            'property_id' => trim((string) $request->query('property_id', '')),
+            'property_unit_id' => trim((string) $request->query('property_unit_id', '')),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
         ];
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
-        $query = PmEzenPaymentVoucher::query()->with(['property', 'landlord', 'payout']);
+        $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $propertyByCode = [];
+        foreach ($properties as $property) {
+            $code = strtoupper(trim((string) ($property->code ?? '')));
+            if ($code !== '') {
+                $propertyByCode[$code] = $property;
+            }
+        }
+
+        $query = PmEzenPaymentVoucher::query()->with(['property', 'unit', 'landlord', 'payout']);
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q): void {
@@ -3031,6 +3047,11 @@ class PropertyAccountingController extends Controller
         if ($filters['status'] !== '') {
             $query->where('link_status', $filters['status']);
         }
+        $this->applyPaymentVoucherPropertyFilter($query, $filters['property_id'], $properties, $propertyByCode);
+        $unitFilter = (int) $filters['property_unit_id'];
+        if ($unitFilter > 0 && Schema::hasColumn('pm_ezen_payment_vouchers', 'property_unit_id')) {
+            $query->where('property_unit_id', $unitFilter);
+        }
         if ($filters['from'] !== '') {
             $query->whereDate('txn_date', '>=', $filters['from']);
         }
@@ -3046,12 +3067,15 @@ class PropertyAccountingController extends Controller
 
             return TabularExport::stream(
                 'ezen-payment-vouchers-'.now()->format('Ymd_His'),
-                ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid from', 'Paid to', 'Amount', 'Category', 'Status', 'Recorded by'],
-                function () use ($items) {
+                ['Voucher #', 'Date', 'Property', 'Unit', 'Method', 'Ref', 'Particulars', 'Paid from', 'Paid to', 'Amount', 'Category', 'Status', 'Recorded by'],
+                function () use ($items, $propertyByCode) {
                     foreach ($items as $voucher) {
+                        $linkedProperty = $this->voucherProperty($voucher, $propertyByCode);
                         yield [
                             $voucher->ezen_voucher_no,
                             $voucher->txn_date?->format('Y-m-d') ?? '',
+                            $linkedProperty?->name ?: 'Unassigned',
+                            $voucher->unit?->label ?: '',
                             (string) ($voucher->method ?? ''),
                             (string) ($voucher->ref_no ?? ''),
                             (string) ($voucher->particulars ?? ''),
@@ -3081,14 +3105,33 @@ class PropertyAccountingController extends Controller
             ->orderBy('u.name')
             ->get(['u.id', 'u.name']);
 
+        $unassignedCount = (clone $query)->whereNull('property_id')->count();
+        $filterPropertyId = ctype_digit($filters['property_id']) ? (int) $filters['property_id'] : 0;
+        $filterUnits = $filterPropertyId > 0
+            ? PropertyUnit::query()->where('property_id', $filterPropertyId)->orderBy('label')->get(['id', 'property_id', 'label'])
+            : collect();
+
+        $pagePropertyIds = [];
+        foreach ($vouchers->getCollection() as $voucher) {
+            $linked = $this->voucherProperty($voucher, $propertyByCode);
+            if ($linked) {
+                $pagePropertyIds[] = (int) $linked->id;
+            }
+        }
+        $unitsByProperty = PropertyUnit::query()
+            ->whereIn('property_id', array_values(array_unique($pagePropertyIds)) ?: [0])
+            ->orderBy('label')
+            ->get(['id', 'property_id', 'label'])
+            ->groupBy('property_id');
+
         $stats = [
-            ['label' => 'Vouchers', 'value' => (string) $vouchers->total(), 'hint' => 'Imported payment voucher listing', 'emphasis' => true],
+            ['label' => 'Vouchers', 'value' => (string) $vouchers->total(), 'hint' => number_format($unassignedCount).' not linked to a property', 'emphasis' => true],
             ['label' => 'Total amount', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered listing total'],
             ['label' => 'Remittances', 'value' => (string) $remittanceCount, 'hint' => 'Rent paid out to landlords'],
             ['label' => 'Unmatched', 'value' => (string) $unmatchedCount, 'hint' => 'Payee not linked yet'],
         ];
 
-        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($landlords) {
+        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($landlords, $properties, $propertyByCode, $unitsByProperty) {
             $posted = '—';
             if ($voucher->pm_landlord_payout_id) {
                 $posted = new HtmlString('<a href="'.e(route('property.accounting.payables.landlord_payouts', ['q' => $voucher->pm_landlord_payout_id], false)).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$voucher->pm_landlord_payout_id.'</a>');
@@ -3096,16 +3139,24 @@ class PropertyAccountingController extends Controller
                 $posted = $voucher->ezen_voucher_no;
             }
 
+            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
+            $linkedProperty = $this->voucherProperty($voucher, $propertyByCode);
             $actions = new HtmlString(view('property.agent.partials.payment_voucher_row_actions', [
                 'voucher' => $voucher,
                 'landlords' => $landlords,
+                'linkedProperty' => $linkedProperty,
             ])->render());
-
-            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
+            $linkedPropertyId = (int) ($linkedProperty?->id ?? 0);
 
             return [
                 new HtmlString('<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-indigo-700 hover:underline">'.e($voucher->ezen_voucher_no).'</a>'),
                 $voucher->txn_date?->format('Y-m-d') ?? '—',
+                new HtmlString(view('property.agent.partials.payment_voucher_property_fields', [
+                    'voucher' => $voucher,
+                    'properties' => $properties,
+                    'units' => $unitsByProperty->get($linkedPropertyId, collect()),
+                    'selectedPropertyId' => $linkedPropertyId,
+                ])->render()),
                 $voucher->method !== null && $voucher->method !== '' ? $voucher->method : '—',
                 $voucher->ref_no !== null && $voucher->ref_no !== '' ? $voucher->ref_no : '—',
                 $voucher->particulars !== null && $voucher->particulars !== '' ? $voucher->particulars : '—',
@@ -3120,11 +3171,145 @@ class PropertyAccountingController extends Controller
 
         return property_view('property.agent.accounting.payment_vouchers', [
             'stats' => $stats,
-            'columns' => ['Voucher #', 'Date', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status', 'Posted', 'Actions'],
+            'columns' => ['Voucher #', 'Date', 'Property / unit', 'Method', 'Ref', 'Particulars', 'Paid to', 'Amount', 'Category', 'Status', 'Posted', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $vouchers,
             'filters' => $filters,
+            'properties' => $properties,
+            'filterUnits' => $filterUnits,
         ]);
+    }
+
+    public function assignPaymentVoucherProperty(Request $request, PmEzenPaymentVoucher $voucher): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['nullable', 'integer'],
+            'property_unit_id' => ['nullable', 'integer'],
+        ]);
+
+        $propertyId = (int) ($data['property_id'] ?? 0);
+        $unitId = (int) ($data['property_unit_id'] ?? 0);
+        $property = $propertyId > 0 ? Property::query()->find($propertyId) : null;
+        if ($propertyId > 0 && ! $property) {
+            return back()->withErrors(['property_id' => 'Choose a property in this workspace.']);
+        }
+
+        $unit = $unitId > 0 ? PropertyUnit::query()->find($unitId) : null;
+        if ($unitId > 0 && ! $unit) {
+            return back()->withErrors(['property_unit_id' => 'Choose a unit on the selected property.']);
+        }
+        if ($unit && ! $property) {
+            $property = Property::query()->find((int) $unit->property_id);
+        }
+        if ($unit && $property && (int) $unit->property_id !== (int) $property->id) {
+            $unit = null;
+        }
+
+        $voucher->property_id = $property?->id;
+        if (Schema::hasColumn('pm_ezen_payment_vouchers', 'property_unit_id')) {
+            $voucher->property_unit_id = $unit?->id;
+        }
+        if ($property && trim((string) $voucher->property_code) === '') {
+            $voucher->property_code = (string) ($property->code ?? '');
+        }
+        $voucher->save();
+
+        $label = $property?->name ?? 'unassigned';
+        if ($unit) {
+            $label .= ' · '.$unit->label;
+        }
+
+        return back()->with('status', $voucher->ezen_voucher_no.' linked to '.$label.'.');
+    }
+
+    public function assignPaymentVoucherExport(Request $request, EzenPaymentVouchersImportService $vouchers): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'integer'],
+            'register_file' => ['required', 'file', 'max:20480'],
+        ]);
+
+        $extension = strtolower((string) $request->file('register_file')?->getClientOriginalExtension());
+        if (! in_array($extension, ['xls', 'xlsx', 'csv', 'txt'], true)) {
+            return back()->withErrors(['register_file' => 'Upload an .xls, .xlsx, .csv, or .txt voucher export.']);
+        }
+
+        $property = Property::query()->find((int) $data['property_id']);
+        if (! $property) {
+            return back()->withErrors(['property_id' => 'Choose a property in this workspace.']);
+        }
+
+        $path = $request->file('register_file')?->getRealPath();
+        if (! is_string($path) || $path === '') {
+            return back()->withErrors(['register_file' => 'The export file could not be read.']);
+        }
+
+        $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+        $agentUserId = (int) ($ownerIds[0] ?? $request->user()->id);
+        $summary = $vouchers->assignPropertyExport($path, $property, $agentUserId);
+
+        return redirect()
+            ->route('property.accounting.payables.payment_vouchers', ['property_id' => $property->id])
+            ->with('status', $property->name.': '.$summary['updated'].' vouchers linked'
+                .($summary['created'] > 0 ? ', '.$summary['created'].' added' : '')
+                .', '.$summary['units'].' tied to a unit.');
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<PmEzenPaymentVoucher>  $query
+     * @param  \Illuminate\Support\Collection<int, Property>  $properties
+     * @param  array<string, Property>  $propertyByCode
+     */
+    private function applyPaymentVoucherPropertyFilter($query, string $propertyFilter, $properties, array $propertyByCode): void
+    {
+        if ($propertyFilter === 'unassigned') {
+            $codes = array_keys($propertyByCode);
+            $query->whereNull('property_id');
+            if ($codes !== []) {
+                $query->where(function ($inner) use ($codes): void {
+                    $inner->whereNull('property_code')
+                        ->orWhere('property_code', '')
+                        ->orWhereNotIn(DB::raw('UPPER(property_code)'), $codes);
+                });
+            }
+
+            return;
+        }
+
+        if (! ctype_digit($propertyFilter) || (int) $propertyFilter <= 0) {
+            return;
+        }
+
+        $propertyId = (int) $propertyFilter;
+        $code = strtoupper(trim((string) ($properties->firstWhere('id', $propertyId)?->code ?? '')));
+        $query->where(function ($inner) use ($propertyId, $code): void {
+            $inner->where('property_id', $propertyId);
+            if ($code !== '') {
+                $inner->orWhereRaw('UPPER(property_code) = ?', [$code]);
+            }
+            if (Schema::hasTable('pm_ezen_payment_voucher_lines')) {
+                $inner->orWhereExists(function ($sub) use ($propertyId): void {
+                    $sub->select(DB::raw('1'))
+                        ->from('pm_ezen_payment_voucher_lines as voucher_lines')
+                        ->whereColumn('voucher_lines.pm_ezen_payment_voucher_id', 'pm_ezen_payment_vouchers.id')
+                        ->where('voucher_lines.property_id', $propertyId);
+                });
+            }
+        });
+    }
+
+    /**
+     * @param  array<string, Property>  $propertyByCode
+     */
+    private function voucherProperty(PmEzenPaymentVoucher $voucher, array $propertyByCode): ?Property
+    {
+        if ($voucher->property) {
+            return $voucher->property;
+        }
+
+        $code = strtoupper(trim((string) ($voucher->property_code ?? '')));
+
+        return $code !== '' ? ($propertyByCode[$code] ?? null) : null;
     }
 
     public function createPaymentVoucher(Request $request): View
@@ -3176,10 +3361,16 @@ class PropertyAccountingController extends Controller
 
     public function showPaymentVoucher(PmEzenPaymentVoucher $voucher): View
     {
-        $voucher->load(['lines.property', 'property', 'landlord', 'payout']);
+        $voucher->load(['lines.property', 'property', 'unit', 'landlord', 'payout']);
+        $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $units = $voucher->property_id
+            ? PropertyUnit::query()->where('property_id', $voucher->property_id)->orderBy('label')->get(['id', 'property_id', 'label'])
+            : collect();
 
         return property_view('property.agent.accounting.payment_voucher_show', [
             'voucher' => $voucher,
+            'properties' => $properties,
+            'units' => $units,
         ]);
     }
 

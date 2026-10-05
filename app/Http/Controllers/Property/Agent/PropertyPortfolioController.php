@@ -14,6 +14,7 @@ use App\Models\PmLease;
 use App\Models\PmInvoice;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
@@ -25,6 +26,7 @@ use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\PhoneLink;
 use App\Support\Property\PropertyEntityHub;
 use App\Support\Property\PropertyWorkspaceBranding;
+use App\Services\Property\LandlordAdvanceService;
 use App\Services\Property\LandlordHubDataService;
 use App\Support\Property\ResponsiveTableColumns;
 use App\Support\Property\UnitListPresentation;
@@ -1641,7 +1643,7 @@ class PropertyPortfolioController extends Controller
 
             return TabularExport::stream(
                 'landlords_'.now()->format('Ymd_His'),
-                ['ID', 'Name', 'Email', 'Properties Linked', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection', 'Buildings'],
+                ['ID', 'Name', 'Email', 'Properties Linked', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection', 'Pay date', 'Buildings'],
                 function () use ($landlords) {
                     foreach ($landlords as $u) {
                         yield [
@@ -1654,6 +1656,7 @@ class PropertyPortfolioController extends Controller
                             (float) ($u->pending_share ?? 0),
                             (float) ($u->agent_earning ?? 0),
                             ! empty($u->last_paid_at) ? Carbon::parse((string) $u->last_paid_at)->format('Y-m-d') : null,
+                            $this->landlordPayDateExport($u->landlordProperties),
                             $u->landlordProperties->pluck('name')->join(', '),
                         ];
                     }
@@ -1688,7 +1691,7 @@ class PropertyPortfolioController extends Controller
      */
     private function buildLandlordIndexTableData($landlords, string $monthValue, int $fyValue): array
     {
-        $columns = ['Landlord', 'Links', 'Shares (KES)', 'Last collection', 'Buildings', 'Actions'];
+        $columns = ['Landlord', 'Links', 'Shares (KES)', 'Last collection', 'Pay date', 'Buildings', 'Actions'];
         $tableRows = [];
         $tableRowFilters = [];
 
@@ -1745,6 +1748,7 @@ class PropertyPortfolioController extends Controller
             $lastPaid = ! empty($u->last_paid_at)
                 ? Carbon::parse((string) $u->last_paid_at)->format('Y-m-d')
                 : '—';
+            $payDateCell = $this->landlordPayDateCell($props);
 
             $action = new HtmlString(view('property.agent.landlords.partials.row_actions', [
                 'u' => $u,
@@ -1757,6 +1761,7 @@ class PropertyPortfolioController extends Controller
                 $linksCell,
                 $sharesCell,
                 $lastPaid,
+                $payDateCell,
                 $buildingsCell,
                 $action,
             ];
@@ -1769,6 +1774,83 @@ class PropertyPortfolioController extends Controller
             'tableRowFilters' => $tableRowFilters,
             'columnConfig' => ResponsiveTableColumns::landlords(),
         ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Property>  $properties
+     * @return list<array{date: Carbon, day: int, name: string}>
+     */
+    private function landlordPayDates($properties): array
+    {
+        $advance = app(LandlordAdvanceService::class);
+        $lines = [];
+        foreach ($properties as $property) {
+            $rawDay = $property->pivot->agreed_pay_day ?? null;
+            $day = $rawDay !== null && $rawDay !== '' ? (int) $rawDay : null;
+            $next = $advance->nextAgreedPayDate($day);
+            if ($next === null || $day === null) {
+                continue;
+            }
+            $lines[] = [
+                'date' => $next,
+                'day' => $day,
+                'name' => (string) $property->name,
+            ];
+        }
+        usort($lines, fn (array $a, array $b): int => $a['date']->getTimestamp() <=> $b['date']->getTimestamp());
+
+        return $lines;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Property>  $properties
+     */
+    private function landlordPayDateCell($properties): HtmlString|string
+    {
+        $lines = $this->landlordPayDates($properties);
+        if ($lines === []) {
+            return '—';
+        }
+
+        $sameDay = collect($lines)->pluck('day')->unique()->count() === 1;
+        if ($sameDay) {
+            $first = $lines[0];
+
+            return new HtmlString(
+                '<div class="tabular-nums">'.e($first['date']->format('Y-m-d')).'</div>'.
+                '<div class="text-xs text-slate-500 dark:text-slate-400">Day '.$first['day'].'</div>'
+            );
+        }
+
+        $preview = array_slice($lines, 0, 2);
+        $extra = max(0, count($lines) - count($preview));
+        $html = '';
+        foreach ($preview as $line) {
+            $html .= '<div class="text-xs tabular-nums">'.e($line['date']->format('Y-m-d')).' · '.e($line['name']).'</div>';
+        }
+        if ($extra > 0) {
+            $html .= '<div class="text-xs text-slate-500">+'.$extra.' more</div>';
+        }
+
+        return new HtmlString($html);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Property>  $properties
+     */
+    private function landlordPayDateExport($properties): ?string
+    {
+        $lines = $this->landlordPayDates($properties);
+        if ($lines === []) {
+            return null;
+        }
+        if (collect($lines)->pluck('day')->unique()->count() === 1) {
+            return $lines[0]['date']->format('Y-m-d');
+        }
+
+        return collect($lines)
+            ->map(fn (array $line): string => $line['date']->format('Y-m-d').' '.$line['name'])
+            ->implode('; ');
     }
 
     /**
@@ -2049,29 +2131,33 @@ class PropertyPortfolioController extends Controller
 
         $grossByMonthProperty = [];
         if ($propertyIds !== []) {
-            $allocationRows = DB::table('pm_payment_allocations as a')
-                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            $rangeFrom = $periodStart->format('Y-m');
+            $rangeTo = $periodEnd->format('Y-m');
+            $lookbackStart = $periodStart->copy()->subMonths(3);
+            $invoiceRows = DB::table('pm_invoices as i')
                 ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                 ->whereIn('pu.property_id', $propertyIds)
-                ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->where(function ($query) use ($periodStart, $periodEnd): void {
-                    $query->whereBetween('i.billing_period', [$periodStart->format('Y-m'), $periodEnd->format('Y-m')])
-                        ->orWhereBetween('i.issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+                ->where('i.status', '!=', PmInvoice::STATUS_DRAFT)
+                ->where('i.amount_paid', '>', 0.009)
+                ->where(function ($query) use ($lookbackStart, $periodEnd): void {
+                    $query->whereBetween('i.billing_period', [$lookbackStart->format('Y-m'), $periodEnd->format('Y-m')])
+                        ->orWhereBetween('i.issue_date', [$lookbackStart->toDateString(), $periodEnd->toDateString()]);
                 })
-                ->select(['pu.property_id', 'i.billing_period', 'i.issue_date', 'a.amount'])
+                ->tap(fn ($query) => PmInvoice::applyLiveBalanceConstraints($query, 'i'))
+                ->select(['pu.property_id', 'i.billing_period', 'i.issue_date', 'i.description', 'i.amount_paid'])
                 ->get();
 
-            foreach ($allocationRows as $row) {
-                $periodMonth = trim((string) ($row->billing_period ?? ''));
-                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
-                    ? $periodMonth
-                    : Carbon::parse((string) $row->issue_date)->format('Y-m');
-                if ($ym < $periodStart->format('Y-m') || $ym > $periodEnd->format('Y-m')) {
+            foreach ($invoiceRows as $row) {
+                $ym = $this->invoiceCollectedMonth(
+                    (string) ($row->billing_period ?? ''),
+                    (string) ($row->issue_date ?? ''),
+                    (string) ($row->description ?? ''),
+                );
+                if ($ym === null || $ym < $rangeFrom || $ym > $rangeTo) {
                     continue;
                 }
                 $pid = (int) $row->property_id;
-                $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+                $grossByMonthProperty[$ym][$pid] = ($grossByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount_paid;
             }
 
             foreach (app(LandlordSettlementService::class)->unpostedReceiptsByPropertyMonth($propertyIds, $periodStart, $periodEnd) as $ym => $byProperty) {
@@ -2080,6 +2166,30 @@ class PropertyPortfolioController extends Controller
                 }
             }
 
+        }
+
+        $expensesByMonthProperty = [];
+        if ($propertyIds !== [] && Schema::hasTable('pm_ezen_payment_vouchers')) {
+            $rangeFrom = $periodStart->format('Y-m');
+            $rangeTo = $periodEnd->format('Y-m');
+            $expenseRows = DB::table('pm_ezen_payment_vouchers')
+                ->whereIn('property_id', $propertyIds)
+                ->whereIn('category', [PmEzenPaymentVoucher::CATEGORY_EXPENSE, PmEzenPaymentVoucher::CATEGORY_TAX])
+                ->where('link_status', '!=', PmEzenPaymentVoucher::LINK_SKIPPED)
+                ->where('amount', '>', 0)
+                ->get(['property_id', 'amount', 'period_month', 'txn_date']);
+
+            foreach ($expenseRows as $row) {
+                $periodMonth = trim((string) ($row->period_month ?? ''));
+                $ym = preg_match('/^\d{4}-\d{2}$/', $periodMonth) === 1
+                    ? $periodMonth
+                    : ($row->txn_date ? Carbon::parse((string) $row->txn_date)->format('Y-m') : '');
+                if ($ym === '' || $ym < $rangeFrom || $ym > $rangeTo) {
+                    continue;
+                }
+                $pid = (int) $row->property_id;
+                $expensesByMonthProperty[$ym][$pid] = ($expensesByMonthProperty[$ym][$pid] ?? 0.0) + (float) $row->amount;
+            }
         }
 
         $remittedByMonthProperty = [];
@@ -2127,21 +2237,24 @@ class PropertyPortfolioController extends Controller
                 $gross = (float) ($grossByMonthProperty[$ym][$pid] ?? 0);
                 $share = $gross * $pct;
                 $earning = $share * ($commissionPct / 100);
+                $expenses = (float) ($expensesByMonthProperty[$ym][$pid] ?? 0) * $pct;
                 $remitted = (float) ($remittedByMonthProperty[$ym][$pid] ?? 0);
+                $payable = $share - $earning - $expenses;
                 $lines[] = [
                     'month' => $ym,
                     'month_label' => $monthStart->format('M Y'),
                     'gross_collected' => $gross,
                     'paid_share' => $remitted,
-                    'pending_share' => max(0.0, round($share - $earning - $remitted, 2)),
+                    'pending_share' => max(0.0, round($payable - $remitted, 2)),
                     'owner_share' => $share,
                     'agent_earning' => $earning,
+                    'expenses' => $expenses,
                 ];
             }
             $byProperty[$pid] = $lines;
         }
 
-        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $remittedByMonthProperty, $ownershipByProperty, $propertyLinks) {
+        $monthTotals = $months->map(function (string $ym) use ($grossByMonthProperty, $remittedByMonthProperty, $expensesByMonthProperty, $ownershipByProperty, $propertyLinks) {
             $monthStart = Carbon::createFromFormat('Y-m', $ym)->startOfMonth();
             $grossCollected = 0.0;
             $paidShare = 0.0;
@@ -2158,7 +2271,8 @@ class PropertyPortfolioController extends Controller
                 $share = $gross * $pct;
                 $commissionPct = $this->propertyCommissionPercent($pid);
                 $earning = $share * ($commissionPct / 100);
-                $monthPending = max(0.0, round($share - $earning - $monthPaid, 2));
+                $monthExpenses = (float) ($expensesByMonthProperty[$ym][$pid] ?? 0) * $pct;
+                $monthPending = max(0.0, round($share - $earning - $monthExpenses - $monthPaid, 2));
                 if ($gross <= 0.009 && $monthPaid <= 0.009 && $monthPending <= 0.009) {
                     continue;
                 }
@@ -2184,6 +2298,32 @@ class PropertyPortfolioController extends Controller
         })->values();
 
         return ['months' => $monthTotals, 'by_property' => $byProperty];
+    }
+
+    /**
+     * Bill month for landlord collected. A January bill paid in December still belongs to January.
+     */
+    private function invoiceCollectedMonth(string $billingPeriod, string $issueDate, string $description): ?string
+    {
+        if (preg_match_all('/([A-Za-z]{3,9})\s*[\/\s]\s*(20\d{2})/', $description, $matches, PREG_SET_ORDER) >= 1) {
+            $last = $matches[count($matches) - 1];
+            $parsed = \DateTime::createFromFormat('!M Y', ucfirst(strtolower(substr($last[1], 0, 3))).' '.$last[2]);
+            if ($parsed instanceof \DateTime) {
+                return $parsed->format('Y-m');
+            }
+        }
+
+        $period = trim($billingPeriod);
+        if (preg_match('/^\d{4}-\d{2}/', $period) === 1) {
+            return substr($period, 0, 7);
+        }
+
+        $issue = trim($issueDate);
+        if (preg_match('/^\d{4}-\d{2}/', $issue) === 1) {
+            return substr($issue, 0, 7);
+        }
+
+        return null;
     }
 
     public function landlordsShow(Request $request, User $landlord): View|StreamedResponse|Response

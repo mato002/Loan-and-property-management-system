@@ -33,6 +33,8 @@ return [
             'sync_driver' => null,
             'supports_webhook' => true,
             'default_endpoints' => [],
+            'match_mode' => 'account_phone_name_with_phone',
+            'notes' => 'One collection Till for the agency; match by existing Ac/No first, then unique phone. Name is used only together with phone — never name alone.',
         ],
         'im' => [
             'label' => 'I&M Bank',

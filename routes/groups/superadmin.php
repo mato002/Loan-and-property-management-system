@@ -18,7 +18,7 @@ Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->grou
     Route::get('/agent-workspaces/{agent}/branding', [SuperAdminAgentWorkspaceController::class, 'branding'])->name('agent_workspaces.branding');
     Route::post('/agent-workspaces/{agent}/branding', [SuperAdminAgentWorkspaceController::class, 'storeBranding'])->name('agent_workspaces.branding.store');
     Route::get('/agent-workspaces/{agent}', [SuperAdminAgentWorkspaceController::class, 'show'])->name('agent_workspaces.show');
-    Route::post('/agent-workspaces/{agent}/impersonate', [SuperAdminAgentWorkspaceController::class, 'impersonate'])->name('agent_workspaces.impersonate');
+    Route::match(['get', 'post'], '/agent-workspaces/{agent}/impersonate', [SuperAdminAgentWorkspaceController::class, 'impersonate'])->name('agent_workspaces.impersonate');
     Route::post('/agent-workspaces/{agent}/transfer', [SuperAdminAgentWorkspaceController::class, 'transfer'])->name('agent_workspaces.transfer');
     Route::post('/agent-workspaces/{agent}/toggle-status', [SuperAdminAgentWorkspaceController::class, 'toggleStatus'])->name('agent_workspaces.toggle_status');
     Route::post('/agent-workspaces/{agent}/subscription', [SuperAdminAgentWorkspaceController::class, 'updateSubscription'])->name('agent_workspaces.subscription');

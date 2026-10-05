@@ -27,7 +27,7 @@
     back-route="property.tenants.directory"
     :stats="[
         ['label' => 'Status', 'value' => (string) (($profileStatus['label'] ?? '—')), 'hint' => (string) (($profileStatus['hint'] ?? 'Occupancy'))],
-        ['label' => 'Account', 'value' => (string) ($tenant->account_number ?: '—'), 'hint' => $occupancyLabel ?? 'Unit'],
+        ['label' => 'Ac/No', 'value' => (string) ($tenant->account_number ?: '—'), 'hint' => 'Tenant Payment Account'],
         ['label' => 'Monthly rent', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($monthlyRentTotal ?? 0)), 'hint' => ((int) ($activeLeaseCount ?? 0)).' active lease(s)'],
         ['label' => 'Total due', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)), 'hint' => 'AR + uninvoiced CF − credit'],
     ]"

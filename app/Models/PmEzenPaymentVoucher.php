@@ -72,6 +72,7 @@ class PmEzenPaymentVoucher extends Model
         'amount',
         'recorded_by',
         'property_id',
+        'property_unit_id',
         'landlord_id',
         'pm_landlord_payout_id',
         'pm_accounting_entry_id',
@@ -109,6 +110,11 @@ class PmEzenPaymentVoucher extends Model
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(PropertyUnit::class, 'property_unit_id');
     }
 
     public function landlord(): BelongsTo

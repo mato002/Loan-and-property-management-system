@@ -48,6 +48,9 @@ final class BankIntegrationConfig
      *     api_key: string,
      *     api_secret: string,
      *     merchant_code: string,
+     *     client_id: string,
+     *     client_secret: string,
+     *     environment: string,
      *     auth_endpoint: string,
      *     transactions_endpoint: string,
      *     balance_endpoint: string,
@@ -89,6 +92,9 @@ final class BankIntegrationConfig
             'api_key' => self::pick($provider, 'api_key', "PROPERTY_BANK_{$envProvider}_API_KEY", 'EQUITY_API_KEY'),
             'api_secret' => self::pick($provider, 'api_secret', "PROPERTY_BANK_{$envProvider}_API_SECRET", 'EQUITY_API_SECRET'),
             'merchant_code' => self::pick($provider, 'merchant_code', "PROPERTY_BANK_{$envProvider}_MERCHANT_CODE"),
+            'client_id' => self::pick($provider, 'client_id', "PROPERTY_BANK_{$envProvider}_CLIENT_ID", "PROPERTY_BANK_{$envProvider}_API_KEY"),
+            'client_secret' => self::pick($provider, 'client_secret', "PROPERTY_BANK_{$envProvider}_CLIENT_SECRET", "PROPERTY_BANK_{$envProvider}_API_SECRET"),
+            'environment' => self::pick($provider, 'environment', "PROPERTY_BANK_{$envProvider}_ENVIRONMENT") ?: 'sandbox',
             'auth_endpoint' => self::pick($provider, 'auth_endpoint', 'EQUITY_API_AUTH_ENDPOINT') ?: (string) ($defaults['auth'] ?? '/oauth/token'),
             'transactions_endpoint' => self::pick($provider, 'transactions_endpoint', 'EQUITY_API_TRANSACTIONS_ENDPOINT') ?: (string) ($defaults['transactions'] ?? '/paybill/transactions'),
             'balance_endpoint' => self::pick($provider, 'balance_endpoint', 'EQUITY_API_BALANCE_ENDPOINT') ?: (string) ($defaults['balance'] ?? '/accounts/balance'),
@@ -337,8 +343,11 @@ final class BankIntegrationConfig
             'base_url' => 'base_url',
             'api_key' => 'api_key',
             'api_secret' => 'api_secret',
+            'client_id' => 'client_id',
+            'client_secret' => 'client_secret',
             'merchant_code' => 'merchant_code',
             'webhook_secret' => 'webhook_secret',
+            'environment' => 'environment',
         ];
         if (isset($servicesMap[$field])) {
             $fromServices = trim((string) ($services[$servicesMap[$field]] ?? ''));

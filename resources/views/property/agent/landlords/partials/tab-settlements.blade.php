@@ -28,6 +28,7 @@
                         <th class="px-4 py-3">Property</th>
                         <th class="px-4 py-3 text-right">Collected</th>
                         <th class="px-4 py-3 text-right">Mgmt fee</th>
+                        <th class="px-4 py-3 text-right">Expenses</th>
                         <th class="px-4 py-3 text-right">Amount payable</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3">Actions</th>
@@ -51,6 +52,7 @@
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($ytd['gross_collected']) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($ytd['agent_earning']) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($ytd['expenses'] ?? 0) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($ytd['landlord_net']) }}</td>
                             <td class="px-4 py-3"><span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold capitalize">{{ $row['status'] ?? '—' }}</span></td>
                             <td class="px-4 py-3 whitespace-nowrap">
@@ -58,7 +60,7 @@
                             </td>
                         </tr>
                         <tr x-show="open" x-cloak class="bg-slate-50/70 dark:bg-slate-900/40">
-                            <td colspan="6" class="px-4 py-3" data-row-ignore-click>
+                            <td colspan="7" class="px-4 py-3" data-row-ignore-click>
                                 @include('property.agent.landlords.partials.monthly-share-panel', [
                                     'months' => $months,
                                     'currentMonth' => $currentShareMonth,

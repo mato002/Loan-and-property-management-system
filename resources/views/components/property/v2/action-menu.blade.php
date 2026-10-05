@@ -18,7 +18,8 @@
         </summary>
         <div
             data-property-dropdown-menu
-            class="{{ $width }} absolute right-0 z-[100] mt-1 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 shadow-lg py-0.5"
+            data-turbo-prefetch="false"
+            class="{{ $width }} absolute right-0 z-[100] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 shadow-lg py-0.5"
         >
             {{ $slot }}
         </div>

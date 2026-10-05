@@ -1012,7 +1012,7 @@
                 @endif
             </span>
             <span class="property-collapse-text flex flex-col min-w-0 leading-tight text-left">
-                <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
+                <span class="property-brand-name text-base font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
             </span>
         </a>
         @if (app()->environment('local'))

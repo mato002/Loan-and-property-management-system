@@ -118,6 +118,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/revenue/statements/{statement}/lines/{line}/payee', [PropertyStatementImportController::class, 'classifyPayee'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.payee');
     Route::post('/revenue/statements/{statement}/auto-assign', [PropertyStatementImportController::class, 'autoAssign'])->middleware('property.permission:payments.settle')->name('revenue.statements.auto_assign');
     Route::post('/revenue/statements/{statement}/rematch', [PropertyStatementImportController::class, 'rematch'])->middleware('property.permission:payments.record')->name('revenue.statements.rematch');
+    Route::post('/revenue/statements/{statement}/enrich-payers', [PropertyStatementImportController::class, 'enrichPayers'])->middleware('property.permission:payments.record')->name('revenue.statements.enrich_payers');
     Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
     Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');
     Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
@@ -459,6 +460,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/accounting/payables/landlord-payouts/{payout}/pay-mpesa', [PropertyAccountingController::class, 'payLandlordPayoutViaMpesa'])->name('accounting.payables.landlord_payouts.pay_mpesa');
     Route::post('/accounting/payables/landlord-payouts/{payout}/void', [PropertyAccountingController::class, 'voidLandlordPayout'])->name('accounting.payables.landlord_payouts.void');
     Route::post('/accounting/payables/payment-vouchers/{voucher}/match', [PropertyAccountingController::class, 'matchPaymentVoucher'])->name('accounting.payables.payment_vouchers.match');
+    Route::post('/accounting/payables/payment-vouchers/{voucher}/assign', [PropertyAccountingController::class, 'assignPaymentVoucherProperty'])->name('accounting.payables.payment_vouchers.assign');
+    Route::post('/accounting/payables/payment-vouchers/assign-export', [PropertyAccountingController::class, 'assignPaymentVoucherExport'])->name('accounting.payables.payment_vouchers.assign_export');
     Route::post('/accounting/payables/accounts-payable/{bill}/mark-paid', [PropertyAccountingController::class, 'markVendorBillPaid'])->name('accounting.payables.accounts_payable.mark_paid');
     Route::put('/accounting/payables/property-takeon-balances/{takeon}', [PropertyAccountingController::class, 'updatePropertyTakeonBalance'])->whereNumber('takeon')->name('accounting.payables.property_takeon_balances.update');
     Route::get('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'landlordAdvances'])->name('accounting.payables.landlord_advances');

@@ -1326,6 +1326,8 @@ class PropertySettingsStoreWebController extends Controller
             'username' => $config['username'] ?? '',
             'apiKey' => $config['api_key'] ?? '',
             'merchantCode' => $config['merchant_code'] ?? '',
+            'clientId' => $config['client_id'] ?? '',
+            'environment' => $config['environment'] ?? 'sandbox',
             'authEndpoint' => $config['auth_endpoint'] ?? '',
             'transactionsEndpoint' => $config['transactions_endpoint'] ?? '',
             'balanceEndpoint' => $config['balance_endpoint'] ?? '',
@@ -1335,11 +1337,14 @@ class PropertySettingsStoreWebController extends Controller
             'notes' => $config['notes'] ?? '',
             'hasPassword' => BankIntegrationConfig::hasStoredSecret($provider, 'password'),
             'hasApiSecret' => BankIntegrationConfig::hasStoredSecret($provider, 'api_secret'),
+            'hasClientSecret' => BankIntegrationConfig::hasStoredSecret($provider, 'client_secret'),
             'hasWebhookSecret' => BankIntegrationConfig::hasStoredSecret($provider, 'webhook_secret'),
             'isConfigured' => BankIntegrationConfig::isConfigured($provider),
             'isActiveProvider' => BankIntegrationConfig::selectedProvider() === $provider,
             'configSource' => $config['source'] ?? 'none',
             'webhookUrl' => BankIntegrationConfig::webhookUrl($provider),
+            'matchMode' => (string) (($meta['match_mode'] ?? '') ?: 'legacy'),
+            'providerGuide' => (string) ($meta['notes'] ?? ''),
         ]);
     }
 
@@ -1367,6 +1372,9 @@ class PropertySettingsStoreWebController extends Controller
             'bank_api_key' => ['nullable', 'string', 'max:255'],
             'bank_api_secret' => ['nullable', 'string', 'max:255'],
             'bank_merchant_code' => ['nullable', 'string', 'max:128'],
+            'bank_client_id' => ['nullable', 'string', 'max:255'],
+            'bank_client_secret' => ['nullable', 'string', 'max:255'],
+            'bank_environment' => ['nullable', 'string', 'in:sandbox,production'],
             'bank_paybill_number' => ['nullable', 'string', 'max:64'],
             'bank_webhook_secret' => ['nullable', 'string', 'max:255'],
             'bank_sync_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:60'],
@@ -1390,6 +1398,9 @@ class PropertySettingsStoreWebController extends Controller
             'bank_password' => 'password',
             'bank_api_key' => 'api_key',
             'bank_api_secret' => 'api_secret',
+            'bank_client_id' => 'client_id',
+            'bank_client_secret' => 'client_secret',
+            'bank_environment' => 'environment',
             'bank_merchant_code' => 'merchant_code',
             'bank_auth_endpoint' => 'auth_endpoint',
             'bank_transactions_endpoint' => 'transactions_endpoint',
@@ -1398,7 +1409,7 @@ class PropertySettingsStoreWebController extends Controller
             'bank_webhook_secret' => 'webhook_secret',
             'bank_notes' => 'notes',
         ];
-        $secretFields = ['password', 'api_secret', 'webhook_secret'];
+        $secretFields = ['password', 'api_secret', 'client_secret', 'webhook_secret'];
 
         foreach ($fieldMap as $input => $field) {
             if (! array_key_exists($input, $data)) {

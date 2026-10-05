@@ -2582,7 +2582,11 @@ html[data-brand-palette='passion-homes'] .property-topbar .bg-emerald-800\/50 {
   background-color: #f8fafc !important;
 }
 
-html[data-brand-palette='passion-homes'] .property-topbar [aria-current='page'] {
+html[data-brand-palette='passion-homes'] .property-brand-name {
+  color: var(--brand-primary, #c0392b) !important;
+}
+
+html[data-brand-palette='passion-homes'] .property-topbar [aria-current='page']:not(.property-workspace-tab) {
   background-color: var(--brand-primary-soft, #fdedec) !important;
   color: var(--brand-primary-dark, #7b1e16) !important;
   box-shadow: inset 0 -2px 0 var(--brand-primary, #c0392b);
@@ -2602,8 +2606,9 @@ html[data-brand-palette='passion-homes'] .property-topbar .bg-emerald-50 {
 html[data-brand-palette='passion-homes'][data-pwa-context='portal'] .property-sidebar {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
+  border-left: 6px solid var(--brand-accent, #1b75bc) !important;
   color: #334155 !important;
-  box-shadow: none !important;
+  box-shadow: inset 7px 0 0 var(--brand-primary, #c0392b) !important;
 }
 
 html[data-brand-palette='passion-homes'] .property-sidebar a,
@@ -2674,10 +2679,49 @@ html[data-brand-palette='passion-homes'] .property-sidebar [data-section-active]
   box-shadow: none !important;
 }
 
+html[data-brand-palette='passion-homes'] a.property-workspace-tab[aria-current='page'],
 html[data-brand-palette='passion-homes'] .property-workspace-tab[aria-current='page'] {
   background-color: var(--brand-primary, #c0392b) !important;
   border-color: var(--brand-primary, #c0392b) !important;
   color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html[data-brand-palette='passion-homes'] .kpi-card-bar {
+  background-color: var(--brand-primary, #c0392b) !important;
+}
+
+html[data-brand-palette='passion-homes'] .kpi-card-grid .kpi-card:nth-child(even) .kpi-card-bar {
+  background-color: var(--brand-accent, #1b75bc) !important;
+}
+
+html[data-brand-palette='passion-homes'] .kpi-card-grid .kpi-card:nth-child(odd) .kpi-card-icon {
+  background-color: var(--brand-primary-soft, #fdedec) !important;
+  color: var(--brand-primary, #c0392b) !important;
+}
+
+html[data-brand-palette='passion-homes'] .kpi-card-grid .kpi-card:nth-child(even) .kpi-card-icon {
+  background-color: #ebf5fb !important;
+  color: var(--brand-accent, #1b75bc) !important;
+}
+
+html[data-brand-palette='passion-homes'] .kpi-card-link:hover {
+  color: var(--brand-accent, #1b75bc);
+  background: #ebf5fb;
+}
+
+html[data-brand-palette='passion-homes'] .dashboard-checklist-item.is-primary {
+  border-color: var(--brand-primary, #c0392b);
+  background: var(--brand-primary, #c0392b);
+  color: #ffffff;
+}
+
+html[data-brand-palette='passion-homes'] .dashboard-checklist-item.is-primary:hover {
+  background: var(--brand-primary-hover, #922b21);
+}
+
+html[data-brand-palette='passion-homes'] .dashboard-checklist-item.is-primary span {
+  color: #fdedec;
 }
 
 html[data-brand-palette='passion-homes'] .property-workspace-subtab[aria-current='page'] {

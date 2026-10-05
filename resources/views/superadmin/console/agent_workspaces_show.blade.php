@@ -14,7 +14,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('superadmin.agent_workspaces.branding', $agent) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit branding</a>
-                <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}">
+                <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}" data-turbo="false">
                     @csrf
                     <button type="submit" class="rounded-xl bg-[#2f4f4f] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#264040]">View dashboard</button>
                 </form>

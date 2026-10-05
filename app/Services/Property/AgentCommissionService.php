@@ -92,6 +92,8 @@ class AgentCommissionService
     }
 
     /**
+     * Money paid on invoices issued in the period, grouped by property.
+     *
      * @return array<int, float> property_id => collected
      */
     public function collectedByProperty(Carbon $start, Carbon $end): array
@@ -128,18 +130,20 @@ class AgentCommissionService
     }
 
     /**
+     * Paid amount on invoices issued in the period, by property.
+     * Payment dates are often outside the invoice month, so paid_at understates commission.
+     *
      * @return array<int, float> property_id => collected
      */
     private function collectedByPropertyViaAllocations(Carbon $start, Carbon $end): array
     {
-        return DB::table('pm_payment_allocations as a')
-            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+        return DB::table('pm_invoices as i')
             ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->where('pay.status', PmPayment::STATUS_COMPLETED)
-            ->whereBetween('pay.paid_at', [$start, $end])
+            ->where('i.status', '!=', PmInvoice::STATUS_DRAFT)
+            ->whereBetween('i.issue_date', [$start->toDateString(), $end->toDateString()])
+            ->tap(fn ($query) => PmInvoice::applyLiveBalanceConstraints($query, 'i'))
             ->groupBy('pu.property_id')
-            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(i.amount_paid), 0) as total')
             ->pluck('total', 'property_id')
             ->map(fn ($v) => (float) $v)
             ->all();

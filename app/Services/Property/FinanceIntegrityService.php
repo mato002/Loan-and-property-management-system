@@ -47,7 +47,7 @@ final class FinanceIntegrityService
 
     /** @var array<string, string> */
     private const REPAIR_HINTS = [
-        self::CATEGORY_ALLOCATION_DRIFT => 'Run allocation repair for affected tenants (tenant statement → Repair allocations) or `php artisan finance:detect-allocation-drift`.',
+        self::CATEGORY_ALLOCATION_DRIFT => 'Run `php artisan finance:detect-allocation-drift --fix` (or tenant statement → Repair allocations).',
         self::CATEGORY_SUSPENSE_MISMATCH => 'Review payment finalize path; ensure unmatched payments use payment_unmatched_suspense only. Run `php artisan finance:detect-accounting-drift --audit`.',
         self::CATEGORY_GL_AR_MISMATCH => 'Run `php artisan finance:detect-accounting-drift --audit` and backfill missing invoice_issued batches (`finance:backfill-carry-forward-gl`).',
         self::CATEGORY_LANDLORD_IMBALANCE => 'Run `php artisan finance:backfill-landlord-subledger` and `finance:reconcile-landlord-subledger`.',

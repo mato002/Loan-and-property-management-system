@@ -20,15 +20,24 @@
             </tr>
         </thead>
         <tbody>
+            @php
+                $creditHeldByPayment = app(\App\Services\Property\TenantCreditService::class)->openCreditByPaymentIds(
+                    collect($recentPayments ?? [])->pluck('id')->all()
+                );
+            @endphp
             @forelse(($recentPayments ?? []) as $payment)
                 @php
+                    $statementLines = collect($statementApplications[(int) $payment->id] ?? [])
+                        ->filter(fn ($line) => (float) ($line['amount'] ?? 0) > 0.009)
+                        ->values();
                     $appliedRows = collect($payment->allocations ?? [])
                         ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false) && (float) $allocation->amount > 0.009);
-                    $appliedSum = round((float) $appliedRows->sum('amount'), 2);
+                    $usesStatement = $statementLines->isNotEmpty();
+                    $appliedSum = $usesStatement
+                        ? round((float) $statementLines->sum('amount'), 2)
+                        : round((float) $appliedRows->sum('amount'), 2);
                     $leftover = round(max(0, (float) $payment->amount - $appliedSum), 2);
-                    $rentApplied = round((float) $appliedRows
-                        ->filter(fn ($allocation) => (string) ($allocation->invoice?->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT)
-                        ->sum('amount'), 2);
+                    $heldAsCredit = round(min($leftover, (float) ($creditHeldByPayment[(int) $payment->id] ?? 0)), 2);
                 @endphp
                 <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                     <td class="px-4 py-3">{{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}</td>
@@ -36,9 +45,18 @@
                     <td class="px-4 py-3 uppercase">{{ $payment->channel ?? '—' }}</td>
                     <td class="px-4 py-3 font-mono text-xs">{{ $payment->external_ref ?? '—' }}</td>
                     <td class="px-4 py-3 text-xs">
-                        @if($appliedRows->isEmpty())
-                            <span class="font-medium text-amber-800">Not applied to any invoice</span>
-                            <div class="mt-0.5 text-[11px] text-amber-700">Does not count on rent collected</div>
+                        @if($usesStatement)
+                            <ul class="space-y-0.5">
+                                @foreach($statementLines as $line)
+                                    <li>
+                                        <span class="font-medium text-slate-800">{{ $line['invoice_no'] }}</span>
+                                        <span class="text-slate-500"> · {{ $line['label'] }}</span>
+                                        <span class="tabular-nums text-slate-700"> · {{ \App\Services\Property\PropertyMoney::kes((float) $line['amount']) }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @elseif($appliedRows->isEmpty())
+                            <span class="font-medium text-slate-800">Not applied to an invoice line</span>
                         @else
                             <ul class="space-y-0.5">
                                 @foreach($appliedRows as $allocation)
@@ -46,24 +64,17 @@
                                         $invoice = $allocation->invoice;
                                         $typeLabel = $invoice?->chargeCategoryLabel() ?? 'Invoice';
                                         $invoiceNo = $invoice?->invoice_no ?: ($invoice ? '#'.$invoice->id : 'Missing invoice');
-                                        $isRent = (string) ($invoice?->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT;
                                     @endphp
                                     <li>
                                         <span class="font-medium text-slate-800">{{ $invoiceNo }}</span>
                                         <span class="text-slate-500"> · {{ $typeLabel }}</span>
-                                        <span class="tabular-nums text-slate-600"> · {{ \App\Services\Property\PropertyMoney::kes((float) $allocation->amount) }}</span>
-                                        @unless($isRent)
-                                            <span class="block text-[11px] text-slate-500">Not rent — excluded from rent collected</span>
-                                        @endunless
+                                        <span class="tabular-nums text-slate-700"> · {{ \App\Services\Property\PropertyMoney::kes((float) $allocation->amount) }}</span>
                                     </li>
                                 @endforeach
                             </ul>
-                            @if($leftover > 0.009)
-                                <div class="mt-1 font-medium text-amber-800">Unallocated {{ \App\Services\Property\PropertyMoney::kes($leftover) }}</div>
-                                <div class="text-[11px] text-amber-700">Held as credit — not rent collected</div>
-                            @elseif($rentApplied <= 0.009)
-                                <div class="mt-1 text-[11px] text-amber-700">No rent invoice allocation</div>
-                            @endif
+                        @endif
+                        @if($heldAsCredit > 0.009)
+                            <div class="mt-1 font-medium text-amber-800">Held as credit {{ \App\Services\Property\PropertyMoney::kes($heldAsCredit) }}</div>
                         @endif
                     </td>
                     <td class="px-4 py-3">

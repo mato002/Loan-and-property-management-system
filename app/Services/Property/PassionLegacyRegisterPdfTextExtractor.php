@@ -175,9 +175,53 @@ PY;
             }
         }
 
-        $text = trim(implode("\n", $parts));
+        $text = trim($this->joinPdfTextParts($parts));
 
         return $text !== '' ? $text : null;
+    }
+
+    /**
+     * Newer Co-op PDFs emit one Tj per glyph. Joining those with newlines
+     * turns UI10X4MPLS into "U I 1 0 X 4 M P L S" and the statement parser
+     * finds the header but no transactions.
+     *
+     * @param  list<string>  $parts
+     */
+    private function joinPdfTextParts(array $parts): string
+    {
+        $out = '';
+        $last = '';
+        foreach ($parts as $part) {
+            $part = (string) $part;
+            if ($part === '') {
+                continue;
+            }
+            if ($out === '') {
+                $out = $part;
+                $last = $part;
+                continue;
+            }
+
+            $glueGlyphs = $this->isPdfGlyphToken($last) && $this->isPdfGlyphToken($part);
+            if ($glueGlyphs) {
+                $out .= $part;
+            } else {
+                $out .= "\n".$part;
+            }
+            $last = $part;
+        }
+
+        return $out;
+    }
+
+    private function isPdfGlyphToken(string $token): bool
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return false;
+        }
+
+        return preg_match('/^[A-Za-z0-9.,\\/_-]{1,2}$/', $token) === 1;
     }
 
     private function decodePdfLiteral(string $part): string
@@ -262,10 +306,12 @@ PY;
             return null;
         }
 
-        $parts = array_map(static function (string $part): string {
-            return stripcslashes($part);
+        $parts = array_map(function (string $part): string {
+            return $this->decodePdfLiteral($part);
         }, $matches[1]);
 
-        return implode("\n", $parts);
+        $text = trim($this->joinPdfTextParts($parts));
+
+        return $text !== '' ? $text : null;
     }
 }

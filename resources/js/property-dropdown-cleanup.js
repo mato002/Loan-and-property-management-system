@@ -80,7 +80,8 @@ function isInsideOpenDropdown(target, details, menu) {
 
 function placeTeleportedMenu(details, menu, summary, attempt = 0) {
     const rect = summary.getBoundingClientRect();
-    const gap = 4;
+    // Keep menu flush with the trigger so the pointer never crosses a dead gap.
+    const gap = 0;
     const pad = 12;
     const footerEl = document.getElementById('property-shell-footer');
     const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
@@ -99,6 +100,7 @@ function placeTeleportedMenu(details, menu, summary, attempt = 0) {
 
     menu.style.position = 'fixed';
     menu.style.right = 'auto';
+    menu.style.marginTop = '0';
     menu.style.zIndex = MENU_Z_INDEX;
     menu.style.maxHeight = '';
     menu.style.overflowY = '';
@@ -191,6 +193,7 @@ export function restoreDropdownMenu(menu) {
     menu.style.maxHeight = '';
     menu.style.overflowY = '';
     menu.style.minWidth = '';
+    menu.style.marginTop = '';
     menu.style.display = '';
     menu.hidden = false;
 
@@ -303,12 +306,9 @@ function bindGlobalDropdownListeners() {
     document.addEventListener('turbo:before-visit', close);
     document.addEventListener('turbo:before-render', close);
     document.addEventListener('turbo:before-cache', close);
+    // Close when the workspace frame is about to swap — not on frame-request-started,
+    // which Turbo 8 can fire for hover prefetch and would dismiss the menu before click.
     document.addEventListener('turbo:before-frame-render', (event) => {
-        if (shouldCloseDropdownsForTurboEvent(event)) {
-            close();
-        }
-    });
-    document.addEventListener('turbo:frame-request-started', (event) => {
         if (shouldCloseDropdownsForTurboEvent(event)) {
             close();
         }
@@ -389,6 +389,11 @@ export function setupPropertyActionMenus(scopeRoot) {
         }
         menu.dataset.propertyDropdownFor = details.dataset.propertyDropdownId;
         menu._propertyDropdownOwner = details;
+        // Turbo 8 hover-prefetch into property-main was closing the menu before click.
+        menu.setAttribute('data-turbo-prefetch', 'false');
+        menu.querySelectorAll('a[href]').forEach((link) => {
+            link.setAttribute('data-turbo-prefetch', 'false');
+        });
 
         details.addEventListener('toggle', () => {
             const activeMenu = menuForRoot(details) || menu;

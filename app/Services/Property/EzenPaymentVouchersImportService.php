@@ -9,8 +9,10 @@ use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
 use App\Models\PmLandlordPayoutItem;
 use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -147,6 +149,90 @@ final class EzenPaymentVouchersImportService
         }
 
         return $summary;
+    }
+
+    /**
+     * Link every voucher in a property-filtered EZEN export to that property.
+     * A particular that names one unit, such as "LUGAS M12", is linked to that unit.
+     *
+     * @return array{parsed:int, updated:int, created:int, units:int}
+     */
+    public function assignPropertyExport(string $path, Property $property, int $agentUserId): array
+    {
+        $rows = $this->parser->parsePath($path);
+        $units = PropertyUnit::query()->where('property_id', $property->id)->get(['id', 'property_id', 'label']);
+        $summary = ['parsed' => count($rows), 'updated' => 0, 'created' => 0, 'units' => 0];
+
+        DB::transaction(function () use ($rows, $property, $agentUserId, $units, &$summary): void {
+            foreach ($rows as $row) {
+                $voucherNo = trim((string) ($row['ezen_voucher_no'] ?? ''));
+                if ($voucherNo === '') {
+                    continue;
+                }
+
+                $unit = $this->unitFromParticulars($units, (string) ($row['particulars'] ?? ''));
+                $existing = PmEzenPaymentVoucher::query()
+                    ->withoutGlobalScopes()
+                    ->where('ezen_voucher_no', $voucherNo)
+                    ->when($agentUserId > 0, fn ($query) => $query->where('agent_user_id', $agentUserId))
+                    ->first();
+                if ($existing === null) {
+                    $existing = PmEzenPaymentVoucher::query()
+                        ->withoutGlobalScopes()
+                        ->where('ezen_voucher_no', $voucherNo)
+                        ->first();
+                }
+
+                if ($existing) {
+                    $existing->property_id = $property->id;
+                    if (trim((string) $existing->property_code) === '') {
+                        $existing->property_code = (string) ($property->code ?? '');
+                    }
+                    if ($unit && Schema::hasColumn('pm_ezen_payment_vouchers', 'property_unit_id')) {
+                        $existing->property_unit_id = $unit->id;
+                        $summary['units']++;
+                    }
+                    $existing->save();
+                    $summary['updated']++;
+                    continue;
+                }
+
+                $resolved = $this->resolvePayee($row, $agentUserId > 0 ? $agentUserId : (int) $property->agent_user_id);
+                $resolved['property'] = $property;
+                $resolved['code'] = (string) ($property->code ?? $resolved['code']);
+                $created = $this->upsertRegister(null, $row, $agentUserId > 0 ? $agentUserId : (int) $property->agent_user_id, $resolved, PmEzenPaymentVoucher::LINK_IMPORTED);
+                if ($unit && Schema::hasColumn('pm_ezen_payment_vouchers', 'property_unit_id')) {
+                    $created->property_unit_id = $unit->id;
+                    $created->save();
+                    $summary['units']++;
+                }
+                $summary['created']++;
+            }
+        });
+
+        return $summary;
+    }
+
+    /**
+     * @param  Collection<int, PropertyUnit>  $units
+     */
+    private function unitFromParticulars(Collection $units, string $text): ?PropertyUnit
+    {
+        if (preg_match_all('/\bM(\d{1,2})\b/i', $text, $matches) < 1) {
+            return null;
+        }
+
+        $numbers = array_values(array_unique(array_map(static fn ($number): string => (string) (int) $number, $matches[1])));
+        if (count($numbers) !== 1) {
+            return null;
+        }
+
+        $number = $numbers[0];
+        $hits = $units->filter(function (PropertyUnit $unit) use ($number): bool {
+            return preg_match('/\bM'.$number.'\b/i', (string) $unit->label) === 1;
+        })->values();
+
+        return $hits->count() === 1 ? $hits->first() : null;
     }
 
     /**

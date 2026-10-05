@@ -36,12 +36,41 @@
                 <p class="text-2xl font-bold text-gray-900 mt-1">{{ $nextDue ?? '—' }}</p>
             </div>
             <div class="bg-white rounded-xl border border-gray-200 p-4">
+                <p class="text-sm font-medium text-gray-500">Tenant Payment Account / Ac/No</p>
+                <p class="text-2xl font-bold font-mono text-gray-900 mt-1">{{ ($tenantAccountNumber ?? '') !== '' ? $tenantAccountNumber : '—' }}</p>
+                <p class="mt-1 text-xs text-gray-500">Use this reference when paying into the collection Till.</p>
+            </div>
+        </div>
+
+        @if (! empty($bankPaymentInstructions['enabled']))
+            <div class="mb-8 rounded-xl border border-teal-200 bg-teal-50 p-4">
+                <h3 class="text-sm font-semibold text-teal-900 uppercase tracking-wide">{{ $bankPaymentInstructions['headline'] }}</h3>
+                <p class="mt-2 text-sm text-teal-900">{{ $bankPaymentInstructions['body'] }}</p>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg bg-white border border-teal-100 p-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Collection Number</p>
+                        <p class="mt-1 font-mono text-lg font-bold text-slate-900">{{ $bankPaymentInstructions['collection_number'] }}</p>
+                    </div>
+                    <div class="rounded-lg bg-white border border-teal-100 p-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tenant Account (Ac/No)</p>
+                        <p class="mt-1 font-mono text-lg font-bold text-slate-900">{{ $bankPaymentInstructions['tenant_account_number'] }}</p>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
                 <p class="text-sm font-medium text-gray-500">Rent / Water balances</p>
                 <p class="text-sm font-semibold text-gray-900 mt-1">
                     {{ \App\Services\Property\PropertyMoney::kes((float) ($rentBalanceAmount ?? 0)) }}
                     <span class="text-gray-400 font-normal">/</span>
                     {{ \App\Services\Property\PropertyMoney::kes((float) ($waterBalanceAmount ?? 0)) }}
                 </p>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
+                <p class="text-sm font-medium text-gray-500">Credit balance</p>
+                <p class="text-sm font-semibold text-gray-900 mt-1">{{ $creditBalanceFormatted ?? \App\Services\Property\PropertyMoney::kes((float) ($creditBalance ?? 0)) }}</p>
             </div>
         </div>
 

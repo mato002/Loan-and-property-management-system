@@ -15,6 +15,10 @@
             @csrf
             <button type="submit" class="inline-flex rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Auto-assign safe matches</button>
         </form>
+        <form method="POST" action="{{ route('property.revenue.statements.enrich_payers', $statement) }}" class="inline">
+            @csrf
+            <button type="submit" class="inline-flex rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 hover:bg-sky-100">Fill missing phones &amp; names</button>
+        </form>
         <form method="POST" action="{{ route('property.revenue.statements.recover', $statement) }}" class="inline">
             @csrf
             <button type="submit" class="inline-flex rounded-xl bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800">Recover missing → Unmatched</button>

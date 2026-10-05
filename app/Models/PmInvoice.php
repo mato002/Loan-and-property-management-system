@@ -765,6 +765,9 @@ class PmInvoice extends Model
     /**
      * Set amount_paid from non-reversed payment allocations (source of truth),
      * then derive payment status and is_past_due.
+     *
+     * Always writes amount_paid — including clearing it to 0 when there are no
+     * live allocations — so unpaid invoices cannot stay stuck as Paid.
      */
     public function syncAmountPaidFromAllocations(): self
     {
@@ -773,12 +776,7 @@ class PmInvoice extends Model
         static::$allowDirectAmountPaidWrite = true;
         FinanceFirebreakService::$skipAmountPaidAudit = true;
         try {
-            $allocated = min($this->allocatedAmount(), round((float) $this->amount, 2));
-            if ($this->allocations()->exists()) {
-                $this->amount_paid = $allocated;
-            } elseif ($allocated > 0.009) {
-                $this->amount_paid = $allocated;
-            }
+            $this->amount_paid = min($this->allocatedAmount(), round((float) $this->amount, 2));
             $this->syncDerivedBalanceDue();
             $this->applyComputedStatusFromAmounts();
         } finally {
@@ -975,7 +973,7 @@ class PmInvoice extends Model
     }
 
     /**
-     * Recompute status for open invoices whose stored status or is_past_due may be stale.
+     * Recompute status for invoices whose stored amount_paid, status, or is_past_due may be stale.
      */
     public static function refreshStaleStatuses(int $limit = 500): int
     {
@@ -988,10 +986,20 @@ class PmInvoice extends Model
                 $q->where('balance_due', '>', 0)
                     ->orWhereDate('due_date', '<', $today)
                     ->orWhere('status', self::STATUS_OVERDUE)
+                    // False Paid: amount_paid > 0 but no live (non-reversed) allocations.
+                    ->orWhere(function (Builder $paidDrift) {
+                        $paidDrift->where('status', self::STATUS_PAID)
+                            ->where('amount_paid', '>', 0)
+                            ->whereDoesntHave('allocations', function (Builder $alloc) {
+                                $alloc->where(function (Builder $live) {
+                                    $live->where('is_reversed', false)->orWhereNull('is_reversed');
+                                });
+                            });
+                    })
                     ->orWhere(function (Builder $pastDue) {
                         $pastDue->where('is_past_due', false)
                             ->where('balance_due', '>', 0)
-                            ->whereDate('due_date', '<', now()->toDateString());
+                            ->whereDate('due_date', '<', $today);
                     });
             })
             ->orderBy('id')
@@ -1000,8 +1008,11 @@ class PmInvoice extends Model
             ->each(function (self $invoice) use (&$changed) {
                 $beforeStatus = (string) $invoice->status;
                 $beforePastDue = (bool) $invoice->is_past_due;
+                $beforePaid = round((float) $invoice->amount_paid, 2);
                 $invoice->syncAmountPaidFromAllocations();
-                if ($beforeStatus !== (string) $invoice->status || $beforePastDue !== (bool) $invoice->is_past_due) {
+                if ($beforeStatus !== (string) $invoice->status
+                    || $beforePastDue !== (bool) $invoice->is_past_due
+                    || abs($beforePaid - round((float) $invoice->amount_paid, 2)) > 0.009) {
                     $changed++;
                 }
             });
