@@ -57,10 +57,11 @@
                 <div
                     x-show="pickerOpen"
                     x-cloak
+                    data-property-floating-menu="1"
                     @click.outside="pickerOpen = false"
                     :style="tenantMenuStyle"
                     class="fixed max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-gray-900"
-                    style="z-index: 8200;"
+                    style="z-index: 12000;"
                 >
                     <template x-for="tenant in filteredTenants" :key="tenant.id">
                         <button type="button" class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" @click="selectTenant(tenant)">
@@ -222,7 +223,7 @@
             tenantId: config.old?.tenant_id || '',
             tenantQuery: '',
             pickerOpen: false,
-            tenantMenuStyle: 'position:fixed;z-index:8200;',
+            tenantMenuStyle: 'position:fixed;z-index:12000;',
             phone: '',
             rows: [],
             amount: config.old?.amount || '',
@@ -278,7 +279,8 @@
                 }
                 const width = Math.max(rect.width, 220);
                 const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
-                this.tenantMenuStyle = `position:fixed;z-index:8200;top:${Math.round(rect.bottom + 4)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
+                const z = window.PropertyModalManager?.dropdownZIndex?.() ?? 12000;
+                this.tenantMenuStyle = `position:fixed;z-index:${z};top:${Math.round(rect.bottom + 4)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
             },
             get filteredTenants() {
                 const query = this.tenantQuery.trim().toLowerCase();

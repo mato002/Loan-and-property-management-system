@@ -6,11 +6,21 @@
  * Force on: data-searchable="true" or data-property-searchable="true"
  */
 
+import { propertyDropdownZIndex } from './property-modal-manager';
+
 const ENHANCED_ATTR = 'data-property-searchable-enhanced';
 const ROOT_ATTR = 'data-property-searchable-root';
 const openPanelClosers = new Set();
 
 const ENTITY_NAME_RE = /(tenant|lease|unit|propert|landlord|vendor|employee|client|product|branch|account|agent|officer|user|invoice_type|charge|payer|payee|owner|guarantor|region|warehouse|item)/i;
+
+function resolvePanelZIndex() {
+    try {
+        return propertyDropdownZIndex();
+    } catch {
+        return 12000;
+    }
+}
 
 function optionCount(select) {
     return select?.options?.length ?? 0;
@@ -124,7 +134,8 @@ function buildEnhancement(select) {
         'dark:border-slate-600 dark:bg-gray-900',
         'hidden',
     ].join(' ');
-    panel.style.zIndex = '8200';
+    panel.setAttribute('data-property-floating-menu', '1');
+    panel.style.zIndex = String(resolvePanelZIndex());
 
     const searchWrap = document.createElement('div');
     searchWrap.className = 'border-b border-slate-100 p-2 dark:border-slate-700';
@@ -235,6 +246,10 @@ function buildEnhancement(select) {
     };
 
     const placePanel = () => {
+        if (!panel.isConnected) {
+            document.body.appendChild(panel);
+        }
+        panel.style.zIndex = String(resolvePanelZIndex());
         const rect = trigger.getBoundingClientRect();
         const width = Math.max(rect.width, 180);
         const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
@@ -266,6 +281,7 @@ function buildEnhancement(select) {
         });
         open = true;
         openPanelClosers.add(closePanel);
+        document.body.appendChild(panel);
         panel.classList.remove('hidden');
         trigger.setAttribute('aria-expanded', 'true');
         searchInput.value = '';
@@ -382,10 +398,14 @@ function bindSearchableSelectEnhancer() {
 }
 
 function discardFloatingPanels() {
-    openPanelClosers.clear();
-    document.querySelectorAll('body > .property-searchable-select__panel').forEach((panel) => {
-        panel.remove();
+    openPanelClosers.forEach((close) => {
+        try {
+            close();
+        } catch {
+            // ignore detached closers
+        }
     });
+    openPanelClosers.clear();
 }
 
 document.addEventListener('turbo:before-cache', discardFloatingPanels);

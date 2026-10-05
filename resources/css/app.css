@@ -560,6 +560,12 @@
     pointer-events: auto;
   }
 
+  /* Portaled combobox menus must paint above modal overlays (7010–7120). */
+  .property-searchable-select__panel,
+  [data-property-floating-menu] {
+    z-index: 12000 !important;
+  }
+
   /* SweetAlert2 default z-index is 1060 — below property modals (7010–7110) */
   div:where(.swal2-container) {
     z-index: 95000 !important;
