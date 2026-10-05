@@ -150,6 +150,39 @@ final class InvoiceStateIntegrityService
         );
     }
 
+    /**
+     * Re-sync amount_paid/status for invoices whose stored paid total drifted from allocations.
+     */
+    public function repairAllocationDriftForTenant(int $tenantId, int $limit = 100): int
+    {
+        if ($tenantId <= 0) {
+            return 0;
+        }
+
+        $fixed = 0;
+        $drifted = app(FinanceFirebreakService::class)->detectAllocationDrift($tenantId, $limit);
+        foreach ($drifted as $row) {
+            $invoice = PmInvoice::query()
+                ->withoutGlobalScopes()
+                ->find((int) ($row['invoice_id'] ?? 0));
+            if (! $invoice) {
+                continue;
+            }
+
+            $beforePaid = round((float) $invoice->amount_paid, 2);
+            $beforeStatus = (string) $invoice->status;
+            $invoice->syncAmountPaidFromAllocations();
+            $invoice->refresh();
+
+            if (abs($beforePaid - round((float) $invoice->amount_paid, 2)) > 0.009
+                || $beforeStatus !== (string) $invoice->status) {
+                $fixed++;
+            }
+        }
+
+        return $fixed;
+    }
+
     public function expectedPastDue(PmInvoice $invoice, ?float $balance = null): bool
     {
         $status = (string) $invoice->status;

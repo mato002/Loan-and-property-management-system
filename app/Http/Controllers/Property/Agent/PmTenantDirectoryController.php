@@ -35,6 +35,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\InvoiceStateIntegrityService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
@@ -1286,6 +1287,8 @@ class PmTenantDirectoryController extends Controller
             'leases' => fn ($q) => $q->with($leaseRelations)->orderByDesc('start_date'),
         ])->loadCount(['leases', 'invoices']);
 
+        app(InvoiceStateIntegrityService::class)->repairAllocationDriftForTenant((int) $tenant->id);
+
         $formulas = app(FinancialReportingFormulaService::class);
         $billing = $formulas->tenantBillingSnapshot($tenant);
         $profileStatus = TenantProfileStatus::forTenant($tenant);
@@ -1449,6 +1452,8 @@ class PmTenantDirectoryController extends Controller
 
     public function statement(Request $request, PmTenant $tenant): View|\Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\Response
     {
+        app(InvoiceStateIntegrityService::class)->repairAllocationDriftForTenant((int) $tenant->id);
+
         $formulas = app(FinancialReportingFormulaService::class);
         $validated = $request->validate([
             'from' => ['nullable', 'string', 'max:32'],

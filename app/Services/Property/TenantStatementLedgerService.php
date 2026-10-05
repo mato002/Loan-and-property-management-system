@@ -191,6 +191,8 @@ final class TenantStatementLedgerService
                 $desc .= ' · '.$unitLabel;
             }
 
+            $allocated = $invoice->allocatedAmount();
+            $openBalance = max(0.0, round((float) $invoice->amount - $allocated, 2));
             $entries->push([
                 'date' => $invoice->issue_date?->toDateString(),
                 'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
@@ -204,11 +206,11 @@ final class TenantStatementLedgerService
                 'debit' => (float) $invoice->amount,
                 'credit' => 0.0,
                 'payment_id' => null,
-                'status' => match ((string) $invoice->status) {
-                    PmInvoice::STATUS_PAID => 'Paid',
-                    PmInvoice::STATUS_PARTIAL => 'Partial',
-                    PmInvoice::STATUS_CANCELLED => 'Cancelled',
-                    default => 'Issued',
+                'status' => match (true) {
+                    (string) $invoice->status === PmInvoice::STATUS_CANCELLED => 'Cancelled',
+                    $openBalance > 0.009 && $allocated > 0.009 => 'Partial',
+                    $openBalance > 0.009 => 'Issued',
+                    default => 'Paid',
                 },
             ]);
         }

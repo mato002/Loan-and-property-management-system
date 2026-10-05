@@ -22,8 +22,19 @@
         <tbody>
             @forelse(($recentInvoices ?? []) as $invoice)
                 @php
-                    $balance = max(0, (float) $invoice->amount - (float) $invoice->amount_paid);
+                    $allocated = method_exists($invoice, 'allocatedAmount')
+                        ? (float) $invoice->allocatedAmount()
+                        : (float) ($invoice->amount_paid ?? 0);
+                    $balance = max(0, (float) $invoice->amount - $allocated);
                     $statusKey = (string) ($invoice->status ?? '');
+                    // Never show Paid when live allocations leave an open balance.
+                    if ($balance > 0.009) {
+                        $statusKey = $allocated > 0.009
+                            ? \App\Models\PmInvoice::STATUS_PARTIAL
+                            : \App\Models\PmInvoice::STATUS_SENT;
+                    } elseif ($statusKey !== \App\Models\PmInvoice::STATUS_CANCELLED) {
+                        $statusKey = \App\Models\PmInvoice::STATUS_PAID;
+                    }
                     if ($statusKey === \App\Models\PmInvoice::STATUS_SENT && (bool) ($invoice->is_past_due ?? false)) {
                         $statusKey = \App\Models\PmInvoice::STATUS_OVERDUE;
                     }
