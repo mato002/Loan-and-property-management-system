@@ -14,6 +14,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SMS provider driver
+    |--------------------------------------------------------------------------
+    | pradytec:        Pradytec AI CRM (Gaitho / current default)
+    | africastalking:  Africa's Talking REST (legacy Passion Homes API key + sender)
+    */
+    'driver' => strtolower((string) env('BULKSMS_DRIVER', 'pradytec')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Billing mode
     |--------------------------------------------------------------------------
     | local_wallet: enforce & debit local DB wallet (sms_wallets)
@@ -61,6 +70,30 @@ return [
         'timeout_seconds' => (int) env('BULKSMS_TIMEOUT', 20),
         'topup_timeout_seconds' => (int) env('BULKSMS_TOPUP_TIMEOUT', 25),
         'topup_connect_timeout_seconds' => (int) env('BULKSMS_TOPUP_CONNECT_TIMEOUT', 5),
+        'verify_ssl' => env('BULKSMS_VERIFY_SSL', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Africa's Talking REST
+    |--------------------------------------------------------------------------
+    | Live:    https://api.africastalking.com/version1
+    | Sandbox: https://api.sandbox.africastalking.com/version1
+    | Auth header: apiKey. POST /messaging (form), GET /user?username=...
+    */
+    'africastalking' => [
+        'username' => env('BULKSMS_AT_USERNAME'),
+        'api_key' => env('BULKSMS_AT_API_KEY'),
+        // Prefer dedicated AT sender; fall back to shared BULKSMS_SENDER_ID.
+        'sender_id' => env('BULKSMS_AT_SENDER_ID', env('BULKSMS_SENDER_ID')),
+        'sandbox' => filter_var(env('BULKSMS_AT_SANDBOX', false), FILTER_VALIDATE_BOOL),
+        'api_url' => env(
+            'BULKSMS_AT_API_URL',
+            filter_var(env('BULKSMS_AT_SANDBOX', false), FILTER_VALIDATE_BOOL)
+                ? 'https://api.sandbox.africastalking.com/version1'
+                : 'https://api.africastalking.com/version1'
+        ),
+        'timeout_seconds' => (int) env('BULKSMS_TIMEOUT', 20),
         'verify_ssl' => env('BULKSMS_VERIFY_SSL', true),
     ],
 

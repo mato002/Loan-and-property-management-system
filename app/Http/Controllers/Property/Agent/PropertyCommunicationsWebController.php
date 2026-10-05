@@ -2172,6 +2172,10 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         PropertyPortalSetting::setValue($key, (string) $data['enabled']);
+        if ($key === 'workflow_auto_payment_receipts') {
+            PropertyPortalSetting::setValue('payment_auto_receipt_enabled', (string) $data['enabled']);
+            \App\Support\Property\MpesaIntegrationConfig::forget();
+        }
         $label = collect(PropertyPortalSetting::scheduledAutomationCatalog())->firstWhere('key', $key)['label'] ?? $key;
 
         return back()->with('success', ($data['enabled'] === '1' ? 'Turned on: ' : 'Turned off: ').$label.'.');

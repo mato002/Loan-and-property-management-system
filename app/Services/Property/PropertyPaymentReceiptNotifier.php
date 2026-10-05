@@ -24,7 +24,8 @@ class PropertyPaymentReceiptNotifier
      */
     public function notify(PmPayment $payment): array
     {
-        if (! MpesaIntegrationConfig::autoReceiptEnabled()) {
+        if (! MpesaIntegrationConfig::autoReceiptEnabled()
+            || ! \App\Models\PropertyPortalSetting::isPaymentReceiptAutomationEnabled()) {
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Auto-receipt disabled.'];
         }
 
@@ -36,8 +37,14 @@ class PropertyPaymentReceiptNotifier
         if (! empty($meta['receipt_notified_at'])) {
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Already notified.'];
         }
+        if (! empty($meta['skip_notification'])) {
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Notification skipped for this payment.'];
+        }
 
-        $payment->loadMissing(['tenant:id,name,phone,email,account_number']);
+        $payment->loadMissing([
+            'tenant:id,name,phone,email,account_number',
+            'allocations.invoice:id,invoice_type,billing_period,issue_date,description,invoice_no',
+        ]);
         $tenant = $payment->tenant;
         if (! $tenant) {
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'No tenant on payment.'];
@@ -90,19 +97,78 @@ class PropertyPaymentReceiptNotifier
         $account = trim((string) ($tenant->account_number ?? ''));
         $paidAt = $payment->paid_at?->format('d M Y H:i') ?? now()->format('d M Y H:i');
         $brand = trim((string) (\App\Support\Property\PropertyWorkspaceBranding::get('company_name', config('app.name')) ?? config('app.name')));
+        $forWhat = $this->allocationSummary($payment);
 
         $parts = [
             $brand.': payment of KES '.$amount.' received',
         ];
+        if ($forWhat !== '') {
+            $parts[] = 'For '.$forWhat;
+        }
         if ($ref !== '') {
             $parts[] = 'Ref '.$ref;
         }
         if ($account !== '') {
-            $parts[] = 'Acct '.$account;
+            $parts[] = 'Ac/No '.$account;
         }
         $parts[] = $paidAt.'. Thank you.';
 
         return implode('. ', $parts);
+    }
+
+    private function allocationSummary(PmPayment $payment): string
+    {
+        $lines = [];
+        foreach ($payment->allocations ?? [] as $allocation) {
+            if ((bool) ($allocation->is_reversed ?? false)) {
+                continue;
+            }
+            $amount = (float) ($allocation->amount ?? 0);
+            if ($amount <= 0.009) {
+                continue;
+            }
+
+            $invoice = $allocation->invoice;
+            if (! $invoice) {
+                $lines[] = 'KES '.number_format($amount, 2);
+                continue;
+            }
+
+            $label = method_exists($invoice, 'chargeCategoryLabel')
+                ? (string) $invoice->chargeCategoryLabel()
+                : ucfirst((string) ($invoice->invoice_type ?? 'charge'));
+            $period = trim((string) ($invoice->billing_period ?? ''));
+            if ($period === '' && $invoice->issue_date) {
+                $period = $invoice->issue_date->format('M Y');
+            } elseif (preg_match('/^\d{4}-\d{2}$/', $period) === 1) {
+                try {
+                    $period = \Carbon\Carbon::createFromFormat('Y-m', $period)->format('M Y');
+                } catch (\Throwable) {
+                    // keep raw period
+                }
+            }
+
+            $piece = $label;
+            if ($period !== '') {
+                $piece .= ' '.$period;
+            }
+            $piece .= ' KES '.number_format($amount, 2);
+            $lines[] = $piece;
+        }
+
+        if ($lines === []) {
+            $credit = (float) data_get($payment->meta, 'tenant_credit_amount', 0);
+            if ($credit > 0.009) {
+                return 'account credit KES '.number_format($credit, 2);
+            }
+
+            return '';
+        }
+
+        // Keep SMS short: at most 3 allocation lines.
+        $lines = array_slice($lines, 0, 3);
+
+        return implode('; ', $lines);
     }
 
     /**
