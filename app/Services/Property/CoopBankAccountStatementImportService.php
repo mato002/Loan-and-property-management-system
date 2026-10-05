@@ -187,6 +187,22 @@ final class CoopBankAccountStatementImportService
      */
     private function upsertLine(int $agentUserId, int $statementId, array $line, array $match): void
     {
+        $existing = PmBankStatementLine::query()
+            ->where('agent_user_id', $agentUserId)
+            ->where('source_key', (string) $line['source_key'])
+            ->first();
+
+        $phone = trim((string) ($line['phone'] ?? ''));
+        $counterparty = trim((string) ($line['counterparty'] ?? ''));
+        if ($existing !== null) {
+            if ($phone === '' && trim((string) ($existing->phone ?? '')) !== '') {
+                $phone = (string) $existing->phone;
+            }
+            if ($counterparty === '' && trim((string) ($existing->counterparty ?? '')) !== '') {
+                $counterparty = (string) $existing->counterparty;
+            }
+        }
+
         PmBankStatementLine::query()->updateOrCreate(
             [
                 'agent_user_id' => $agentUserId,
@@ -200,8 +216,8 @@ final class CoopBankAccountStatementImportService
                 'reference' => (string) $line['reference'],
                 'amount' => (float) $line['amount'],
                 'running_balance' => $line['running_balance'] ?? null,
-                'counterparty' => $line['counterparty'] !== '' ? (string) $line['counterparty'] : null,
-                'phone' => $line['phone'] ?? null,
+                'counterparty' => $counterparty !== '' ? $counterparty : null,
+                'phone' => $phone !== '' ? $phone : null,
                 'narration' => $line['narration'] ?? null,
                 'match_status' => $match['match_status'],
                 'matched_type' => $match['matched_type'],
@@ -210,6 +226,67 @@ final class CoopBankAccountStatementImportService
                 'unassigned_payment_id' => $match['unassigned_payment_id'],
             ],
         );
+    }
+
+    /**
+     * Re-read a stored PDF/TXT and fill blank phone / payer fields on existing lines.
+     *
+     * @return array{updated:int, still_blank:int}
+     */
+    public function enrichPayersFromPath(PmBankStatement $statement, string $path): array
+    {
+        $parsed = $this->parser->parsePath($path);
+        $byRef = [];
+        foreach ($parsed['lines'] ?? [] as $line) {
+            if (($line['line_type'] ?? '') !== CoopBankAccountStatementParser::TYPE_MPESA) {
+                continue;
+            }
+            $ref = strtoupper(trim((string) ($line['reference'] ?? '')));
+            if ($ref === '') {
+                continue;
+            }
+            $byRef[$ref] = $line;
+        }
+
+        $updated = 0;
+        $stillBlank = 0;
+        $lines = PmBankStatementLine::query()
+            ->where('pm_bank_statement_id', $statement->id)
+            ->where('line_type', CoopBankAccountStatementParser::TYPE_MPESA)
+            ->get();
+
+        foreach ($lines as $row) {
+            $ref = strtoupper(trim((string) $row->reference));
+            $fresh = $byRef[$ref] ?? null;
+            $phone = trim((string) ($row->phone ?? ''));
+            $name = trim((string) ($row->counterparty ?? ''));
+            $changed = false;
+
+            if ($fresh !== null) {
+                $freshPhone = trim((string) ($fresh['phone'] ?? ''));
+                $freshName = trim((string) ($fresh['counterparty'] ?? ''));
+                if ($phone === '' && $freshPhone !== '') {
+                    $row->phone = $freshPhone;
+                    $phone = $freshPhone;
+                    $changed = true;
+                }
+                if ($name === '' && $freshName !== '') {
+                    $row->counterparty = $freshName;
+                    $name = $freshName;
+                    $changed = true;
+                }
+            }
+
+            if ($changed) {
+                $row->save();
+                $updated++;
+            }
+            if ($phone === '' || $name === '') {
+                $stillBlank++;
+            }
+        }
+
+        return ['updated' => $updated, 'still_blank' => $stillBlank];
     }
 
     /**

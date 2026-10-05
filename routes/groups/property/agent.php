@@ -118,6 +118,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/revenue/statements/{statement}/lines/{line}/payee', [PropertyStatementImportController::class, 'classifyPayee'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.payee');
     Route::post('/revenue/statements/{statement}/auto-assign', [PropertyStatementImportController::class, 'autoAssign'])->middleware('property.permission:payments.settle')->name('revenue.statements.auto_assign');
     Route::post('/revenue/statements/{statement}/rematch', [PropertyStatementImportController::class, 'rematch'])->middleware('property.permission:payments.record')->name('revenue.statements.rematch');
+    Route::post('/revenue/statements/{statement}/enrich-payers', [PropertyStatementImportController::class, 'enrichPayers'])->middleware('property.permission:payments.record')->name('revenue.statements.enrich_payers');
     Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
     Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');
     Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');

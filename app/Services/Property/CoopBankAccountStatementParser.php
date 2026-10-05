@@ -281,10 +281,13 @@ final class CoopBankAccountStatementParser
             }
         }
 
+        $nameStop = '(?=\s+(?:Page\b|\d{2}/\d{2}/\d{4}|[A-Z0-9]{8,14}\b))';
         $patterns = [
-            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+(254\d{9})\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+\d{2}/|\s+[A-Z0-9]{8,14}\b)#i',
-            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+\d{2}/|\s+[A-Z0-9]{8,14}\b)#i',
-            '#([A-Z0-9]{8,14})\s+(?:(?!MPESAC2B|[A-Z0-9]{8,14}\s+\d{4,10}).){0,500}?MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,80}?)(?=\s+[A-Z0-9]{8,14}\s+\d{4,10}|\s+\d{2}/)#i',
+            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+(254\d{9})\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,60}?)'.$nameStop.'#i',
+            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+(254\d{9})(?=\s+MPESAC2B|\s+\d{2}/|\s+[A-Z0-9]{8,14}\b)#i',
+            '#([A-Z0-9]{8,14})\s+\d{4,10}\s+MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,60}?)'.$nameStop.'#i',
+            '#([A-Z0-9]{8,14})\s+(?:(?!MPESAC2B|[A-Z0-9]{8,14}\s+\d{4,10}).){0,280}?MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,60}?)'.$nameStop.'#i',
+            '#([A-Z0-9]{8,14})\s+(?:(?!MPESAC2B|[A-Z0-9]{8,14}\s+\d{4,10}).){0,280}?\b(254\d{9})\b#i',
         ];
 
         foreach ($patterns as $pattern) {
@@ -302,17 +305,57 @@ final class CoopBankAccountStatementParser
                 if (isset($match[3]) && preg_match('/^254\d{9}$/', (string) $match[2]) === 1) {
                     $phone = $match[2];
                     $name = trim((string) $match[3]);
+                } elseif (preg_match('/^254\d{9}$/', $name) === 1) {
+                    $phone = $name;
+                    $name = '';
                 }
                 if ($phone && empty($rows[$i]['phone'])) {
                     $rows[$i]['phone'] = $phone;
                 }
-                if ($name !== '' && empty($rows[$i]['counterparty']) && preg_match('/^(page|transaction|debit|credit|balance|value|date|reference|number)$/i', $name) !== 1) {
+                if ($name !== '' && empty($rows[$i]['counterparty']) && ! $this->isNoisePayerName($name)) {
+                    $rows[$i]['counterparty'] = $name;
+                }
+            }
+        }
+
+        foreach ($index as $ref => $i) {
+            if (! empty($rows[$i]['phone']) && ! empty($rows[$i]['counterparty'])) {
+                continue;
+            }
+            if (preg_match('/\b'.preg_quote($ref, '/').'\b/i', $normalized, $hit, PREG_OFFSET_CAPTURE) !== 1) {
+                continue;
+            }
+            $start = (int) $hit[0][1];
+            $rest = substr($normalized, $start + strlen($ref), 320);
+            if (preg_match('/\b([A-Z0-9]{8,14})\s+\d{4,10}\b/i', $rest, $next, PREG_OFFSET_CAPTURE) === 1
+                && strtoupper((string) $next[1][0]) !== $ref
+            ) {
+                $rest = substr($rest, 0, (int) $next[0][1]);
+            }
+            $chunk = $ref.$rest;
+            if (empty($rows[$i]['phone']) && preg_match('/\b(254\d{9})\b/', $chunk, $phoneMatch) === 1) {
+                $rows[$i]['phone'] = $phoneMatch[1];
+            }
+            if (empty($rows[$i]['counterparty'])
+                && preg_match('/MPESAC2B[_ ]?\d+\s+([A-Za-z][A-Za-z .\'-]{1,60}?)(?=\s+(?:Page\b|\d{2}\/|[A-Z0-9]{8,14}\b))/i', $chunk, $nameMatch) === 1
+            ) {
+                $name = trim((string) $nameMatch[1]);
+                if (! $this->isNoisePayerName($name)) {
                     $rows[$i]['counterparty'] = $name;
                 }
             }
         }
 
         return $rows;
+    }
+
+    private function isNoisePayerName(string $name): bool
+    {
+        if (preg_match('/\b(page|transaction|debit|credit|balance|value|date|reference|number|details|opening)\b/i', $name) === 1) {
+            return true;
+        }
+
+        return preg_match('/^[A-Za-z][A-Za-z .\'-]{1,60}$/', $name) !== 1;
     }
 
     /**

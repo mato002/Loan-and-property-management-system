@@ -11,6 +11,7 @@ use App\Models\UnassignedPayment;
 use App\Models\User;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\Property\CoopBankAccountStatementImportService;
 use App\Services\Property\PropertyStatementAutoAssignService;
 use App\Services\Property\PropertyStatementMissingPaymentRecoveryService;
 use App\Services\Property\PropertyStatementUploadService;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -494,6 +496,49 @@ class PropertyStatementImportController extends Controller
             ]);
 
         return back()->with('status', "Reset {$cleared} statement-only matches. Use Recover missing to land them in Unmatched again, or re-upload the file to rematch against receipts.");
+    }
+
+    public function enrichPayers(
+        Request $request,
+        PmBankStatement $statement,
+        CoopBankAccountStatementImportService $import,
+    ): RedirectResponse {
+        $this->authorizeStatement($request, $statement);
+
+        $path = $this->storedStatementPath($statement);
+        if ($path === null) {
+            return back()->withErrors([
+                'statement_file' => 'The original upload file is no longer on the server. Upload the same Co-op PDF again, then click Fill missing phones & names.',
+            ]);
+        }
+
+        $result = $import->enrichPayersFromPath($statement, $path);
+
+        return back()->with(
+            'status',
+            sprintf(
+                'Filled phones/names on %d lines from the PDF. %d lines still have a blank phone or payer name (usually a page break in the bank PDF text).',
+                $result['updated'],
+                $result['still_blank'],
+            )
+        );
+    }
+
+    private function storedStatementPath(PmBankStatement $statement): ?string
+    {
+        $filename = basename((string) ($statement->source_filename ?? ''));
+        if ($filename === '') {
+            return null;
+        }
+
+        $disk = Storage::disk('local');
+        foreach ($disk->allFiles('pm-bank-imports') as $relative) {
+            if (strcasecmp(basename($relative), $filename) === 0) {
+                return $disk->path($relative);
+            }
+        }
+
+        return null;
     }
 
     private function authorizeStatement(Request $request, PmBankStatement $statement): void
