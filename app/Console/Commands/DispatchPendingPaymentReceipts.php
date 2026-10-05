@@ -42,6 +42,13 @@ class DispatchPendingPaymentReceipts extends Command
                     ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.receipt_notified_at')) = ''");
             })
             ->where(function ($q): void {
+                // Skip payments currently claimed by an in-flight receipt job (last 15 minutes).
+                $q->whereNull('meta')
+                    ->orWhereRaw("JSON_EXTRACT(meta, '$.receipt_claim_at') IS NULL")
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.receipt_claim_at')) = ''")
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.receipt_claim_at')) < ?", [now()->subMinutes(15)->toIso8601String()]);
+            })
+            ->where(function ($q): void {
                 $q->whereNull('meta')
                     ->orWhereRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.skip_notification')), 'false') NOT IN ('true','1',1)");
             })

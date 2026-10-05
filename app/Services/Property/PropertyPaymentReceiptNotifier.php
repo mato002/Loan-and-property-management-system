@@ -8,6 +8,7 @@ use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Services\BulkSmsService;
 use App\Support\Property\MpesaIntegrationConfig;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -33,13 +34,12 @@ class PropertyPaymentReceiptNotifier
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment not completed.'];
         }
 
-        $meta = is_array($payment->meta) ? $payment->meta : [];
-        if (! empty($meta['receipt_notified_at'])) {
-            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Already notified.'];
+        // Claim this payment for one receipt only (blocks on-payment + retry races).
+        $claimed = $this->claimForNotification($payment);
+        if ($claimed === null) {
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Already notified or claimed.'];
         }
-        if (! empty($meta['skip_notification'])) {
-            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Notification skipped for this payment.'];
-        }
+        $payment = $claimed;
 
         $payment->loadMissing([
             'tenant:id,name,phone,email,account_number',
@@ -47,6 +47,8 @@ class PropertyPaymentReceiptNotifier
         ]);
         $tenant = $payment->tenant;
         if (! $tenant) {
+            $this->releaseClaim($payment, 'No tenant on payment.');
+
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'No tenant on payment.'];
         }
 
@@ -73,21 +75,87 @@ class PropertyPaymentReceiptNotifier
         }
 
         if ($sentSms || $sentEmail) {
-            $meta['receipt_notified_at'] = now()->toIso8601String();
-            $meta['receipt_notify'] = [
-                'sms' => $sentSms,
-                'email' => $sentEmail,
-                'channel' => $channel,
+            $this->markNotified($payment, $sentSms, $sentEmail, $channel);
+
+            return [
+                'sent_sms' => $sentSms,
+                'sent_email' => $sentEmail,
+                'skipped' => false,
+                'message' => 'Receipt sent.',
             ];
-            $payment->update(['meta' => $meta]);
         }
 
+        $this->releaseClaim($payment, $errors !== [] ? implode(' ', $errors) : 'No delivery channel available.');
+
         return [
-            'sent_sms' => $sentSms,
-            'sent_email' => $sentEmail,
-            'skipped' => ! $sentSms && ! $sentEmail,
-            'message' => $errors !== [] ? implode(' ', $errors) : ($sentSms || $sentEmail ? 'Receipt sent.' : 'No delivery channel available.'),
+            'sent_sms' => false,
+            'sent_email' => false,
+            'skipped' => true,
+            'message' => $errors !== [] ? implode(' ', $errors) : 'No delivery channel available.',
         ];
+    }
+
+    /**
+     * Atomically claim one payment for receipt sending.
+     * Returns the locked payment when this caller owns the claim; null otherwise.
+     */
+    private function claimForNotification(PmPayment $payment): ?PmPayment
+    {
+        return DB::transaction(function () use ($payment) {
+            /** @var PmPayment|null $locked */
+            $locked = PmPayment::query()->whereKey($payment->id)->lockForUpdate()->first();
+            if (! $locked) {
+                return null;
+            }
+
+            $meta = is_array($locked->meta) ? $locked->meta : [];
+            if (! empty($meta['receipt_notified_at'])) {
+                return null;
+            }
+            if (! empty($meta['skip_notification'])) {
+                return null;
+            }
+
+            $claimAt = (string) ($meta['receipt_claim_at'] ?? '');
+            if ($claimAt !== '') {
+                try {
+                    if (\Carbon\Carbon::parse($claimAt)->greaterThan(now()->subMinutes(15))) {
+                        // Another worker claimed this payment within the last 15 minutes.
+                        return null;
+                    }
+                } catch (Throwable) {
+                    // stale/invalid claim — allow reclaim
+                }
+            }
+
+            $meta['receipt_claim_at'] = now()->toIso8601String();
+            $meta['receipt_claim_by'] = 'payment-receipt-job';
+            $locked->update(['meta' => $meta]);
+
+            return $locked->fresh();
+        });
+    }
+
+    private function markNotified(PmPayment $payment, bool $sentSms, bool $sentEmail, string $channel): void
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $meta['receipt_notified_at'] = now()->toIso8601String();
+        $meta['receipt_notify'] = [
+            'sms' => $sentSms,
+            'email' => $sentEmail,
+            'channel' => $channel,
+        ];
+        unset($meta['receipt_claim_at'], $meta['receipt_claim_by'], $meta['receipt_claim_error']);
+        $payment->update(['meta' => $meta]);
+    }
+
+    private function releaseClaim(PmPayment $payment, string $error): void
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        unset($meta['receipt_claim_at'], $meta['receipt_claim_by']);
+        $meta['receipt_claim_error'] = $error;
+        $meta['receipt_claim_failed_at'] = now()->toIso8601String();
+        $payment->update(['meta' => $meta]);
     }
 
     private function buildBody(PmPayment $payment, PmTenant $tenant): string
