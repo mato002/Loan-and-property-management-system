@@ -18,10 +18,36 @@ export const MODAL_Z = {
     modal: 7010,
     nested: 7110,
     drawer: 6500,
-    dropdown: 7200,
+    /** Floating combobox / action menus — must sit above every property modal */
+    dropdown: 12000,
     /** SweetAlert2 toasts/dialogs — must sit above all property modals */
     alert: 95000,
 };
+
+/** Highest z-index currently used by an open property modal overlay. */
+export function topPropertyModalZIndex() {
+    let top = MODAL_Z.modal;
+    document.querySelectorAll('[data-property-modal]').forEach((el) => {
+        if (!(el instanceof HTMLElement)) {
+            return;
+        }
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+            return;
+        }
+        const z = Number.parseInt(style.zIndex, 10);
+        if (Number.isFinite(z) && z > top) {
+            top = z;
+        }
+    });
+
+    return top;
+}
+
+/** z-index for menus that must paint and receive clicks above open modals. */
+export function propertyDropdownZIndex() {
+    return Math.max(MODAL_Z.dropdown, topPropertyModalZIndex() + 20);
+}
 
 let modalStack = [];
 let scrollLockDepth = 0;
@@ -487,6 +513,22 @@ function hasVisiblePropertyModalInDom() {
     });
 }
 
+function isFloatingPropertyOverlayTarget(target) {
+    if (!(target instanceof Element)) {
+        return false;
+    }
+
+    return Boolean(
+        target.closest('.swal2-container')
+        || target.closest('.property-searchable-select__panel')
+        || target.closest('[data-property-dropdown-menu]')
+        || target.closest('[data-property-dropdown-bridge]')
+        || target.closest('[data-property-dropdown-root]')
+        || target.closest('[data-property-searchable-root]')
+        || target.closest('[data-property-floating-menu]')
+    );
+}
+
 function bindModalBackdropGuard() {
     document.addEventListener(
         'click',
@@ -508,8 +550,8 @@ function bindModalBackdropGuard() {
                 return;
             }
 
-            // SweetAlert (confirm/error) renders outside [data-property-modal] — must stay clickable.
-            if (target.closest('.swal2-container')) {
+            // Portaled menus / alerts render on <body> outside the modal root — must stay clickable.
+            if (isFloatingPropertyOverlayTarget(target)) {
                 return;
             }
 
@@ -537,6 +579,8 @@ bindModalBackdropGuard();
 
 window.PropertyModalManager = {
     MODAL_Z,
+    topModalZIndex: topPropertyModalZIndex,
+    dropdownZIndex: propertyDropdownZIndex,
     register: registerPropertyModal,
     unregister: unregisterPropertyModal,
     closeTop: closeTopPropertyModal,

@@ -25,6 +25,7 @@ function propertyQuickCreateSelect(config) {
         pickerOpen: false,
         query: '',
         selectedValue: '',
+        pickerStyle: 'position:fixed;z-index:12000;',
         options: Array.isArray(cfg.options) ? cfg.options : [],
         useSearch: Boolean(cfg.useSearch),
         placeholder: cfg.placeholder || 'Select…',
@@ -85,13 +86,33 @@ function propertyQuickCreateSelect(config) {
             this.pickerOpen = !this.pickerOpen;
             if (this.pickerOpen) {
                 this.query = '';
-                this.$nextTick(() => this.$refs.searchInput?.focus?.());
+                this.$nextTick(() => {
+                    this.placePicker();
+                    this.$refs.searchInput?.focus?.();
+                });
             }
         },
 
         closePicker() {
             this.pickerOpen = false;
             this.query = '';
+        },
+
+        placePicker() {
+            const trigger = this.$refs.pickerTrigger;
+            if (!(trigger instanceof HTMLElement)) {
+                return;
+            }
+            const rect = trigger.getBoundingClientRect();
+            const width = Math.max(rect.width, 180);
+            const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+            const z = window.PropertyModalManager?.dropdownZIndex?.() ?? 12000;
+            let top = rect.bottom + 4;
+            const spaceBelow = window.innerHeight - rect.bottom - 12;
+            if (spaceBelow < 240 && rect.top > spaceBelow) {
+                top = Math.max(8, rect.top - 244);
+            }
+            this.pickerStyle = `position:fixed;z-index:${z};top:${Math.round(top)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
         },
 
         pickOption(opt) {

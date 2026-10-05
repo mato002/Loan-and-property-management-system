@@ -17,8 +17,9 @@
 ])
 
 <style>
-    .property-searchable-select__panel {
-        z-index: 8200 !important;
+    .property-searchable-select__panel,
+    [data-property-floating-menu] {
+        z-index: 12000 !important;
     }
     select[data-property-searchable-enhanced="1"] {
         position: absolute !important;

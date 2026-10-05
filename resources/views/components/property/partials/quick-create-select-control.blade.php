@@ -12,6 +12,7 @@
     <div class="relative min-w-0 flex-1" @click.outside="closePicker()">
         <button
             type="button"
+            x-ref="pickerTrigger"
             class="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-900 dark:border-slate-600 dark:bg-gray-900 dark:text-slate-100"
             @click="togglePicker()"
             :aria-expanded="pickerOpen"
@@ -20,39 +21,44 @@
             <i class="fa-solid fa-chevron-down shrink-0 text-xs text-slate-400" aria-hidden="true"></i>
         </button>
 
-        <div
-            x-show="pickerOpen"
-            x-cloak
-            x-transition
-            class="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-gray-900"
-        >
-            <div class="border-b border-slate-100 p-2 dark:border-slate-700">
-                <input
-                    x-ref="searchInput"
-                    type="search"
-                    x-model="query"
-                    placeholder="{{ $searchPlaceholder }}"
-                    class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-600 dark:bg-gray-950"
-                    @keydown.escape.prevent="closePicker()"
-                />
+        <template x-teleport="body">
+            <div
+                x-show="pickerOpen"
+                x-cloak
+                x-transition
+                data-property-floating-menu="1"
+                class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-gray-900"
+                :style="pickerStyle"
+                @click.outside="closePicker()"
+            >
+                <div class="border-b border-slate-100 p-2 dark:border-slate-700">
+                    <input
+                        x-ref="searchInput"
+                        type="search"
+                        x-model="query"
+                        placeholder="{{ $searchPlaceholder }}"
+                        class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-600 dark:bg-gray-950"
+                        @keydown.escape.prevent="closePicker()"
+                    />
+                </div>
+                <ul class="max-h-56 overflow-y-auto py-1 text-sm" role="listbox">
+                    <template x-if="filteredOptions.length === 0">
+                        <li class="px-3 py-2 text-slate-500">{{ __('No matches') }}</li>
+                    </template>
+                    <template x-for="opt in filteredOptions" :key="String(opt.value)">
+                        <li>
+                            <button
+                                type="button"
+                                class="flex w-full px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                :class="String(opt.value) === selectedValue ? 'bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100' : 'text-slate-800 dark:text-slate-100'"
+                                @click="pickOption(opt)"
+                                x-text="opt.label"
+                            ></button>
+                        </li>
+                    </template>
+                </ul>
             </div>
-            <ul class="max-h-56 overflow-y-auto py-1 text-sm" role="listbox">
-                <template x-if="filteredOptions.length === 0">
-                    <li class="px-3 py-2 text-slate-500">{{ __('No matches') }}</li>
-                </template>
-                <template x-for="opt in filteredOptions" :key="String(opt.value)">
-                    <li>
-                        <button
-                            type="button"
-                            class="flex w-full px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                            :class="String(opt.value) === selectedValue ? 'bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100' : 'text-slate-800 dark:text-slate-100'"
-                            @click="pickOption(opt)"
-                            x-text="opt.label"
-                        ></button>
-                    </li>
-                </template>
-            </ul>
-        </div>
+        </template>
 
         <select
             x-ref="nativeSelect"
