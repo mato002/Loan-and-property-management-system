@@ -23,14 +23,43 @@ class BulkSmsService
         return app(SmsDeliveryErrorPresenter::class)->forAgent($error);
     }
 
+    /**
+     * Active SMS gateway: pradytec | africastalking
+     */
+    public function smsDriver(): string
+    {
+        $driver = strtolower(trim((string) config('bulksms.driver', 'pradytec')));
+
+        return in_array($driver, ['pradytec', 'africastalking'], true) ? $driver : 'pradytec';
+    }
+
+    private function isAfricasTalkingDriver(): bool
+    {
+        return $this->smsDriver() === 'africastalking';
+    }
+
     private function providerConfigured(): bool
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return $this->africastalkingConfigured();
+        }
+
         $cfg = (array) config('bulksms.provider', []);
         $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
         $clientId = trim((string) ($cfg['client_id'] ?? ''));
         $apiKey = trim((string) ($cfg['api_key'] ?? ''));
 
         return $apiUrl !== '' && $clientId !== '' && $apiKey !== '';
+    }
+
+    private function africastalkingConfigured(): bool
+    {
+        $cfg = (array) config('bulksms.africastalking', []);
+        $username = trim((string) ($cfg['username'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+        $senderId = trim((string) ($cfg['sender_id'] ?? ''));
+
+        return $username !== '' && $apiKey !== '' && $senderId !== '';
     }
 
     private function localWalletBalanceValue(): float
@@ -56,6 +85,10 @@ class BulkSmsService
      */
     public function providerBalance(): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return $this->africastalkingBalance();
+        }
+
         $cfg = (array) config('bulksms.provider', []);
         $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
         $clientId = trim((string) ($cfg['client_id'] ?? ''));
@@ -355,6 +388,15 @@ class BulkSmsService
      */
     public function providerSmsHistory(array $filters = []): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return [
+                'ok' => false,
+                'error' => 'Provider SMS history is only available for the Pradytec driver.',
+                'data' => [],
+                'meta' => [],
+            ];
+        }
+
         if (! $this->providerConfigured()) {
             return ['ok' => false, 'error' => 'Bulk SMS provider is not configured.', 'data' => [], 'meta' => []];
         }
@@ -394,6 +436,10 @@ class BulkSmsService
      */
     public function providerSmsStatistics(): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return ['ok' => false, 'error' => 'Provider SMS statistics are only available for the Pradytec driver.'];
+        }
+
         if (! $this->providerConfigured()) {
             return ['ok' => false, 'error' => 'Bulk SMS provider is not configured.'];
         }
@@ -412,6 +458,12 @@ class BulkSmsService
 
     private function providerBalanceCacheKey(): string
     {
+        if ($this->isAfricasTalkingDriver()) {
+            $username = trim((string) config('bulksms.africastalking.username', 'default'));
+
+            return 'bulksms:provider_balance:at:'.$username;
+        }
+
         $clientId = trim((string) config('bulksms.provider.client_id', 'default'));
 
         return 'bulksms:provider_balance:'.$clientId;
@@ -559,6 +611,17 @@ class BulkSmsService
      */
     public function topupUiConfig(): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return [
+                'enabled' => false,
+                'min_amount' => $this->minTopupAmount(),
+                'max_amount' => $this->maxTopupAmount(),
+                'currency' => $this->currency(),
+                'payment_method' => 'mpesa',
+                'error' => 'In-app M-Pesa top-up is only available with the Pradytec SMS driver. Top up your Africa\'s Talking wallet from their dashboard.',
+            ];
+        }
+
         if (! $this->providerConfigured()) {
             return [
                 'enabled' => false,
@@ -596,6 +659,13 @@ class BulkSmsService
      */
     public function initiateProviderTopup(float $amount, string $phoneNumber): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return [
+                'ok' => false,
+                'error' => 'In-app M-Pesa top-up is only available with the Pradytec SMS driver.',
+            ];
+        }
+
         if (! $this->providerConfigured()) {
             return ['ok' => false, 'error' => 'Bulk SMS provider is not configured.'];
         }
@@ -1250,6 +1320,10 @@ class BulkSmsService
      */
     private function sendViaProvider(string $message, array $phones): array
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return $this->sendViaAfricasTalking($message, $phones);
+        }
+
         $cfg = (array) config('bulksms.provider', []);
         $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
         $clientId = trim((string) ($cfg['client_id'] ?? ''));
@@ -1409,6 +1483,310 @@ class BulkSmsService
                 'error' => 'SMS provider connection failed: '.$e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @return array{ok:bool,balance?:float,units?:float,price_per_unit?:float,error?:string,cached?:bool}
+     */
+    private function africastalkingBalance(): array
+    {
+        $cfg = (array) config('bulksms.africastalking', []);
+        $username = trim((string) ($cfg['username'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+        $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
+
+        if ($username === '' || $apiKey === '' || $apiUrl === '') {
+            return [
+                'ok' => false,
+                'error' => 'Africa\'s Talking is not configured (missing BULKSMS_AT_USERNAME / BULKSMS_AT_API_KEY).',
+            ];
+        }
+
+        try {
+            $verify = (bool) ($cfg['verify_ssl'] ?? true);
+            $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                ->withOptions(['verify' => $verify])
+                ->withHeaders([
+                    'apiKey' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->get($apiUrl.'/user', ['username' => $username]);
+
+            $json = $response->json();
+            if ((! $response->ok() && $response->status() !== 201) || ! is_array($json)) {
+                if ($response->status() === 429) {
+                    return $this->providerBalanceFromCacheOrError('Provider rate limit (429). Showing last known balance.');
+                }
+
+                $body = (string) $response->body();
+                if ($verify && str_contains($body, 'cURL error 60')) {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->withHeaders([
+                            'apiKey' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->get($apiUrl.'/user', ['username' => $username]);
+                    $json = $response->json();
+                    if ((! $response->ok() && $response->status() !== 201) || ! is_array($json)) {
+                        return [
+                            'ok' => false,
+                            'error' => $this->presentErrorForAgent('Provider balance error: '.$response->status().' '.$response->body()),
+                        ];
+                    }
+                } else {
+                    return [
+                        'ok' => false,
+                        'error' => $this->presentErrorForAgent('Provider balance error: '.$response->status().' '.$response->body()),
+                    ];
+                }
+            }
+
+            $balanceRaw = (string) (data_get($json, 'UserData.balance') ?? data_get($json, 'balance') ?? '');
+            $balance = $this->parseCurrencyAmount($balanceRaw);
+            if ($balance === null) {
+                return ['ok' => false, 'error' => 'Africa\'s Talking balance response did not include a usable balance.'];
+            }
+
+            $price = $this->configuredCostFallback();
+            $units = $price > 0 ? round($balance / $price, 4) : null;
+            $parsed = [
+                'balance' => $balance,
+                'units' => $units,
+                'price_per_unit' => $price > 0 ? $price : null,
+            ];
+            $display = $this->applyProviderBalanceApiResponse($parsed);
+
+            return $this->providerBalanceResultFromParsed($display);
+        } catch (Throwable $e) {
+            if (str_contains($e->getMessage(), 'cURL error 60')) {
+                try {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->withHeaders([
+                            'apiKey' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->get($apiUrl.'/user', ['username' => $username]);
+                    $json = $response->json();
+                    if ((! $response->ok() && $response->status() !== 201) || ! is_array($json)) {
+                        return [
+                            'ok' => false,
+                            'error' => $this->presentErrorForAgent('Provider balance error: '.$response->status().' '.$response->body()),
+                        ];
+                    }
+                    $balanceRaw = (string) (data_get($json, 'UserData.balance') ?? data_get($json, 'balance') ?? '');
+                    $balance = $this->parseCurrencyAmount($balanceRaw);
+                    if ($balance === null) {
+                        return ['ok' => false, 'error' => 'Africa\'s Talking balance response did not include a usable balance.'];
+                    }
+                    $price = $this->configuredCostFallback();
+                    $units = $price > 0 ? round($balance / $price, 4) : null;
+                    $parsed = [
+                        'balance' => $balance,
+                        'units' => $units,
+                        'price_per_unit' => $price > 0 ? $price : null,
+                    ];
+                    $display = $this->applyProviderBalanceApiResponse($parsed);
+
+                    return $this->providerBalanceResultFromParsed($display);
+                } catch (Throwable $e2) {
+                    return $this->providerBalanceFromCacheOrError('Provider balance connection failed: '.$e2->getMessage());
+                }
+            }
+
+            return $this->providerBalanceFromCacheOrError('Provider balance connection failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @param  list<string>  $phones  Normalized digits (2547…)
+     * @return array{ok: bool, error?: string, sent?: int, per_phone?: array<string, array{status:string,provider_message_id:string,error:?string}>}
+     */
+    private function sendViaAfricasTalking(string $message, array $phones): array
+    {
+        $cfg = (array) config('bulksms.africastalking', []);
+        $username = trim((string) ($cfg['username'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+        $senderId = trim((string) ($cfg['sender_id'] ?? ''));
+        $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
+
+        if ($username === '' || $apiKey === '' || $senderId === '' || $apiUrl === '') {
+            return [
+                'ok' => false,
+                'error' => 'Africa\'s Talking is not configured. Set BULKSMS_DRIVER=africastalking, BULKSMS_AT_USERNAME, BULKSMS_AT_API_KEY and BULKSMS_AT_SENDER_ID.',
+            ];
+        }
+
+        $to = collect($phones)
+            ->map(fn (string $phone) => $this->toInternationalPlus($phone))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($to === []) {
+            return ['ok' => false, 'error' => 'No valid phone numbers for Africa\'s Talking.'];
+        }
+
+        try {
+            $verify = (bool) ($cfg['verify_ssl'] ?? true);
+            $endpoint = $apiUrl.'/messaging';
+            $payload = [
+                'username' => $username,
+                'to' => implode(',', $to),
+                'message' => $message,
+                'from' => $senderId,
+                'bulkSMSMode' => 1,
+            ];
+
+            $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                ->withOptions(['verify' => $verify])
+                ->asForm()
+                ->withHeaders([
+                    'apiKey' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->post($endpoint, $payload);
+
+            $json = $response->json();
+            // AT returns HTTP 201 on success for messaging.
+            $accepted = $response->ok() || $response->status() === 201;
+            if (! $accepted || ! is_array($json)) {
+                $body = (string) $response->body();
+                if ($verify && str_contains($body, 'cURL error 60')) {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->asForm()
+                        ->withHeaders([
+                            'apiKey' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->post($endpoint, $payload);
+                    $json = $response->json();
+                    $accepted = $response->ok() || $response->status() === 201;
+                    if (! $accepted || ! is_array($json)) {
+                        return [
+                            'ok' => false,
+                            'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                        ];
+                    }
+                } else {
+                    return [
+                        'ok' => false,
+                        'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                    ];
+                }
+            }
+
+            $recipients = data_get($json, 'SMSMessageData.Recipients');
+            if (! is_array($recipients) || $recipients === []) {
+                $summary = (string) (data_get($json, 'SMSMessageData.Message') ?? '');
+                if ($summary !== '' && stripos($summary, 'sent') !== false) {
+                    $perPhone = [];
+                    foreach ($phones as $phone) {
+                        $perPhone[$phone] = ['status' => 'sent', 'provider_message_id' => '', 'error' => null];
+                    }
+
+                    return ['ok' => true, 'sent' => count($phones), 'per_phone' => $perPhone];
+                }
+
+                return [
+                    'ok' => false,
+                    'error' => $summary !== '' ? $summary : 'Africa\'s Talking rejected the send request.',
+                ];
+            }
+
+            $byIntl = [];
+            foreach ($recipients as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $number = $this->digitsOnly((string) ($row['number'] ?? ''));
+                if ($number === '') {
+                    continue;
+                }
+                $statusCode = (int) ($row['statusCode'] ?? 0);
+                $statusText = strtolower((string) ($row['status'] ?? ''));
+                $ok = ($statusCode >= 100 && $statusCode < 200)
+                    || in_array($statusText, ['success', 'sent', 'queued', 'processed'], true);
+                $byIntl[$number] = [
+                    'status' => $ok ? 'sent' : 'failed',
+                    'provider_message_id' => (string) ($row['messageId'] ?? ''),
+                    'error' => $ok ? null : (string) ($row['status'] ?? 'Failed at provider'),
+                ];
+            }
+
+            $perPhone = [];
+            $sent = 0;
+            foreach ($phones as $phone) {
+                $digits = $this->digitsOnly($phone);
+                $match = $byIntl[$digits] ?? null;
+                if ($match === null) {
+                    $perPhone[$phone] = ['status' => 'sent', 'provider_message_id' => '', 'error' => null];
+                    $sent++;
+                    continue;
+                }
+                $perPhone[$phone] = $match;
+                if ($match['status'] === 'sent') {
+                    $sent++;
+                }
+            }
+
+            if ($sent === 0) {
+                $firstError = collect($perPhone)->pluck('error')->filter()->first();
+
+                return [
+                    'ok' => false,
+                    'error' => is_string($firstError) && $firstError !== ''
+                        ? $firstError
+                        : 'Africa\'s Talking did not accept any recipients.',
+                    'per_phone' => $perPhone,
+                ];
+            }
+
+            return [
+                'ok' => true,
+                'sent' => $sent,
+                'per_phone' => $perPhone,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'error' => 'SMS provider connection failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    private function toInternationalPlus(string $phone): string
+    {
+        $digits = $this->digitsOnly($phone);
+        if ($digits === '') {
+            return '';
+        }
+
+        return '+'.$digits;
+    }
+
+    private function digitsOnly(string $value): string
+    {
+        return preg_replace('/\D+/', '', $value) ?? '';
+    }
+
+    private function parseCurrencyAmount(string $raw): ?float
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+        if (is_numeric($raw)) {
+            return round((float) $raw, 4);
+        }
+        // e.g. "KES 1,234.56"
+        if (preg_match('/([0-9]+(?:[.,][0-9]+)?)/', str_replace(',', '', $raw), $m)) {
+            return round((float) $m[1], 4);
+        }
+
+        return null;
     }
 
     private function normalizePhone(string $digits): ?string

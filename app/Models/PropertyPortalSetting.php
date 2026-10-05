@@ -133,6 +133,7 @@ class PropertyPortalSetting extends Model
             'workflow_auto_water_penalties',
             'workflow_auto_attached_utility_charges',
             'workflow_auto_invoice_delivery',
+            'workflow_auto_payment_receipts',
             'workflow_auto_scheduled_dispatch',
             'workflow_auto_sms_retry',
             'workflow_auto_landlord_alerts',
@@ -216,6 +217,25 @@ class PropertyPortalSetting extends Model
         return self::granularAutomationEnabled('workflow_auto_landlord_alerts');
     }
 
+    public static function isPaymentReceiptAutomationEnabled(): bool
+    {
+        $env = self::workflowAutomationEnvOverride();
+        if ($env === false) {
+            return false;
+        }
+
+        $existsQuery = static::query()->where('key', 'workflow_auto_payment_receipts');
+        if (Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
+            $existsQuery->whereNull('agent_user_id');
+        }
+        if ($existsQuery->exists()) {
+            return static::getGlobalValue('workflow_auto_payment_receipts', '0') === '1';
+        }
+
+        // Default to the Payment settings toggle when the schedules switch has never been saved.
+        return \App\Support\Property\MpesaIntegrationConfig::autoReceiptEnabled();
+    }
+
     /**
      * Schedulers the operator can turn on or off from Communications → Schedules.
      *
@@ -226,6 +246,7 @@ class PropertyPortalSetting extends Model
         $rows = [
             ['key' => 'workflow_auto_rent_reminders', 'group' => 'Messages', 'label' => 'Rent reminders', 'command' => 'rent:send-reminders', 'when' => 'Daily 08:00', 'sends' => 'SMS and email by due-date stage (3 days before, 1 day before, due today, overdue).', 'enabled' => self::isRentReminderAutomationEnabled()],
             ['key' => 'workflow_auto_invoice_delivery', 'group' => 'Messages', 'label' => 'Invoice delivery', 'command' => 'invoices:deliver-pending', 'when' => 'Daily 08:30', 'sends' => 'Email and SMS for issued invoices that have not been delivered yet.', 'enabled' => self::isInvoiceDeliveryAutomationEnabled()],
+            ['key' => 'workflow_auto_payment_receipts', 'group' => 'Messages', 'label' => 'Payment received feedback', 'command' => 'payments:dispatch-pending-receipts', 'when' => 'On payment + every 10 minutes', 'sends' => 'SMS/email confirmation when a tenant payment is received, including amount, reference, and what it paid (rent, water, etc.).', 'enabled' => self::isPaymentReceiptAutomationEnabled()],
             ['key' => 'workflow_auto_scheduled_dispatch', 'group' => 'Messages', 'label' => 'Scheduled campaigns', 'command' => 'communications:dispatch-scheduled', 'when' => 'Every 5 minutes', 'sends' => 'Releases bulk SMS and email that were scheduled for a later time.', 'enabled' => self::isScheduledDispatchAutomationEnabled()],
             ['key' => 'workflow_auto_sms_retry', 'group' => 'Messages', 'label' => 'Failed SMS retry', 'command' => 'communications:retry-failed-sms', 'when' => 'Every 15 minutes', 'sends' => 'Retries SMS that failed because the wallet was empty or the provider was busy.', 'enabled' => self::isSmsRetryAutomationEnabled()],
             ['key' => 'workflow_auto_landlord_alerts', 'group' => 'Messages', 'label' => 'Landlord portal alerts', 'command' => 'landlord:send-portal-alerts', 'when' => 'Daily 07:00', 'sends' => 'Email and SMS digest to landlords who opted in.', 'enabled' => self::isLandlordAlertAutomationEnabled()],

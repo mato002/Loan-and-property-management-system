@@ -34,6 +34,7 @@ if (! function_exists('scheduleAutomation')) {
 scheduleAutomation('bulksms:dispatch-schedules', overlapMinutes: 15)->everyFiveMinutes();
 scheduleAutomation('communications:dispatch-scheduled', overlapMinutes: 15)->everyFiveMinutes();
 scheduleAutomation('communications:retry-failed-sms', overlapMinutes: 10)->everyFifteenMinutes();
+scheduleAutomation('payments:dispatch-pending-receipts', overlapMinutes: 10)->everyTenMinutes();
 scheduleAutomation('sms:monitor-wallet', overlapMinutes: 10)->everyFifteenMinutes();
 
 // Collection bank API sync: only register when the active bank supports auto sync and is configured.
