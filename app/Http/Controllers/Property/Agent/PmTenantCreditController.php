@@ -101,6 +101,7 @@ class PmTenantCreditController extends Controller
     public function ledger(Request $request, PmTenant $tenant): View|StreamedResponse
     {
         $creditService = app(TenantCreditService::class);
+        $creditService->balanceForTenant((int) $tenant->id);
         $type = strtolower(trim((string) $request->query('type', '')));
         $allowedTypes = [
             PmTenantCreditTransaction::TYPE_CREDIT_CREATED,

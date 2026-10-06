@@ -824,7 +824,34 @@ class TenantCreditService
      */
     private function explainClearedCreditAsApplied(int $tenantId, array $placements): void
     {
+        $reversals = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->where(function ($query): void {
+                $query->where('reference', 'like', 'CREDIT-ALIGN-%')
+                    ->orWhere('notes', 'like', 'Cleared credit already used on invoices%');
+            })
+            ->orderBy('id')
+            ->get();
+        if ($reversals->isEmpty()) {
+            return;
+        }
+
         if ($placements === []) {
+            foreach ($reversals as $reversal) {
+                $invoice = $this->invoiceCoveredByClearedCredit($tenantId, $reversal);
+                if (! $invoice) {
+                    continue;
+                }
+                $reversal->update([
+                    'type' => PmTenantCreditTransaction::TYPE_CREDIT_APPLIED,
+                    'pm_invoice_id' => $invoice->id,
+                    'pm_payment_id' => $reversal->pm_payment_id ?: $this->sourcePaymentIdForClearedCredit($tenantId, $reversal),
+                    'reference' => (string) $invoice->invoice_no,
+                    'notes' => 'Applied to '.$invoice->invoice_no,
+                ]);
+            }
+
             return;
         }
 
@@ -834,13 +861,6 @@ class TenantCreditService
             $byInvoice[$invoiceId]['invoice_no'] = (string) $row['invoice_no'];
             $byInvoice[$invoiceId]['amount'] = round(($byInvoice[$invoiceId]['amount'] ?? 0) + (float) $row['amount'], 2);
         }
-
-        $reversals = PmTenantCreditTransaction::query()
-            ->where('pm_tenant_id', $tenantId)
-            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
-            ->where('reference', 'like', 'CREDIT-ALIGN-%')
-            ->orderBy('id')
-            ->get();
 
         foreach ($byInvoice as $invoiceId => $info) {
             $left = (float) $info['amount'];
@@ -886,6 +906,60 @@ class TenantCreditService
                 $left = 0.0;
             }
         }
+    }
+
+    private function sourcePaymentIdForClearedCredit(int $tenantId, PmTenantCreditTransaction $reversal): ?int
+    {
+        $created = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_CREATED)
+            ->where('amount', $reversal->amount)
+            ->where('id', '<', $reversal->id)
+            ->orderByDesc('id')
+            ->first();
+        $paymentId = (int) ($created->pm_payment_id ?? 0);
+
+        return $paymentId > 0 ? $paymentId : null;
+    }
+
+    /**
+     * The open invoice the statement already covered with the receipt behind this cleared credit.
+     */
+    private function invoiceCoveredByClearedCredit(int $tenantId, PmTenantCreditTransaction $reversal): ?PmInvoice
+    {
+        $paymentId = $this->sourcePaymentIdForClearedCredit($tenantId, $reversal);
+        $chosen = null;
+        $chosenBalance = -1.0;
+
+        if ($paymentId) {
+            $tenant = PmTenant::query()->find($tenantId);
+            if ($tenant) {
+                $ledger = app(TenantStatementLedgerService::class)->build($tenant, null, null);
+                $applications = app(TenantStatementLedgerService::class)->applicationsByPayment(collect($ledger['entries']));
+                $invoices = PmInvoice::query()
+                    ->where('pm_tenant_id', $tenantId)
+                    ->get()
+                    ->keyBy(fn (PmInvoice $invoice) => (string) $invoice->invoice_no);
+                foreach ($applications[$paymentId] ?? [] as $line) {
+                    $invoice = $invoices->get((string) ($line['invoice_no'] ?? ''));
+                    if (! $invoice) {
+                        continue;
+                    }
+                    $invoice->syncAmountPaidFromAllocations();
+                    $open = $invoice->balanceFloat();
+                    if ($open > $chosenBalance) {
+                        $chosen = $invoice;
+                        $chosenBalance = $open;
+                    }
+                }
+            }
+        }
+
+        if ($chosen && $chosenBalance > 0.009) {
+            return $chosen;
+        }
+
+        return $this->nextOpenInvoiceForCredit($tenantId, null);
     }
 
     private function reverseUnsupportedWallet(int $tenantId, float $amount, string $reason): void
