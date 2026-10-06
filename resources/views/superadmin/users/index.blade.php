@@ -122,18 +122,16 @@
                             <div class="mt-0.5 font-mono text-[11px] text-slate-400">#{{ $u->id }}</div>
                         </td>
                         <td class="px-5 py-4">
-                            @php
-                                $placeTone = match ((string) ($u->directory_category ?? '')) {
-                                    'platform' => 'bg-amber-100 text-amber-900',
-                                    'agent' => 'bg-indigo-100 text-indigo-900',
-                                    'employee' => 'bg-sky-100 text-sky-900',
-                                    'landlord' => 'bg-violet-100 text-violet-900',
-                                    'tenant' => 'bg-emerald-100 text-emerald-900',
-                                    'loan' => 'bg-teal-100 text-teal-900',
-                                    default => 'bg-slate-100 text-slate-700',
-                                };
-                            @endphp
-                            <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold {{ $placeTone }}">{{ $u->directory_label ?? 'Not placed' }}</span>
+                            <span @class([
+                                'inline-flex items-center rounded-full px-3 py-1 text-xs font-bold',
+                                'bg-amber-100 text-amber-900' => ($u->directory_category ?? '') === 'platform',
+                                'bg-indigo-100 text-indigo-900' => ($u->directory_category ?? '') === 'agent',
+                                'bg-sky-100 text-sky-900' => ($u->directory_category ?? '') === 'employee',
+                                'bg-violet-100 text-violet-900' => ($u->directory_category ?? '') === 'landlord',
+                                'bg-emerald-100 text-emerald-900' => ($u->directory_category ?? '') === 'tenant',
+                                'bg-teal-100 text-teal-900' => ($u->directory_category ?? '') === 'loan',
+                                'bg-slate-100 text-slate-700' => ! in_array((string) ($u->directory_category ?? ''), ['platform', 'agent', 'employee', 'landlord', 'tenant', 'loan'], true),
+                            ])>{{ $u->directory_label ?? 'Not placed' }}</span>
                         </td>
                         <td class="px-5 py-4">
                             <div class="font-semibold text-slate-900">{{ $u->directory_company ?? '—' }}</div>
