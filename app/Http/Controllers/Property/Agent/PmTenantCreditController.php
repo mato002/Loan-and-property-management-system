@@ -26,8 +26,15 @@ class PmTenantCreditController extends Controller
     public function report(Request $request): View|StreamedResponse
     {
         $filters = $this->creditReportFilters($request);
-        $query = $this->creditReportQuery($filters);
         $creditService = app(TenantCreditService::class);
+        PmTenantCreditBalance::query()
+            ->where('balance', '>', 0)
+            ->orderBy('id')
+            ->pluck('pm_tenant_id')
+            ->each(function ($tenantId) use ($creditService): void {
+                $creditService->reconcileBalanceToStatement((int) $tenantId);
+            });
+        $query = $this->creditReportQuery($filters);
 
         $export = strtolower(trim((string) $request->query('export', '')));
         if (in_array($export, TabularExport::TABLE_FORMATS, true)) {

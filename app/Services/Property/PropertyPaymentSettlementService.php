@@ -444,6 +444,11 @@ class PropertyPaymentSettlementService
         $this->assertInvoiceAllocationInvariant($invoice);
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
 
+        if ((string) $payment->channel !== 'tenant_credit') {
+            app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
+            app(TenantCreditService::class)->reconcileBalanceToStatement((int) $payment->pm_tenant_id);
+        }
+
         return $allocation;
     }
 

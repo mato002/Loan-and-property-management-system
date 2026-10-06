@@ -27,11 +27,57 @@ class TenantCreditService
             return 0.0;
         }
 
+        return $this->reconcileBalanceToStatement($tenantId);
+    }
+
+    /**
+     * Wallet row before it is capped by the statement.
+     */
+    public function storedBalance(int $tenantId): float
+    {
+        if (! $this->isEnabled() || $tenantId <= 0) {
+            return 0.0;
+        }
+
         $row = PmTenantCreditBalance::query()
             ->where('pm_tenant_id', $tenantId)
             ->value('balance');
 
         return round(max(0.0, (float) $row), 2);
+    }
+
+    /**
+     * Drop credit the statement cannot support. A tenant who still owes has no spare credit,
+     * even if an earlier overpayment was later allocated to an invoice.
+     */
+    public function reconcileBalanceToStatement(int $tenantId): float
+    {
+        if (! $this->isEnabled() || $tenantId <= 0) {
+            return 0.0;
+        }
+
+        static $inProgress = [];
+        if (isset($inProgress[$tenantId])) {
+            return $this->storedBalance($tenantId);
+        }
+
+        $inProgress[$tenantId] = true;
+        try {
+            $stored = $this->storedBalance($tenantId);
+            $allowed = $this->allowedCredit($tenantId);
+            $excess = round($stored - $allowed, 2);
+            if ($excess > 0.009) {
+                $this->reverseUnsupportedWallet(
+                    $tenantId,
+                    $excess,
+                    'Cleared credit already used on invoices. Available credit cannot exceed receipts minus charges.'
+                );
+            }
+
+            return $this->storedBalance($tenantId);
+        } finally {
+            unset($inProgress[$tenantId]);
+        }
     }
 
     /**
@@ -292,7 +338,7 @@ class TenantCreditService
         }
 
         $allowed = $this->allowedCredit($tenantId);
-        $wallet = $this->balanceForTenant($tenantId);
+        $wallet = $this->storedBalance($tenantId);
         $applications = PmPayment::query()
             ->where('pm_tenant_id', $tenantId)
             ->where('status', PmPayment::STATUS_COMPLETED)
@@ -488,6 +534,7 @@ class TenantCreditService
         }
 
         return DB::transaction(function () use ($tenantId, $amount, $actor, $notes, $reference) {
+            $this->reconcileBalanceToStatement($tenantId);
             $balance = $this->lockBalanceRow($tenantId);
             $amount = round($amount, 2);
             $available = round((float) $balance->balance, 2);
@@ -531,8 +578,9 @@ class TenantCreditService
         ?float $requestedAmount = null,
         ?string $notes = null,
     ): ?array {
+        $this->reconcileBalanceToStatement($tenantId);
         $balance = $this->lockBalanceRow($tenantId);
-        $available = round((float) $balance->balance, 2);
+        $available = round(min((float) $balance->balance, $this->allowedCredit($tenantId)), 2);
         if ($available <= 0.0001) {
             return null;
         }
