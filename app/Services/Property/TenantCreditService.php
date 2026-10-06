@@ -70,11 +70,13 @@ class TenantCreditService
             $this->settlementApplications = [];
             $this->syncStoredCreditToPaymentAllocations($tenantId);
             $this->settlementApplications = $this->consumeWalletOnOpenInvoices($tenantId, $prioritizeInvoiceId, $actor);
+            $placed = $this->placeStatementReceiptsOnOpenInvoices($tenantId);
+            $this->explainClearedCreditAsApplied($tenantId, $placed);
 
             $stored = $this->storedBalance($tenantId);
             $allowed = $this->allowedCredit($tenantId);
             $excess = round($stored - $allowed, 2);
-            if ($excess > 0.009) {
+            if ($excess > 0.009 && $placed === [] && $this->cashStillAvailableForInvoices($tenantId) <= 0.009) {
                 $this->reverseUnsupportedWallet(
                     $tenantId,
                     $excess,
@@ -730,6 +732,160 @@ class TenantCreditService
         }
 
         return null;
+    }
+
+    /**
+     * Turn the statement's receipt-to-invoice story into real allocations when the
+     * invoice is still open and the receipt still has unallocated money.
+     *
+     * @return list<array{invoice_id:int,invoice_no:string,amount:float}>
+     */
+    private function placeStatementReceiptsOnOpenInvoices(int $tenantId): array
+    {
+        $tenant = PmTenant::query()->find($tenantId);
+        if (! $tenant) {
+            return [];
+        }
+
+        $ledger = app(TenantStatementLedgerService::class)->build($tenant, null, null);
+        $applications = app(TenantStatementLedgerService::class)->applicationsByPayment(collect($ledger['entries']));
+        if ($applications === []) {
+            return [];
+        }
+
+        $invoices = PmInvoice::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->get()
+            ->keyBy(fn (PmInvoice $invoice) => (string) $invoice->invoice_no);
+        $settlement = app(PropertyPaymentSettlementService::class);
+        $placed = [];
+
+        foreach ($applications as $paymentId => $lines) {
+            $payment = PmPayment::query()->find((int) $paymentId);
+            if (! $payment || $payment->status !== PmPayment::STATUS_COMPLETED) {
+                continue;
+            }
+            if ((string) $payment->channel === 'tenant_credit') {
+                continue;
+            }
+
+            foreach ($lines as $line) {
+                $invoice = $invoices->get((string) ($line['invoice_no'] ?? ''));
+                if (! $invoice) {
+                    continue;
+                }
+
+                $invoice->refresh();
+                $invoice->syncAmountPaidFromAllocations();
+                $open = $invoice->balanceFloat();
+                if ($open <= 0.009) {
+                    continue;
+                }
+
+                $alreadyOnPair = round((float) PmPaymentAllocation::query()
+                    ->where('pm_payment_id', $payment->id)
+                    ->where('pm_invoice_id', $invoice->id)
+                    ->where(function ($query): void {
+                        $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+                    })
+                    ->sum('amount'), 2);
+                $gap = round((float) ($line['amount'] ?? 0) - $alreadyOnPair, 2);
+                if ($gap <= 0.009) {
+                    continue;
+                }
+
+                $allocated = round((float) $payment->allocations()
+                    ->where(function ($query): void {
+                        $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+                    })
+                    ->sum('amount'), 2);
+                $free = round((float) $payment->amount - $allocated, 2);
+                $amount = round(min($gap, $free, $open), 2);
+                if ($amount <= 0.009) {
+                    continue;
+                }
+
+                $settlement->createAllocation($payment, $invoice, $amount, false);
+                $placed[] = [
+                    'invoice_id' => (int) $invoice->id,
+                    'invoice_no' => (string) $invoice->invoice_no,
+                    'amount' => $amount,
+                ];
+            }
+        }
+
+        return $placed;
+    }
+
+    /**
+     * A cleared credit row should name the invoice that received the money.
+     *
+     * @param  list<array{invoice_id:int,invoice_no:string,amount:float}>  $placements
+     */
+    private function explainClearedCreditAsApplied(int $tenantId, array $placements): void
+    {
+        if ($placements === []) {
+            return;
+        }
+
+        $byInvoice = [];
+        foreach ($placements as $row) {
+            $invoiceId = (int) $row['invoice_id'];
+            $byInvoice[$invoiceId]['invoice_no'] = (string) $row['invoice_no'];
+            $byInvoice[$invoiceId]['amount'] = round(($byInvoice[$invoiceId]['amount'] ?? 0) + (float) $row['amount'], 2);
+        }
+
+        $reversals = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->where('reference', 'like', 'CREDIT-ALIGN-%')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($byInvoice as $invoiceId => $info) {
+            $left = (float) $info['amount'];
+            foreach ($reversals as $reversal) {
+                if ($left <= 0.009) {
+                    break;
+                }
+                if ((string) $reversal->type !== PmTenantCreditTransaction::TYPE_CREDIT_REVERSED) {
+                    continue;
+                }
+
+                $reversalAmount = round((float) $reversal->amount, 2);
+                if ($reversalAmount <= 0.009) {
+                    continue;
+                }
+
+                $note = 'Applied to '.$info['invoice_no'];
+                if ($left + 0.01 >= $reversalAmount) {
+                    $reversal->update([
+                        'type' => PmTenantCreditTransaction::TYPE_CREDIT_APPLIED,
+                        'pm_invoice_id' => $invoiceId,
+                        'notes' => $note,
+                        'reference' => (string) $info['invoice_no'],
+                    ]);
+                    $reversal->type = PmTenantCreditTransaction::TYPE_CREDIT_APPLIED;
+                    $left = round($left - $reversalAmount, 2);
+
+                    continue;
+                }
+
+                $reversal->update([
+                    'amount' => round($reversalAmount - $left, 2),
+                ]);
+                PmTenantCreditTransaction::query()->create([
+                    'pm_tenant_id' => $tenantId,
+                    'pm_invoice_id' => $invoiceId,
+                    'type' => PmTenantCreditTransaction::TYPE_CREDIT_APPLIED,
+                    'amount' => $left,
+                    'reference' => (string) $info['invoice_no'],
+                    'notes' => $note,
+                    'application_mode' => PmTenantCreditTransaction::MODE_AUTO,
+                ]);
+                $left = 0.0;
+            }
+        }
     }
 
     private function reverseUnsupportedWallet(int $tenantId, float $amount, string $reason): void

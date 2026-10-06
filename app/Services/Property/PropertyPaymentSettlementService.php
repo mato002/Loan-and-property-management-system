@@ -423,7 +423,7 @@ class PropertyPaymentSettlementService
     /**
      * Create one allocation row and derive invoice.amount_paid from allocations.
      */
-    public function createAllocation(PmPayment $payment, PmInvoice $invoice, float $amount): PmPaymentAllocation
+    public function createAllocation(PmPayment $payment, PmInvoice $invoice, float $amount, bool $syncTenantCredit = true): PmPaymentAllocation
     {
         $payment = $this->lockPayment($payment);
         $invoice = PmInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
@@ -444,7 +444,7 @@ class PropertyPaymentSettlementService
         $this->assertInvoiceAllocationInvariant($invoice);
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
 
-        if ((string) $payment->channel !== 'tenant_credit') {
+        if ($syncTenantCredit && (string) $payment->channel !== 'tenant_credit') {
             app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
             app(TenantCreditService::class)->reconcileBalanceToStatement((int) $payment->pm_tenant_id);
         }
