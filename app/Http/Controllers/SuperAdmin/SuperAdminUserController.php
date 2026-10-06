@@ -7,6 +7,7 @@ use App\Models\PmPermission;
 use App\Models\PmRole;
 use App\Models\User;
 use App\Models\UserModuleAccess;
+use App\Support\SuperAdmin\PlatformPeopleDirectory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,29 +23,21 @@ class SuperAdminUserController extends Controller
     public function index(Request $request): View|StreamedResponse
     {
         $q = trim((string) $request->string('q'));
-        $role = trim((string) $request->query('role', ''));
-        if (! in_array($role, ['', 'agent', 'landlord', 'tenant', 'super_admin', 'none'], true)) {
-            $role = '';
+        $category = trim((string) $request->query('category', ''));
+        if (! array_key_exists($category, PlatformPeopleDirectory::CATEGORIES)) {
+            $category = '';
         }
+        $companyId = max(0, (int) $request->query('company', 0));
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 20);
+        $directory = app(PlatformPeopleDirectory::class);
 
         $userQuery = User::query()
             ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
                 $qq->where('name', 'like', "%{$q}%")
                     ->orWhere('email', 'like', "%{$q}%");
-            }))
-            ->when($role !== '', function ($query) use ($role) {
-                if ($role === 'super_admin') {
-                    $query->where('is_super_admin', true);
-                    return;
-                }
-                if ($role === 'none') {
-                    $query->whereNull('property_portal_role');
-                    return;
-                }
-                $query->where('property_portal_role', $role);
-            })
-            ->orderByDesc('id');
+            }));
+        $directory->applyFilters($userQuery, $category, $companyId);
+        $directory->order($userQuery);
 
         if (Schema::hasTable('user_module_accesses')) {
             $userQuery->with([
@@ -53,6 +46,7 @@ class SuperAdminUserController extends Controller
         }
 
         $users = $userQuery->paginate($perPage)->withQueryString();
+        $directory->decorate($users->getCollection());
 
         $loanRoleLabels = [
             'admin' => 'Administrator',
@@ -65,36 +59,28 @@ class SuperAdminUserController extends Controller
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
-            $rows = User::query()
+            $exportQuery = User::query()
                 ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
                     $qq->where('name', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%");
-                }))
-                ->when($role !== '', function ($query) use ($role) {
-                    if ($role === 'super_admin') {
-                        $query->where('is_super_admin', true);
-                        return;
-                    }
-                    if ($role === 'none') {
-                        $query->whereNull('property_portal_role');
-                        return;
-                    }
-                    $query->where('property_portal_role', $role);
-                })
-                ->orderByDesc('id')
-                ->limit(5000)
-                ->get(['id', 'name', 'email', 'is_super_admin', 'property_portal_role', 'loan_role', 'created_at']);
+                }));
+            $directory->applyFilters($exportQuery, $category, $companyId);
+            $directory->order($exportQuery);
+            $rows = $exportQuery->limit(5000)->get();
+            $directory->decorate($rows);
 
             return TabularExport::stream(
-                'superadmin-users-'.now()->format('Ymd_His'),
-                ['ID', 'Name', 'Email', 'Super admin', 'Property role', 'Loan role', 'Created'],
+                'superadmin-people-'.now()->format('Ymd_His'),
+                ['ID', 'Name', 'Email', 'Place', 'Company', 'Note', 'Property role', 'Loan role', 'Created'],
                 function () use ($rows) {
                     foreach ($rows as $u) {
                         yield [
                             (string) $u->id,
                             (string) $u->name,
                             (string) $u->email,
-                            (bool) $u->is_super_admin ? 'Yes' : 'No',
+                            (string) ($u->directory_label ?? ''),
+                            (string) ($u->directory_company ?? ''),
+                            (string) ($u->directory_note ?? ''),
                             (string) ($u->property_portal_role ?? '—'),
                             (string) ($u->loan_role ?? '—'),
                             optional($u->created_at)->format('Y-m-d H:i:s') ?? '',
@@ -108,7 +94,11 @@ class SuperAdminUserController extends Controller
         return view('superadmin.users.index', [
             'users' => $users,
             'q' => $q,
-            'role' => $role,
+            'category' => $category,
+            'companyId' => $companyId,
+            'categories' => PlatformPeopleDirectory::CATEGORIES,
+            'companies' => $directory->companyOptions(),
+            'counts' => $directory->counts(),
             'perPage' => $perPage,
             'loanRoleLabels' => $loanRoleLabels,
             'hasModuleAccessTable' => Schema::hasTable('user_module_accesses'),
