@@ -482,11 +482,11 @@
                                     @endif
                                 </td>
                                 <td x-show="cols.actions" class="px-5 py-3 text-right whitespace-nowrap">
-                                    <details class="relative inline-block text-left">
+                                    <details class="relative inline-block text-left" data-property-dropdown-root>
                                         <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                                             Actions
                                         </summary>
-                                        <div class="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                                        <div data-property-dropdown-menu class="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
                                             @if ($canDisburse)
                                                 <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-slate-50">Disburse</a>
                                             @endif

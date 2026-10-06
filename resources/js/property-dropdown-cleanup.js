@@ -40,7 +40,11 @@ function menuForRoot(details) {
         }
     }
 
-    return details?.querySelector(PROPERTY_DROPDOWN_MENU_SELECTOR) || null;
+    return details?.querySelector(PROPERTY_DROPDOWN_MENU_SELECTOR)
+        || [...(details?.children || [])].find(
+            (child) => child instanceof HTMLElement && child.tagName === 'DIV' && child.classList.contains('absolute'),
+        )
+        || null;
 }
 
 function dropdownBridgeForMenu(menu) {
@@ -337,8 +341,11 @@ function bindGlobalDropdownListeners() {
         }
     }, true);
 
-    const workspaceMain = document.getElementById('property-workspace-main');
-    if (workspaceMain instanceof HTMLElement) {
+    ['property-workspace-main', 'loan-workspace-main'].forEach((id) => {
+        const workspaceMain = document.getElementById(id);
+        if (!(workspaceMain instanceof HTMLElement)) {
+            return;
+        }
         workspaceMain.addEventListener('scroll', () => {
             if (!document.querySelector(PROPERTY_DROPDOWN_OPEN_SELECTOR)) {
                 return;
@@ -346,7 +353,7 @@ function bindGlobalDropdownListeners() {
 
             repositionOpenPropertyDropdowns();
         }, { passive: true, capture: true });
-    }
+    });
 
     window.addEventListener('resize', () => {
         if (document.querySelector(PROPERTY_DROPDOWN_OPEN_SELECTOR)) {
@@ -355,8 +362,34 @@ function bindGlobalDropdownListeners() {
     }, { passive: true });
 }
 
+function stampLoanRowActionMenus(root) {
+    const scope = root instanceof Element || root instanceof Document ? root : document;
+    scope.querySelectorAll('details').forEach((details) => {
+        if (!(details instanceof HTMLDetailsElement)) {
+            return;
+        }
+        if (details.hasAttribute('data-property-dropdown-root') || details.hasAttribute('data-dropdown-root')) {
+            return;
+        }
+        if (!details.closest('#loan-main, #loan-workspace-main')) {
+            return;
+        }
+
+        const summary = details.querySelector(':scope > summary');
+        const menu = [...details.children].find(
+            (child) => child instanceof HTMLElement && child.tagName === 'DIV' && child.classList.contains('absolute'),
+        );
+        if (!summary || !(menu instanceof HTMLElement)) {
+            return;
+        }
+
+        details.setAttribute('data-property-dropdown-root', '');
+    });
+}
+
 export function setupPropertyActionMenus(scopeRoot) {
     const root = scopeRoot instanceof Element ? scopeRoot : document;
+    stampLoanRowActionMenus(root);
 
     root.querySelectorAll(PROPERTY_DROPDOWN_ROOT_SELECTOR).forEach((details) => {
         if (!(details instanceof HTMLDetailsElement)) {

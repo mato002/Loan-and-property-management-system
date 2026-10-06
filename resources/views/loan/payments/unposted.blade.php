@@ -306,9 +306,9 @@
                                         <div class="line-clamp-2">{{ $p->message ?? '—' }}</div>
                                     </td>
                                     <td class="px-2 py-2 align-top text-right">
-                                        <details class="relative inline-block text-left">
+                                        <details class="relative inline-block text-left" data-property-dropdown-root>
                                             <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Actions</summary>
-                                            <div class="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                                            <div data-property-dropdown-menu class="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
                                                 @if ((str_ends_with((string) $p->channel, '_sms_unmatched') || str_ends_with((string) $p->channel, '_sms_disbursement_unmatched')) && is_null($p->loan_book_loan_id))
                                                     <form method="post" action="{{ route('loan.payments.assign_loan', $p) }}" class="mb-2 flex items-center gap-2">
                                                         @csrf

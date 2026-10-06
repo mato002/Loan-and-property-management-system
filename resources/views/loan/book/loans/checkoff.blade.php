@@ -185,28 +185,14 @@
                                 <td x-show="cols.disbursed" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ optional($loan->disbursed_at)->format('d-m-Y, H:i') ?? '—' }}</td>
                                 <td x-show="cols.status" class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $loan->loan_number }}</td>
                                 <td x-show="cols.action" class="px-5 py-3 text-right whitespace-nowrap">
-                                    <div
-                                        x-data="{ open: false }"
-                                        class="relative inline-block text-left"
-                                        @click.stop
-                                        @keydown.stop
-                                        @click.outside="open = false"
-                                    >
-                                        <button
-                                            type="button"
-                                            @click="open = !open"
-                                            class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                                        >
+                                    <details class="relative inline-block text-left" data-property-dropdown-root>
+                                        <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
                                             Actions
                                             <svg class="ml-1 h-3.5 w-3.5 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                                                 <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.514a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
                                             </svg>
-                                        </button>
-                                        <div
-                                            x-show="open"
-                                            x-cloak
-                                            class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
-                                        >
+                                        </summary>
+                                        <div data-property-dropdown-menu class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
                                             <a href="{{ route('loan.book.loans.show', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
                                             @if ($canRecordPayment)
                                                 <a href="{{ route('loan.payments.create', ['loan_book_loan_id' => $loan->id]) }}" class="block px-3 py-2 text-left text-xs font-medium text-teal-700 hover:bg-slate-50">Record payment</a>
@@ -215,7 +201,7 @@
                                                 <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
                                             @endif
                                         </div>
-                                    </div>
+                                    </details>
                                 </td>
                             </tr>
                             @endforeach
