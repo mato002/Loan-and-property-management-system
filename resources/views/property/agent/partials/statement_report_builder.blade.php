@@ -17,6 +17,7 @@
     'formats' => ['pdf', 'xls', 'csv', 'word'],
     'layout' => 'card', // card | split
     'buttonLabel' => 'Print / Export Statement',
+    'quickActions' => [], // [['label' => '...', 'href' => '...', 'kind' => 'print'|'download']]
 ])
 
 @php
@@ -30,6 +31,7 @@
         'name' => (string) (is_array($p) ? ($p['name'] ?? '') : ($p->name ?? '')),
     ])->filter(fn ($p) => $p['id'] > 0)->values();
     $isSplit = $layout === 'split';
+    $quickActionItems = collect($quickActions)->filter(fn ($item) => is_array($item) && filled($item['label'] ?? null) && filled($item['href'] ?? null))->values();
     $formatMeta = [
         'pdf' => ['label' => 'PDF Document', 'icon' => 'fa-file-pdf'],
         'xls' => ['label' => 'Excel Spreadsheet', 'icon' => 'fa-file-excel'],
@@ -207,6 +209,30 @@
                         @endforeach
                     </div>
                 </div>
+
+                @if ($quickActionItems->isNotEmpty())
+                    <div class="mt-3 border-t border-slate-100 pt-2 dark:border-slate-700">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick actions</p>
+                        <div class="mt-1.5 flex flex-col gap-0.5">
+                            @foreach ($quickActionItems as $action)
+                                @php
+                                    $kind = strtolower((string) ($action['kind'] ?? 'download'));
+                                    $icon = $kind === 'print' ? 'fa-print text-indigo-600' : 'fa-download text-slate-500';
+                                @endphp
+                                <a
+                                    href="{{ $action['href'] }}"
+                                    @if ($kind === 'print') target="_blank" rel="noopener" @endif
+                                    data-turbo="false"
+                                    @click="open = false"
+                                    class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-800 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                                >
+                                    <i class="fa-solid {{ $icon }} w-4" aria-hidden="true"></i>
+                                    {{ $action['label'] }}
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
             </div>
         </div>
     @else
