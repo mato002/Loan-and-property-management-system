@@ -101,14 +101,14 @@
                                     </div>
                                 </td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    <details class="relative inline-block text-left">
+                                    <details class="relative inline-block text-left" data-property-dropdown-root>
                                         <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                                             Actions
                                             <svg class="ml-1.5 h-3 w-3 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                                                 <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.51a.75.75 0 0 1-1.08 0l-4.25-4.51a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
                                             </svg>
                                         </summary>
-                                        <div class="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                                        <div data-property-dropdown-menu class="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                                             <a href="{{ route('loan.employees.show', $employee) }}" class="block px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">View</a>
                                             <a href="{{ route('loan.employees.edit', $employee) }}" class="block px-3 py-2 text-left text-sm text-indigo-600 hover:bg-indigo-50">Edit</a>
                                             @if ($employee->email)

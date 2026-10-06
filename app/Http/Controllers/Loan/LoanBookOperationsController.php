@@ -240,8 +240,43 @@ class LoanBookOperationsController extends Controller
         ]);
     }
 
+    /**
+     * Amount and reference are hidden on the form and normally filled in the browser.
+     * Turbo frame loads drop that script, so derive them from the loan before validation.
+     */
+    private function fillDisbursementDefaultsFromLoan(Request $request): void
+    {
+        $loanId = $request->input('loan_book_loan_id');
+        if (! is_numeric($loanId)) {
+            return;
+        }
+
+        $loan = LoanBookLoan::query()->find((int) $loanId);
+        if (! $loan) {
+            return;
+        }
+
+        $merge = [];
+        if (! filled($request->input('amount'))) {
+            $principal = round(max(0.0, (float) ($loan->principal ?? 0)), 2);
+            if ($principal > 0) {
+                $merge['amount'] = $principal;
+            }
+        }
+        if (! filled($request->input('reference'))) {
+            $date = (string) ($request->input('disbursed_at') ?: now()->toDateString());
+            $compact = preg_replace('/\D+/', '', $date) ?: now()->format('Ymd');
+            $merge['reference'] = 'DISB-'.$loan->loan_number.'-'.$compact;
+        }
+        if ($merge !== []) {
+            $request->merge($merge);
+        }
+    }
+
     public function disbursementsStore(Request $request): RedirectResponse
     {
+        $this->fillDisbursementDefaultsFromLoan($request);
+
         $validated = $request->validate([
             'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
             'amount' => ['required', 'numeric', 'min:0.01'],

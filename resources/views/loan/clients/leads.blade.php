@@ -250,9 +250,9 @@
                                 <td class="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{{ $act?->created_at?->format('Y-m-d H:i') ?? '—' }}</td>
                                 <td class="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{{ $act?->next_action_date?->format('Y-m-d') ?? '—' }}</td>
                                 <td class="px-3 py-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
-                                    <details class="text-left inline-block relative">
+                                    <details class="text-left inline-block relative" data-property-dropdown-root>
                                         <summary class="cursor-pointer list-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">Pipeline</summary>
-                                        <div class="absolute right-0 z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg space-y-3">
+                                        <div data-property-dropdown-menu class="absolute right-0 z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg space-y-3">
                                             <form method="post" action="{{ route('loan.clients.leads.pipeline.activity', $lead) }}" class="space-y-2">
                                                 @csrf
                                                 <p class="text-xs font-semibold text-slate-700">Log activity</p>

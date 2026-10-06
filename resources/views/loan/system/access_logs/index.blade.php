@@ -226,9 +226,9 @@
                                             <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold {{ $result === 'blocked' ? 'bg-rose-100 text-rose-700' : ($result === 'pending_review' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700') }}">{{ ucfirst(str_replace('_', ' ', $result)) }}</span>
                                         </td>
                                         <td class="px-3 py-3 text-xs">
-                                            <details class="group relative">
+                                            <details class="group relative" data-property-dropdown-root>
                                                 <summary class="cursor-pointer list-none rounded-lg border border-slate-200 px-2 py-1 text-slate-700">Actions</summary>
-                                                <div class="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                                                <div data-property-dropdown-menu class="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
                                                     <form method="post" action="{{ route('loan.system.access_logs.concerns.store', $log) }}" class="space-y-2">
                                                         @csrf
                                                         <input type="text" name="title" required maxlength="255" value="Path concern: {{ \Illuminate\Support\Str::limit($log->path, 40) }}" class="w-full rounded-lg border-slate-200 text-xs">
