@@ -3,7 +3,7 @@ import { PropertyFormModal as PropertyFormModalConfig } from './property-form-mo
 const FRAME_ID = PropertyFormModalConfig.FRAME_ID;
 const HOST_ROOT_ID = 'property-form-modal-host';
 
-/** @type {{ handleOpen: (detail: { url?: string; title?: string }) => void; handleClose: () => void } | null} */
+/** @type {{ handleOpen: (detail: { url?: string; title?: string }) => void; handleClose: () => void; submitForm?: (form: HTMLFormElement) => Promise<void> } | null} */
 let propertyFormModalHostApi = null;
 
 /** @type {Array<{ url: string; title: string }>} */
@@ -115,6 +115,7 @@ function prepareForms(root) {
     }
     root.querySelectorAll('form').forEach((form) => {
         form.setAttribute('data-turbo-frame', FRAME_ID);
+        form.setAttribute('data-turbo', 'false');
         if (form.querySelector(`input[name="${PropertyFormModalConfig.INPUT_NAME}"]`)) {
             return;
         }
@@ -135,6 +136,43 @@ function reloadPropertyMain() {
 
 function closePropertyFormModal() {
     runPropertyFormModalHost('handleClose');
+}
+
+function showFormModalSuccess(message) {
+    const text = (message || 'Saved.').trim() || 'Saved.';
+    if (typeof window.Swal?.fire === 'function') {
+        void window.Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text,
+            timer: 2400,
+            showConfirmButton: false,
+        });
+
+        return;
+    }
+    if (typeof window.__runSwalFlash === 'function') {
+        window.__laravelSwalFlash = [
+            ...(Array.isArray(window.__laravelSwalFlash) ? window.__laravelSwalFlash : []),
+            { icon: 'success', title: 'Success', text },
+        ];
+        void window.__runSwalFlash(document);
+    }
+}
+
+function extractSuccessMessage(root) {
+    const el = root instanceof Element
+        ? root.querySelector('[data-property-form-modal-success]')
+        : null;
+    if (!(el instanceof HTMLElement)) {
+        return null;
+    }
+    const attr = el.getAttribute('data-property-form-modal-success-message');
+    if (attr && attr.trim() !== '') {
+        return attr.trim();
+    }
+
+    return (el.textContent || '').trim() || 'Saved.';
 }
 
 function openPropertyFormModal({ url, title = 'Edit' }) {
@@ -237,6 +275,50 @@ function bindPropertyFormModalLinks() {
     );
 }
 
+function resolveFormConfirmMessage(form, submitter) {
+    let msg = submitter?.getAttribute('data-swal-confirm') || form.getAttribute('data-swal-confirm');
+    if (msg) {
+        return msg;
+    }
+    const onsubmit = form.getAttribute('onsubmit') || '';
+    const match = onsubmit.match(/confirm\((['"])(.*?)\1\)/);
+
+    return match?.[2] ?? null;
+}
+
+function bindPropertyFormModalSubmit() {
+    if (window.__propertyFormModalSubmitBound) {
+        return;
+    }
+    window.__propertyFormModalSubmitBound = true;
+
+    document.addEventListener(
+        'submit',
+        (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.closest(`#${HOST_ROOT_ID}`)) {
+                return;
+            }
+
+            const submitter = event.submitter instanceof HTMLElement ? event.submitter : null;
+            const confirmMessage = resolveFormConfirmMessage(form, submitter);
+            if (confirmMessage && form.dataset.swalSubmitting !== '1') {
+                // Let swal-init.js handle the confirm prompt first.
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const api = propertyFormModalHostApi ?? window.__propertyFormModalHostApi;
+            if (api?.submitForm) {
+                void api.submitForm(form);
+            }
+        },
+        true,
+    );
+}
+
 function registerPropertyFormModalAlpine() {
     document.addEventListener('alpine:init', () => {
         window.Alpine.data('propertyFormModalHost', () => ({
@@ -244,6 +326,19 @@ function registerPropertyFormModalAlpine() {
             title: '',
             loading: false,
             error: '',
+            renderSource(source) {
+                const host = this.$refs.frameHost;
+                if (!(host instanceof HTMLElement) || !(source instanceof Element)) {
+                    throw new Error('Form response was invalid.');
+                }
+
+                host.innerHTML = source.innerHTML;
+                prepareForms(host);
+                activateScripts(host);
+                if (window.Alpine?.initTree) {
+                    window.Alpine.initTree(host);
+                }
+            },
             async loadUrl(url) {
                 this.loading = true;
                 this.error = '';
@@ -274,21 +369,76 @@ function registerPropertyFormModalAlpine() {
                         source = doc.querySelector('.property-form-modal-content');
                     }
 
-                    if (!source || !(host instanceof HTMLElement)) {
-                        throw new Error('Form response was invalid.');
-                    }
-
-                    host.innerHTML = source.innerHTML;
-                    prepareForms(host);
-                    activateScripts(host);
-                    if (window.Alpine?.initTree) {
-                        window.Alpine.initTree(host);
-                    }
+                    this.renderSource(source);
                 } catch (error) {
                     console.error('[PropertyFormModal] load failed', error);
                     this.error =
                         error instanceof Error ? error.message : 'Could not load form.';
                 } finally {
+                    this.loading = false;
+                }
+            },
+            async submitForm(form) {
+                if (!(form instanceof HTMLFormElement) || form.dataset.propertyModalSubmitting === '1') {
+                    return;
+                }
+
+                form.dataset.propertyModalSubmitting = '1';
+                this.loading = true;
+                this.error = '';
+
+                try {
+                    if (!form.querySelector(`input[name="${PropertyFormModalConfig.INPUT_NAME}"]`)) {
+                        prepareForms(form.parentElement instanceof Element ? form.parentElement : form);
+                    }
+
+                    const method = (form.getAttribute('method') || 'post').toUpperCase() === 'GET' ? 'GET' : 'POST';
+                    const response = await fetch(form.action, {
+                        method,
+                        body: method === 'GET' ? undefined : new FormData(form),
+                        headers: {
+                            Accept: 'text/html',
+                            'Turbo-Frame': FRAME_ID,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        redirect: 'follow',
+                    });
+
+                    const html = await response.text();
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const successMessage = extractSuccessMessage(doc);
+
+                    if (successMessage) {
+                        this.handleClose();
+                        showFormModalSuccess(successMessage);
+                        reloadPropertyMain();
+
+                        return;
+                    }
+
+                    let source = doc.querySelector(`turbo-frame#${FRAME_ID}`);
+                    if (!source) {
+                        source = doc.querySelector('.property-form-modal-content');
+                    }
+
+                    if (!source) {
+                        throw new Error(
+                            response.ok
+                                ? 'Save completed, but the form response was unexpected. Refresh the page.'
+                                : `Could not save (${response.status}).`,
+                        );
+                    }
+
+                    this.renderSource(source);
+                    if (typeof window.__runSwalFlash === 'function') {
+                        void window.__runSwalFlash(this.$refs.frameHost);
+                    }
+                } catch (error) {
+                    console.error('[PropertyFormModal] submit failed', error);
+                    this.error = error instanceof Error ? error.message : 'Could not save.';
+                } finally {
+                    delete form.dataset.propertyModalSubmitting;
                     this.loading = false;
                 }
             },
@@ -318,6 +468,7 @@ function registerPropertyFormModalAlpine() {
                 registerPropertyFormModalHostApi({
                     handleOpen: (detail) => this.handleOpen(detail),
                     handleClose: () => this.handleClose(),
+                    submitForm: (form) => this.submitForm(form),
                 });
             },
             destroy() {
@@ -333,11 +484,16 @@ function bindTurboFrameHooks() {
         if (!(frame instanceof Element) || frame.id !== FRAME_ID) {
             return;
         }
-        if (frame.querySelector('[data-property-form-modal-success]')) {
+
+        const successMessage = extractSuccessMessage(frame);
+        if (successMessage) {
             closePropertyFormModal();
+            showFormModalSuccess(successMessage);
             reloadPropertyMain();
+
             return;
         }
+
         prepareForms(frame);
         activateScripts(frame);
         if (window.Alpine?.initTree) {
@@ -358,6 +514,7 @@ window.PropertyFormModal = {
 
 bindPropertyFormModalHostEventsOnce();
 bindPropertyFormModalLinks();
+bindPropertyFormModalSubmit();
 registerPropertyFormModalAlpine();
 bindTurboFrameHooks();
 
