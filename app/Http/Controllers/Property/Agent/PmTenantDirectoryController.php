@@ -45,9 +45,11 @@ use App\Support\Property\LeaseStandingCharges;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\TenantCompliancePresentation;
 use App\Support\Property\TenantDirectoryBalanceFilter;
+use App\Support\Property\PropertyFormModal;
 use App\Support\Property\TenantProfileStatus;
 use App\Support\Property\WorkspaceRowAlert;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Validation\ValidationException;
 
 class PmTenantDirectoryController extends Controller
 {
@@ -1737,66 +1739,94 @@ class PmTenantDirectoryController extends Controller
     public function update(Request $request, PmTenant $tenant): RedirectResponse|Response
     {
         $cfg = $this->tenantFieldConfig();
-        $data = $request->validate([
-            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
-            'phone' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
-                'nullable',
-                'string',
-                'max:64',
-                Rule::unique('pm_tenants', 'phone')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'email' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
-                'nullable',
-                'email',
-                'max:255',
-                Rule::unique('pm_tenants', 'email')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'national_id' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
-                'nullable',
-                'string',
-                'max:64',
-                Rule::unique('pm_tenants', 'national_id')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'risk_level' => ['required', 'in:normal,medium,high'],
-            'opening_arrears_items' => ['nullable', 'array'],
-            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
-            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
-            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
-            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
-            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
-            'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_as_of' => ['nullable', 'date'],
-            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
-            'notes' => ['nullable', 'string', 'max:2000'],
-            'emergency_contact' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'emergency_contact')),
-                'nullable',
-                'string',
-                'max:255',
-            ],
-            'account_number' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'account_number')),
-                'nullable',
-                'string',
-                'max:32',
-                Rule::unique('pm_tenants', 'account_number')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-        ] + $this->tenantRecordFieldRules());
+
+        try {
+            $data = $request->validate([
+                'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
+                'phone' => [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
+                    'nullable',
+                    'string',
+                    'max:64',
+                    Rule::unique('pm_tenants', 'phone')
+                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->ignore($tenant->id),
+                ],
+                'email' => [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                    'nullable',
+                    'email',
+                    'max:255',
+                    Rule::unique('pm_tenants', 'email')
+                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->ignore($tenant->id),
+                ],
+                'national_id' => [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
+                    'nullable',
+                    'string',
+                    'max:64',
+                    Rule::unique('pm_tenants', 'national_id')
+                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->ignore($tenant->id),
+                ],
+                'risk_level' => ['required', 'in:normal,medium,high'],
+                'opening_arrears_items' => ['nullable', 'array'],
+                'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+                'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+                'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+                'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+                'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
+                'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
+                'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
+                'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
+                'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
+                'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+                'opening_arrears_as_of' => ['nullable', 'date'],
+                'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
+                'notes' => ['nullable', 'string', 'max:2000'],
+                'emergency_contact' => [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'emergency_contact')),
+                    'nullable',
+                    'string',
+                    'max:255',
+                ],
+                'account_number' => [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'account_number')),
+                    'nullable',
+                    'string',
+                    'max:32',
+                    Rule::unique('pm_tenants', 'account_number')
+                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->ignore($tenant->id),
+                ],
+            ] + $this->tenantRecordFieldRules());
+        } catch (ValidationException $e) {
+            if (! PropertyFormModal::fromModal($request)) {
+                throw $e;
+            }
+
+            $request->flash();
+            $tenant->loadCount([
+                'leases',
+                'leases as active_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE),
+                'leases as expired_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_EXPIRED),
+                'leases as terminated_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_TERMINATED),
+                'leases as draft_leases_count' => fn ($q) => $q->where('status', PmLease::STATUS_DRAFT),
+            ]);
+
+            return response(
+                view('property.agent.tenants.edit', [
+                    'tenant' => $tenant,
+                    'profileStatus' => TenantProfileStatus::forTenant($tenant),
+                    'tenantFields' => $this->tenantFieldConfig(),
+                    'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
+                    'inPropertyFormModal' => true,
+                ])->withErrors($e->validator),
+                422
+            );
+        }
+
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
 
         $tenant->update([
