@@ -15,6 +15,9 @@ use RuntimeException;
 
 class TenantCreditService
 {
+    /** @var list<array{invoice_id:int,amount:float,transaction_id:int}> */
+    private array $settlementApplications = [];
+
     public function isEnabled(): bool
     {
         return Schema::hasTable('pm_tenant_credit_balances')
@@ -47,10 +50,11 @@ class TenantCreditService
     }
 
     /**
-     * Drop credit the statement cannot support. A tenant who still owes has no spare credit,
-     * even if an earlier overpayment was later allocated to an invoice.
+     * Spare credit is receipts minus charges. Money already received is applied to open
+     * invoices first. Anything still above that spare amount is cleared, so a tenant
+     * who still owes does not show an unused credit balance.
      */
-    public function reconcileBalanceToStatement(int $tenantId): float
+    public function reconcileBalanceToStatement(int $tenantId, ?int $prioritizeInvoiceId = null, ?User $actor = null): float
     {
         if (! $this->isEnabled() || $tenantId <= 0) {
             return 0.0;
@@ -63,6 +67,10 @@ class TenantCreditService
 
         $inProgress[$tenantId] = true;
         try {
+            $this->settlementApplications = [];
+            $this->syncStoredCreditToPaymentAllocations($tenantId);
+            $this->settlementApplications = $this->consumeWalletOnOpenInvoices($tenantId, $prioritizeInvoiceId, $actor);
+
             $stored = $this->storedBalance($tenantId);
             $allowed = $this->allowedCredit($tenantId);
             $excess = round($stored - $allowed, 2);
@@ -452,52 +460,9 @@ class TenantCreditService
             return [];
         }
 
-        return DB::transaction(function () use ($tenantId, $actor, $prioritizeInvoiceId) {
-            $applied = [];
-            $room = round($this->allowedCredit($tenantId), 2);
-            if ($room <= 0.009) {
-                return [];
-            }
+        $this->reconcileBalanceToStatement($tenantId, $prioritizeInvoiceId, $actor);
 
-            if ($prioritizeInvoiceId) {
-                $invoice = PmInvoice::query()
-                    ->where('pm_tenant_id', $tenantId)
-                    ->where('id', $prioritizeInvoiceId)
-                    ->lockForUpdate()
-                    ->first();
-                if ($invoice && $room > 0.009) {
-                    $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO, $room);
-                    if ($row) {
-                        $applied[] = $row;
-                        $room = round($room - (float) $row['amount'], 2);
-                    }
-                }
-            }
-
-            $openInvoices = PmInvoice::query()
-                ->where('pm_tenant_id', $tenantId)
-                ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
-                ->when($prioritizeInvoiceId, fn ($q) => $q->where('id', '!=', $prioritizeInvoiceId))
-                ->orderBy('due_date')
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get()
-                ->each(fn (PmInvoice $invoice) => $invoice->syncAmountPaidFromAllocations())
-                ->filter(fn (PmInvoice $invoice) => $invoice->balanceFloat() > 0.0001);
-
-            foreach ($openInvoices as $invoice) {
-                if ($room <= 0.009 || $this->balanceForTenant($tenantId) <= 0.0001) {
-                    break;
-                }
-                $row = $this->applyToInvoice($tenantId, $invoice, $actor, PmTenantCreditTransaction::MODE_AUTO, $room);
-                if ($row) {
-                    $applied[] = $row;
-                    $room = round($room - (float) $row['amount'], 2);
-                }
-            }
-
-            return $applied;
-        });
+        return $this->settlementApplications;
     }
 
     /**
@@ -580,7 +545,7 @@ class TenantCreditService
     ): ?array {
         $this->reconcileBalanceToStatement($tenantId);
         $balance = $this->lockBalanceRow($tenantId);
-        $available = round(min((float) $balance->balance, $this->allowedCredit($tenantId)), 2);
+        $available = round((float) $balance->balance, 2);
         if ($available <= 0.0001) {
             return null;
         }
@@ -643,6 +608,128 @@ class TenantCreditService
             'amount' => $amount,
             'transaction_id' => (int) $txn->id,
         ];
+    }
+
+    private function syncStoredCreditToPaymentAllocations(int $tenantId): void
+    {
+        $paymentIds = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_CREATED)
+            ->whereNotNull('pm_payment_id')
+            ->pluck('pm_payment_id')
+            ->unique();
+
+        foreach ($paymentIds as $paymentId) {
+            $payment = PmPayment::query()->find((int) $paymentId);
+            if (! $payment || $payment->status !== PmPayment::STATUS_COMPLETED) {
+                continue;
+            }
+            if ((string) $payment->channel === 'tenant_credit') {
+                continue;
+            }
+            $this->syncOverpaymentCreditToPaymentRemainder($payment);
+        }
+    }
+
+    /**
+     * Cash still sitting on the source receipts, after wallet applications already posted.
+     */
+    private function cashStillAvailableForInvoices(int $tenantId): float
+    {
+        $payments = PmPayment::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where(function ($query): void {
+                $query->whereNull('channel')->orWhere('channel', '!=', 'tenant_credit');
+            })
+            ->withSum(['allocations as allocated_amount' => function ($query): void {
+                $query->where(function ($query): void {
+                    $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+                });
+            }], 'amount')
+            ->get(['id', 'amount']);
+
+        $unallocated = 0.0;
+        foreach ($payments as $payment) {
+            $unallocated += max(0.0, round((float) $payment->amount - (float) $payment->allocated_amount, 2));
+        }
+
+        $applied = (float) PmPayment::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where('channel', 'tenant_credit')
+            ->sum('amount');
+
+        return round(max(0.0, $unallocated - $applied), 2);
+    }
+
+    /**
+     * @return list<array{invoice_id:int,amount:float,transaction_id:int}>
+     */
+    private function consumeWalletOnOpenInvoices(int $tenantId, ?int $prioritizeInvoiceId = null, ?User $actor = null): array
+    {
+        $applied = [];
+        $guard = 0;
+        while ($guard < 40) {
+            $guard++;
+            $room = round(min($this->storedBalance($tenantId), $this->cashStillAvailableForInvoices($tenantId)), 2);
+            if ($room <= 0.009) {
+                break;
+            }
+
+            $invoice = $this->nextOpenInvoiceForCredit($tenantId, $applied === [] ? $prioritizeInvoiceId : null);
+            if (! $invoice) {
+                break;
+            }
+
+            $row = $this->applyToInvoice(
+                $tenantId,
+                $invoice,
+                $actor,
+                PmTenantCreditTransaction::MODE_AUTO,
+                $room,
+                'Applied advance to '.$invoice->invoice_no.'. This is not spare credit while charges are still open.'
+            );
+            if (! $row) {
+                break;
+            }
+            $applied[] = $row;
+        }
+
+        return $applied;
+    }
+
+    private function nextOpenInvoiceForCredit(int $tenantId, ?int $prioritizeInvoiceId): ?PmInvoice
+    {
+        if ($prioritizeInvoiceId) {
+            $priority = PmInvoice::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->whereKey($prioritizeInvoiceId)
+                ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
+                ->first();
+            if ($priority) {
+                $priority->syncAmountPaidFromAllocations();
+                if ($priority->balanceFloat() > 0.009) {
+                    return $priority;
+                }
+            }
+        }
+
+        $invoices = PmInvoice::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($invoices as $invoice) {
+            $invoice->syncAmountPaidFromAllocations();
+            if ($invoice->balanceFloat() > 0.009) {
+                return $invoice;
+            }
+        }
+
+        return null;
     }
 
     private function reverseUnsupportedWallet(int $tenantId, float $amount, string $reason): void
