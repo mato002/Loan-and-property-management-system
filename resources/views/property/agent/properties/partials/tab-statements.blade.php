@@ -18,19 +18,27 @@
     $printMonthUrl = $openMonth !== ''
         ? route('property.properties.show', $baseQuery + ['month' => $openMonth, 'print_scope' => 'month'], false)
         : null;
-    $exportClass = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50';
-    $exportFor = function (string $scope) use ($openMonth, $exportClass) {
-        return [
-            'current' => true,
-            'query' => array_filter([
-                'tab' => 'statements',
-                'month' => $openMonth !== '' ? $openMonth : null,
-                'export_scope' => $scope,
-            ]),
-            'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
-            'class' => $exportClass,
-        ];
+    $exportUrl = static function (string $scope, string $format = 'csv') use ($property, $fy, $openMonth): string {
+        return route('property.properties.show', array_filter([
+            'property' => $property->id,
+            'tab' => 'statements',
+            'fy' => $fy,
+            'month' => $openMonth !== '' ? $openMonth : null,
+            'export' => $format,
+            'export_scope' => $scope,
+        ]), false);
     };
+    $monthLabel = $openMonth !== ''
+        ? \Illuminate\Support\Carbon::createFromFormat('Y-m', $openMonth)->format('M Y')
+        : '';
+    $quickActions = array_values(array_filter([
+        ['label' => 'Print year', 'href' => $printYearUrl, 'kind' => 'print'],
+        $printMonthUrl ? ['label' => 'Print '.$monthLabel, 'href' => $printMonthUrl, 'kind' => 'print'] : null,
+        ['label' => 'Export yearly units (CSV)', 'href' => $exportUrl('year_units'), 'kind' => 'download'],
+        $openMonth !== '' ? ['label' => 'Export '.$monthLabel.' units (CSV)', 'href' => $exportUrl('month_units'), 'kind' => 'download'] : null,
+        ['label' => 'Export month list (CSV)', 'href' => $exportUrl('months'), 'kind' => 'download'],
+        ['label' => 'Export unit grid (CSV)', 'href' => $exportUrl('unit_grid'), 'kind' => 'download'],
+    ]));
 @endphp
 
 <div class="mt-5 space-y-5">
@@ -38,7 +46,7 @@
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h3 class="text-sm font-semibold text-slate-900">Property statement — {{ $property->name }}</h3>
-                <p class="mt-1 text-xs text-slate-500">FY {{ $fy }} for this property only. Yearly unit totals sit below; use + on a month to open the unit matrix (B/F, invoiced, received).</p>
+                <p class="mt-1 text-xs text-slate-500">FY {{ $fy }} for this property only. Yearly unit totals sit below; use + on a month to open the unit matrix (B/F, invoiced, received). Use Print / Export Statement for every print and download.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 @include('property.agent.partials.statement_report_builder', [
@@ -54,13 +62,8 @@
                     'layout' => 'split',
                     'buttonLabel' => 'Print / Export Statement',
                     'formats' => ['pdf', 'xls', 'csv', 'word'],
+                    'quickActions' => $quickActions,
                 ])
-                @include('property.agent.partials.table_export_dropdown', $exportFor('year_units'))
-                <a href="{{ $printYearUrl }}" target="_blank" rel="noopener" data-turbo="false" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Print year</a>
-                @if ($printMonthUrl)
-                    @include('property.agent.partials.table_export_dropdown', $exportFor('month_units'))
-                    <a href="{{ $printMonthUrl }}" target="_blank" rel="noopener" data-turbo="false" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Print {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $openMonth)->format('M Y') }}</a>
-                @endif
             </div>
         </div>
         <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -90,7 +93,6 @@
                     <h3 class="text-sm font-semibold text-slate-900">Yearly unit statement</h3>
                     <p class="mt-0.5 text-xs text-slate-500">Each unit on its own row for FY {{ $fy }} — opening B/F, year invoiced, year received.</p>
                 </div>
-                @include('property.agent.partials.table_export_dropdown', $exportFor('year_units'))
             </div>
             <div class="mt-3">
                 @include('property.agent.landlords.partials.month-statement-detail', ['settlement' => $yearSettlement])
@@ -101,7 +103,6 @@
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Month-by-month (FY {{ $fy }})</h3>
-            @include('property.agent.partials.table_export_dropdown', $exportFor('months'))
         </div>
         <div class="max-h-[22rem] overflow-auto">
             <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
@@ -164,7 +165,6 @@
                 <h3 class="text-sm font-semibold text-slate-900">Unit monthly grid (FY {{ $fy }})</h3>
                 <p class="text-xs text-slate-500 mt-0.5">Each unit across the year. Top figure is invoiced, bottom is received.</p>
             </div>
-            @include('property.agent.partials.table_export_dropdown', $exportFor('unit_grid'))
         </div>
         <div class="max-h-[22rem] overflow-auto">
             <table class="min-w-full border-collapse text-[11px] [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">

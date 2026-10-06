@@ -108,21 +108,11 @@
                 'layout' => 'split',
                 'buttonLabel' => 'Print / Export Statement',
                 'formats' => ['pdf', 'xls', 'csv', 'word'],
+                'quickActions' => [
+                    ['label' => 'Print FY summary', 'href' => $printUrlFor(['report' => 'summary']), 'kind' => 'print'],
+                    ['label' => 'Print FY full', 'href' => $printUrlFor(['report' => 'detail']), 'kind' => 'print'],
+                ],
             ])
-            <a
-                href="{{ $printUrlFor(['report' => 'summary']) }}"
-                target="_blank"
-                rel="noopener"
-                data-turbo="false"
-                class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >Print FY summary</a>
-            <a
-                href="{{ $printUrlFor(['report' => 'detail']) }}"
-                target="_blank"
-                rel="noopener"
-                data-turbo="false"
-                class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800"
-            >Print FY full</a>
         </div>
     </div>
 

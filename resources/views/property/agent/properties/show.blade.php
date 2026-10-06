@@ -102,22 +102,26 @@
                     <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2" />
                 </div>
                 @endif
-                <div class="w-[9.5rem] min-w-0">
-                    <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Export type</label>
-                    <select name="export_report" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
-                        <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
-                        <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
-                        <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
-                        <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
-                    </select>
-                </div>
+                @if ($activeTab !== 'statements')
+                    <div class="w-[9.5rem] min-w-0">
+                        <label class="block text-[10px] font-medium uppercase tracking-wide text-slate-500">Export type</label>
+                        <select name="export_report" class="mt-0.5 w-full h-9 rounded-md border border-slate-200 bg-white text-sm px-2">
+                            <option value="full" @selected(($filters['export_report'] ?? 'full') === 'full')>Full intelligence</option>
+                            <option value="units" @selected(($filters['export_report'] ?? '') === 'units')>Units report</option>
+                            <option value="collections" @selected(($filters['export_report'] ?? '') === 'collections')>Collections report</option>
+                            <option value="channels" @selected(($filters['export_report'] ?? '') === 'channels')>Channel report</option>
+                        </select>
+                    </div>
+                @endif
                 <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
-                @include('property.agent.partials.table_export_dropdown', [
-                    'current' => true,
-                    'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
-                    'class' => 'h-9 rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50',
-                ])
+                @if ($activeTab !== 'statements')
+                    @include('property.agent.partials.table_export_dropdown', [
+                        'current' => true,
+                        'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS,
+                        'class' => 'h-9 rounded-md border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50',
+                    ])
+                @endif
             </form>
 
             @if (count($hubSummaryStats) > 0)
