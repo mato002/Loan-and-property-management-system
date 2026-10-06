@@ -193,6 +193,9 @@ final class TenantStatementLedgerService
 
             $allocated = $invoice->allocatedAmount();
             $openBalance = max(0.0, round((float) $invoice->amount - $allocated, 2));
+            if ($allocated > 0.009) {
+                $desc .= ' · Paid '.PropertyMoney::kes($allocated).', unpaid '.PropertyMoney::kes($openBalance);
+            }
             $entries->push([
                 'date' => $invoice->issue_date?->toDateString(),
                 'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,

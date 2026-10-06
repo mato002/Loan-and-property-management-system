@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
+use App\Models\PmTenantCreditBalance;
 use App\Models\PmInvoiceEvent;
 use App\Models\PmInvoiceItem;
 use App\Models\PmLease;
@@ -611,9 +612,11 @@ class PmInvoiceController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = (clone $baseQuery)->limit(5000)->get();
+            $this->applyStoredCreditToListedInvoices($items);
+
             return TabularExport::stream(
                 'invoices-'.now()->format('Ymd_His'),
-                ['Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status'],
+                ['Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Unpaid', 'Issued', 'Due', 'Status'],
                 function () use ($items) {
                     foreach ($items as $i) {
                         $charge = (string) $i->chargeCategoryLabel();
@@ -621,6 +624,8 @@ class PmInvoiceController extends Controller
                         if ($detail !== '') {
                             $charge .= ' — '.$detail;
                         }
+                        $paid = round((float) $i->amount_paid, 2);
+                        $unpaid = max(0, round((float) $i->amount - $paid, 2));
                         yield [
                             (string) $i->invoice_no,
                             $charge,
@@ -628,10 +633,11 @@ class PmInvoiceController extends Controller
                             (string) (($i->unit->property->name ?? '').'/'.($i->unit->label ?? '')),
                             $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? ''),
                             number_format((float) $i->amount, 2, '.', ''),
-                            number_format(max(0, (float) $i->amount - (float) $i->amount_paid), 2, '.', ''),
+                            number_format($paid, 2, '.', ''),
+                            number_format($unpaid, 2, '.', ''),
                             $i->issue_date?->format('Y-m-d') ?? '',
                             $i->due_date?->format('Y-m-d') ?? '',
-                            ucfirst((string) $i->status),
+                            $this->invoicePaidUnpaidLabel($i, $paid, $unpaid),
                         ];
                     }
                 },
@@ -641,6 +647,7 @@ class PmInvoiceController extends Controller
         }
 
         $invoices = (clone $baseQuery)->paginate($perPage)->withQueryString();
+        $this->applyStoredCreditToListedInvoices($invoices->getCollection());
 
         $summaryQuery = $this->applyInvoiceListFilters(
             PmInvoice::query(),
@@ -710,7 +717,8 @@ class PmInvoiceController extends Controller
         $tableRowTones = [];
         $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries, &$tableRowTones) {
             $showAction = route('property.revenue.invoices.show', $i, false);
-            $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
+            $paid = round(min((float) $i->amount_paid, (float) $i->amount), 2);
+            $balance = max(0, round((float) $i->amount - $paid, 2));
             $pastDue = $balance > 0.009
                 && $i->due_date
                 && $i->due_date->endOfDay()->isPast();
@@ -728,7 +736,8 @@ class PmInvoiceController extends Controller
                     .'</div>'
                 )
                 : $chargeLabel;
-            $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.ucfirst((string) $i->status).'</span>';
+            $statusLabel = $this->invoicePaidUnpaidLabel($i, $paid, $balance);
+            $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.e($statusLabel).'</span>';
             $deliverySummary = $i->tenantDeliverySummary($deliverySummaries[(int) $i->id] ?? null);
             if ($deliverySummary !== null) {
                 $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-emerald-700">'.e($deliverySummary).'</p>';
@@ -744,6 +753,7 @@ class PmInvoiceController extends Controller
                 ($i->unit->property->name ?? '—').'/'.($i->unit->label ?? '—'),
                 $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? '—'),
                 number_format((float) $i->amount, 2),
+                number_format($paid, 2),
                 number_format($balance, 2),
                 $i->issue_date?->format('Y-m-d') ?? '—',
                 $i->due_date?->format('Y-m-d') ?? '—',
@@ -760,7 +770,7 @@ class PmInvoiceController extends Controller
         return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
             'billingRangeLabel' => $billingRangeLabel,
-            'columns' => ['Select', 'Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
+            'columns' => ['Select', 'Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Unpaid', 'Issued', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
             'tableRowTones' => $tableRowTones,
             'paginator' => $invoices,
@@ -1125,6 +1135,59 @@ class PmInvoiceController extends Controller
             abort(404);
         }
         return $invoice;
+    }
+
+    /**
+     * Move parked tenant credit onto open invoices before the list is shown,
+     * so a partly paid charge is not listed as unpaid for the full amount.
+     *
+     * @param  iterable<int, PmInvoice>  $invoices
+     */
+    private function applyStoredCreditToListedInvoices(iterable $invoices): void
+    {
+        $credits = app(TenantCreditService::class);
+        if (! $credits->isEnabled()) {
+            return;
+        }
+
+        $tenantIds = collect($invoices)
+            ->pluck('pm_tenant_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->filter(fn (int $id) => $id > 0)
+            ->values();
+        if ($tenantIds->isEmpty()) {
+            return;
+        }
+
+        $withCredit = PmTenantCreditBalance::query()
+            ->whereIn('pm_tenant_id', $tenantIds)
+            ->where('balance', '>', 0)
+            ->pluck('pm_tenant_id');
+        if ($withCredit->isEmpty()) {
+            return;
+        }
+
+        foreach ($withCredit as $tenantId) {
+            $credits->reconcileBalanceToStatement((int) $tenantId);
+        }
+
+        foreach ($invoices as $invoice) {
+            if ($withCredit->contains((int) $invoice->pm_tenant_id)) {
+                $invoice->refresh();
+            }
+        }
+    }
+
+    private function invoicePaidUnpaidLabel(PmInvoice $invoice, float $paid, float $unpaid): string
+    {
+        return match (true) {
+            (string) $invoice->status === PmInvoice::STATUS_CANCELLED => 'Cancelled',
+            (string) $invoice->status === PmInvoice::STATUS_DRAFT => 'Draft',
+            $unpaid <= 0.009 => 'Paid',
+            $paid > 0.009 => 'Partially paid',
+            default => 'Unpaid',
+        };
     }
 
     private static function statusBadgeClasses(string $status): string

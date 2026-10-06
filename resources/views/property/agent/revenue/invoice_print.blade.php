@@ -148,10 +148,8 @@
         <tr><td class="label">Tax</td><td class="num">KES {{ number_format($tax, 2) }}</td></tr>
     @endif
     <tr><td class="label grand">Total</td><td class="num grand">KES {{ number_format($total, 2) }}</td></tr>
-    @if ($paid > 0)
-        <tr><td class="label">Paid</td><td class="num">KES {{ number_format($paid, 2) }}</td></tr>
-        <tr><td class="label grand">Balance due</td><td class="num grand">KES {{ number_format($balance, 2) }}</td></tr>
-    @endif
+    <tr><td class="label">Paid</td><td class="num">KES {{ number_format($paid, 2) }}</td></tr>
+    <tr><td class="label grand">Unpaid</td><td class="num grand">KES {{ number_format($balance, 2) }}</td></tr>
 </table>
 
 @if (!empty($invoice->notes))
