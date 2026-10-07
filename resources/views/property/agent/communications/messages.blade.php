@@ -18,7 +18,24 @@
             showEmailForm: @js($showMessageFormByDefault && old('channel', $defaultComposeChannel ?? 'email') === 'email'),
             composeLoading: false,
             composeLoaded: @js(! empty($recipientContacts) || ! empty($composeTemplates)),
-            async openMessageCompose() {
+            async openSmsCompose() {
+                if (! this.composeLoaded) {
+                    this.composeLoading = true;
+                    try {
+                        if (typeof window.__propertyMessagesEnsureCompose === 'function') {
+                            await window.__propertyMessagesEnsureCompose();
+                        }
+                        this.composeLoaded = true;
+                    } catch {
+                        return;
+                    } finally {
+                        this.composeLoading = false;
+                    }
+                }
+                this.showSmsForm = true;
+                this.showEmailForm = false;
+            },
+            async openEmailCompose() {
                 if (! this.composeLoaded) {
                     this.composeLoading = true;
                     try {
@@ -33,24 +50,9 @@
                     }
                 }
                 this.showEmailForm = true;
-            },
-            openSmsCompose() {
-                this.openMessageCompose();
-                this.showSmsForm = true;
-                this.showEmailForm = false;
-            },
-            openEmailCompose() {
-                this.openMessageCompose();
-                this.showEmailForm = true;
                 this.showSmsForm = false;
-            },
-            init() {
-                window.__openPropertySmsCompose = () => this.openSmsCompose();
-                window.__openPropertyEmailCompose = () => this.openEmailCompose();
-                window.addEventListener('open-sms-compose', () => this.openSmsCompose());
-                window.addEventListener('open-email-compose', () => this.openEmailCompose());
             }
-        }" x-init="init()"></x-slot>
+        }"></x-slot>
     @endif
 
     @if ($canManage)

@@ -52,8 +52,6 @@
             @else
                 @if ($canManage)
                     <a href="{{ route('property.communications.sms_provider', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50">SMS wallet</a>
-                    <button type="button" onclick="if (window.__openPropertySmsCompose) window.__openPropertySmsCompose()" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Send SMS</button>
-                    <button type="button" onclick="if (window.__openPropertyEmailCompose) window.__openPropertyEmailCompose()" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Send email</button>
                     <a href="{{ route('property.communications.bulk', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Bulk messaging</a>
                     <a href="{{ route('property.communications.templates', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Templates</a>
                 @endif
