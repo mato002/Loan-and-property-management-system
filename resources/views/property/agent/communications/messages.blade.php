@@ -48,7 +48,7 @@
                 title="Send SMS"
                 max-width="2xl"
             >
-            <form method="post" action="{{ route('property.communications.messages.store') }}" class="space-y-3">
+            <form method="post" action="{{ route('property.communications.messages.store') }}" class="space-y-3" data-turbo="false">
                 @csrf
                 <input type="hidden" name="channel" value="sms" />
                 <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
@@ -76,7 +76,7 @@
                 title="Send email"
                 max-width="2xl"
             >
-            <form method="post" action="{{ route('property.communications.messages.store') }}" class="space-y-3">
+            <form method="post" action="{{ route('property.communications.messages.store') }}" class="space-y-3" data-turbo="false">
                 @csrf
                 <input type="hidden" name="channel" value="email" />
                 <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">
