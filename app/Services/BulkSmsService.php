@@ -28,7 +28,13 @@ class BulkSmsService
      */
     public function smsDriver(): string
     {
-        $driver = strtolower(trim((string) config('bulksms.driver', 'pradytec')));
+        // Check database setting first, fall back to .env config
+        $dbDriver = \App\Models\PropertyPortalSetting::getGlobalValue('bulksms_driver');
+        if ($dbDriver !== null && trim($dbDriver) !== '') {
+            $driver = strtolower(trim($dbDriver));
+        } else {
+            $driver = strtolower(trim((string) config('bulksms.driver', 'pradytec')));
+        }
 
         return in_array($driver, ['pradytec', 'africastalking'], true) ? $driver : 'pradytec';
     }

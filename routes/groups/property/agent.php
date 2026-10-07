@@ -616,6 +616,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/settings/equity', [PropertySettingsStoreWebController::class, 'equity'])->name('settings.equity');
     Route::get('/settings/branding', [PropertySettingsStoreWebController::class, 'branding'])->name('settings.branding');
     Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
+    Route::get('/settings/sms', [PropertySettingsStoreWebController::class, 'smsSettings'])->name('settings.sms');
+    Route::post('/settings/sms', [PropertySettingsStoreWebController::class, 'storeSmsSettings'])->middleware('property.permission:settings.manage')->name('settings.sms.store');
 
     // Per-agent SMS forwarder token. Self-service: each agent sees and
     // manages only their own tokens. No permission gate beyond being a

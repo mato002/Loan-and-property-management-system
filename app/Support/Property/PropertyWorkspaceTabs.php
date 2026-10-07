@@ -485,6 +485,15 @@ final class PropertyWorkspaceTabs
                 'hub_description' => 'Company name and logo used in printable docs.',
             ],
             [
+                'key' => 'sms',
+                'label' => 'SMS provider',
+                'route' => 'property.settings.sms',
+                'active' => ['property.settings.sms', 'property.settings.sms.*'],
+                'requires_any_pm_permission' => ['settings.manage'],
+                'hub_title' => 'SMS provider',
+                'hub_description' => 'Switch between Pradytec and Africa\'s Talking.',
+            ],
+            [
                 'key' => 'rules',
                 'label' => 'Automation rules',
                 'route' => 'property.settings.rules',
