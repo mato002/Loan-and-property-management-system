@@ -43,8 +43,14 @@
                 this.openMessageCompose();
                 this.showEmailForm = true;
                 this.showSmsForm = false;
+            },
+            init() {
+                window.__openPropertySmsCompose = () => this.openSmsCompose();
+                window.__openPropertyEmailCompose = () => this.openEmailCompose();
+                window.addEventListener('open-sms-compose', () => this.openSmsCompose());
+                window.addEventListener('open-email-compose', () => this.openEmailCompose());
             }
-        }" @open-message-compose.window="openMessageCompose()" @open-sms-compose.window="openSmsCompose()" @open-email-compose.window="openEmailCompose()"></x-slot>
+        }" x-init="init()"></x-slot>
     @endif
 
     @if ($canManage)
