@@ -86,6 +86,7 @@ class PropertyHrEmployeesController extends Controller
 
         foreach ($employees as $employee) {
             $showUrl = route('property.hr.employees.show', ['employee' => $employee->id], false);
+            $roleLabel = $employee->user?->pmRoles?->pluck('name')->filter()->join(', ') ?: '—';
             $isFieldOfficer = $this->hr->isFieldOfficerEmployee($employee);
             $portfolioStats = $employee->fieldOfficerProfile?->portfolioStats() ?? [];
             $loginState = $this->hr->loginActionState($employee);
@@ -117,6 +118,7 @@ class PropertyHrEmployeesController extends Controller
                         e($employee->full_name).
                         '</a>'
                     ),
+                    $roleLabel,
                     (string) ($portfolioStats['properties'] ?? 0),
                     (string) ($portfolioStats['units'] ?? 0),
                     (string) ($portfolioStats['tenants'] ?? 0),
@@ -148,13 +150,14 @@ class PropertyHrEmployeesController extends Controller
                     ),
                     (string) ($employee->department ?: '—'),
                     (string) ($employee->job_title ?: '—'),
+                    $roleLabel,
                     $employee->employmentStatusLabel(),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
                     $actions,
                 ];
             }
 
-            $tableRowFilters[] = mb_strtolower($employee->employee_number.' '.$employee->full_name.' '.$employee->email.' '.$employee->phone);
+            $tableRowFilters[] = mb_strtolower($employee->employee_number.' '.$employee->full_name.' '.$employee->email.' '.$employee->phone.' '.$roleLabel);
         }
 
         $stats = $isFieldOfficerList
@@ -172,14 +175,14 @@ class PropertyHrEmployeesController extends Controller
             ];
 
         $columns = $isFieldOfficerList
-            ? ['Number', 'Name', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact', 'Actions']
-            : ['Number', 'Name', 'Department', 'Job title', 'Status', 'Contact', 'Actions'];
+            ? ['Number', 'Name', 'Role', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact', 'Actions']
+            : ['Number', 'Name', 'Department', 'Job title', 'Role', 'Status', 'Contact', 'Actions'];
 
         return property_view('property.agent.hr.employees.index', [
             'filters' => $filters,
             'agents' => $this->agentOptionsForForm($request),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
+            'departments' => $this->hr->distinctEmployeeColumn('department'),
+            'jobTitles' => $this->hr->distinctEmployeeColumn('job_title'),
             'stats' => $stats,
             'columns' => $columns,
             'tableRows' => $tableRows,
@@ -194,8 +197,6 @@ class PropertyHrEmployeesController extends Controller
         return property_view('property.agent.hr.employees.create', array_merge([
             'agents' => $this->agentOptionsForForm($request),
             'defaultAgentUserId' => $this->defaultAgentUserId($request),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
             'suggestedEmployeeNumber' => $this->hr->generateNextEmployeeNumber(),
             'defaultJobTitle' => (string) $request->query('job_title', ''),
             'defaultIsFieldOfficer' => $request->boolean('field_officer') || $request->query('job_title') === PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
@@ -415,15 +416,13 @@ class PropertyHrEmployeesController extends Controller
 
     public function edit(Request $request, Employee $employee): View
     {
-        $employee->loadMissing('fieldOfficerProfile');
+        $employee->loadMissing(['fieldOfficerProfile', 'user.pmRoles']);
 
         return property_view('property.agent.hr.employees.edit', array_merge([
             'employee' => $employee,
             'agents' => $this->agentOptionsForForm($request),
             'defaultAgentUserId' => (int) ($employee->agent_user_id ?: $this->defaultAgentUserId($request)),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
-            'isFieldOfficer' => (bool) $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title),
+            'isFieldOfficer' => $this->hr->isFieldOfficerEmployee($employee),
             'propertyRoles' => $this->hr->propertyRolesForForm(),
             'rolesReady' => $this->hr->propertyRolesForForm()->isNotEmpty(),
             'linkedRoleIds' => $employee->user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [],
@@ -696,11 +695,10 @@ class PropertyHrEmployeesController extends Controller
                 : ['required', 'integer', 'exists:users,id'],
         ]);
 
-        $isFieldOfficer = $this->hr->rolesIncludeFieldOfficer($roleIds)
-            || $this->hr->isFieldOfficerJobTitle($validated['job_title'] ?? null);
-
         $provisionLogin = $request->boolean('provision_login');
         $roleIds = array_values(array_unique(array_filter(array_map('intval', (array) ($validated['role_ids'] ?? [])))));
+        $isFieldOfficer = $this->hr->rolesIncludeFieldOfficer($roleIds)
+            || $this->hr->isFieldOfficerJobTitle($validated['job_title'] ?? null);
 
         if ($provisionLogin && $roleIds === [] && ! $employee?->user_id) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -911,6 +909,7 @@ class PropertyHrEmployeesController extends Controller
         }
 
         return ($user->is_super_admin ?? false) === true
+            || $user->hasPmPermission('team.users.manage')
             || $user->hasPmPermission('properties.manage');
     }
 

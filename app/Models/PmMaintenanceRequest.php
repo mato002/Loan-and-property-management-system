@@ -28,15 +28,11 @@ class PmMaintenanceRequest extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId === null) {
+            $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
+            if ($ownerIds === []) {
                 return;
             }
             if (! Schema::hasColumn('properties', 'agent_user_id')) {
-                return;
-            }
-
-            if ($ownerIds === []) {
                 return;
             }
 

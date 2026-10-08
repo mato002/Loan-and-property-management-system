@@ -3,6 +3,7 @@
     $editUrl = $editUrl ?? route('property.hr.employees.edit', $employee);
     $canManage = $canManage ?? (auth()->check() && (
         (auth()->user()?->is_super_admin ?? false) === true
+        || auth()->user()?->hasPmPermission('team.users.manage')
         || auth()->user()?->hasPmPermission('properties.manage')
     ));
     $loginState = $loginState ?? [

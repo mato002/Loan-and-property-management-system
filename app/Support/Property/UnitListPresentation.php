@@ -54,8 +54,20 @@ final class UnitListPresentation
 
     public static function tenantCell(PropertyUnit $unit, string $tenantName, bool $hasActiveLease): HtmlString|string
     {
-        if ($tenantName !== '') {
-            return $tenantName;
+        $lease = $unit->relationLoaded('leases') ? $unit->leases->first() : null;
+        $tenantId = (int) ($lease?->pm_tenant_id ?? 0);
+        $name = $tenantName !== '' ? $tenantName : (string) ($lease?->pmTenant?->name ?? '');
+
+        if ($name !== '' && $tenantId > 0) {
+            $url = route('property.tenants.show', ['tenant' => $tenantId], false);
+
+            return new HtmlString(
+                '<a href="'.e($url).'" data-turbo-frame="property-main" class="font-medium text-indigo-700 hover:underline">'.e($name).'</a>'
+            );
+        }
+
+        if ($name !== '') {
+            return $name;
         }
 
         if ($unit->status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {

@@ -80,22 +80,37 @@ final class PropertyNavigation
         $workspaces = array_values(array_filter(
             $ordered,
             static function (array $workspace) use ($user): bool {
-                $perm = $workspace['requires_pm_permission'] ?? null;
-                if ($perm === null || $perm === '') {
-                    return true;
-                }
-                if (! $user instanceof User) {
+                $key = (string) ($workspace['key'] ?? '');
+                $required = PropertyModuleAccess::forWorkspace($key);
+                if ($required !== null && ! PropertyModuleAccess::userHasAny($user, $required)) {
                     return false;
                 }
 
-                return $user->hasPmPermission($perm);
+                $perm = $workspace['requires_pm_permission'] ?? null;
+                if (is_string($perm) && $perm !== '' && ! PropertyModuleAccess::userHasAny($user, [$perm])) {
+                    return false;
+                }
+
+                if ($key !== '' && in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true)) {
+                    return PropertyWorkspaceTabs::tabsFor($key, $user) !== [];
+                }
+
+                return true;
             }
         ));
 
-        return array_map(static function (array $workspace): array {
+        return array_map(static function (array $workspace) use ($user): array {
             unset($workspace['sidebar']);
 
             $key = (string) ($workspace['key'] ?? '');
+            $flyout = ($key !== '' && in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true))
+                ? PropertyWorkspaceTabs::flyoutFor($key, $user)
+                : ($workspace['flyout'] ?? []);
+            $workspace['flyout'] = array_values(array_filter(
+                $flyout,
+                static fn (array $item): bool => PropertyModuleAccess::allows($user, (string) ($item['route'] ?? '')),
+            ));
+
             if ($key === '' || ! in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true)) {
                 return $workspace;
             }
@@ -115,10 +130,6 @@ final class PropertyNavigation
                 $workspace['route_query'] = $entry['query'];
             } else {
                 unset($workspace['route_query']);
-            }
-
-            if ($key === 'settings') {
-                $workspace['flyout'] = PropertyWorkspaceTabs::flyoutFor('settings');
             }
 
             return $workspace;

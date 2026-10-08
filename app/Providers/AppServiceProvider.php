@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureLoanAccessPolicy;
 use App\Http\Middleware\EnsureLoanPermission;
 use App\Http\Middleware\EnsureLoanRole;
 use App\Http\Middleware\EnsureModuleAccess;
+use App\Http\Middleware\EnsurePropertyModuleAccess;
 use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -50,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('loan.access_policy', EnsureLoanAccessPolicy::class);
         $this->app->bind('property.portal', EnsurePropertyPortalRole::class);
         $this->app->bind('property.permission', EnsurePropertyPermission::class);
+        $this->app->bind('property.module', EnsurePropertyModuleAccess::class);
         $this->app->bind('superadmin', EnsureSuperAdmin::class);
 
         $this->app->extend('blade.compiler', function ($_compiler, $app) {

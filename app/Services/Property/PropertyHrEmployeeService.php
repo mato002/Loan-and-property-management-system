@@ -974,9 +974,7 @@ class PropertyHrEmployeeService
             return true;
         }
 
-        $roles = $employee->relationLoaded('user')
-            ? $employee->user?->pmRoles
-            : $employee->user?->pmRoles()->get(['pm_roles.id', 'pm_roles.name', 'pm_roles.slug']);
+        $roles = $employee->user?->pmRoles;
 
         return (bool) $roles?->contains(fn (PmRole $role) => $this->isFieldOfficerRole($role));
     }

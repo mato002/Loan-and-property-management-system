@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ConfigureViteHotRequests;
 use App\Http\Middleware\EnsureActivePropertySystem;
+use App\Http\Middleware\EnsurePropertyModuleAccess;
 use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\EnsureModuleAccess;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'property.system' => EnsureActivePropertySystem::class,
             'property.portal' => EnsurePropertyPortalRole::class,
             'property.permission' => EnsurePropertyPermission::class,
+            'property.module' => EnsurePropertyModuleAccess::class,
             'module.access' => EnsureModuleAccess::class,
             'loan.role' => EnsureLoanRole::class,
             'loan.permission' => EnsureLoanPermission::class,

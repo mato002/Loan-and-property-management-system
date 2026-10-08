@@ -241,7 +241,7 @@ final class PropertyWorkspaceTabs
      */
     public static function tabsFor(string $workspaceKey, ?User $user = null): array
     {
-        return match ($workspaceKey) {
+        $tabs = match ($workspaceKey) {
             'portfolio' => [
                 ['key' => 'properties', 'label' => 'Properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.store', 'property.properties.store_json', 'property.properties.update', 'property.properties.destroy', 'property.properties.offboarding', 'property.properties.offboarding.*']],
                 ['key' => 'units', 'label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
@@ -343,11 +343,14 @@ final class PropertyWorkspaceTabs
                 ['key' => 'cash_bank', 'label' => 'Cash & Bank', 'route' => 'property.accounting.cash_bank.reconciliation', 'active' => ['property.accounting.cash_bank.*', 'property.accounting.reports.cash_book', 'property.accounting.reports.cash_book.*']],
                 ['key' => 'reports', 'label' => 'Reports', 'route' => 'property.accounting.reports.trial_balance', 'active' => ['property.accounting.reports.trial_balance', 'property.accounting.reports.trial_balance.*', 'property.accounting.reports.income_statement', 'property.accounting.reports.income_statement.*', 'property.accounting.reports.balance_sheet', 'property.accounting.reports.aged_receivables', 'property.accounting.reports.aged_payables', 'property.accounting.reports.deposit_liability']],
                 ['key' => 'controls', 'label' => 'Controls', 'route' => 'property.accounting.audit_trail', 'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.*', 'property.accounting.controls.*']],
+                ['key' => 'payroll', 'label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],
                 ['key' => 'setup', 'label' => 'Setup', 'route' => 'property.accounting.settings.account_mapping', 'active' => ['property.accounting.settings.*', 'property.accounting.payroll.settings', 'property.accounting.payroll.settings.*']],
             ],
-            'settings' => self::filterTabsForUser(self::settingsTabsCatalog(), $user),
+            'settings' => self::settingsTabsCatalog(),
             default => [],
         };
+
+        return self::filterTabsForUser($tabs, $user);
     }
 
     /**
@@ -559,18 +562,10 @@ final class PropertyWorkspaceTabs
             static function (array $tab) use ($user): bool {
                 $required = $tab['requires_any_pm_permission'] ?? null;
                 if (! is_array($required) || $required === []) {
-                    return true;
-                }
-                if (! $user instanceof User) {
-                    return false;
-                }
-                foreach ($required as $permission) {
-                    if ($user->hasPmPermission((string) $permission)) {
-                        return true;
-                    }
+                    $required = PropertyModuleAccess::requiredForRoute((string) ($tab['route'] ?? ''));
                 }
 
-                return false;
+                return PropertyModuleAccess::userHasAny($user instanceof User ? $user : null, $required);
             }
         ));
     }
