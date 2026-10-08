@@ -297,7 +297,7 @@
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="text-[10px] sm:text-sm font-bold text-emerald-100 uppercase tracking-widest">Super Admin</div>
-                                <div class="text-sm sm:text-lg font-black text-white leading-snug break-words">{{ $title ?? 'Console' }}</div>
+                                <div class="text-sm sm:text-lg font-black text-white leading-snug break-words" data-open-task-title>{{ $title ?? 'Console' }}</div>
                             </div>
                         </div>
 
@@ -356,6 +356,8 @@
                         </div>
                     </div>
                 </header>
+
+                @include('layouts.partials.open-tasks', ['openTasksScope' => 'superadmin', 'openTasksFrame' => ''])
 
                 {{-- Content --}}
                 <main class="flex-1 min-w-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">

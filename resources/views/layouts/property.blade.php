@@ -363,6 +363,8 @@
                     @include('layouts.property_header')
                 </div>
 
+                @include('layouts.partials.open-tasks', ['openTasksScope' => 'property', 'openTasksFrame' => 'property-main'])
+
                 <!-- Scrollable Content Area (Header/Footer remain constant) -->
                 <main
                     id="property-workspace-main"
