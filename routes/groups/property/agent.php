@@ -391,8 +391,10 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
     Route::get('/maintenance/requests/export', [PmMaintenanceWebController::class, 'requestsExport'])->name('maintenance.requests.export');
     Route::post('/maintenance/requests', [PmMaintenanceWebController::class, 'storeRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.store');
+    Route::get('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'showRequest'])->whereNumber('requestItem')->name('maintenance.requests.show');
     Route::get('/maintenance/requests/{requestItem}/edit', [PmMaintenanceWebController::class, 'editRequest'])->name('maintenance.requests.edit');
     Route::put('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'updateRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.update');
+    Route::delete('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'destroyRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.destroy');
     Route::post('/maintenance/requests/{requestItem}/status', [PmMaintenanceWebController::class, 'updateRequestStatus'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.status');
     Route::get('/maintenance/jobs', [PmMaintenanceWebController::class, 'jobs'])->name('maintenance.jobs');
     Route::get('/maintenance/jobs/export', [PmMaintenanceWebController::class, 'jobsExport'])->name('maintenance.jobs.export');

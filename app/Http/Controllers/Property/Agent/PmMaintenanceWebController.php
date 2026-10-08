@@ -68,8 +68,10 @@ class PmMaintenanceWebController extends Controller
             ['label' => 'Total', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
         ];
 
-        $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) {
-            $actionsBody = '<a href="'.route('property.maintenance.requests.edit', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
+        $canManageRequests = (bool) $request->user()?->hasPmPermission('maintenance.manage');
+        $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) use ($canManageRequests) {
+            $actionsBody = '<a href="'.route('property.maintenance.requests.show', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">View</a>'
+                .'<a href="'.route('property.maintenance.requests.edit', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
             if (! in_array($r->status, ['done', 'closed'], true)) {
                 $actionsBody .=
                     '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
@@ -79,6 +81,12 @@ class PmMaintenanceWebController extends Controller
                     '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
                     '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
+                    '</form>';
+            }
+            if ($canManageRequests) {
+                $actionsBody .=
+                    '<form method="POST" action="'.route('property.maintenance.requests.destroy', $r).'" data-turbo-frame="property-main" class="block" data-swal-title="Delete this request?" data-swal-confirm="Delete maintenance request #'.$r->id.'? Linked jobs are removed with it." data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
                     '</form>';
             }
 
@@ -94,7 +102,7 @@ class PmMaintenanceWebController extends Controller
             );
 
             return [
-                '#'.$r->id,
+                new HtmlString('<a href="'.route('property.maintenance.requests.show', $r).'" data-turbo-frame="property-main" class="font-medium text-blue-700 hover:underline">#'.$r->id.'</a>'),
                 $r->locationLabel(),
                 $r->category,
                 Str::limit($r->description, 40),
@@ -243,6 +251,28 @@ class PmMaintenanceWebController extends Controller
         }
 
         return back()->with('success', 'Request status updated.');
+    }
+
+    public function showRequest(PmMaintenanceRequest $requestItem): View
+    {
+        $requestItem->load(['unit.property', 'property', 'reportedBy', 'assignedUser', 'pmTenant', 'jobs.vendor']);
+
+        return property_view('property.agent.maintenance.request_show', [
+            'requestItem' => $requestItem,
+            'canManage' => (bool) auth()->user()?->hasPmPermission('maintenance.manage'),
+        ]);
+    }
+
+    public function destroyRequest(PmMaintenanceRequest $requestItem): RedirectResponse
+    {
+        $showUrl = route('property.maintenance.requests.show', $requestItem);
+        $requestItem->delete();
+        $previous = url()->previous();
+        if ($previous === '' || str_starts_with($previous, $showUrl)) {
+            return redirect()->route('property.maintenance.requests')->with('success', 'Maintenance request deleted.');
+        }
+
+        return back()->with('success', 'Maintenance request deleted.');
     }
 
     public function editRequest(Request $request, PmMaintenanceRequest $requestItem): View
