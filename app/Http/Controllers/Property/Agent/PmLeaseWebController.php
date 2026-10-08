@@ -81,7 +81,7 @@ class PmLeaseWebController extends Controller
             'to' => trim((string) $request->query('to', '')),
             'sort' => trim((string) $request->query('sort', 'start_date')),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))) === 'asc' ? 'asc' : 'desc',
-            'per_page' => $request->query('per_page', '30'),
+            'per_page' => $request->query('per_page', '100'),
         ];
     }
 
@@ -283,7 +283,7 @@ SQL;
     private function paginateLeaseList(Builder $query, array $filters, int $perPage = 50): LengthAwarePaginator
     {
         $this->applyLeaseCarryForwardFilter($query, $filters);
-        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 30);
+        $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 100);
 
         return $query->paginate($perPage)->withQueryString();
     }
