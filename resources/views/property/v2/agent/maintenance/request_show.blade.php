@@ -53,6 +53,32 @@
         </dl>
     </div>
 
+    @php
+        $requestFiles = $requestItem->relationLoaded('files') ? $requestItem->files : collect();
+    @endphp
+    <div class="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+        <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Photos and videos</h2>
+        @if ($requestFiles->isEmpty())
+            <p class="mt-2 text-sm text-slate-500">No photos or videos were attached to this request.</p>
+        @else
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                @foreach ($requestFiles as $file)
+                    @php $fileUrl = route('property.maintenance.requests.files.show', [$requestItem, $file]); @endphp
+                    <figure class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900/40">
+                        @if ($file->isVideo())
+                            <video controls preload="metadata" class="w-full max-h-80 bg-black" src="{{ $fileUrl }}"></video>
+                        @else
+                            <a href="{{ $fileUrl }}" target="_blank" rel="noopener">
+                                <img src="{{ $fileUrl }}" alt="{{ $file->original_name }}" class="w-full max-h-80 object-contain bg-slate-100 dark:bg-slate-900" />
+                            </a>
+                        @endif
+                        <figcaption class="px-3 py-2 text-xs text-slate-600 dark:text-slate-300 truncate">{{ $file->original_name }}</figcaption>
+                    </figure>
+                @endforeach
+            </div>
+        @endif
+    </div>
+
     <div class="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
             <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Linked jobs</h2>

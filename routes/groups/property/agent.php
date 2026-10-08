@@ -388,9 +388,11 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/properties/{property}', [PropertyPortfolioController::class, 'showProperty'])->whereNumber('property')->name('properties.show');
     Route::get('/properties', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('portfolio'))->name('properties.index');
 
+    Route::get('/maintenance/requests/open-count', [PmMaintenanceWebController::class, 'openRequestCount'])->name('maintenance.requests.open_count');
     Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
     Route::get('/maintenance/requests/export', [PmMaintenanceWebController::class, 'requestsExport'])->name('maintenance.requests.export');
     Route::post('/maintenance/requests', [PmMaintenanceWebController::class, 'storeRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.store');
+    Route::get('/maintenance/requests/{requestItem}/files/{file}', [PmMaintenanceWebController::class, 'showRequestFile'])->whereNumber(['requestItem', 'file'])->name('maintenance.requests.files.show');
     Route::get('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'showRequest'])->whereNumber('requestItem')->name('maintenance.requests.show');
     Route::get('/maintenance/requests/{requestItem}/edit', [PmMaintenanceWebController::class, 'editRequest'])->name('maintenance.requests.edit');
     Route::put('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'updateRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.update');

@@ -562,11 +562,19 @@
             </div>
             <div x-show="!showUnitGrid()">
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
-                <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                    <option value="per_unit" x-show="isElectricityType()" x-cloak>Per unit</option>
-                    <option value="fixed">Fixed</option>
-                    <option value="variable" x-text="isWaterType() ? 'Meter reading' : 'Enter each month'"></option>
-                </select>
+                <template x-if="isWaterType()">
+                    <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                        <option value="fixed">Fixed</option>
+                        <option value="variable">Meter reading</option>
+                    </select>
+                </template>
+                <template x-if="!isWaterType()">
+                    <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                        <option value="fixed">Fixed</option>
+                        <option value="per_unit">Per unit</option>
+                        <option value="variable">Enter each month</option>
+                    </select>
+                </template>
             </div>
             <div x-show="showUnitGrid()" class="rounded-xl border border-slate-200">
                 <div class="flex flex-wrap items-end gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">

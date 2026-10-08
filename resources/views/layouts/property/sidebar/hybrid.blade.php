@@ -115,11 +115,19 @@
                         class="property-nav-single-link group flex flex-1 items-center gap-2 rounded-lg border-l-[3px] px-2 py-2 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact min-w-0"
                         :title="sidebarDesktopOpen ? '' : '{{ $workspace['label'] }}'"
                     >
-                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                        <span class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
                             <i class="fa-solid {{ $workspace['icon'] }} text-sm text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                            @if (($workspace['key'] ?? '') === 'maintenance')
+                                @include('property.partials.maintenance_request_bell', ['count' => (int) ($workspace['badge'] ?? 0), 'variant' => 'dot'])
+                            @endif
                         </span>
                         <span class="property-collapse-text flex flex-col min-w-0 flex-1">
-                            <span class="text-sm font-medium leading-snug truncate group-aria-[current=page]:font-semibold">{{ $workspace['label'] }}</span>
+                            <span class="flex items-center text-sm font-medium leading-snug truncate group-aria-[current=page]:font-semibold">
+                                {{ $workspace['label'] }}
+                                @if (($workspace['key'] ?? '') === 'maintenance')
+                                    @include('property.partials.maintenance_request_bell', ['count' => (int) ($workspace['badge'] ?? 0), 'variant' => 'inline'])
+                                @endif
+                            </span>
                         </span>
                     </a>
                     @if ($flyoutLinks !== [])

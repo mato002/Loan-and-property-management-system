@@ -410,20 +410,26 @@ class PropertyCommunicationsWebController extends Controller
     {
         /** @var BulkSmsService $bulk */
         $bulk = app(BulkSmsService::class);
-        $filters = $request->only(['status', 'page', 'per_page']);
+        $period = strtolower(trim((string) $request->query('period', 'month')));
+        if (! in_array($period, ['today', 'month', '30d'], true)) {
+            $period = 'month';
+        }
+        $filters = $request->only(['status', 'page', 'per_page', 'period']);
+        $filters['period'] = $period;
         $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
         $filters['per_page'] = $perPage;
 
         $history = $bulk->providerSmsHistory($filters);
-        $statistics = $bulk->providerSmsStatistics();
-        $stats = $this->providerSmsStatsCards($statistics);
+        $usage = $bulk->smsUsageSummary('property', $period, (string) ($filters['status'] ?? ''));
+        $wallet = $this->smsWalletStatus();
+        $currency = (string) ($wallet['currency'] ?? $bulk->currency());
 
         return property_view('property.agent.communications.sms_provider', [
-            'stats' => $stats,
+            'stats' => $this->smsUsageStatsCards($usage, $currency),
             'history' => $history,
-            'statistics' => $statistics,
+            'usage' => $usage,
             'filters' => $filters,
-            'smsWallet' => $this->smsWalletStatus(),
+            'smsWallet' => $wallet,
             'smsDriver' => $bulk->smsDriver(),
             'smsProviderLabel' => $bulk->providerLabel(),
             'smsTopup' => $this->smsTopupContext($request),
@@ -2064,6 +2070,34 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return '';
+    }
+
+    /**
+     * @param  array{today: array{sms: int, failed: int, spend: float, priced: int}, month: array{sms: int, failed: int, spend: float, priced: int}, days30: array{sms: int, failed: int, spend: float, priced: int}}  $usage
+     * @return list<array{label: string, value: string, hint: string}>
+     */
+    private function smsUsageStatsCards(array $usage, string $currency): array
+    {
+        $card = function (string $label, array $window) use ($currency): array {
+            $sms = (int) ($window['sms'] ?? 0);
+            $failed = (int) ($window['failed'] ?? 0);
+            $priced = (int) ($window['priced'] ?? 0);
+            $spend = (float) ($window['spend'] ?? 0);
+            $spendText = $priced > 0 ? number_format($spend, 2).' '.$currency : '—';
+            $hint = $failed > 0 ? $spendText.' · '.$failed.' failed' : $spendText;
+
+            return [
+                'label' => $label,
+                'value' => number_format($sms).' SMS',
+                'hint' => $hint,
+            ];
+        };
+
+        return [
+            $card('Today', (array) ($usage['today'] ?? [])),
+            $card('This month', (array) ($usage['month'] ?? [])),
+            $card('Last 30 days', (array) ($usage['days30'] ?? [])),
+        ];
     }
 
     /**

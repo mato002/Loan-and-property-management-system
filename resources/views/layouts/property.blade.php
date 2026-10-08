@@ -419,6 +419,7 @@
         @endif
 
         {{-- Phase 2C: property-auto-filter.js (search-only debounce + Apply for other controls) --}}
+        @include('layouts.partials.maintenance_request_bell_refresh')
         @stack('scripts')
 
         <template id="property-frame-skeleton-template">

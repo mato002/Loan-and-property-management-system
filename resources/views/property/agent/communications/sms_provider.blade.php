@@ -3,131 +3,147 @@
     $rows = (array) ($historyResult['data'] ?? []);
     $meta = (array) ($historyResult['meta'] ?? []);
     $historyOk = (bool) ($historyResult['ok'] ?? false);
-    $historyError = (string) ($historyResult['error'] ?? '');
     $currentPage = max(1, (int) ($meta['current_page'] ?? ($filters['page'] ?? 1)));
     $lastPage = max(1, (int) ($meta['last_page'] ?? 1));
     $total = (int) ($meta['total'] ?? count($rows));
-    $currency = (string) (($smsWallet['currency'] ?? 'KES'));
+    $currency = (string) (($usage['currency'] ?? $smsWallet['currency'] ?? 'KES'));
+    $period = (string) ($filters['period'] ?? 'month');
+    $days = (array) ($usage['days'] ?? []);
+    $recent = (array) ($usage['recent'] ?? []);
+    $periodLinks = [
+        'today' => 'Today',
+        'month' => 'This month',
+        '30d' => 'Last 30 days',
+    ];
+    $spendText = function (float $spend, int $priced) use ($currency): string {
+        return $priced > 0 ? number_format($spend, 2).' '.$currency : '—';
+    };
 @endphp
 
 <x-property.workspace :compact-list="false"
     title="Provider SMS"
-    subtitle="Live {{ $smsProviderLabel ?? 'provider' }} balance. Sends use this provider, not a separate local wallet."
     back-route="property.communications.index"
     :stats="$stats"
     :columns="[]"
     :show-search="false"
-    empty-title="No provider SMS history"
-    empty-hint="Messages sent through Pradytec will appear here once the provider API is configured."
 >
     <x-slot name="above">
-        @include('property.agent.communications.partials.communications_manage_bar', ['manageContext' => 'provider'])
+        <div class="flex flex-wrap items-center gap-2">
+            @foreach ($periodLinks as $key => $label)
+                <a href="{{ route('property.communications.sms_provider', ['period' => $key], false) }}" data-turbo-frame="property-main" class="rounded-lg px-3 py-1.5 text-xs font-semibold {{ $period === $key ? 'bg-emerald-700 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700/50' }}">{{ $label }}</a>
+            @endforeach
+            <a href="{{ route('property.communications.messages', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700/50">SMS / email log</a>
+        </div>
 
-        @include('property.agent.communications.partials.sms_wallet_banner')
+        @include('property.agent.communications.partials.sms_wallet_banner', ['compact' => true])
 
         @if (($smsDriver ?? 'pradytec') !== 'africastalking')
             @include('property.agent.communications.partials.sms_topup_card')
-        @endif
-
-        @if (($smsDriver ?? 'pradytec') !== 'africastalking')
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm text-xs text-slate-600 dark:text-slate-300">
-            <p class="font-semibold text-slate-800 dark:text-slate-100">Pradytec webhook URL</p>
-            <p class="mt-1">Share this with your Pradytec account manager for real-time balance and delivery updates:</p>
-            <code class="mt-2 block break-all rounded-lg bg-slate-100 dark:bg-slate-900 px-3 py-2 text-[11px]">{{ $webhookUrl ?? url('/webhooks/property/communications/pradytec') }}</code>
-            <p class="mt-2 opacity-80">Set <code class="text-[11px]">BULKSMS_WEBHOOK_SECRET</code> in <code class="text-[11px]">.env</code> to match the secret they configure.</p>
-        </div>
-        @else
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm text-xs text-slate-600 dark:text-slate-300">
-            <p class="font-semibold text-slate-800 dark:text-slate-100">Africa's Talking</p>
-            <p class="mt-1">Balance and charges come from the Africa's Talking account. Top up that account in the Africa's Talking dashboard. The local SMS wallet and the 0.60 Pradytec rate are not used.</p>
-        </div>
-        @endif
-
-        <form method="get" action="{{ route('property.communications.sms_provider', absolute: false) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach (['queued', 'sent', 'delivered', 'failed'] as $statusOption)
-                            <option value="{{ $statusOption }}" @selected(($filters['status'] ?? '') === $statusOption)>{{ ucfirst($statusOption) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Per page</label>
-                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach ([10, 20, 50, 100] as $size)
-                            <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 20) === $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                </div>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 px-4 py-3 shadow-sm">
+                <p class="text-xs font-medium text-slate-500">Webhook</p>
+                <code class="mt-1 block break-all text-[11px] text-slate-800 dark:text-slate-100">{{ $webhookUrl ?? url('/webhooks/property/communications/pradytec') }}</code>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Apply filters</button>
-                <a href="{{ route('property.communications.sms_provider', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            </div>
-        </form>
+        @endif
     </x-slot>
 
-    @if (! $historyOk)
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
-            {{ $historyError !== '' ? $historyError : 'Could not load provider SMS history.' }}
-        </div>
-    @elseif ($rows === [])
-        <p class="text-sm text-slate-600 dark:text-slate-300">No messages match your filters.</p>
-    @else
-        <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm">
-            <table class="min-w-full text-sm">
-                <thead class="bg-slate-50 dark:bg-slate-900/50 text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+    <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                <tr>
+                    <th class="px-4 py-3">Date</th>
+                    <th class="px-4 py-3 text-right">Sent</th>
+                    <th class="px-4 py-3 text-right">Failed</th>
+                    <th class="px-4 py-3 text-right">Spend</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($days as $day)
+                    <tr class="border-t border-slate-100 dark:border-slate-700/70">
+                        <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-900 dark:text-white">{{ \Illuminate\Support\Carbon::parse($day['day'])->format('d M Y') }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums">{{ number_format((int) $day['sms']) }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums {{ (int) $day['failed'] > 0 ? 'text-rose-700 dark:text-rose-300' : '' }}">{{ number_format((int) $day['failed']) }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums">{{ $spendText((float) $day['spend'], (int) $day['priced']) }}</td>
+                    </tr>
+                @empty
                     <tr>
-                        <th class="px-4 py-3">Message ID</th>
+                        <td colspan="4" class="px-4 py-8 text-center text-slate-500">0</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-6 overflow-x-auto border-t border-slate-100 dark:border-slate-700">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                <tr>
+                    <th class="px-4 py-3">Sent</th>
+                    <th class="px-4 py-3">Phone</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3 text-right">Spend</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($recent as $row)
+                    @php
+                        $status = strtolower((string) ($row['status'] ?? ''));
+                        $statusClass = match ($status) {
+                            'failed' => 'text-rose-700 dark:text-rose-300',
+                            'sent', 'delivered' => 'text-emerald-700 dark:text-emerald-300',
+                            default => 'text-slate-600 dark:text-slate-300',
+                        };
+                    @endphp
+                    <tr class="border-t border-slate-100 dark:border-slate-700/70">
+                        <td class="px-4 py-3 whitespace-nowrap text-xs">{{ $row['at'] !== '' ? $row['at'] : '—' }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap"><x-phone-link :value="$row['phone']" /></td>
+                        <td class="px-4 py-3 whitespace-nowrap font-semibold {{ $statusClass }}">{{ strtoupper($status !== '' ? $status : '—') }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums">{{ $row['spend'] !== null ? number_format((float) $row['spend'], 2).' '.$currency : '—' }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="4" class="px-4 py-8 text-center text-slate-500">0</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    @if ($historyOk && $rows !== [])
+        <div class="mt-6 overflow-x-auto border-t border-slate-100 dark:border-slate-700">
+            <table class="min-w-full text-sm">
+                <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                    <tr>
+                        <th class="px-4 py-3">Sent</th>
                         <th class="px-4 py-3">Recipient</th>
                         <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3">Cost</th>
-                        <th class="px-4 py-3">Sent</th>
-                        <th class="px-4 py-3">Delivered</th>
-                        <th class="px-4 py-3">Message</th>
+                        <th class="px-4 py-3 text-right">Cost</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach ($rows as $row)
-                        @php
-                            $row = (array) $row;
-                            $status = strtolower((string) ($row['status'] ?? 'unknown'));
-                            $statusClass = match ($status) {
-                                'delivered' => 'text-emerald-700 dark:text-emerald-300',
-                                'sent', 'queued' => 'text-amber-700 dark:text-amber-300',
-                                'failed' => 'text-rose-700 dark:text-rose-300',
-                                default => 'text-slate-600 dark:text-slate-300',
-                            };
-                        @endphp
+                        @php $row = (array) $row; @endphp
                         <tr class="border-t border-slate-100 dark:border-slate-700/70">
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs">{{ $row['message_id'] ?? '—' }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-xs">{{ isset($row['sent_at']) ? \Illuminate\Support\Str::of((string) $row['sent_at'])->replace('T', ' ')->substr(0, 16) : '—' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ $row['recipient'] ?? '—' }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap font-semibold {{ $statusClass }}">{{ strtoupper($status) }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap">{{ number_format((float) ($row['cost'] ?? 0), 2) }} {{ $currency }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-xs">{{ isset($row['sent_at']) ? \Illuminate\Support\Str::of((string) $row['sent_at'])->replace('T', ' ')->substr(0, 19) : '—' }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-xs">{{ isset($row['delivered_at']) ? \Illuminate\Support\Str::of((string) $row['delivered_at'])->replace('T', ' ')->substr(0, 19) : '—' }}</td>
-                            <td class="px-4 py-3 max-w-md truncate" title="{{ $row['message'] ?? '' }}">{{ \Illuminate\Support\Str::limit((string) ($row['message'] ?? ''), 80) }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold">{{ strtoupper((string) ($row['status'] ?? '—')) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) ($row['cost'] ?? 0), 2) }} {{ $currency }}</td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
-        </div>
-
-        @if ($lastPage > 1)
-            <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
-                <p>Page {{ $currentPage }} of {{ $lastPage }} · {{ number_format($total) }} total</p>
-                <div class="flex flex-wrap gap-2">
-                    @if ($currentPage > 1)
-                        <a href="{{ route('property.communications.sms_provider', array_merge((array) ($filters ?? []), ['page' => $currentPage - 1]), absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50">Previous</a>
-                    @endif
-                    @if ($currentPage < $lastPage)
-                        <a href="{{ route('property.communications.sms_provider', array_merge((array) ($filters ?? []), ['page' => $currentPage + 1]), absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50">Next</a>
-                    @endif
+            @if ($lastPage > 1)
+                <div class="flex items-center justify-between gap-3 px-4 py-3 text-xs text-slate-600">
+                    <p>{{ number_format($total) }}</p>
+                    <div class="flex gap-2">
+                        @if ($currentPage > 1)
+                            <a href="{{ route('property.communications.sms_provider', array_merge((array) ($filters ?? []), ['page' => $currentPage - 1]), false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 font-medium">Previous</a>
+                        @endif
+                        @if ($currentPage < $lastPage)
+                            <a href="{{ route('property.communications.sms_provider', array_merge((array) ($filters ?? []), ['page' => $currentPage + 1]), false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 font-medium">Next</a>
+                        @endif
+                    </div>
                 </div>
-            </div>
-        @endif
+            @endif
+        </div>
     @endif
 </x-property.workspace>

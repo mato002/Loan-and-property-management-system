@@ -472,6 +472,113 @@ class BulkSmsService
         return ['ok' => true, 'statistics' => $json];
     }
 
+    /**
+     * Local send log for expenditure: today, this calendar month, and the last 30 days.
+     *
+     * @return array{
+     *     currency: string,
+     *     today: array{sms: int, failed: int, spend: float, priced: int},
+     *     month: array{sms: int, failed: int, spend: float, priced: int},
+     *     days30: array{sms: int, failed: int, spend: float, priced: int},
+     *     days: list<array{day: string, sms: int, failed: int, spend: float, priced: int}>,
+     *     recent: list<array{phone: string, status: string, spend: float|null, at: string}>
+     * }
+     */
+    public function smsUsageSummary(string $module = 'property', string $period = 'month', string $status = ''): array
+    {
+        $empty = ['sms' => 0, 'failed' => 0, 'spend' => 0.0, 'priced' => 0];
+        $summary = [
+            'currency' => $this->currency(),
+            'today' => $empty,
+            'month' => $empty,
+            'days30' => $empty,
+            'days' => [],
+            'recent' => [],
+        ];
+
+        if (! Schema::hasTable('sms_logs') || ! Schema::hasColumn('sms_logs', 'module')) {
+            return $summary;
+        }
+
+        $now = now();
+        $summary['today'] = $this->smsUsageWindow($module, $now->copy()->startOfDay(), $now->copy()->endOfDay());
+        $summary['month'] = $this->smsUsageWindow($module, $now->copy()->startOfMonth(), $now->copy()->endOfMonth());
+        $summary['days30'] = $this->smsUsageWindow($module, $now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay());
+
+        [$rangeStart, $rangeEnd] = match ($period) {
+            'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
+            '30d' => [$now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay()],
+            default => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+        };
+
+        $dayRows = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$rangeStart])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$rangeEnd])
+            ->selectRaw('DATE(COALESCE(sent_at, created_at)) as day')
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 0 ELSE 1 END) as sms")
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN charged_amount ELSE 0 END) as spend")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN 1 ELSE 0 END) as priced")
+            ->groupByRaw('DATE(COALESCE(sent_at, created_at))')
+            ->orderByDesc('day')
+            ->get();
+
+        $summary['days'] = $dayRows->map(fn ($row) => [
+            'day' => (string) $row->day,
+            'sms' => (int) $row->sms,
+            'failed' => (int) $row->failed,
+            'spend' => (float) $row->spend,
+            'priced' => (int) $row->priced,
+        ])->all();
+
+        $status = strtolower(trim($status));
+        $recent = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$rangeStart])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$rangeEnd])
+            ->when(in_array($status, ['sent', 'failed'], true), fn ($query) => $query->where('status', $status))
+            ->orderByDesc(DB::raw('COALESCE(sent_at, created_at)'))
+            ->limit(40)
+            ->get(['phone', 'status', 'charged_amount', 'sent_at', 'created_at']);
+
+        $summary['recent'] = $recent->map(function (SmsLog $log) {
+            $at = $log->sent_at ?? $log->created_at;
+
+            return [
+                'phone' => (string) $log->phone,
+                'status' => (string) $log->status,
+                'spend' => $log->charged_amount !== null && (float) $log->charged_amount > 0 ? (float) $log->charged_amount : null,
+                'at' => $at ? $at->format('Y-m-d H:i') : '',
+            ];
+        })->all();
+
+        return $summary;
+    }
+
+    /**
+     * @return array{sms: int, failed: int, spend: float, priced: int}
+     */
+    private function smsUsageWindow(string $module, \Illuminate\Support\Carbon $start, \Illuminate\Support\Carbon $end): array
+    {
+        $row = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$start])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$end])
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 0 ELSE 1 END) as sms")
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN charged_amount ELSE 0 END) as spend")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN 1 ELSE 0 END) as priced")
+            ->first();
+
+        return [
+            'sms' => (int) ($row->sms ?? 0),
+            'failed' => (int) ($row->failed ?? 0),
+            'spend' => (float) ($row->spend ?? 0),
+            'priced' => (int) ($row->priced ?? 0),
+        ];
+    }
+
     private function providerBalanceCacheKey(): string
     {
         if ($this->isAfricasTalkingDriver()) {
@@ -1317,10 +1424,18 @@ class BulkSmsService
             }
 
             $now = now();
+            $chargedTotal = 0.0;
             foreach ($phones as $phone) {
                 $phoneStatus = (array) ($send['per_phone'][$phone] ?? []);
                 $status = (string) ($phoneStatus['status'] ?? 'sent');
                 $providerId = (string) ($phoneStatus['provider_message_id'] ?? '');
+                $providerCost = isset($phoneStatus['cost']) ? (float) $phoneStatus['cost'] : 0.0;
+                $charged = $providerCost > 0
+                    ? round($providerCost, 4)
+                    : ($status === 'failed' || $cost <= 0 ? null : $cost);
+                if ($charged !== null && $status !== 'failed') {
+                    $chargedTotal += (float) $charged;
+                }
 
                 SmsLog::create([
                     'user_id' => $userId,
@@ -1330,7 +1445,7 @@ class BulkSmsService
                     'message' => $message,
                     'status' => $status === 'failed' ? 'failed' : 'sent',
                     'error' => $status === 'failed' ? (string) ($phoneStatus['error'] ?? 'Provider send failed') : null,
-                    'charged_amount' => $cost,
+                    'charged_amount' => $charged,
                     'sent_at' => $status === 'failed' ? null : $now,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -1351,7 +1466,7 @@ class BulkSmsService
             }
 
             if (in_array($mode, ['provider', 'both'], true)) {
-                $this->debitCachedProviderBalance($total);
+                $this->debitCachedProviderBalance($chargedTotal > 0 ? $chargedTotal : $total);
             }
 
             if ($wallet !== null && in_array($mode, ['local_wallet', 'both'], true)) {
@@ -1781,6 +1896,7 @@ class BulkSmsService
                     'status' => $ok ? 'sent' : 'failed',
                     'provider_message_id' => (string) ($row['messageId'] ?? ''),
                     'error' => $ok ? null : (string) ($row['status'] ?? 'Failed at provider'),
+                    'cost' => $this->parseCurrencyAmount((string) ($row['cost'] ?? '')),
                 ];
             }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmMaintenanceRequestFile;
 use App\Models\PmMessageLog;
 use App\Models\PmVendor;
 use App\Models\Property;
@@ -17,9 +18,15 @@ use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyHrWorkflowService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -171,6 +178,7 @@ class PmMaintenanceWebController extends Controller
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'in:normal,urgent,emergency'],
         ]);
+        $this->prepareMaintenanceAttachments($request);
 
         $unitId = (int) ($data['property_unit_id'] ?? 0);
         if ($unitId <= 0 && ! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
@@ -195,6 +203,7 @@ class PmMaintenanceWebController extends Controller
         }
 
         $ticket = PmMaintenanceRequest::query()->create($attributes);
+        $this->storeMaintenanceAttachments($request, $ticket);
         $routedTo = app(PropertyHrWorkflowService::class)->routeMaintenanceRequest($ticket);
 
         $success = $routedTo
@@ -256,6 +265,7 @@ class PmMaintenanceWebController extends Controller
     public function showRequest(PmMaintenanceRequest $requestItem): View
     {
         $requestItem->load(['unit.property', 'property', 'reportedBy', 'assignedUser', 'pmTenant', 'jobs.vendor']);
+        $this->loadRequestFiles($requestItem);
 
         return property_view('property.agent.maintenance.request_show', [
             'requestItem' => $requestItem,
@@ -278,6 +288,7 @@ class PmMaintenanceWebController extends Controller
     public function editRequest(Request $request, PmMaintenanceRequest $requestItem): View
     {
         $requestItem->load(['unit.property', 'reportedBy']);
+        $this->loadRequestFiles($requestItem);
 
         return property_view('property.agent.maintenance.request_edit', array_merge([
             'requestItem' => $requestItem,
@@ -294,6 +305,7 @@ class PmMaintenanceWebController extends Controller
             'urgency' => ['required', 'in:normal,urgent,emergency'],
             'status' => ['required', 'in:open,in_progress,done,closed'],
         ]);
+        $this->prepareMaintenanceAttachments($request, $requestItem);
 
         $oldStatus = (string) $requestItem->status;
         $unitId = (int) ($data['property_unit_id'] ?? 0);
@@ -315,6 +327,7 @@ class PmMaintenanceWebController extends Controller
             unset($data['property_id']);
         }
         $requestItem->update($data);
+        $this->storeMaintenanceAttachments($request, $requestItem);
         $requestItem->refresh();
         $newStatus = (string) ($data['status'] ?? $oldStatus);
         if ($oldStatus !== $newStatus) {
@@ -846,6 +859,134 @@ class PmMaintenanceWebController extends Controller
             'columns' => ['Month', 'Tickets', 'Categories touched', 'Emergency', 'Repeat units', 'Notes'],
             'tableRows' => $rows,
         ]);
+    }
+
+    public function openRequestCount(): JsonResponse
+    {
+        return response()->json([
+            'count' => PmMaintenanceRequest::openAlertCount(),
+        ]);
+    }
+
+    public function showRequestFile(PmMaintenanceRequest $requestItem, PmMaintenanceRequestFile $file): BinaryFileResponse
+    {
+        abort_unless((int) $file->pm_maintenance_request_id === (int) $requestItem->id, 404);
+        $disk = Storage::disk($file->disk ?: 'local');
+        abort_unless($disk->exists($file->path), 404);
+
+        return response()->file($disk->path($file->path), [
+            'Content-Type' => $file->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="'.str_replace(['"', "\r", "\n"], '', (string) $file->original_name).'"',
+        ]);
+    }
+
+    private function loadRequestFiles(PmMaintenanceRequest $requestItem): void
+    {
+        if (Schema::hasTable('pm_maintenance_request_files')) {
+            $requestItem->load('files');
+        }
+    }
+
+    private function prepareMaintenanceAttachments(Request $request, ?PmMaintenanceRequest $ticket = null): void
+    {
+        $uploads = $this->maintenanceAttachmentUploads($request);
+        if ($uploads->isEmpty()) {
+            return;
+        }
+        if (! Schema::hasTable('pm_maintenance_request_files')) {
+            throw ValidationException::withMessages([
+                'attachments' => 'Photos and videos need the latest database migration before they can be saved.',
+            ]);
+        }
+
+        $request->validate([
+            'attachments' => ['array', 'max:30'],
+            'attachments.*' => ['file', 'max:1048576'],
+        ]);
+
+        foreach ($uploads as $file) {
+            $mime = (string) ($file->getMimeType() ?: '');
+            $extension = strtolower($file->getClientOriginalExtension());
+            $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'mp4', 'mov', 'webm', 'mkv', 'avi', '3gp', 'm4v', 'mpeg', 'mpg'];
+            if (! str_starts_with($mime, 'image/') && ! str_starts_with($mime, 'video/') && ! in_array($extension, $allowedExtensions, true)) {
+                throw ValidationException::withMessages([
+                    'attachments' => 'Only photos and videos can be attached.',
+                ]);
+            }
+        }
+
+        $existing = 0;
+        if ($ticket) {
+            $existing = (int) $ticket->files()->sum('size_bytes');
+        }
+        $incoming = (int) $uploads->sum(fn (UploadedFile $file) => (int) $file->getSize());
+        if ($existing + $incoming > 1073741824) {
+            throw ValidationException::withMessages([
+                'attachments' => 'Photos and videos must stay within 1 GB in total.',
+            ]);
+        }
+    }
+
+    private function storeMaintenanceAttachments(Request $request, PmMaintenanceRequest $ticket): void
+    {
+        $uploads = $this->maintenanceAttachmentUploads($request);
+        if ($uploads->isEmpty()) {
+            return;
+        }
+
+        $stored = [];
+        try {
+            foreach ($uploads as $file) {
+                $path = $file->store('maintenance-requests/'.$ticket->id, 'local');
+                if (! is_string($path) || $path === '') {
+                    throw ValidationException::withMessages([
+                        'attachments' => 'One of the files could not be saved. Try again with a smaller photo or video.',
+                    ]);
+                }
+                $stored[] = $path;
+                $mime = (string) ($file->getMimeType() ?: '');
+                if ($mime === '' || $mime === 'application/octet-stream') {
+                    $videoExtensions = ['mp4', 'mov', 'webm', 'mkv', 'avi', '3gp', 'm4v', 'mpeg', 'mpg'];
+                    $mime = in_array(strtolower($file->getClientOriginalExtension()), $videoExtensions, true)
+                        ? 'video/mp4'
+                        : 'image/jpeg';
+                }
+                $ticket->files()->create([
+                    'disk' => 'local',
+                    'path' => $path,
+                    'original_name' => mb_substr($file->getClientOriginalName() ?: 'attachment', 0, 180),
+                    'mime_type' => mb_substr($mime, 0, 120),
+                    'size_bytes' => (int) $file->getSize(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            foreach ($stored as $path) {
+                Storage::disk('local')->delete($path);
+            }
+            $ticket->files()->whereIn('path', $stored)->delete();
+            throw $e;
+        }
+    }
+
+    /**
+     * @return Collection<int, UploadedFile>
+     */
+    private function maintenanceAttachmentUploads(Request $request): Collection
+    {
+        return collect($request->file('attachments', []))
+            ->filter(function ($file) {
+                if (! $file instanceof UploadedFile) {
+                    return false;
+                }
+                if (! $file->isValid()) {
+                    throw ValidationException::withMessages([
+                        'attachments' => $file->getErrorMessage() ?: 'One of the files could not be uploaded.',
+                    ]);
+                }
+
+                return $file->getSize() > 0;
+            })
+            ->values();
     }
 
     private function resolveTenantIdForMaintenanceUnit(int $propertyUnitId): ?int

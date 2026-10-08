@@ -337,11 +337,9 @@
             </div>
         </div>
 
-        {{-- Agent: workspace strip when sidebar collapsed (desktop). Sidebar remains primary nav. --}}
+        {{-- Agent workspace strip. Stays visible with the sidebar so the maintenance count is on the tab. --}}
         @if ($portalRole === 'agent' && $agentWorkspaceLinks !== [])
             <div
-                x-show="!sidebarDesktopOpen"
-                x-cloak
                 class="relative z-[20] hidden lg:block border-t border-white/15 bg-emerald-800/40 backdrop-blur-sm"
             >
                 <nav class="property-header-workspaces flex flex-wrap items-center gap-1 px-4 py-2" aria-label="Workspaces">
@@ -355,6 +353,9 @@
                             class="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[32px] inline-flex items-center"
                         >
                             {{ $link['label'] }}
+                            @if (($link['key'] ?? '') === 'maintenance' || ($link['route'] ?? '') === 'property.maintenance.requests')
+                                @include('property.partials.maintenance_request_bell', ['count' => (int) (($link['badge'] ?? null) !== null ? $link['badge'] : \App\Models\PmMaintenanceRequest::openAlertCount())])
+                            @endif
                         </a>
                     @endforeach
                 </nav>

@@ -5,6 +5,7 @@ use App\Support\Auth\StaffModuleRedirect;
 use App\Http\Controllers\Integrations\MpesaDarajaWebhookController;
 use App\Http\Controllers\Loan\LoanPaymentWebhookController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Property\CoopIpnWebhookController;
 use App\Http\Controllers\Property\PropertyCommunicationWebhookController;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\PublicController;
@@ -178,6 +179,9 @@ Route::post('/webhooks/mpesa/b2c-result', [MpesaDarajaWebhookController::class, 
 Route::post('/webhooks/mpesa/transaction-status', [MpesaDarajaWebhookController::class, 'transactionStatusCallback'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.mpesa.transaction_status');
+Route::match(['get', 'post'], '/webhooks/property/payments/coop/ipn', [CoopIpnWebhookController::class, 'handle'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.property.payments.coop_ipn');
 Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
     ->whereIn('provider', ['kcb', 'equity', 'coop', 'im'])
     ->withoutMiddleware([PreventRequestForgery::class])

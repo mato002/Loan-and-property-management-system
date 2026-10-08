@@ -103,6 +103,9 @@ final class PropertyNavigation
             unset($workspace['sidebar']);
 
             $key = (string) ($workspace['key'] ?? '');
+            if ($key === 'maintenance') {
+                $workspace['badge'] = \App\Models\PmMaintenanceRequest::openAlertCount();
+            }
             $flyout = ($key !== '' && in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true))
                 ? PropertyWorkspaceTabs::flyoutFor($key, $user)
                 : ($workspace['flyout'] ?? []);
@@ -504,9 +507,9 @@ final class PropertyNavigation
     }
 
     /**
-     * Header workspace strip — shown only when desktop sidebar is collapsed.
+     * Green header workspace strip, including workspaces that stay off the left rail.
      *
-     * @return list<array{label: string, route: string, patterns: list<string>, key: string}>
+     * @return list<array{label: string, route: string, patterns: list<string>, key: string, badge: int}>
      */
     public static function agentHeaderWorkspaces(?User $user = null): array
     {
@@ -518,8 +521,9 @@ final class PropertyNavigation
                 'route_params' => $workspace['route_params'] ?? [],
                 'route_query' => $workspace['route_query'] ?? [],
                 'patterns' => $workspace['active'],
+                'badge' => (int) ($workspace['badge'] ?? 0),
             ];
-        }, self::agentWorkspaces($user));
+        }, self::allAgentWorkspaces($user));
     }
 
     public static function routeIsActive(string $routeName, array $patterns): bool
@@ -608,10 +612,12 @@ final class PropertyNavigation
                 continue;
             }
             $nav[] = [
+                'key' => $key,
                 'label' => (string) ($workspace['label'] ?? $key),
                 'icon' => (string) ($workspace['icon'] ?? 'fa-circle'),
                 'route' => (string) ($workspace['route'] ?? 'property.dashboard'),
                 'patterns' => $workspace['active'] ?? [],
+                'badge' => (int) ($workspace['badge'] ?? 0),
             ];
         }
 

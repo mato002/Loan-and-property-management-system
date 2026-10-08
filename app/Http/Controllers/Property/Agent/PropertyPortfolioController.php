@@ -3832,18 +3832,21 @@ class PropertyPortfolioController extends Controller
     private function normalizeTemplateAmountMode(array $row): string
     {
         $mode = strtolower(trim((string) ($row['amount_mode'] ?? '')));
-        if (in_array($mode, ['variable', 'manual', 'monthly'], true)) {
+        $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
+        if (in_array($mode, ['variable', 'manual', 'monthly', 'meter', 'meter reading', 'meter_reading'], true)) {
             return 'variable';
         }
-        if ($mode === 'fixed') {
+        if ($mode === 'per_unit' || $mode === 'per unit') {
+            return $type === 'water' ? 'fixed' : 'per_unit';
+        }
+        if ($type === 'water' || $mode === 'fixed' || in_array($mode, ['rate + fee', 'rate+fee'], true)) {
             return 'fixed';
         }
         if ($this->templateStandingAmount($row) > 0.009) {
             return 'fixed';
         }
-        $type = $this->normalizeUtilityChargeType((string) ($row['charge_type'] ?? ''));
 
-        return $type === 'water' ? 'variable' : 'fixed';
+        return 'fixed';
     }
 
     /**
@@ -4057,6 +4060,14 @@ class PropertyPortfolioController extends Controller
         if ($fixed > 0.009) {
             return round($fixed, 2);
         }
+        $water = is_numeric($row['water_amount'] ?? null) ? (float) $row['water_amount'] : 0.0;
+        if ($water > 0.009) {
+            return round($water, 2);
+        }
+        $fee = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+        if ($fee > 0.009) {
+            return round($fee, 2);
+        }
         $rate = is_numeric($row['rate_per_unit'] ?? null) ? (float) $row['rate_per_unit'] : 0.0;
 
         return $rate > 0.009 ? round($rate, 2) : 0.0;
@@ -4071,13 +4082,7 @@ class PropertyPortfolioController extends Controller
         $all = json_decode($raw, true);
         $all = is_array($all) ? $all : [];
         $rows = $all[(string) $propertyId] ?? [];
-        $normalized = $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
-        $merged = $this->appendBilledUtilityTemplates($propertyId, $normalized);
-        if ($merged !== $normalized) {
-            $this->setPropertyChargeTemplates($propertyId, $merged);
-        }
-
-        return $merged;
+        return $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
     }
 
     /**

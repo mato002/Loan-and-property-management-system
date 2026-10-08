@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class PmMaintenanceRequest extends Model
 {
@@ -27,6 +28,17 @@ class PmMaintenanceRequest extends Model
 
     protected static function booted(): void
     {
+        static::deleting(function (PmMaintenanceRequest $request) {
+            if (! Schema::hasTable('pm_maintenance_request_files')) {
+                return;
+            }
+
+            $request->load('files');
+            foreach ($request->files as $file) {
+                Storage::disk($file->disk ?: 'local')->delete($file->path);
+            }
+        });
+
         static::addGlobalScope('agent_workspace', function (Builder $query) {
             $ownerIds = AgentWorkspaceScope::workspaceOwnerIds();
             if ($ownerIds === []) {
@@ -101,5 +113,23 @@ class PmMaintenanceRequest extends Model
     public function jobs(): HasMany
     {
         return $this->hasMany(PmMaintenanceJob::class, 'pm_maintenance_request_id');
+    }
+
+    public function files(): HasMany
+    {
+        return $this->hasMany(PmMaintenanceRequestFile::class, 'pm_maintenance_request_id');
+    }
+
+    public static function openAlertCount(): int
+    {
+        static $count = null;
+        if ($count !== null) {
+            return $count;
+        }
+        if (! Schema::hasTable('pm_maintenance_requests')) {
+            return $count = 0;
+        }
+
+        return $count = (int) static::query()->whereIn('status', ['open', 'in_progress'])->count();
     }
 }

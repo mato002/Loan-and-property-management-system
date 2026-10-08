@@ -8,7 +8,7 @@
     ]"
     :columns="[]"
 >
-    <form method="post" action="{{ route('property.maintenance.requests.update', $requestItem) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+    <form method="post" action="{{ route('property.maintenance.requests.update', $requestItem) }}" enctype="multipart/form-data" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
         @csrf
         @method('PUT')
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Request details</h3>
@@ -53,6 +53,8 @@
             <textarea name="description" rows="4" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('description', $requestItem->description) }}</textarea>
             @error('description')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
+        @include('property.agent.maintenance.partials.existing_attachments', ['requestItem' => $requestItem])
+        @include('property.partials.maintenance_attachments_field')
         <div class="flex gap-2">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
             <a href="{{ route('property.maintenance.requests') }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
