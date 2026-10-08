@@ -90,7 +90,18 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
-            <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300 break-all">
+                @if ($landlord->email)
+                    <a href="mailto:{{ $landlord->email }}" class="hover:underline">{{ $landlord->email }}</a>
+                @endif
+                @if ($landlord->phone)
+                    @if ($landlord->email) · @endif
+                    <x-phone-link :value="$landlord->phone" />
+                @endif
+                @if (! $landlord->email && ! $landlord->phone)
+                    —
+                @endif
+            </p>
             <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Use <strong>+</strong> on a month row to expand the unit-level statement. Use Print / Export Statement for any property, period, summary, or full detail.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">

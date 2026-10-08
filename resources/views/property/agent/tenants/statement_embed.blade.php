@@ -11,7 +11,7 @@
         <div class="rounded-xl border border-slate-200 bg-white p-4">
             <h1 class="text-lg font-semibold">Tenant Statement - {{ $tenant->name }}</h1>
             <p class="text-sm text-slate-600 mt-1">
-                Phone: {{ $tenant->phone ?: '—' }} | Email: {{ $tenant->email ?: '—' }}
+                Phone: <x-phone-link :value="$tenant->phone" /> | Email: {{ $tenant->email ?: '—' }}
             </p>
         </div>
 

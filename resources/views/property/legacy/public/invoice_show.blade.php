@@ -53,7 +53,7 @@
             <div>
                 <p class="text-xs font-semibold text-slate-500 uppercase">Bill to</p>
                 <p class="font-medium text-slate-800">{{ $invoice->tenant?->name ?? '—' }}</p>
-                @if ($invoice->tenant?->phone) <p class="text-xs text-slate-500">{{ $invoice->tenant->phone }}</p> @endif
+                @if ($invoice->tenant?->phone) <p class="text-xs text-slate-500"><x-phone-link :value="$invoice->tenant->phone" /></p> @endif
                 @if ($invoice->tenant?->email) <p class="text-xs text-slate-500">{{ $invoice->tenant->email }}</p> @endif
             </div>
             <div>

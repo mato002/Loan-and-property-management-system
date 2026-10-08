@@ -24,7 +24,7 @@
                     </div>
                     <div>
                         <div class="text-xs text-slate-500">Phone</div>
-                        <div class="font-bold text-slate-900">{{ $item->phone ?: '—' }}</div>
+                        <div class="font-bold text-slate-900"><x-phone-link :value="$item->phone" /></div>
                     </div>
                 </div>
                 <div class="mt-4">

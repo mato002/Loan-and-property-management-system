@@ -7,7 +7,7 @@
     <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-gray-800/80 sm:p-5">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Role and permission matrix</h3>
         <p class="mt-1 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
-            Tick a permission to give it to this person. Untick to take it away. A tick that already comes from the selected role stays with the role. An extra tick is only for this employee.
+            Tick View, Create, Edit, or Delete on their own. Someone can open records without being allowed to add or remove them. Manage still includes all four, so leave Manage unticked when you only want some of those actions. A tick that already comes from the selected role stays with the role. An extra tick is only for this employee.
         </p>
     </div>
 

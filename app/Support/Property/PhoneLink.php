@@ -25,6 +25,8 @@ final class PhoneLink
 
     public static function isPhoneColumn(mixed $label): bool
     {
-        return strcasecmp(trim((string) $label), 'Phone') === 0;
+        $label = trim((string) $label);
+
+        return $label !== '' && preg_match('/\bphones?\b/i', $label) === 1;
     }
 }

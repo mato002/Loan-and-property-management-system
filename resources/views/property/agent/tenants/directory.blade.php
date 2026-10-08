@@ -338,7 +338,7 @@
                             @if (!empty($tenantSummary['phone']))
                                 <div class="flex justify-between gap-3">
                                     <dt class="font-medium text-slate-700">Phone</dt>
-                                    <dd class="text-right">{{ $tenantSummary['phone'] }}</dd>
+                                    <dd class="text-right"><x-phone-link :value="$tenantSummary['phone']" /></dd>
                                 </div>
                             @endif
                             @if (!empty($tenantSummary['email']))

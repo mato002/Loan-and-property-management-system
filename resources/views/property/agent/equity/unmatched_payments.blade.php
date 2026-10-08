@@ -96,7 +96,7 @@
                             <td class="px-4 py-3">{{ $item->transaction_id }}</td>
                             <td class="px-4 py-3 text-right">{{ number_format((float) $item->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $item->account_number ?: '—' }}</td>
-                            <td class="px-4 py-3">{{ $item->phone ?: '—' }}</td>
+                            <td class="px-4 py-3"><x-phone-link :value="$item->phone" /></td>
                             <td class="px-4 py-3">{{ $item->source_label ?? 'Equity' }}</td>
                             <td class="px-4 py-3 align-top">
                                 @if (! empty($item->display_message))

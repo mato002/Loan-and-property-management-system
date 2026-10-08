@@ -75,7 +75,15 @@
                 @if ($payment->tenant?->account_number)
                     <p class="font-mono text-xs text-slate-500">{{ $payment->tenant->account_number }}</p>
                 @endif
-                <p class="text-sm text-slate-500">{{ $payment->tenant?->email ?: ($payment->tenant?->phone ?: '—') }}</p>
+                <p class="text-sm text-slate-500">
+                    @if ($payment->tenant?->email)
+                        <a href="mailto:{{ $payment->tenant->email }}" class="hover:underline">{{ $payment->tenant->email }}</a>
+                    @elseif ($payment->tenant?->phone)
+                        <x-phone-link :value="$payment->tenant->phone" />
+                    @else
+                        —
+                    @endif
+                </p>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment details</p>

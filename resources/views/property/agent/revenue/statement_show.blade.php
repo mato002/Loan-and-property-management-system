@@ -95,9 +95,9 @@
                         </td>
                         <td class="px-3 py-2">
                             @if ($phone !== '')
-                                <div class="font-mono text-xs font-semibold text-slate-900">{{ $phone }}</div>
-                                @if ($line->phone)
-                                    <div class="mt-0.5 font-mono text-[11px] text-slate-400">{{ $line->phone }}</div>
+                                <div class="text-xs font-semibold text-slate-900"><x-phone-link :value="$phone" /></div>
+                                @if ($line->phone && trim((string) $line->phone) !== trim($phone))
+                                    <div class="mt-0.5"><x-phone-link :value="$line->phone" class="text-[11px] text-slate-400" /></div>
                                 @endif
                             @else
                                 <span class="text-slate-400">—</span>

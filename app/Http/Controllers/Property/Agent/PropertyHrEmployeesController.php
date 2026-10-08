@@ -12,6 +12,7 @@ use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
+use App\Support\Property\PropertyCrudPermissions;
 use App\Support\Property\PropertyEntityHub;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -352,27 +353,44 @@ class PropertyHrEmployeesController extends Controller
         $permissions = PmPermission::query()->get(['id', 'key'])->keyBy('id');
         $previous = $user->pmPermissions()->get()->keyBy('id');
         $grantedIds = array_fill_keys(array_map('intval', $data['granted'] ?? []), true);
-        $fromRoleIds = PmRole::query()
-            ->with('permissions:id')
+        $selectedRoles = PmRole::query()
+            ->with('permissions:id,key')
             ->whereIn('id', $allowedRoleIds === [] ? [0] : $allowedRoleIds)
-            ->get()
+            ->get();
+        $fromRoleIds = $selectedRoles
             ->flatMap(fn (PmRole $role) => $role->permissions->pluck('id'))
             ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip();
+        $roleKeys = $selectedRoles
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+            ->map(fn ($key) => (string) $key)
             ->unique()
             ->flip();
         $sync = [];
         foreach ($permissions as $permission) {
             $id = (int) $permission->id;
             $wants = isset($grantedIds[$id]);
-            $fromRole = $fromRoleIds->has($id);
+            $manageKey = PropertyCrudPermissions::manageKeyFor((string) $permission->key);
+            $fromRole = $fromRoleIds->has($id) || ($manageKey !== null && $roleKeys->has($manageKey));
             if ($rank < 2 && $wants && ! $fromRole && ! $actor->hasPmPermission((string) $permission->key)) {
                 $kept = $previous->get($id);
                 $wants = $kept && (string) ($kept->pivot->effect ?? '') === 'allow';
+            }
+            $manageStillWanted = true;
+            if ($manageKey !== null) {
+                $managePermission = $permissions->first(
+                    fn (PmPermission $row): bool => (string) $row->key === $manageKey
+                );
+                $manageStillWanted = $managePermission !== null
+                    && isset($grantedIds[(int) $managePermission->id]);
             }
             if ($wants && ! $fromRole) {
                 $sync[$id] = ['effect' => 'allow'];
             } elseif (! $wants && $fromRole) {
                 $sync[$id] = ['effect' => 'deny'];
+            } elseif ($wants && $manageKey !== null && ! $manageStillWanted) {
+                $sync[$id] = ['effect' => 'allow'];
             }
         }
 
@@ -862,6 +880,11 @@ class PropertyHrEmployeesController extends Controller
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->flip() ?? collect();
+        $roleKeys = $user?->pmRoles
+            ?->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+            ->map(fn ($key) => (string) $key)
+            ->unique()
+            ->flip() ?? collect();
         $effects = [];
         foreach ($user?->pmPermissions ?? [] as $permission) {
             $effect = (string) ($permission->pivot->effect ?? 'allow');
@@ -870,26 +893,42 @@ class PropertyHrEmployeesController extends Controller
 
         $groups = collect();
         if (Schema::hasTable('pm_permissions')) {
+            app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
             $groups = PmPermission::query()
                 ->orderBy('group')
                 ->orderBy('name')
                 ->get(['id', 'key', 'name', 'group', 'description'])
                 ->groupBy(fn (PmPermission $permission) => $permission->group ?: 'general')
-                ->map(function ($rows) use ($fromRole, $effects, $accessRank) {
-                    return $rows->map(function (PmPermission $permission) use ($fromRole, $effects, $accessRank) {
+                ->map(function ($rows) use ($fromRole, $roleKeys, $effects, $accessRank) {
+                    return $rows->map(function (PmPermission $permission) use ($fromRole, $roleKeys, $effects, $accessRank) {
                         $id = (int) $permission->id;
+                        $key = (string) $permission->key;
+                        $manageKey = PropertyCrudPermissions::manageKeyFor($key);
+                        $included = $fromRole->has($id) || ($manageKey !== null && $roleKeys->has($manageKey));
 
                         return [
                             'id' => $id,
-                            'key' => (string) $permission->key,
+                            'key' => $key,
                             'name' => (string) $permission->name,
                             'description' => (string) ($permission->description ?? ''),
-                            'from_role' => $fromRole->has($id),
+                            'from_role' => $included,
                             'effect' => $effects[$id] ?? 'inherit',
                             'granted' => ($effects[$id] ?? 'inherit') === 'allow'
-                                || (($effects[$id] ?? 'inherit') !== 'deny' && $fromRole->has($id)),
+                                || (($effects[$id] ?? 'inherit') !== 'deny' && $included),
                             'can_grant' => $accessRank >= 2,
                         ];
+                    })->sortBy(function (array $row): string {
+                        $key = (string) $row['key'];
+                        $rank = match (true) {
+                            str_ends_with($key, '.view') => 0,
+                            str_ends_with($key, '.create') => 1,
+                            str_ends_with($key, '.update') => 2,
+                            str_ends_with($key, '.delete') => 3,
+                            str_ends_with($key, '.manage') => 4,
+                            default => 9,
+                        };
+
+                        return sprintf('%d-%s', $rank, strtolower((string) $row['name']));
                     })->values();
                 });
         }

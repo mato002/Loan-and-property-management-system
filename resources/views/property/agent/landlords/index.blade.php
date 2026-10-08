@@ -181,7 +181,7 @@
                             <dl class="mt-3 space-y-1 text-xs text-slate-600 dark:text-slate-300">
                                 <div class="flex justify-between gap-3"><dt class="font-medium">Landlord</dt><dd class="text-right">{{ $summary['name'] ?? '' }}</dd></div>
                                 @if (!empty($summary['email']))<div class="flex justify-between gap-3"><dt class="font-medium">Email</dt><dd class="text-right break-all">{{ $summary['email'] }}</dd></div>@endif
-                                @if (!empty($summary['phone']))<div class="flex justify-between gap-3"><dt class="font-medium">Phone</dt><dd class="text-right">{{ $summary['phone'] }}</dd></div>@endif
+                                @if (!empty($summary['phone']))<div class="flex justify-between gap-3"><dt class="font-medium">Phone</dt><dd class="text-right"><x-phone-link :value="$summary['phone']" /></dd></div>@endif
                             </dl>
                         @endif
                     </div>

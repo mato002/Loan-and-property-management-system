@@ -540,7 +540,11 @@ class User extends Authenticatable
             return ! $this->isScopedStaffLogin();
         }
 
-        return in_array($permissionKey, $this->rolePermissionKeys ?? [], true);
+        if (in_array($permissionKey, $this->rolePermissionKeys ?? [], true)) {
+            return true;
+        }
+
+        return $this->permissionGrantedByManage($permissionKey);
     }
 
     /**
@@ -592,6 +596,26 @@ class User extends Authenticatable
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * Manage includes view, create, edit, and delete unless that action is denied.
+     */
+    private function permissionGrantedByManage(string $permissionKey): bool
+    {
+        $manageKey = \App\Support\Property\PropertyCrudPermissions::manageKeyFor($permissionKey);
+        if ($manageKey === null) {
+            return false;
+        }
+
+        if ($this->directPmPermissionEffect($manageKey) === 'deny') {
+            return false;
+        }
+        if ($this->directPmPermissionEffect($manageKey) === 'allow') {
+            return true;
+        }
+
+        return in_array($manageKey, $this->rolePermissionKeys ?? [], true);
     }
 
     /**

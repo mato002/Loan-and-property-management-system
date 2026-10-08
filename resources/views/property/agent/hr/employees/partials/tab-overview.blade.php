@@ -9,7 +9,7 @@
             <p><span class="text-slate-500">National ID:</span> {{ $employee->national_id ?: '—' }}</p>
             <p><span class="text-slate-500">Hire date:</span> {{ $employee->hire_date?->format('Y-m-d') ?? '—' }}</p>
             <p><span class="text-slate-500">Work type:</span> {{ $employee->work_type ? str_replace('_', ' ', $employee->work_type) : '—' }}</p>
-            <p><span class="text-slate-500">Next of kin:</span> {{ $employee->next_of_kin_name ?: '—' }} @if($employee->next_of_kin_phone) ({{ $employee->next_of_kin_phone }}) @endif</p>
+            <p><span class="text-slate-500">Next of kin:</span> {{ $employee->next_of_kin_name ?: '—' }} @if($employee->next_of_kin_phone) (<x-phone-link :value="$employee->next_of_kin_phone" />) @endif</p>
             <p><span class="text-slate-500">Bank:</span> {{ $employee->bank_name ?: '—' }} {{ $employee->bank_account_number ? '· '.$employee->bank_account_number : '' }}</p>
             <p><span class="text-slate-500">KRA / NHIF / NSSF:</span> {{ $employee->kra_pin ?: '—' }} · {{ $employee->nhif_number ?: '—' }} · {{ $employee->nssf_number ?: '—' }}</p>
             @if ($employee->supervisor)

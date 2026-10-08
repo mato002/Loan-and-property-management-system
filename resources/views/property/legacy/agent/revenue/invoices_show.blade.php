@@ -56,7 +56,7 @@
                         <p class="text-xs font-semibold text-slate-500 uppercase">Tenant</p>
                         <p class="text-slate-800 font-medium">{{ $invoice->tenant?->name ?? '—' }}</p>
                         @if ($invoice->tenant?->phone)
-                            <p class="text-xs text-slate-500"><a href="tel:{{ $invoice->tenant->phone }}" class="hover:underline">{{ $invoice->tenant->phone }}</a></p>
+                            <p class="text-xs text-slate-500"><x-phone-link :value="$invoice->tenant->phone" /></p>
                         @endif
                         @if ($invoice->tenant?->email)
                             <p class="text-xs text-slate-500"><a href="mailto:{{ $invoice->tenant->email }}" class="hover:underline">{{ $invoice->tenant->email }}</a></p>

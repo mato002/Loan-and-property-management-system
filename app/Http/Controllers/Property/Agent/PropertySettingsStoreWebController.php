@@ -1010,13 +1010,22 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Onboard internal staff', 'key' => 'team.users.manage', 'group' => 'settings'],
         ];
 
+        foreach (\App\Support\Property\PropertyCrudPermissions::definitions() as $crud) {
+            $defaultPermissions[] = [
+                'name' => $crud['name'],
+                'key' => $crud['key'],
+                'group' => $crud['group'],
+                'description' => $crud['description'],
+            ];
+        }
+
         foreach ($defaultPermissions as $perm) {
             PmPermission::query()->firstOrCreate(
                 ['key' => $perm['key']],
                 [
                     'name' => $perm['name'],
                     'group' => $perm['group'],
-                    'description' => 'Auto-created default permission.',
+                    'description' => $perm['description'] ?? 'Auto-created default permission.',
                 ]
             );
         }
