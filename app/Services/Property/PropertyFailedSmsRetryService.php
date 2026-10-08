@@ -143,6 +143,11 @@ final class PropertyFailedSmsRetryService
 
         $actions = $this->eligibility->resendActionsForLogs($logs);
         $eligible = $logs->filter(function (PmMessageLog $log) use ($actions): bool {
+            if ((string) $log->subject === 'payment_receipt'
+                && ! \App\Models\PropertyPortalSetting::isPaymentReceiptAutomationEnabled()) {
+                return false;
+            }
+
             if (! (bool) (($actions[(int) $log->id]['can_resend'] ?? false))) {
                 if (! $this->eligibility->logStillBillableForResend($log)) {
                     $this->eligibility->supersedeFailedLogBecauseSettled($log);

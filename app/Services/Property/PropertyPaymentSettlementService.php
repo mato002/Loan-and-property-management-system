@@ -114,8 +114,11 @@ class PropertyPaymentSettlementService
             $fresh = $payment->fresh();
             $paymentId = (int) ($fresh?->id ?? 0);
             $skipNotification = (bool) data_get($payment->meta, 'skip_notification');
-            if ($paymentId > 0 && ! $skipNotification) {
+            if ($paymentId > 0 && ! $skipNotification && $this->receiptAutomationEnabled()) {
                 DB::afterCommit(function () use ($paymentId) {
+                    if (! $this->receiptAutomationEnabled()) {
+                        return;
+                    }
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);
                     } catch (\Throwable $e) {
@@ -279,9 +282,12 @@ class PropertyPaymentSettlementService
             $this->repairTenantIfDriftDetected($tenantId);
 
             $fresh = $payment->fresh(['allocations']);
-            if ($fresh && ! ($data['skip_notification'] ?? true)) {
+            if ($fresh && ! ($data['skip_notification'] ?? true) && $this->receiptAutomationEnabled()) {
                 $paymentId = (int) $fresh->id;
                 DB::afterCommit(function () use ($paymentId) {
+                    if (! $this->receiptAutomationEnabled()) {
+                        return;
+                    }
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);
                     } catch (\Throwable $e) {
@@ -731,6 +737,12 @@ class PropertyPaymentSettlementService
         app(PropertyPaymentAllocationRepairService::class)->repairTenant($tenantId);
 
         return true;
+    }
+
+    private function receiptAutomationEnabled(): bool
+    {
+        return \App\Models\PropertyPortalSetting::isPaymentReceiptAutomationEnabled()
+            && \App\Support\Property\MpesaIntegrationConfig::autoReceiptEnabled();
     }
 
     private function lockPayment(PmPayment $payment): PmPayment

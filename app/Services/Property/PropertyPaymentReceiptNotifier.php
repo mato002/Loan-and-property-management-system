@@ -35,9 +35,26 @@ class PropertyPaymentReceiptNotifier
         }
 
         if ($this->isBeforeCurrentMonth($payment)) {
-            $this->suppressPastMonthReceipt($payment);
+            $this->suppressReceipt($payment, 'past_month');
 
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment is from a previous month.'];
+        }
+
+        $payment->loadMissing([
+            'tenant:id,name,phone,email,account_number',
+            'allocations.invoice:id,invoice_type,billing_period,issue_date,description,invoice_no',
+        ]);
+
+        if ($this->onlyOlderInvoices($payment)) {
+            $this->suppressReceipt($payment, 'past_month');
+
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment is applied to an earlier month.'];
+        }
+
+        if (! $this->postedAmountMatches($payment)) {
+            $this->suppressReceipt($payment, 'amount_not_posted');
+
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment amount is not posted on the tenant account.'];
         }
 
         // Claim this payment for one receipt only (blocks on-payment + retry races).
@@ -46,11 +63,11 @@ class PropertyPaymentReceiptNotifier
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Already notified or claimed.'];
         }
         $payment = $claimed;
-
         $payment->loadMissing([
             'tenant:id,name,phone,email,account_number',
             'allocations.invoice:id,invoice_type,billing_period,issue_date,description,invoice_no',
         ]);
+
         $tenant = $payment->tenant;
         if (! $tenant) {
             $this->releaseClaim($payment, 'No tenant on payment.');
@@ -63,6 +80,13 @@ class PropertyPaymentReceiptNotifier
         $sentSms = false;
         $sentEmail = false;
         $errors = [];
+
+        if (! MpesaIntegrationConfig::autoReceiptEnabled()
+            || ! \App\Models\PropertyPortalSetting::isPaymentReceiptAutomationEnabled()) {
+            $this->releaseClaim($payment, 'Auto-receipt disabled.');
+
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Auto-receipt disabled.'];
+        }
 
         if (in_array($channel, ['sms', 'both'], true)) {
             $result = $this->sendSms($tenant, $body);
@@ -152,17 +176,91 @@ class PropertyPaymentReceiptNotifier
         return $paidAt->copy()->timezone(config('app.timezone'))->lt(now()->startOfMonth());
     }
 
-    private function suppressPastMonthReceipt(PmPayment $payment): void
+    private function suppressReceipt(PmPayment $payment, string $reason): void
     {
         $meta = is_array($payment->meta) ? $payment->meta : [];
-        if (! empty($meta['skip_notification']) && ($meta['receipt_skip_reason'] ?? '') === 'past_month') {
+        if (! empty($meta['skip_notification']) && ($meta['receipt_skip_reason'] ?? '') === $reason) {
             return;
         }
 
         $meta['skip_notification'] = true;
-        $meta['receipt_skip_reason'] = 'past_month';
+        $meta['receipt_skip_reason'] = $reason;
         unset($meta['receipt_claim_at'], $meta['receipt_claim_by']);
         $payment->update(['meta' => $meta]);
+    }
+
+    /**
+     * A receipt may only name money that was actually posted to this payment.
+     */
+    private function postedAmountMatches(PmPayment $payment): bool
+    {
+        $amount = round((float) $payment->amount, 2);
+        if ($amount <= 0) {
+            return false;
+        }
+
+        $allocated = 0.0;
+        foreach ($payment->allocations ?? [] as $allocation) {
+            if ((bool) ($allocation->is_reversed ?? false)) {
+                continue;
+            }
+            $allocated += (float) ($allocation->amount ?? 0);
+        }
+
+        $credit = (float) data_get($payment->meta, 'tenant_credit_amount', 0);
+        $posted = round($allocated + max(0, $credit), 2);
+        if ($posted <= 0.009) {
+            return false;
+        }
+
+        return abs($posted - $amount) <= 0.05;
+    }
+
+    /**
+     * True when every posted allocation is for a month before the current one.
+     */
+    private function onlyOlderInvoices(PmPayment $payment): bool
+    {
+        $monthStart = now()->timezone(config('app.timezone'))->startOfMonth();
+        $sawAllocation = false;
+
+        foreach ($payment->allocations ?? [] as $allocation) {
+            if ((bool) ($allocation->is_reversed ?? false) || (float) ($allocation->amount ?? 0) <= 0.009) {
+                continue;
+            }
+
+            $invoice = $allocation->invoice;
+            if (! $invoice) {
+                continue;
+            }
+
+            $sawAllocation = true;
+            $when = $this->invoiceMonth($invoice);
+            if ($when !== null && $when->gte($monthStart)) {
+                return false;
+            }
+        }
+
+        return $sawAllocation;
+    }
+
+    private function invoiceMonth(object $invoice): ?\Carbon\Carbon
+    {
+        $period = trim((string) ($invoice->billing_period ?? ''));
+        if (preg_match('/^(\d{4})-(\d{2})/', $period, $m) === 1) {
+            try {
+                return \Carbon\Carbon::createFromDate((int) $m[1], (int) $m[2], 1)->startOfMonth();
+            } catch (\Throwable) {
+                // fall through
+            }
+        }
+
+        $issue = $invoice->issue_date ?? null;
+        if ($issue instanceof \Carbon\CarbonInterface) {
+            return $issue->copy()->timezone(config('app.timezone'))->startOfMonth();
+        }
+
+        return null;
     }
 
     private function markNotified(PmPayment $payment, bool $sentSms, bool $sentEmail, string $channel): void

@@ -110,7 +110,7 @@ class EquityPaymentRepository
                 'phone' => $tx['phone'] ?? ($tx['payer_phone'] ?? null),
                 'reference' => $tx['reference'] ?? null,
                 'raw_payload' => $tx['raw_payload'] ?? null,
-                'skip_notification' => (bool) ($options['skip_notification'] ?? false),
+                'skip_notification' => (bool) ($options['skip_notification'] ?? true),
                 'match_mode' => $options['match_mode'] ?? null,
             ];
             if (! empty($tx['invoice_id'])) {
