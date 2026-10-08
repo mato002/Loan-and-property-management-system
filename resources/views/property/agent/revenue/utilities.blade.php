@@ -93,7 +93,7 @@
             'defaultPreviousUrl' => route('property.revenue.utilities.water_readings.default_previous', [], true),
             'waterPrevAutofillOnMount' => ! $skipWaterPrevAutofill,
         ]) !!})"
-        x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
+        x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } this.bulkPrevious = this.bulkPrevious || {}; const fillBulkPrevious = async () => { const pid = Number(this.selectedWaterPropertyId || 0); const month = String(this.selectedWaterMonth || ''); if (!pid || !month || !this.defaultPreviousUrl) return; try { const url = new URL(this.defaultPreviousUrl, window.location.origin); url.searchParams.set('property_id', String(pid)); url.searchParams.set('billing_month', month); const res = await fetch(url.toString(), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' }); if (!res.ok) return; const map = (await res.json()).previous_by_unit || {}; const next = {}; Object.keys(map).forEach((uid) => { const n = Number(map[uid]); if (!Number.isFinite(n)) return; next[String(uid)] = String(Number(n.toFixed(3))); }); this.bulkPrevious = next; document.querySelectorAll('[data-water-bulk-prev]').forEach((el) => { const uid = el.getAttribute('data-water-bulk-prev'); if (!uid || !Object.prototype.hasOwnProperty.call(next, uid)) return; el.value = next[uid]; }); } catch (e) {} }; const origSchedule = this.scheduleFetchWaterPrevious.bind(this); this.scheduleFetchWaterPrevious = () => { origSchedule(); setTimeout(fillBulkPrevious, 80); }; $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedWaterPropertyId', () => scheduleFetchWaterPrevious()); $watch('showWaterReadingForm', (open) => { if (open) scheduleFetchWaterPrevious(); }); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
     ></x-slot>
 
     <x-slot name="actions">
@@ -311,6 +311,7 @@
                                             min="0"
                                             name="previous_readings[{{ (int) $unit['id'] }}]"
                                             data-water-bulk-prev="{{ (int) $unit['id'] }}"
+                                            x-model="bulkPrevious['{{ (int) $unit['id'] }}']"
                                             value="{{ old('previous_readings.'.(int) $unit['id']) }}"
                                             class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
                                         />

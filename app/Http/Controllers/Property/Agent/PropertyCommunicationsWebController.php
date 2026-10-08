@@ -2104,25 +2104,7 @@ class PropertyCommunicationsWebController extends Controller
 
     private function maskAddress(string $value): string
     {
-        $value = trim($value);
-        if ($value === '') {
-            return '';
-        }
-        if (str_contains($value, '@')) {
-            [$local, $domain] = array_pad(explode('@', $value, 2), 2, '');
-            if ($local === '') {
-                return $value;
-            }
-            $prefix = substr($local, 0, min(2, strlen($local)));
-            return $prefix.str_repeat('*', max(0, strlen($local) - strlen($prefix))).'@'.$domain;
-        }
-
-        $digits = preg_replace('/\D+/', '', $value);
-        if ($digits === '' || strlen($digits) < 4) {
-            return '****';
-        }
-
-        return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
+        return trim($value);
     }
 
     public function schedules(Request $request): View|StreamedResponse

@@ -10,6 +10,7 @@
                 penaltyError: null,
                 bulkFilter: '',
                 bulkFilledCount: 0,
+                bulkPrevious: {},
                 penaltyPreviewUrl: @js(route('property.revenue.utilities.water_penalties.preview', [], true)),
                 allUnits: @js($unitOptions),
                 properties: @js($propertyOptions),
@@ -171,6 +172,9 @@
                         const data = await res.json();
                         if (token !== this._prevFetchToken) return;
                         const map = data.previous_by_unit || {};
+                        const next = {};
+                        Object.keys(map).forEach((uid) => { next[String(uid)] = this.formatWaterPreviousReading(map[uid]); });
+                        this.bulkPrevious = next;
                         const singleEl = this.$refs.singlePreviousReadingInput;
                         if (singleEl instanceof HTMLInputElement) {
                             const uid = String(this.selectedReadingUnitId || '');
@@ -347,7 +351,7 @@
                         >
                             <p class="text-sm font-semibold text-slate-900">{{ $unit['label'] }}</p>
                             <label class="block text-[10px] font-semibold uppercase text-slate-500">Previous</label>
-                            <input type="number" step="0.001" min="0" name="previous_readings[{{ (int) $unit['id'] }}]" data-water-bulk-prev="{{ (int) $unit['id'] }}" value="{{ old('previous_readings.'.(int) $unit['id']) }}" class="w-full rounded-lg border border-slate-200 text-sm px-2 py-2 min-h-[44px]" />
+                            <input type="number" step="0.001" min="0" name="previous_readings[{{ (int) $unit['id'] }}]" data-water-bulk-prev="{{ (int) $unit['id'] }}" x-model="bulkPrevious['{{ (int) $unit['id'] }}']" value="{{ old('previous_readings.'.(int) $unit['id']) }}" class="w-full rounded-lg border border-slate-200 text-sm px-2 py-2 min-h-[44px]" />
                             <label class="block text-[10px] font-semibold uppercase text-slate-500 mt-1">Current</label>
                             <input type="number" step="0.001" min="0" name="current_readings[{{ (int) $unit['id'] }}]" data-bulk-current value="{{ old('current_readings.'.(int) $unit['id']) }}" @input="updateBulkFilledCount()" class="w-full rounded-lg border border-slate-200 text-sm px-2 py-2 min-h-[44px]" placeholder="Reading" />
                         </div>
@@ -373,6 +377,7 @@
                                             min="0"
                                             name="previous_readings[{{ (int) $unit['id'] }}]"
                                             data-water-bulk-prev="{{ (int) $unit['id'] }}"
+                                            x-model="bulkPrevious['{{ (int) $unit['id'] }}']"
                                             value="{{ old('previous_readings.'.(int) $unit['id']) }}"
                                             class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
                                         />
