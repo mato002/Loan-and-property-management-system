@@ -1,6 +1,34 @@
 @php
     $months = is_array($months ?? null) ? $months : [];
     $currentMonth = (string) ($currentMonth ?? '');
+    $variant = (string) ($variant ?? 'share');
+    $shareTotals = [
+        'collected' => 0.0,
+        'owner_share' => 0.0,
+        'earnings' => 0.0,
+        'expenses' => 0.0,
+        'payable' => 0.0,
+        'net' => 0.0,
+        'remitted' => 0.0,
+        'pending' => 0.0,
+    ];
+    foreach ($months as $monthRow) {
+        if (! is_array($monthRow)) {
+            continue;
+        }
+        $rowOwnerShare = (float) ($monthRow['owner_share'] ?? 0);
+        $rowEarnings = (float) ($monthRow['agent_earning'] ?? 0);
+        $rowExpenses = (float) ($monthRow['expenses'] ?? 0);
+        $shareTotals['collected'] += (float) ($monthRow['gross_collected'] ?? 0);
+        $shareTotals['owner_share'] += $rowOwnerShare;
+        $shareTotals['earnings'] += $rowEarnings;
+        $shareTotals['expenses'] += $rowExpenses;
+        $shareTotals['payable'] += max(0, $rowOwnerShare - $rowEarnings - $rowExpenses);
+        $shareTotals['net'] += max(0, $rowOwnerShare - $rowEarnings);
+        $shareTotals['remitted'] += (float) ($monthRow['paid_share'] ?? 0);
+        $shareTotals['pending'] += (float) ($monthRow['pending_share'] ?? 0);
+    }
+    $payableGap = round($shareTotals['remitted'] - $shareTotals['payable'], 2);
 @endphp
 <div class="px-1 py-1">
     <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Monthly share breakdown</p>
@@ -12,10 +40,10 @@
                     <th class="px-3 py-2 text-left font-semibold">Month</th>
                     <th class="px-3 py-2 text-right font-semibold">Collected</th>
                     <th class="px-3 py-2 text-right font-semibold">Landlord share</th>
-                    @if (($variant ?? 'share') === 'commission')
+                    @if ($variant === 'commission')
                         <th class="px-3 py-2 text-right font-semibold">Commission</th>
                         <th class="px-3 py-2 text-right font-semibold">Net to landlord</th>
-                    @elseif (($variant ?? 'share') === 'settlement')
+                    @elseif ($variant === 'settlement')
                         <th class="px-3 py-2 text-right font-semibold">Mgmt fee</th>
                         <th class="px-3 py-2 text-right font-semibold">Expenses</th>
                         <th class="px-3 py-2 text-right font-semibold">Amount payable</th>
@@ -48,14 +76,14 @@
                         <td class="px-3 py-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
                             {{ \App\Services\Property\PropertyMoney::kes($ownerShare) }}
                         </td>
-                        @if (($variant ?? 'share') === 'commission')
+                        @if ($variant === 'commission')
                             <td class="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">
                                 {{ \App\Services\Property\PropertyMoney::kes($earnings) }}
                             </td>
                             <td class="px-3 py-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
                                 {{ \App\Services\Property\PropertyMoney::kes(max(0, $ownerShare - $earnings)) }}
                             </td>
-                        @elseif (($variant ?? 'share') === 'settlement')
+                        @elseif ($variant === 'settlement')
                             <td class="px-3 py-2 text-right tabular-nums text-slate-800 dark:text-slate-100">
                                 {{ \App\Services\Property\PropertyMoney::kes($earnings) }}
                             </td>
@@ -79,10 +107,42 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="{{ ($variant ?? 'share') === 'settlement' ? 8 : ((($variant ?? 'share') === 'commission') ? 7 : 6) }}" class="px-3 py-4 text-center text-slate-500">No monthly collections for this property.</td>
+                        <td colspan="{{ $variant === 'settlement' ? 8 : ($variant === 'commission' ? 7 : 6) }}" class="px-3 py-4 text-center text-slate-500">No monthly collections for this property.</td>
                     </tr>
                 @endforelse
             </tbody>
+            @if ($months !== [])
+                <tfoot class="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100 text-slate-900 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100">
+                    <tr>
+                        <td class="px-3 py-2 font-semibold">Total</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['collected']) }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['owner_share']) }}</td>
+                        @if ($variant === 'commission')
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['earnings']) }}</td>
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['net']) }}</td>
+                        @elseif ($variant === 'settlement')
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['earnings']) }}</td>
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['expenses']) }}</td>
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['payable']) }}</td>
+                        @else
+                            <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['earnings']) }}</td>
+                        @endif
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold {{ $variant === 'settlement' && $payableGap > 0.009 ? 'text-rose-700 dark:text-rose-300' : '' }}">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['remitted']) }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes($shareTotals['pending']) }}</td>
+                    </tr>
+                </tfoot>
+            @endif
         </table>
     </div>
+    @if ($variant === 'settlement' && $months !== [])
+        <p class="mt-2 text-[11px] font-medium {{ abs($payableGap) <= 0.009 ? 'text-emerald-700 dark:text-emerald-300' : ($payableGap > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-amber-800 dark:text-amber-200') }}">
+            @if (abs($payableGap) <= 0.009)
+                Totals match: paid to landlord equals the amount payable.
+            @elseif ($payableGap > 0)
+                Paid to landlord is {{ \App\Services\Property\PropertyMoney::kes($payableGap) }} more than the amount payable. That extra is an advance.
+            @else
+                Amount payable is {{ \App\Services\Property\PropertyMoney::kes(abs($payableGap)) }} more than what has been paid. That difference is still unpaid.
+            @endif
+        </p>
+    @endif
 </div>
