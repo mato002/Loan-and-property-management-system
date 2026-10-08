@@ -37,5 +37,6 @@
                 {{ $slot }}
             </main>
         </div>
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>

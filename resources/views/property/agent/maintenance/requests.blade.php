@@ -5,7 +5,7 @@
     :legacy-toolbar="false"
     :show-search="false"
     title="Maintenance requests"
-    subtitle="Intake from agents — urgency, unit, and description."
+    subtitle="Intake from agents — urgency, property or unit, and description."
     back-route="property.maintenance.index"
     :stats="$stats"
     :columns="$columns"
@@ -77,14 +77,14 @@
                         name="property_unit_id"
                         x-model="unitId"
                         :disabled="!propertyId"
-                        required
                         class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500"
                     >
-                        <option value="">Select unit...</option>
+                        <option value="">Whole property (all units)</option>
                         <template x-for="u in filteredUnits" :key="u.id">
                             <option :value="u.id" x-text="u.label"></option>
                         </template>
                     </select>
+                    <p class="mt-1 text-xs text-slate-500">Leave this as whole property when the job covers every unit.</p>
                     @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>

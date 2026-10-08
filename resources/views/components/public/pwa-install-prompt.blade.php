@@ -9,7 +9,26 @@
         : 'right-4 sm:right-6';
 @endphp
 
-{{-- Floating install control for mobile and desktop browsers. --}}
+@if ($context === 'public')
+    <div id="pwa-install-banner">
+        <div class="public-container pwa-install-banner-inner">
+            <img src="{{ asset('pwa/icon-192.png') }}" alt="" width="36" height="36" class="h-9 w-9 rounded-lg shrink-0 bg-white/10">
+            <p class="min-w-0 flex-1 text-sm font-semibold leading-tight">
+                {{ __('Install the app') }}
+                <span class="block text-xs font-medium text-emerald-100">{{ __('Browse listings from your home screen or desktop.') }}</span>
+            </p>
+            <button type="button" id="pwa-install-banner-btn" class="shrink-0 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50">
+                {{ __('Install') }}
+            </button>
+            <button type="button" id="pwa-install-banner-dismiss" class="shrink-0 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-bold text-white/90 hover:bg-white/10" aria-label="{{ __('Not now') }}">
+                <span class="sm:hidden" aria-hidden="true">&times;</span>
+                <span class="hidden sm:inline">{{ __('Not now') }}</span>
+            </button>
+        </div>
+    </div>
+@endif
+
+{{-- Floating install control. Hidden on the public site, where the banner above is the install entry. --}}
 <div
     id="pwa-install-fab"
     class="hidden fixed bottom-6 {{ $horizontalClass }} z-[60] flex flex-col items-end gap-2 max-w-[min(100vw-2rem,20rem)]"

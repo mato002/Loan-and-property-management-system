@@ -60,10 +60,7 @@ class PropertyHrEmployeesController extends Controller
         }
 
         if ($filters['role_type'] === 'field_officer') {
-            $query->where(function ($inner) {
-                $inner->where('job_title', PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE)
-                    ->orWhereHas('fieldOfficerProfile');
-            });
+            $this->hr->constrainFieldOfficers($query);
 
             if ($filters['portfolio'] === 'assigned') {
                 $query->whereHas('fieldOfficerProfile.properties');
@@ -76,8 +73,8 @@ class PropertyHrEmployeesController extends Controller
             $query->where('agent_user_id', $filters['agent_user_id']);
         }
 
-        $employees = $query->with(['fieldOfficerProfile', 'user'])->get();
-        $fieldOfficerCount = $employees->filter(fn (Employee $e) => $e->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($e->job_title))->count();
+        $employees = $query->with(['fieldOfficerProfile', 'user.pmRoles'])->get();
+        $fieldOfficerCount = $employees->filter(fn (Employee $e) => $this->hr->isFieldOfficerEmployee($e))->count();
 
         $isFieldOfficerList = $filters['role_type'] === 'field_officer';
         $tableRows = [];
@@ -89,7 +86,7 @@ class PropertyHrEmployeesController extends Controller
 
         foreach ($employees as $employee) {
             $showUrl = route('property.hr.employees.show', ['employee' => $employee->id], false);
-            $isFieldOfficer = $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title);
+            $isFieldOfficer = $this->hr->isFieldOfficerEmployee($employee);
             $portfolioStats = $employee->fieldOfficerProfile?->portfolioStats() ?? [];
             $loginState = $this->hr->loginActionState($employee);
             $canManage = $this->canManageHr($request);
@@ -699,7 +696,7 @@ class PropertyHrEmployeesController extends Controller
                 : ['required', 'integer', 'exists:users,id'],
         ]);
 
-        $isFieldOfficer = $request->boolean('is_field_officer')
+        $isFieldOfficer = $this->hr->rolesIncludeFieldOfficer($roleIds)
             || $this->hr->isFieldOfficerJobTitle($validated['job_title'] ?? null);
 
         $provisionLogin = $request->boolean('provision_login');
@@ -737,7 +734,9 @@ class PropertyHrEmployeesController extends Controller
                 'assigned_tools' => trim((string) ($validated['assigned_tools'] ?? '')) ?: null,
             ],
             'is_field_officer' => $isFieldOfficer,
-            'portal_access' => $request->boolean('portal_access'),
+            'portal_access' => $request->boolean('portal_access')
+                || $provisionLogin
+                || (bool) $employee?->fieldOfficerProfile?->portal_access,
             'provision_login' => $provisionLogin,
             'role_ids' => $roleIds,
         ];

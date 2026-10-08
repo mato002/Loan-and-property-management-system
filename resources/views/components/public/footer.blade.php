@@ -64,6 +64,7 @@
                     <li><a href="{{ route('public.contact', ['intent' => 'viewing']) }}" class="hover:text-emerald-400 transition-colors">Schedule viewing</a></li>
                     <li><a href="{{ route('public.apply') }}" class="hover:text-emerald-400 transition-colors">Rental application</a></li>
                     <li><a href="{{ route('public.contact') }}" class="hover:text-emerald-400 transition-colors">Contact</a></li>
+                    <li><button type="button" data-pwa-install-trigger class="hover:text-emerald-400 transition-colors text-left">Install app</button></li>
                 </ul>
             </div>
 

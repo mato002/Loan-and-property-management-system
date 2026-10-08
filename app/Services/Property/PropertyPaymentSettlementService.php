@@ -92,8 +92,24 @@ class PropertyPaymentSettlementService
             }
 
             $payment->load('allocations.invoice.unit');
-            $this->finalizeIdentifiedPayment($payment, null, $remaining);
-            $this->repairTenantIfDriftDetected((int) $payment->pm_tenant_id);
+            $this->reconcileTenantCreditQuietly((int) $payment->pm_tenant_id);
+            try {
+                $this->finalizeIdentifiedPayment($payment, null, $remaining);
+            } catch (\Throwable $e) {
+                Log::error('Payment settled but accounting finalize failed', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'pm_tenant_id' => (int) $payment->pm_tenant_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            try {
+                $this->repairTenantIfDriftDetected((int) $payment->pm_tenant_id);
+            } catch (\Throwable $e) {
+                Log::warning('Payment repair skipped after settlement', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             $fresh = $payment->fresh();
             $paymentId = (int) ($fresh?->id ?? 0);
@@ -421,6 +437,25 @@ class PropertyPaymentSettlementService
     }
 
     /**
+     * Credit bookkeeping must not roll back a payment that has already been received.
+     */
+    private function reconcileTenantCreditQuietly(int $tenantId): void
+    {
+        if ($tenantId <= 0) {
+            return;
+        }
+
+        try {
+            app(TenantCreditService::class)->reconcileBalanceToStatement($tenantId);
+        } catch (\Throwable $e) {
+            Log::error('Tenant credit reconcile skipped after payment settlement', [
+                'pm_tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Create one allocation row and derive invoice.amount_paid from allocations.
      */
     public function createAllocation(PmPayment $payment, PmInvoice $invoice, float $amount, bool $syncTenantCredit = true): PmPaymentAllocation
@@ -445,8 +480,15 @@ class PropertyPaymentSettlementService
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
 
         if ($syncTenantCredit && (string) $payment->channel !== 'tenant_credit') {
-            app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
-            app(TenantCreditService::class)->reconcileBalanceToStatement((int) $payment->pm_tenant_id);
+            try {
+                app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
+            } catch (\Throwable $e) {
+                Log::warning('Overpayment credit sync skipped during allocation', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'pm_invoice_id' => (int) $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $allocation;

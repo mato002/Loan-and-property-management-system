@@ -12,11 +12,30 @@ class PwaManifestController extends Controller
     public function public(): JsonResponse
     {
         return $this->manifest(
-            startUrl: url('/'),
-            scope: url('/'),
+            startUrl: './',
+            scope: './',
             descriptionSuffix: 'browse listings and manage your property online.',
             shortNameSuffix: '',
             usePublicSiteBranding: true,
+            extra: [
+                'shortcuts' => [
+                    [
+                        'name' => 'Browse properties',
+                        'short_name' => 'Properties',
+                        'url' => './properties',
+                    ],
+                    [
+                        'name' => 'Apply for a rental',
+                        'short_name' => 'Apply',
+                        'url' => './apply',
+                    ],
+                    [
+                        'name' => 'Contact',
+                        'short_name' => 'Contact',
+                        'url' => './contact',
+                    ],
+                ],
+            ],
         );
     }
 
@@ -80,7 +99,7 @@ class PwaManifestController extends Controller
         );
     }
 
-    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null, ?array $icons = null): JsonResponse
+    private function manifest(string $startUrl, string $scope, string $descriptionSuffix, string $shortNameSuffix, bool $usePublicSiteBranding = false, ?string $appName = null, ?array $icons = null, array $extra = []): JsonResponse
     {
         $companyName = $usePublicSiteBranding
             ? (PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Portal')) ?? config('app.name', 'Property Portal'))
@@ -94,30 +113,30 @@ class PwaManifestController extends Controller
                 : $shortBase.$shortNameSuffix)
             : $shortBase;
 
-        $logoUrl = $usePublicSiteBranding
-            ? (PropertyWorkspaceBranding::forPublicSite('company_logo_url', '') ?? '')
-            : (\App\Models\PropertyPortalSetting::getValue('company_logo_url', '') ?? '');
-        $faviconUrl = $usePublicSiteBranding
-            ? (PropertyWorkspaceBranding::forPublicSite('site_favicon_url', '') ?? '')
-            : (\App\Models\PropertyPortalSetting::getValue('site_favicon_url', '') ?? '');
-        $iconUrl = $logoUrl !== '' ? $logoUrl : ($faviconUrl !== '' ? $faviconUrl : asset('favicon.ico'));
-
-        $iconType = str_ends_with(strtolower(parse_url($iconUrl, PHP_URL_PATH) ?? ''), '.svg')
-            ? 'image/svg+xml'
-            : 'image/png';
-
         $icons ??= [
             [
-                'src' => $iconUrl,
+                'src' => asset('pwa/icon-192.png'),
                 'sizes' => '192x192',
-                'type' => $iconType,
+                'type' => 'image/png',
                 'purpose' => 'any',
             ],
             [
-                'src' => $iconUrl,
+                'src' => asset('pwa/icon-512.png'),
                 'sizes' => '512x512',
-                'type' => $iconType,
+                'type' => 'image/png',
                 'purpose' => 'any',
+            ],
+            [
+                'src' => asset('pwa/icon-maskable-192.png'),
+                'sizes' => '192x192',
+                'type' => 'image/png',
+                'purpose' => 'maskable',
+            ],
+            [
+                'src' => asset('pwa/icon-maskable-512.png'),
+                'sizes' => '512x512',
+                'type' => 'image/png',
+                'purpose' => 'maskable',
             ],
         ];
 
@@ -126,7 +145,7 @@ class PwaManifestController extends Controller
             $usePublicSiteBranding ? 'cta' : 'primary'
         );
 
-        return response()->json([
+        return response()->json(array_merge([
             'id' => $startUrl,
             'name' => $appName ?: ($companyName.($shortNameSuffix !== '' ? ' — Property Portal' : '')),
             'short_name' => $appName ? 'Meters' : $shortName,
@@ -140,7 +159,7 @@ class PwaManifestController extends Controller
             'lang' => str_replace('_', '-', app()->getLocale()),
             'categories' => ['business', 'productivity'],
             'icons' => $icons,
-        ], 200, [
+        ], $extra), 200, [
             'Content-Type' => 'application/manifest+json; charset=UTF-8',
             'Cache-Control' => 'public, max-age=3600',
         ]);

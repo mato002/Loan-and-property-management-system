@@ -74,6 +74,35 @@ class PropertyPaymentWebhookController extends Controller
 
         $this->mirrorToLoanIngest($request);
 
+        try {
+            return $this->ingestPropertySms($request, $daraja, $payments, $matcher, $auditLogs, $resolvedAgentUserId);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Property SMS ingest failed', [
+                'error' => $e->getMessage(),
+                'exception' => $e::class,
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'SMS ingest failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function ingestPropertySms(
+        Request $request,
+        MpesaDarajaService $daraja,
+        EquityPaymentRepository $payments,
+        PaymentMatchingService $matcher,
+        PaymentAuditLogRepository $auditLogs,
+        ?int $resolvedAgentUserId,
+    ): JsonResponse {
         $data = $request->validate([
             'provider' => ['nullable', 'string', 'max:32'],
             'source_device' => ['nullable', 'string', 'max:128'],

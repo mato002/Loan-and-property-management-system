@@ -95,7 +95,7 @@ class PmMaintenanceWebController extends Controller
 
             return [
                 '#'.$r->id,
-                $r->unit->property->name.'/'.$r->unit->label,
+                $r->locationLabel(),
                 $r->category,
                 Str::limit($r->description, 40),
                 $r->created_at->format('Y-m-d'),
@@ -131,7 +131,7 @@ class PmMaintenanceWebController extends Controller
                 foreach ($rows as $r) {
                     yield [
                         '#'.$r->id,
-                        ($r->unit?->property?->name ?? '').'/'.($r->unit?->label ?? ''),
+                        $r->locationLabel(),
                         $r->category,
                         $r->description,
                         optional($r->created_at)->format('Y-m-d'),
@@ -156,7 +156,7 @@ class PmMaintenanceWebController extends Controller
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'property_unit_id' => [
-                'required',
+                'nullable',
                 Rule::exists('property_units', 'id')->where(fn ($q) => $q->where('property_id', (int) $request->input('property_id'))),
             ],
             'category' => ['required', 'string', 'max:64'],
@@ -164,20 +164,29 @@ class PmMaintenanceWebController extends Controller
             'urgency' => ['required', 'in:normal,urgent,emergency'],
         ]);
 
-        $pmTenantId = $this->resolveTenantIdForMaintenanceUnit((int) $data['property_unit_id']);
+        $unitId = (int) ($data['property_unit_id'] ?? 0);
+        if ($unitId <= 0 && ! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            return back()->withErrors(['property_unit_id' => 'Choose a unit, or run the latest migrations before logging a whole-property request.'])->withInput();
+        }
+        $pmTenantId = $unitId > 0 ? $this->resolveTenantIdForMaintenanceUnit($unitId) : null;
 
         $property = Property::query()->findOrFail((int) $data['property_id']);
         app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateMaintenance($property);
 
-        $ticket = PmMaintenanceRequest::query()->create([
-            'property_unit_id' => (int) $data['property_unit_id'],
+        $attributes = [
+            'property_unit_id' => $unitId > 0 ? $unitId : null,
             'pm_tenant_id' => $pmTenantId,
             'reported_by_user_id' => $request->user()->id,
             'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
             'category' => (string) $data['category'],
             'description' => (string) $data['description'],
             'urgency' => (string) $data['urgency'],
-        ]);
+        ];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            $attributes['property_id'] = (int) $data['property_id'];
+        }
+
+        $ticket = PmMaintenanceRequest::query()->create($attributes);
         $routedTo = app(PropertyHrWorkflowService::class)->routeMaintenanceRequest($ticket);
 
         $success = $routedTo
@@ -221,7 +230,7 @@ class PmMaintenanceWebController extends Controller
         ]);
         $newStatus = (string) $data['status'];
         if ($oldStatus !== $newStatus) {
-            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $unitLabel = $requestItem->locationLabel();
             $this->notifyTenantProgress(
                 $requestItem,
                 'Maintenance request #'.$requestItem->id.' update',
@@ -249,7 +258,7 @@ class PmMaintenanceWebController extends Controller
     public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse|Response
     {
         $data = $request->validate([
-            'property_unit_id' => ['required', 'exists:property_units,id'],
+            'property_unit_id' => ['nullable', 'exists:property_units,id'],
             'category' => ['required', 'string', 'max:64'],
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'in:normal,urgent,emergency'],
@@ -257,10 +266,29 @@ class PmMaintenanceWebController extends Controller
         ]);
 
         $oldStatus = (string) $requestItem->status;
+        $unitId = (int) ($data['property_unit_id'] ?? 0);
+        if ($unitId > 0) {
+            $unit = PropertyUnit::query()->findOrFail($unitId);
+            $data['property_unit_id'] = (int) $unit->id;
+            $data['property_id'] = (int) $unit->property_id;
+            $data['pm_tenant_id'] = $this->resolveTenantIdForMaintenanceUnit((int) $unit->id);
+        } else {
+            $requestItem->loadMissing('unit');
+            $data['property_unit_id'] = null;
+            $data['pm_tenant_id'] = null;
+            $data['property_id'] = (int) ($requestItem->property_id ?: $requestItem->unit?->property_id);
+            if ($data['property_id'] <= 0 || ! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+                unset($data['property_id']);
+            }
+        }
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            unset($data['property_id']);
+        }
         $requestItem->update($data);
+        $requestItem->refresh();
         $newStatus = (string) ($data['status'] ?? $oldStatus);
         if ($oldStatus !== $newStatus) {
-            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $unitLabel = $requestItem->locationLabel();
             $this->notifyTenantProgress(
                 $requestItem,
                 'Maintenance request #'.$requestItem->id.' update',
@@ -359,7 +387,7 @@ class PmMaintenanceWebController extends Controller
 
             return [
                 '#'.$j->id,
-                $j->request->unit->property->name.'/'.$j->request->unit->label,
+                $j->request?->locationLabel() ?? '—',
                 $j->vendor?->name ?? '—',
                 $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
                 $approved,
@@ -393,7 +421,7 @@ class PmMaintenanceWebController extends Controller
                 foreach ($rows as $j) {
                     yield [
                         $j->id,
-                        $j->request->unit->property->name.'/'.$j->request->unit->label,
+                        $j->request?->locationLabel() ?? '—',
                         $j->vendor?->name,
                         $j->quote_amount,
                         $j->status,
@@ -482,7 +510,7 @@ class PmMaintenanceWebController extends Controller
             }
         }
         if ($oldStatus !== $status && $job->request) {
-            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $unitLabel = $job->request->locationLabel();
             $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
             $this->notifyTenantProgress(
                 $job->request,
@@ -538,7 +566,7 @@ class PmMaintenanceWebController extends Controller
             }
         }
         if ($oldStatus !== $status && $job->request) {
-            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $unitLabel = $job->request->locationLabel();
             $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
             $this->notifyTenantProgress(
                 $job->request,
@@ -557,7 +585,7 @@ class PmMaintenanceWebController extends Controller
     public function history(): View
     {
         $jobs = PmMaintenanceJob::query()
-            ->with(['request.unit.property', 'vendor'])
+            ->with(['request.unit.property', 'request.property', 'vendor'])
             ->where(function ($q) {
                 $q->where('status', 'done')->orWhere('status', 'cancelled');
             })
@@ -575,7 +603,7 @@ class PmMaintenanceWebController extends Controller
         $rows = $jobs->map(fn (PmMaintenanceJob $j) => [
             $j->completed_at?->format('Y-m-d') ?? '—',
             '#'.$j->id,
-            $j->request->unit->property->name.'/'.$j->request->unit->label,
+            $j->request?->locationLabel() ?? '—',
             $j->vendor?->name ?? '—',
             $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
             ucfirst(str_replace('_', ' ', $j->status)),
@@ -643,6 +671,9 @@ class PmMaintenanceWebController extends Controller
     private function requestsQuery(array $filters): Builder
     {
         $with = ['unit.property', 'reportedBy'];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            $with[] = 'property';
+        }
         if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'assigned_user_id')) {
             $with[] = 'assignedUser';
         }
@@ -656,7 +687,8 @@ class PmMaintenanceWebController extends Controller
                     ->orWhereHas('unit', function (Builder $u) use ($search) {
                         $u->where('label', 'like', '%'.$search.'%')
                             ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
-                    });
+                    })
+                    ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
             });
         }
 
@@ -693,7 +725,7 @@ class PmMaintenanceWebController extends Controller
 
     private function jobsQuery(array $filters): Builder
     {
-        $q = PmMaintenanceJob::query()->with(['request.unit.property', 'vendor']);
+        $q = PmMaintenanceJob::query()->with(['request.unit.property', 'request.property', 'vendor']);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {

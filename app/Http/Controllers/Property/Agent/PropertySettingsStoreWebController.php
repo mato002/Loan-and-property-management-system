@@ -1068,6 +1068,20 @@ class PropertySettingsStoreWebController extends Controller
                     'payments.record',
                 ],
             ],
+            'field_officer' => [
+                'name' => 'Field Officer',
+                'portal_scope' => 'agent',
+                'description' => 'Portfolio officer. Assign properties from the employee profile. Adjust these permissions in access control.',
+                'permissions' => [
+                    'tenants.manage',
+                    'leases.manage',
+                    'maintenance.manage',
+                    'maintenance.resolve',
+                    'utilities.readings.capture',
+                    'payments.record',
+                    'communications.manage',
+                ],
+            ],
             'settings_admin' => [
                 'name' => 'Settings Admin',
                 'portal_scope' => 'agent',

@@ -602,5 +602,6 @@
                 </div>
             </div>
         </div>
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>

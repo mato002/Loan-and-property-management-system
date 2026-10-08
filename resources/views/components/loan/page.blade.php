@@ -54,7 +54,7 @@
                     data-table-filter="parent"
                     autocomplete="off"
                     placeholder="Search…"
-                    class="hidden md:block w-full min-w-0 min-h-[44px] sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5"
+                    class="w-full min-w-0 min-h-[44px] sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5"
                 />
             @endif
 

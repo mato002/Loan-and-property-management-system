@@ -4,7 +4,7 @@
 
     $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
 @endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full overflow-hidden {{ $propertyPortalThemeClass }}" data-pwa-context="portal" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('portal') !!}>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full overflow-hidden {{ $propertyPortalThemeClass }}" data-pwa-context="portal" data-pwa-sw="{{ asset('sw.js') }}" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('portal') !!}>
     <head>
         @include('layouts.partials.property-portal-theme')
         @php
@@ -43,13 +43,13 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <link rel="icon" href="{{ $faviconVersioned }}" />
         <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
-        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
+        <link rel="apple-touch-icon" href="{{ asset('pwa/apple-touch-icon.png') }}" />
         <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
         <meta name="theme-color" content="{{ \App\Support\Property\PropertyBrandPalette::color(\App\Support\Property\PropertyBrandPalette::resolve('portal'), 'primary') }}" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="{{ \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Portal') }}" />
-        <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
+        <script src="{{ asset('js/pwa-install.js') }}?v=3" defer></script>
         
         <style>
             /* Portal shell — flush layout without body position:fixed (that + scroll-lock top offset clips the header) */
@@ -424,5 +424,6 @@
         </template>
 
         <x-public.pwa-install-prompt context="portal" position="left" />
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>

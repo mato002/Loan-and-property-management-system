@@ -14,6 +14,7 @@ class PmMaintenanceRequest extends Model
     protected $table = 'pm_maintenance_requests';
 
     protected $fillable = [
+        'property_id',
         'property_unit_id',
         'pm_tenant_id',
         'reported_by_user_id',
@@ -35,18 +36,55 @@ class PmMaintenanceRequest extends Model
                 return;
             }
 
-            $query->whereIn('property_unit_id', function ($sub) use ($agentId) {
-                $sub->select('pu.id')
-                    ->from('property_units as pu')
-                    ->join('properties as p', 'p.id', '=', 'pu.property_id')
-                    ->whereIn('p.agent_user_id', AgentWorkspaceScope::workspaceOwnerIds());
+            if ($ownerIds === []) {
+                return;
+            }
+
+            $query->where(function (Builder $visible) use ($ownerIds) {
+                $visible->whereIn('property_unit_id', function ($sub) use ($ownerIds) {
+                    $sub->select('pu.id')
+                        ->from('property_units as pu')
+                        ->join('properties as p', 'p.id', '=', 'pu.property_id')
+                        ->where(function ($owned) use ($ownerIds) {
+                            $owned->whereIn('p.agent_user_id', $ownerIds)
+                                ->orWhereNull('p.agent_user_id');
+                        });
+                });
+
+                if (Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+                    $visible->orWhereIn('property_id', function ($sub) use ($ownerIds) {
+                        $sub->select('id')
+                            ->from('properties')
+                            ->where(function ($owned) use ($ownerIds) {
+                                $owned->whereIn('agent_user_id', $ownerIds)
+                                    ->orWhereNull('agent_user_id');
+                            });
+                    });
+                }
             });
         });
+    }
+
+    public function property(): BelongsTo
+    {
+        return $this->belongsTo(Property::class, 'property_id');
     }
 
     public function unit(): BelongsTo
     {
         return $this->belongsTo(PropertyUnit::class, 'property_unit_id');
+    }
+
+    public function locationLabel(): string
+    {
+        $propertyName = null;
+        if (Schema::hasColumn($this->getTable(), 'property_id')) {
+            $propertyName = $this->property?->name;
+        }
+        $propertyName = $propertyName ?: ($this->unit?->property?->name ?? 'Property');
+        $unit = $this->unit?->label;
+
+        return $unit ? $propertyName.'/'.$unit : $propertyName.' / Whole property';
     }
 
     public function pmTenant(): BelongsTo

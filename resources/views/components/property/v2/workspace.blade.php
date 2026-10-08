@@ -274,15 +274,6 @@
                                             \App\Support\Property\FilterToolbarViewport::set('mobile');
                                         @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
-                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
-                                                <input
-                                                    type="search"
-                                                    data-table-filter="parent"
-                                                    autocomplete="off"
-                                                    placeholder="Search…"
-                                                    class="min-h-[44px] w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
-                                                />
-                                            @endif
                                             {{ $toolbar }}
                                         </div>
                                     </x-slot>

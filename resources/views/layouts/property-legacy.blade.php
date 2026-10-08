@@ -355,5 +355,6 @@
             })();
         </script>
         @stack('scripts')
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>

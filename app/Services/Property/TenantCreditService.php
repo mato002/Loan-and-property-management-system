@@ -10,6 +10,7 @@ use App\Models\PmTenantCreditBalance;
 use App\Models\PmTenantCreditTransaction;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
@@ -67,21 +68,28 @@ class TenantCreditService
 
         $inProgress[$tenantId] = true;
         try {
-            $this->settlementApplications = [];
-            $this->syncStoredCreditToPaymentAllocations($tenantId);
-            $this->settlementApplications = $this->consumeWalletOnOpenInvoices($tenantId, $prioritizeInvoiceId, $actor);
-            $placed = $this->placeStatementReceiptsOnOpenInvoices($tenantId);
-            $this->explainClearedCreditAsApplied($tenantId, $placed);
+            try {
+                $this->settlementApplications = [];
+                $this->syncStoredCreditToPaymentAllocations($tenantId);
+                $this->settlementApplications = $this->consumeWalletOnOpenInvoices($tenantId, $prioritizeInvoiceId, $actor);
+                $placed = $this->placeStatementReceiptsOnOpenInvoices($tenantId);
+                $this->explainClearedCreditAsApplied($tenantId, $placed);
 
-            $stored = $this->storedBalance($tenantId);
-            $allowed = $this->allowedCredit($tenantId);
-            $excess = round($stored - $allowed, 2);
-            if ($excess > 0.009 && $placed === [] && $this->cashStillAvailableForInvoices($tenantId) <= 0.009) {
-                $this->reverseUnsupportedWallet(
-                    $tenantId,
-                    $excess,
-                    'Cleared credit already used on invoices. Available credit cannot exceed receipts minus charges.'
-                );
+                $stored = $this->storedBalance($tenantId);
+                $allowed = $this->allowedCredit($tenantId);
+                $excess = round($stored - $allowed, 2);
+                if ($excess > 0.009 && $placed === [] && $this->cashStillAvailableForInvoices($tenantId) <= 0.009) {
+                    $this->reverseUnsupportedWallet(
+                        $tenantId,
+                        $excess,
+                        'Cleared credit already used on invoices. Available credit cannot exceed receipts minus charges.'
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::error('Tenant credit reconcile failed', [
+                    'pm_tenant_id' => $tenantId,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             return $this->storedBalance($tenantId);
@@ -805,7 +813,18 @@ class TenantCreditService
                     continue;
                 }
 
-                $settlement->createAllocation($payment, $invoice, $amount, false);
+                try {
+                    $settlement->createAllocation($payment, $invoice, $amount, false);
+                } catch (\Throwable $e) {
+                    Log::warning('Statement receipt was not placed on invoice', [
+                        'pm_tenant_id' => $tenantId,
+                        'pm_payment_id' => (int) $payment->id,
+                        'pm_invoice_id' => (int) $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    continue;
+                }
                 $placed[] = [
                     'invoice_id' => (int) $invoice->id,
                     'invoice_no' => (string) $invoice->invoice_no,

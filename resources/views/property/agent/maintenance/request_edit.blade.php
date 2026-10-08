@@ -16,8 +16,8 @@
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
             <x-property.quick-create-select
                 name="property_unit_id"
-                :required="true"
-                :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id', $requestItem->property_unit_id) === (string) $u->id])->all()"
+                :required="false"
+                :options="collect([['value' => '', 'label' => 'Whole property (all units)', 'selected' => (string) old('property_unit_id', $requestItem->property_unit_id) === '']])->merge(collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id', $requestItem->property_unit_id) === (string) $u->id]))->all()"
                 :create="\App\Support\Property\PmUnitQuickCreateFields::config(collect($units)->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])->unique('value')->values()->all())"
             />
             @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
