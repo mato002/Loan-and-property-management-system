@@ -32,10 +32,17 @@ class DispatchPendingPaymentReceipts extends Command
         }
 
         $limit = max(1, min(500, (int) $this->option('limit')));
+        $monthStart = now()->startOfMonth();
         $query = PmPayment::query()
             ->where('status', PmPayment::STATUS_COMPLETED)
             ->where('amount', '>', 0)
             ->whereNotNull('pm_tenant_id')
+            ->where(function ($q) use ($monthStart): void {
+                $q->where('paid_at', '>=', $monthStart)
+                    ->orWhere(function ($inner) use ($monthStart): void {
+                        $inner->whereNull('paid_at')->where('created_at', '>=', $monthStart);
+                    });
+            })
             ->where(function ($q): void {
                 $q->whereNull('meta')
                     ->orWhereRaw("JSON_EXTRACT(meta, '$.receipt_notified_at') IS NULL")

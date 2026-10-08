@@ -178,14 +178,12 @@
                                 singleEl.value = this.formatWaterPreviousReading(map[uid]);
                             }
                         }
-                        if (this.$el && typeof this.$el.querySelectorAll === 'function') {
-                            this.$el.querySelectorAll('[data-water-bulk-prev]').forEach((el) => {
+                        document.querySelectorAll('[data-water-bulk-prev]').forEach((el) => {
                                 if (!(el instanceof HTMLInputElement)) return;
                                 const uid = el.getAttribute('data-water-bulk-prev');
                                 if (!uid || !Object.prototype.hasOwnProperty.call(map, uid)) return;
                                 el.value = this.formatWaterPreviousReading(map[uid]);
                             });
-                        }
                     } catch (e) {
                         if (window?.console?.debug) console.debug('Water previous reading autofill failed', e);
                     }

@@ -34,6 +34,12 @@ class PropertyPaymentReceiptNotifier
             return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment not completed.'];
         }
 
+        if ($this->isBeforeCurrentMonth($payment)) {
+            $this->suppressPastMonthReceipt($payment);
+
+            return ['sent_sms' => false, 'sent_email' => false, 'skipped' => true, 'message' => 'Payment is from a previous month.'];
+        }
+
         // Claim this payment for one receipt only (blocks on-payment + retry races).
         $claimed = $this->claimForNotification($payment);
         if ($claimed === null) {
@@ -134,6 +140,29 @@ class PropertyPaymentReceiptNotifier
 
             return $locked->fresh();
         });
+    }
+
+    private function isBeforeCurrentMonth(PmPayment $payment): bool
+    {
+        $paidAt = $payment->paid_at ?? $payment->created_at;
+        if ($paidAt === null) {
+            return false;
+        }
+
+        return $paidAt->copy()->timezone(config('app.timezone'))->lt(now()->startOfMonth());
+    }
+
+    private function suppressPastMonthReceipt(PmPayment $payment): void
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        if (! empty($meta['skip_notification']) && ($meta['receipt_skip_reason'] ?? '') === 'past_month') {
+            return;
+        }
+
+        $meta['skip_notification'] = true;
+        $meta['receipt_skip_reason'] = 'past_month';
+        unset($meta['receipt_claim_at'], $meta['receipt_claim_by']);
+        $payment->update(['meta' => $meta]);
     }
 
     private function markNotified(PmPayment $payment, bool $sentSms, bool $sentEmail, string $channel): void
