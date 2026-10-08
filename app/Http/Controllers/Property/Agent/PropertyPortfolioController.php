@@ -4106,7 +4106,7 @@ class PropertyPortfolioController extends Controller
             if ($type === '' || isset($have[$type])) {
                 continue;
             }
-            if (! in_array($type, ['water', 'electricity'], true)) {
+            if ($type !== 'electricity') {
                 continue;
             }
             $extra[] = [

@@ -101,9 +101,6 @@
             if (this.scopeMode === 'units') this.loadUnitDrafts();
         },
         onChargeTypeChange() {
-            if (this.isWaterType() && String(this.draft.amount_mode || '') === 'fixed') {
-                this.draft.amount_mode = 'variable';
-            }
             if (this.isElectricityType() && String(this.draft.amount_mode || '') !== 'variable') {
                 if (!(Number(this.draft.rate_per_unit || 0) > 0) && Number(this.draft.fixed_charge || 0) > 0) {
                     this.draft.rate_per_unit = this.draft.fixed_charge;
@@ -558,8 +555,8 @@
                 <label class="block text-xs font-medium text-slate-600">Billing</label>
                 <select x-model="draft.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <option value="per_unit" x-show="isElectricityType()">Per unit</option>
-                    <option value="fixed" x-text="isWaterType() ? 'Rate + fee' : 'Fixed'"></option>
-                    <option value="variable" x-text="isWaterType() ? 'Meter' : 'Enter each month'"></option>
+                    <option value="fixed">Fixed</option>
+                    <option value="variable" x-text="isWaterType() ? 'Meter reading' : 'Enter each month'"></option>
                 </select>
             </div>
             <div x-show="showUnitGrid()" class="rounded-xl border border-slate-200">
