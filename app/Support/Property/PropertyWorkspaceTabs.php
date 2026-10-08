@@ -432,7 +432,7 @@ final class PropertyWorkspaceTabs
                 'key' => 'roles',
                 'label' => 'Users & roles',
                 'route' => 'property.settings.roles',
-                'active' => ['property.settings.roles', 'property.settings.team_users.*'],
+                'active' => ['property.settings.roles', 'property.settings.roles.*', 'property.settings.team_users.*'],
                 'requires_any_pm_permission' => ['team.users.manage'],
                 'hub_title' => 'Users & roles',
                 'hub_description' => 'Add staff logins and review assignments.',

@@ -83,7 +83,7 @@
                             <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ (int) $role->permissions_count }}</td>
                             <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ (int) $role->users_count }}</td>
                             <td class="px-3 py-2 text-right">
-                                <a href="{{ route('property.settings.system_setup.access') }}" data-turbo-frame="property-main" class="font-medium text-indigo-600 hover:text-indigo-700">Set permissions</a>
+                                <a href="{{ route('property.settings.roles.permissions', $role) }}" data-turbo-frame="property-main" class="font-medium text-indigo-600 hover:text-indigo-700">Set permissions</a>
                             </td>
                         </tr>
                     @endforeach

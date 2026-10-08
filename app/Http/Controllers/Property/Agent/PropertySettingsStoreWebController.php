@@ -338,6 +338,23 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('Template setup saved.'));
     }
 
+    public function rolePermissions(PmRole $pmRole): View
+    {
+        $this->ensureAccessControlDefaults();
+        $pmRole->load('permissions:id');
+        $permissionsByGroup = PmPermission::query()
+            ->orderBy('group')
+            ->orderBy('name')
+            ->get(['id', 'key', 'name', 'group', 'description'])
+            ->groupBy('group');
+
+        return property_view('property.agent.settings.role_permissions', [
+            'role' => $pmRole,
+            'permissionsByGroup' => $permissionsByGroup,
+            'selectedIds' => $pmRole->permissions->pluck('id')->map(static fn ($id) => (int) $id)->all(),
+        ]);
+    }
+
     public function systemSetupAccess(): View
     {
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions')) {

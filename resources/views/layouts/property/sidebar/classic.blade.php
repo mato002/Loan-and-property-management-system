@@ -807,6 +807,7 @@
                     'route' => 'property.settings.roles',
                     'active' => [
                         'property.settings.roles',
+                        'property.settings.roles.*',
                         'property.settings.team_users.create',
                         'property.settings.team_users.store',
                     ],

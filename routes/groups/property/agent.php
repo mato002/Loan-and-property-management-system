@@ -603,6 +603,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/listings', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('listings'))->name('listings.index');
 
     Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('property.permission:team.users.manage')->name('settings.roles');
+    Route::get('/settings/roles/{pmRole}/permissions', [PropertySettingsStoreWebController::class, 'rolePermissions'])->whereNumber('pmRole')->middleware('property.permission:settings.access.manage')->name('settings.roles.permissions');
     Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('property.permission:settings.access.manage')->name('settings.permissions');
     Route::get('/settings/activity-log', [PropertyActivityLogController::class, 'index'])->name('settings.activity_log');
     Route::get('/settings/team-users/create', [PropertyTeamUserController::class, 'create'])->middleware('property.permission:team.users.manage')->name('settings.team_users.create');
