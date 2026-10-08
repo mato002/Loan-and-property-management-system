@@ -26,11 +26,12 @@ function optionCount(select) {
     return select?.options?.length ?? 0;
 }
 
+function isNarrowViewport() {
+    return window.matchMedia?.('(max-width: 767.98px)')?.matches === true;
+}
+
 function shouldEnhance(select) {
     if (!(select instanceof HTMLSelectElement)) {
-        return false;
-    }
-    if (/(?:^|_)per_page$/.test(select.name || '') || select.dataset.pageSizeSelect === '1') {
         return false;
     }
     if (select.getAttribute(ENHANCED_ATTR) === '1') {
@@ -52,6 +53,22 @@ function shouldEnhance(select) {
         return false;
     }
     if (select.closest('.property-print-only')) {
+        return false;
+    }
+    if (isNarrowViewport() && select.closest('[data-property-filter-form-desktop], .property-filter-toolbar__static')) {
+        return false;
+    }
+    // Phone browsers do not open a native <select> inside the portal scroll lock.
+    // Filter lists use the portaled panel instead, including short option lists.
+    if (
+        isNarrowViewport()
+        && optionCount(select) >= 2
+        && select.closest('[data-filter-toolbar-mobile-panel], [data-filter-disclosure-panel], .mobile-filter-collapse__body')
+    ) {
+        return true;
+    }
+
+    if (/(?:^|_)per_page$/.test(select.name || '') || select.dataset.pageSizeSelect === '1') {
         return false;
     }
 
@@ -260,17 +277,23 @@ function buildEnhancement(select) {
         }
         panel.style.zIndex = String(resolvePanelZIndex());
         const rect = trigger.getBoundingClientRect();
-        const width = Math.max(rect.width, 180);
-        const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+        const viewport = window.visualViewport;
+        const viewWidth = viewport?.width || window.innerWidth;
+        const viewHeight = viewport?.height || window.innerHeight;
+        const offsetLeft = viewport?.offsetLeft || 0;
+        const offsetTop = viewport?.offsetTop || 0;
+        const width = Math.max(rect.width, isNarrowViewport() ? Math.min(viewWidth - 16, 280) : 180);
+        const left = Math.min(Math.max(8, rect.left), Math.max(8, offsetLeft + viewWidth - width - 8));
         panel.style.width = `${width}px`;
         panel.style.left = `${left}px`;
+        panel.style.maxHeight = isNarrowViewport() ? '50vh' : '';
         panel.style.top = `${rect.bottom + 4}px`;
 
-        const spaceBelow = window.innerHeight - rect.bottom - 12;
-        const spaceAbove = rect.top - 12;
-        const needed = Math.min(panel.scrollHeight || 240, 320);
+        const spaceBelow = offsetTop + viewHeight - rect.bottom - 12;
+        const spaceAbove = rect.top - offsetTop - 12;
+        const needed = Math.min(panel.scrollHeight || 240, isNarrowViewport() ? viewHeight * 0.5 : 320);
         if (spaceBelow < needed && spaceAbove > spaceBelow) {
-            panel.style.top = `${Math.max(8, rect.top - needed - 4)}px`;
+            panel.style.top = `${Math.max(offsetTop + 8, rect.top - needed - 4)}px`;
         }
     };
 
@@ -315,10 +338,38 @@ function buildEnhancement(select) {
         }
     };
 
-    trigger.addEventListener('click', (event) => {
+    let toggleStamp = 0;
+    const requestToggle = (event) => {
         event.preventDefault();
+        const now = Date.now();
+        if (now - toggleStamp < 500) {
+            return;
+        }
+        toggleStamp = now;
         togglePanel();
+    };
+    trigger.addEventListener('pointerup', (event) => {
+        if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+        }
+        requestToggle(event);
     });
+    trigger.addEventListener('click', (event) => {
+        if (Date.now() - toggleStamp < 500) {
+            event.preventDefault();
+
+            return;
+        }
+        requestToggle(event);
+    });
+    if (select.id) {
+        document.querySelectorAll(`label[for="${CSS.escape(select.id)}"]`).forEach((label) => {
+            label.addEventListener('click', (event) => {
+                event.preventDefault();
+                requestToggle(event);
+            });
+        });
+    }
 
     searchInput.addEventListener('input', () => {
         renderList(searchInput.value);
@@ -344,7 +395,7 @@ function buildEnhancement(select) {
         if (!open) {
             return;
         }
-        if (Date.now() - openedAt < 450) {
+        if (Date.now() - openedAt < 700) {
             return;
         }
         if (event.target instanceof Node && !root.contains(event.target) && !panel.contains(event.target)) {

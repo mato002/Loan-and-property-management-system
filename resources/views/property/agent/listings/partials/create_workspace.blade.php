@@ -56,13 +56,13 @@
                 placeholder="Search unit, building, rent…"
                 class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 md:col-span-full md:max-w-md"
             />
-            <details class="mobile-filter-collapse mobile-filter-collapse--inline col-span-full">
-                <summary>
+            <div class="mobile-filter-collapse mobile-filter-collapse--inline col-span-full" data-filter-disclosure>
+                <button type="button" data-filter-disclosure-toggle aria-expanded="false">
                     <i class="fa-solid fa-sliders" aria-hidden="true"></i>
                     Filters
                     <span class="mobile-filter-collapse__count" x-show="[city, area, property_id, unit_type, max_rent, photos, listing].filter(function (value) { return value !== '' && value != null; }).length > 0" x-cloak x-text="[city, area, property_id, unit_type, max_rent, photos, listing].filter(function (value) { return value !== '' && value != null; }).length"></span>
-                </summary>
-                <div class="mobile-filter-collapse__body">
+                </button>
+                <div class="mobile-filter-collapse__body" data-filter-disclosure-panel hidden>
             <select x-model="city" @change="onCity()" class="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">All towns</option>
                 <template x-for="opt in cities" :key="opt.value">
@@ -107,7 +107,7 @@
                 Clear filters
             </button>
                 </div>
-            </details>
+            </div>
         </div>
 
         <div class="overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
