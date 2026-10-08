@@ -120,12 +120,36 @@
                 return 'ph.openTasks.v1.' + (bar.getAttribute('data-open-tasks-scope') || 'app') + '.' + (bar.getAttribute('data-open-tasks-user') || '0');
             }
 
+            function isRecordPath(pathname) {
+                return /\/\d+(?:\/|$)/.test(String(pathname || ''));
+            }
+
+            function normalizeList(list) {
+                var order = [];
+                var grouped = {};
+                list.forEach(function (task) {
+                    var path = String(task.key || '').split('?')[0];
+                    var group = isRecordPath(path) ? path : task.key;
+                    var next = isRecordPath(path) ? Object.assign({}, task, { key: path }) : task;
+                    if (!Object.prototype.hasOwnProperty.call(grouped, group)) {
+                        order.push(group);
+                    }
+                    grouped[group] = next;
+                });
+                return order.map(function (group) { return grouped[group]; });
+            }
+
             function load(bar) {
                 try {
                     var parsed = JSON.parse(localStorage.getItem(storageKey(bar)) || '[]');
-                    return Array.isArray(parsed) ? parsed.filter(function (task) {
+                    var list = Array.isArray(parsed) ? parsed.filter(function (task) {
                         return task && typeof task.key === 'string' && typeof task.url === 'string' && task.url.charAt(0) === '/' && task.url.charAt(1) !== '/';
                     }) : [];
+                    var normalized = normalizeList(list);
+                    if (normalized.length !== list.length) {
+                        save(bar, normalized);
+                    }
+                    return normalized;
                 } catch (error) {
                     return [];
                 }
@@ -183,6 +207,9 @@
 
             function taskKey(url) {
                 var pathname = url.pathname.replace(/\/+$/, '') || '/';
+                if (isRecordPath(pathname)) {
+                    return pathname;
+                }
                 var bits = [];
                 Object.keys(VIEW_PARAMS).sort().forEach(function (name) {
                     if (url.searchParams.has(name)) {
