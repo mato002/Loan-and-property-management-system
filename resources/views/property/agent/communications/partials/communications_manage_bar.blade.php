@@ -20,7 +20,7 @@
                     @if ($context === 'notifications')
                         Open alerts, mark them read, and export history.
                     @elseif ($context === 'provider')
-                        Review Pradytec delivery stats, provider history, and webhook setup.
+                        Review the selected provider balance. Sends use that account.
                     @else
                         Send messages, resend failed SMS, and manage templates or bulk campaigns.
                     @endif

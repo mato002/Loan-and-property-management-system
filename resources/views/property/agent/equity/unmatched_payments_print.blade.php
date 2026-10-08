@@ -34,6 +34,7 @@
                 <th>Account</th>
                 <th>Phone</th>
                 <th>Source</th>
+                <th>Message</th>
                 <th>Reason</th>
             </tr>
         </thead>
@@ -46,6 +47,7 @@
                     <td>{{ $item->account_number ?: '—' }}</td>
                     <td>{{ $item->phone ?: '—' }}</td>
                     <td>{{ $item->source_label ?? 'Equity' }}</td>
+                    <td style="white-space:pre-wrap;word-break:break-word;">{{ $item->display_message ?: '—' }}</td>
                     <td>{{ $item->reason }}</td>
                 </tr>
             @empty

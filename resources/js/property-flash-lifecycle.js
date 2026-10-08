@@ -83,6 +83,19 @@ export function resetPropertyFlashDedupe(reason = 'manual') {
     }
 }
 
+function formSubmitsIntoPropertyMain(form) {
+    if (!(form instanceof HTMLFormElement)) {
+        return false;
+    }
+    if (form.closest(`#${PROPERTY_MAIN_FRAME_ID}`)) {
+        return true;
+    }
+
+    // Add-tenant and similar dialogs teleport the form onto document.body,
+    // so it is no longer inside the frame even though the save targets it.
+    return form.getAttribute('data-turbo-frame') === PROPERTY_MAIN_FRAME_ID;
+}
+
 function bindPropertyFlashLifecycle() {
     const scheduleFromMainFrame = (source, options = {}) => {
         const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
@@ -92,7 +105,11 @@ function bindPropertyFlashLifecycle() {
     };
 
     document.addEventListener('DOMContentLoaded', () => scheduleFromMainFrame('dom:ready', { force: true }));
-    document.addEventListener('turbo:load', () => scheduleFromMainFrame('turbo:load'));
+    document.addEventListener('turbo:load', () => {
+        const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
+        const hasFlash = Boolean(frame?.querySelector('[data-swal-flash]'));
+        scheduleFromMainFrame('turbo:load', { force: hasFlash });
+    });
 
     document.addEventListener('turbo:frame-load', (event) => {
         if (!(event.target instanceof HTMLElement) || event.target.id !== PROPERTY_MAIN_FRAME_ID) {
@@ -121,7 +138,7 @@ function bindPropertyFlashLifecycle() {
         }
 
         const form = event.detail?.formSubmission?.formElement;
-        if (!(form instanceof HTMLFormElement) || !form.closest(`#${PROPERTY_MAIN_FRAME_ID}`)) {
+        if (!(form instanceof HTMLFormElement) || !formSubmitsIntoPropertyMain(form)) {
             return;
         }
 

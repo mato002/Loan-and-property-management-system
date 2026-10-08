@@ -321,8 +321,8 @@ class PropertyHrEmployeesController extends Controller
         $data = $request->validate([
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:pm_roles,id'],
-            'effects' => ['nullable', 'array'],
-            'effects.*' => ['string', Rule::in(['inherit', 'allow', 'deny'])],
+            'granted' => ['nullable', 'array'],
+            'granted.*' => ['integer', 'exists:pm_permissions,id'],
         ]);
 
         $roleIds = array_values(array_unique(array_map('intval', $data['role_ids'] ?? [])));
@@ -351,18 +351,28 @@ class PropertyHrEmployeesController extends Controller
 
         $permissions = PmPermission::query()->get(['id', 'key'])->keyBy('id');
         $previous = $user->pmPermissions()->get()->keyBy('id');
+        $grantedIds = array_fill_keys(array_map('intval', $data['granted'] ?? []), true);
+        $fromRoleIds = PmRole::query()
+            ->with('permissions:id')
+            ->whereIn('id', $allowedRoleIds === [] ? [0] : $allowedRoleIds)
+            ->get()
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip();
         $sync = [];
         foreach ($permissions as $permission) {
-            $effect = (string) ($data['effects'][$permission->id] ?? $data['effects'][(string) $permission->id] ?? 'inherit');
-            if (! in_array($effect, ['inherit', 'allow', 'deny'], true)) {
-                $effect = 'inherit';
+            $id = (int) $permission->id;
+            $wants = isset($grantedIds[$id]);
+            $fromRole = $fromRoleIds->has($id);
+            if ($rank < 2 && $wants && ! $fromRole && ! $actor->hasPmPermission((string) $permission->key)) {
+                $kept = $previous->get($id);
+                $wants = $kept && (string) ($kept->pivot->effect ?? '') === 'allow';
             }
-            if ($rank < 2 && $effect === 'allow' && ! $actor->hasPmPermission((string) $permission->key)) {
-                $kept = $previous->get($permission->id);
-                $effect = $kept && (string) ($kept->pivot->effect ?? 'allow') === 'allow' ? 'allow' : 'inherit';
-            }
-            if ($effect === 'allow' || $effect === 'deny') {
-                $sync[$permission->id] = ['effect' => $effect];
+            if ($wants && ! $fromRole) {
+                $sync[$id] = ['effect' => 'allow'];
+            } elseif (! $wants && $fromRole) {
+                $sync[$id] = ['effect' => 'deny'];
             }
         }
 
@@ -876,6 +886,8 @@ class PropertyHrEmployeesController extends Controller
                             'description' => (string) ($permission->description ?? ''),
                             'from_role' => $fromRole->has($id),
                             'effect' => $effects[$id] ?? 'inherit',
+                            'granted' => ($effects[$id] ?? 'inherit') === 'allow'
+                                || (($effects[$id] ?? 'inherit') !== 'deny' && $fromRole->has($id)),
                             'can_grant' => $accessRank >= 2,
                         ];
                     })->values();

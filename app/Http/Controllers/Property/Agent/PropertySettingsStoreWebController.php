@@ -935,23 +935,10 @@ class PropertySettingsStoreWebController extends Controller
     public function storeSmsSettings(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'bulksms_driver' => ['nullable', 'in:pradytec,africastalking'],
-            'use_database_setting' => ['nullable', 'in:0,1'],
+            'bulksms_driver' => ['required', 'in:pradytec,africastalking'],
         ]);
 
-        $useDatabaseSetting = ($data['use_database_setting'] ?? '0') === '1';
-
-        if ($useDatabaseSetting) {
-            $driver = trim((string) ($data['bulksms_driver'] ?? ''));
-            if ($driver !== '' && in_array($driver, ['pradytec', 'africastalking'], true)) {
-                PropertyPortalSetting::setGlobalValue('bulksms_driver', $driver);
-            } else {
-                PropertyPortalSetting::setGlobalValue('bulksms_driver', null);
-            }
-        } else {
-            // Clear database setting to fall back to .env
-            PropertyPortalSetting::setGlobalValue('bulksms_driver', null);
-        }
+        PropertyPortalSetting::setGlobalValue('bulksms_driver', $data['bulksms_driver']);
 
         // Clear SMS balance cache when provider changes
         app(\App\Services\BulkSmsService::class)->clearProviderBalanceCache();

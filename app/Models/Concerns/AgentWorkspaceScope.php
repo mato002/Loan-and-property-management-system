@@ -437,7 +437,111 @@ final class AgentWorkspaceScope
             }
         }
 
+        // Rows saved under a staff login (before they were stamped with the
+        // company id) still belong to this agency.
+        foreach (self::companyStaffUserIds($agentId) as $staffId) {
+            if ($staffId > 0) {
+                $ids[] = $staffId;
+            }
+        }
+
         return self::$workspaceOwnerIds[$agentId] = array_values(array_unique($ids));
+    }
+
+    /**
+     * Company user id to stamp on new rows.
+     * Agency staff file under `employees.agent_user_id`, not their own login.
+     * A super admin files under the single portfolio agency when there is one,
+     * so that agency's employees can see the row.
+     */
+    public static function ownerIdForNewRecord(): int
+    {
+        $workspace = self::currentAgentUserId();
+        if ($workspace !== null && $workspace > 0) {
+            return $workspace;
+        }
+
+        $user = Auth::user();
+        if ($user instanceof User) {
+            $company = self::companyAgentIdForStaff($user);
+            if ($company > 0) {
+                return $company;
+            }
+        }
+
+        $portfolioAgent = self::singlePortfolioAgentUserId();
+        if ($portfolioAgent > 0) {
+            return $portfolioAgent;
+        }
+
+        return (int) (Auth::id() ?? 0);
+    }
+
+    /**
+     * Login ids for people employed by this company.
+     *
+     * @return list<int>
+     */
+    public static function companyStaffUserIds(int $agentId): array
+    {
+        if ($agentId <= 0 || ! Schema::hasTable('employees')) {
+            return [];
+        }
+
+        $ids = [];
+        if (Schema::hasColumn('employees', 'user_id')) {
+            $ids = DB::table('employees')
+                ->where('agent_user_id', $agentId)
+                ->whereNotNull('user_id')
+                ->where('user_id', '>', 0)
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        if (! Schema::hasColumn('employees', 'email') || ! Schema::hasTable('users')) {
+            return array_values(array_unique($ids));
+        }
+
+        $emails = DB::table('employees')
+            ->where('agent_user_id', $agentId)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->pluck('email')
+            ->map(fn ($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($emails === []) {
+            return array_values(array_unique($ids));
+        }
+
+        $byEmail = DB::table('users')
+            ->whereIn(DB::raw('LOWER(email)'), $emails)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return array_values(array_unique(array_merge($ids, $byEmail)));
+    }
+
+    private static function singlePortfolioAgentUserId(): int
+    {
+        if (! Schema::hasTable('properties') || ! Schema::hasColumn('properties', 'agent_user_id')) {
+            return 0;
+        }
+
+        $ids = DB::table('properties')
+            ->where('agent_user_id', '>', 0)
+            ->distinct()
+            ->limit(2)
+            ->pluck('agent_user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return count($ids) === 1 ? $ids[0] : 0;
     }
 
     /**

@@ -95,6 +95,10 @@ return [
         ),
         'timeout_seconds' => (int) env('BULKSMS_TIMEOUT', 20),
         'verify_ssl' => env('BULKSMS_VERIFY_SSL', true),
+        // Leave empty to bill against the Africa's Talking balance without the Pradytec 0.60 rate.
+        'cost_per_sms' => ($atCost = env('BULKSMS_AT_COST_PER_SMS')) !== null && $atCost !== ''
+            ? (float) $atCost
+            : 0.0,
     ],
 
     /*

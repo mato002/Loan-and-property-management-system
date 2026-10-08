@@ -424,6 +424,8 @@ class PropertyCommunicationsWebController extends Controller
             'statistics' => $statistics,
             'filters' => $filters,
             'smsWallet' => $this->smsWalletStatus(),
+            'smsDriver' => $bulk->smsDriver(),
+            'smsProviderLabel' => $bulk->providerLabel(),
             'smsTopup' => $this->smsTopupContext($request),
             'canManageCommunications' => $this->canManageCommunications($request),
             'webhookUrl' => url('/webhooks/property/communications/pradytec'),

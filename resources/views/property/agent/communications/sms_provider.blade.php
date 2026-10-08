@@ -12,7 +12,7 @@
 
 <x-property.workspace :compact-list="false"
     title="Provider SMS"
-    subtitle="Live Pradytec Bulk SMS statistics and delivery history from the provider API."
+    subtitle="Live {{ $smsProviderLabel ?? 'provider' }} balance. Sends use this provider, not a separate local wallet."
     back-route="property.communications.index"
     :stats="$stats"
     :columns="[]"
@@ -25,14 +25,23 @@
 
         @include('property.agent.communications.partials.sms_wallet_banner')
 
-        @include('property.agent.communications.partials.sms_topup_card')
+        @if (($smsDriver ?? 'pradytec') !== 'africastalking')
+            @include('property.agent.communications.partials.sms_topup_card')
+        @endif
 
+        @if (($smsDriver ?? 'pradytec') !== 'africastalking')
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm text-xs text-slate-600 dark:text-slate-300">
             <p class="font-semibold text-slate-800 dark:text-slate-100">Pradytec webhook URL</p>
             <p class="mt-1">Share this with your Pradytec account manager for real-time balance and delivery updates:</p>
             <code class="mt-2 block break-all rounded-lg bg-slate-100 dark:bg-slate-900 px-3 py-2 text-[11px]">{{ $webhookUrl ?? url('/webhooks/property/communications/pradytec') }}</code>
             <p class="mt-2 opacity-80">Set <code class="text-[11px]">BULKSMS_WEBHOOK_SECRET</code> in <code class="text-[11px]">.env</code> to match the secret they configure.</p>
         </div>
+        @else
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm text-xs text-slate-600 dark:text-slate-300">
+            <p class="font-semibold text-slate-800 dark:text-slate-100">Africa's Talking</p>
+            <p class="mt-1">Balance and charges come from the Africa's Talking account. Top up that account in the Africa's Talking dashboard. The local SMS wallet and the 0.60 Pradytec rate are not used.</p>
+        </div>
+        @endif
 
         <form method="get" action="{{ route('property.communications.sms_provider', absolute: false) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

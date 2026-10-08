@@ -22,19 +22,12 @@
             </div>
 
             <div>
-                <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                    <input type="checkbox" name="use_database_setting" value="1" @checked($usingDatabaseSetting) />
-                    Override .env and use database setting
-                </label>
-                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">When checked, the provider selection below will be used instead of the BULKSMS_DRIVER value in your .env file.</p>
-            </div>
-
-            <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">SMS Provider</label>
                 <select name="bulksms_driver" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="pradytec" @selected(old('bulksms_driver', $currentDriver ?? $envDriver) === 'pradytec')>Pradytec AI CRM (default)</option>
-                    <option value="africastalking" @selected(old('bulksms_driver', $currentDriver ?? $envDriver) === 'africastalking')>Africa's Talking</option>
+                    <option value="pradytec" @selected(old('bulksms_driver', $effectiveDriver) === 'pradytec')>Pradytec AI CRM</option>
+                    <option value="africastalking" @selected(old('bulksms_driver', $effectiveDriver) === 'africastalking')>Africa's Talking</option>
                 </select>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Saving this choice is what balance and Send SMS use. It replaces the .env driver.</p>
                 <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     <strong>Pradytec:</strong> Includes in-app M-Pesa top-up, provider balance API, and delivery history.<br>
                     <strong>Africa's Talking:</strong> Use your Africa's Talking dashboard for top-up and balance management.
