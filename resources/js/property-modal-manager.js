@@ -574,8 +574,58 @@ function bindModalBackdropGuard() {
     );
 }
 
+function liftModalOverflowForNativeSelect(select, lift) {
+    const panel = select.closest('[data-property-modal-panel]');
+    if (!(panel instanceof HTMLElement)) {
+        return;
+    }
+
+    const nodes = [panel, ...panel.querySelectorAll('.overflow-y-auto, .overflow-auto, .overflow-hidden')];
+    nodes.forEach((node) => {
+        if (!(node instanceof HTMLElement)) {
+            return;
+        }
+        if (lift) {
+            if (node.dataset.modalOverflowLift !== '1') {
+                node.dataset.modalOverflowLift = '1';
+                node.dataset.modalOverflowPrev = node.style.overflow || '';
+            }
+            node.style.overflow = 'visible';
+
+            return;
+        }
+        if (node.dataset.modalOverflowLift === '1') {
+            node.style.overflow = node.dataset.modalOverflowPrev || '';
+            delete node.dataset.modalOverflowLift;
+            delete node.dataset.modalOverflowPrev;
+        }
+    });
+}
+
+function bindNativeSelectsInsideModals() {
+    document.addEventListener('focusin', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) {
+            return;
+        }
+        if (target.getAttribute('data-property-searchable-enhanced') === '1') {
+            return;
+        }
+        liftModalOverflowForNativeSelect(target, true);
+    });
+
+    document.addEventListener('focusout', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) {
+            return;
+        }
+        liftModalOverflowForNativeSelect(target, false);
+    });
+}
+
 bindEscapeHandler();
 bindModalBackdropGuard();
+bindNativeSelectsInsideModals();
 
 window.PropertyModalManager = {
     MODAL_Z,

@@ -62,6 +62,9 @@ function shouldEnhance(select) {
     if (flag === 'true' || flag === '1' || flag === 'on') {
         return true;
     }
+    if (select.closest('[data-property-modal]') && optionCount(select) >= 2) {
+        return true;
+    }
 
     const name = `${select.name || ''} ${select.id || ''}`.trim();
     const count = optionCount(select);
@@ -189,6 +192,7 @@ function buildEnhancement(select) {
     select.addEventListener('mousedown', (event) => event.preventDefault());
 
     let open = false;
+    let openedAt = 0;
 
     const renderList = (query = '') => {
         const q = String(query || '').trim().toLowerCase();
@@ -221,12 +225,15 @@ function buildEnhancement(select) {
             btn.textContent = opt.label || (opt.value === '' ? placeholder : opt.value);
             btn.disabled = Boolean(opt.disabled);
             btn.addEventListener('mousedown', (event) => {
+                if (event.pointerType === 'touch') {
+                    return;
+                }
                 event.preventDefault();
             });
-            btn.addEventListener('click', (event) => {
+            const choose = (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (opt.disabled) {
+                if (!open || opt.disabled) {
                     return;
                 }
                 currentValue = String(opt.value);
@@ -238,8 +245,10 @@ function buildEnhancement(select) {
                 select.dispatchEvent(new Event('input', { bubbles: true }));
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 labelEl.textContent = selectedLabel(options, currentValue, placeholder);
-                closePanel();
-            });
+                closePanel(true);
+            };
+            btn.addEventListener('pointerup', choose);
+            btn.addEventListener('click', choose);
             li.appendChild(btn);
             list.appendChild(li);
         });
@@ -273,6 +282,8 @@ function buildEnhancement(select) {
         searchInput.value = '';
     };
 
+    const prefersCoarsePointer = () => window.matchMedia?.('(pointer: coarse)')?.matches === true;
+
     const openPanel = () => {
         openPanelClosers.forEach((close) => {
             if (close !== closePanel) {
@@ -280,6 +291,7 @@ function buildEnhancement(select) {
             }
         });
         open = true;
+        openedAt = Date.now();
         openPanelClosers.add(closePanel);
         document.body.appendChild(panel);
         panel.classList.remove('hidden');
@@ -289,7 +301,9 @@ function buildEnhancement(select) {
         placePanel();
         queueMicrotask(() => {
             placePanel();
-            searchInput.focus();
+            if (!prefersCoarsePointer()) {
+                searchInput.focus();
+            }
         });
     };
 
@@ -328,6 +342,9 @@ function buildEnhancement(select) {
 
     document.addEventListener('click', (event) => {
         if (!open) {
+            return;
+        }
+        if (Date.now() - openedAt < 450) {
             return;
         }
         if (event.target instanceof Node && !root.contains(event.target) && !panel.contains(event.target)) {

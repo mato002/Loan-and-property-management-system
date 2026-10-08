@@ -97,53 +97,112 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.maintenance.jobs') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3 w-full min-w-0">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                <div class="lg:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Vendor, category, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach (['quoted', 'approved', 'in_progress', 'done', 'cancelled'] as $st)
-                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor</label>
-                    <select name="vendor_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach ($vendors as $v)
-                            <option value="{{ $v->id }}" @selected((string) ($filters['vendor_id'] ?? '') === (string) $v->id)>{{ $v->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
-                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
-                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rows</label>
-                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach ([10, 20, 50, 100] as $pageSize)
-                            <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
-                        @endforeach
-                    </select>
-                </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
-                <a href="{{ route('property.maintenance.jobs', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-                @include('property.agent.partials.table_export_dropdown', ['route' => 'property.maintenance.jobs.export', 'query' => (array) ($filters ?? [])])
-            </div>
-        </form>
+        <style>
+            @media (min-width: 768px) {
+                .jobs-filter-toolbar .property-filter-toolbar__form,
+                .jobs-filter-toolbar [data-filter-main-row] {
+                    flex-wrap: nowrap;
+                    align-items: center;
+                    gap: 0.35rem;
+                }
+                .jobs-filter-toolbar .property-filter-field {
+                    min-width: 0;
+                    max-width: none;
+                    width: auto;
+                    flex: 1 1 0;
+                }
+                .jobs-filter-toolbar .property-filter-field__label {
+                    position: absolute;
+                    width: 1px;
+                    height: 1px;
+                    padding: 0;
+                    margin: -1px;
+                    overflow: hidden;
+                    clip: rect(0, 0, 0, 0);
+                    white-space: nowrap;
+                    border: 0;
+                }
+                .jobs-filter-toolbar .property-filter-field:has(input[type="date"]) {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 0.25rem;
+                }
+                .jobs-filter-toolbar .property-filter-field:has(input[type="date"]) .property-filter-field__label {
+                    position: static;
+                    width: auto;
+                    height: auto;
+                    margin: 0;
+                    overflow: visible;
+                    clip: auto;
+                    font-size: 11px;
+                    line-height: 1;
+                }
+                .jobs-filter-toolbar .property-filter-field__control,
+                .jobs-filter-toolbar select,
+                .jobs-filter-toolbar input[type="date"] {
+                    min-width: 0;
+                    width: 100%;
+                    min-height: 38px;
+                }
+                .jobs-filter-toolbar [data-filter-actions] {
+                    flex-wrap: nowrap;
+                    margin-left: 0.25rem;
+                }
+            }
+        </style>
+        <x-property.filter-toolbar
+            class="jobs-filter-toolbar"
+            single-row
+            :action="route('property.maintenance.jobs', absolute: false)"
+            :reset-url="route('property.maintenance.jobs', absolute: false)"
+            drawer-label="Job filters"
+            :chip-labels="[
+                'q' => 'Search',
+                'status' => 'Status',
+                'vendor_id' => 'Vendor',
+                'from' => 'From',
+                'to' => 'To',
+            ]"
+        >
+            <x-slot name="primary">
+                <x-property.filter-field type="search" name="q" label="Search" placeholder="Vendor, category, notes..." :value="$filters['q'] ?? ''" wide />
+                <x-property.filter-field
+                    type="select"
+                    name="status"
+                    label="Status"
+                    empty-option="Status: All"
+                    :options="collect(['quoted', 'approved', 'in_progress', 'done', 'cancelled'])->map(fn ($st) => [
+                        'value' => $st,
+                        'label' => ucfirst(str_replace('_', ' ', $st)),
+                    ])->all()"
+                    :value="$filters['status'] ?? ''"
+                />
+                <x-property.filter-field
+                    type="select"
+                    name="vendor_id"
+                    label="Vendor"
+                    empty-option="Vendor: All"
+                    :options="collect($vendors)->map(fn ($v) => ['value' => $v->id, 'label' => $v->name])->all()"
+                    :value="(string) ($filters['vendor_id'] ?? '')"
+                />
+                <x-property.filter-field type="date" name="from" label="From" :value="$filters['from'] ?? ''" />
+                <x-property.filter-field type="date" name="to" label="To" :value="$filters['to'] ?? ''" />
+                <x-property.filter-field
+                    type="select"
+                    name="per_page"
+                    label="Rows"
+                    :options="collect([10, 20, 50, 100])->map(fn ($n) => ['value' => (string) $n, 'label' => $n.' / page'])->all()"
+                    :value="(string) ($filters['per_page'] ?? 20)"
+                />
+            </x-slot>
+            <x-slot name="export">
+                @include('property.agent.partials.table_export_dropdown', [
+                    'route' => 'property.maintenance.jobs.export',
+                    'query' => (array) ($filters ?? []),
+                ])
+            </x-slot>
+        </x-property.filter-toolbar>
     </x-slot>
 
     @if (isset($jobsPager))

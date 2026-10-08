@@ -333,6 +333,9 @@
                                                 $__rowHref = null;
                                                 foreach ($row as $__rowCell) {
                                                     $__cellHtml = (string) $__rowCell;
+                                                    if (stripos($__cellHtml, '<details') !== false) {
+                                                        continue;
+                                                    }
                                                     if (preg_match('/<a[^>]+href=["\\\']([^"\\\']+)["\\\']/i', $__cellHtml, $__hrefMatch)) {
                                                         $__rowHref = $__hrefMatch[1] ?? null;
                                                         $__hrefLower = is_string($__rowHref) ? strtolower(trim($__rowHref)) : '';

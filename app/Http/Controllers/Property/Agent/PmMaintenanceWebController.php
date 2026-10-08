@@ -69,24 +69,24 @@ class PmMaintenanceWebController extends Controller
         ];
 
         $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) {
-            $actionsBody = '<a href="'.route('property.maintenance.requests.edit', $r).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
+            $actionsBody = '<a href="'.route('property.maintenance.requests.edit', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
             if (! in_array($r->status, ['done', 'closed'], true)) {
                 $actionsBody .=
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="in_progress" />'.
                     '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Triage</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
                     '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
                     '</form>';
             }
 
             $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
+                '<div class="relative inline-block text-left" data-row-ignore-click>'.
+                '<details data-property-dropdown-root>'.
                 '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<div data-property-dropdown-menu class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
                 $actionsBody.
                 '</div>'.
                 '</details>'.
@@ -375,10 +375,10 @@ class PmMaintenanceWebController extends Controller
             }
 
             $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
+                '<div class="relative inline-block text-left" data-row-ignore-click>'.
+                '<details data-property-dropdown-root>'.
                 '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<div data-property-dropdown-menu class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
                 $actionsBody.
                 '</div>'.
                 '</details>'.

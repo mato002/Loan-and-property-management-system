@@ -23,7 +23,22 @@
 <style>
     .property-searchable-select__panel,
     [data-property-floating-menu] {
-        z-index: 12000 !important;
+        z-index: 14000 !important;
+        pointer-events: auto !important;
+        touch-action: manipulation;
+    }
+    @media (max-width: 767px) {
+        /* A leftover translate/scale makes mobile browsers ignore taps on selects. */
+        [data-property-modal-panel] {
+            transform: none !important;
+            -webkit-transform: none !important;
+        }
+        [data-property-modal-panel] select,
+        .property-searchable-select__trigger,
+        .property-searchable-select__panel button,
+        [data-property-floating-menu] button {
+            touch-action: manipulation;
+        }
     }
     select[data-property-searchable-enhanced="1"] {
         position: absolute !important;
