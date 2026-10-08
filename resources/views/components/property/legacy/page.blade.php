@@ -23,18 +23,17 @@
 <style>
 @media (max-width: 767px) {
     .property-erp-header__actions {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        gap: 0.5rem !important;
-        width: 100% !important;
-        overflow-x: auto !important;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        overflow-x: auto;
     }
     .property-erp-header__actions > * {
-        flex: 0 0 auto !important;
-        width: auto !important;
-        max-width: none !important;
+        flex: 0 0 auto;
+        width: auto;
+        max-width: none;
     }
 }
 </style>

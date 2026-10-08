@@ -206,11 +206,6 @@
             ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
                     <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:block md:overflow-visible">
-                        @if ($compactList && $hasPageActions)
-                            <div class="property-inline-actions flex shrink-0 flex-nowrap items-center gap-2 md:hidden">
-                                {{ $actions }}
-                            </div>
-                        @endif
                         @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
                             <div class="flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible">
                                 @if ($useLegacyToolbar && $canShowDefaultSearch)
@@ -283,10 +278,6 @@
                                 \App\Support\Property\FilterToolbarViewport::set('all');
                             @endphp
                         @endif
-                    </div>
-                @elseif ($compactList && $hasPageActions)
-                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
-                        {{ $actions }}
                     </div>
                 @endif
 
