@@ -21,6 +21,7 @@ document.addEventListener('alpine:init', () => {
         selectedReadingUnitId: Number(config.selectedReadingUnitId ?? 0),
         selectedWaterMonth: String(config.selectedWaterMonth ?? ''),
         showBulkWaterReadings: false,
+        bulkPrevious: {},
         defaultPreviousUrl: String(config.defaultPreviousUrl ?? ''),
         waterPrevAutofillOnMount: Boolean(config.waterPrevAutofillOnMount),
         _prevFetchTimer: null,
@@ -274,6 +275,11 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 const map = data.previous_by_unit || {};
+                const next = {};
+                Object.keys(map).forEach((uid) => {
+                    next[String(uid)] = this.formatWaterPreviousReading(map[uid]);
+                });
+                this.bulkPrevious = next;
                 const singleEl = this.$refs.singlePreviousReadingInput;
                 if (singleEl instanceof HTMLInputElement) {
                     const uid = String(this.selectedReadingUnitId || '');
@@ -282,20 +288,18 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
 
-                if (this.$el && typeof this.$el.querySelectorAll === 'function') {
-                    this.$el.querySelectorAll('[data-water-bulk-prev]').forEach((el) => {
-                        if (!(el instanceof HTMLInputElement)) {
-                            return;
-                        }
+                document.querySelectorAll('[data-water-bulk-prev]').forEach((el) => {
+                    if (!(el instanceof HTMLInputElement)) {
+                        return;
+                    }
 
-                        const uid = el.getAttribute('data-water-bulk-prev');
-                        if (!uid || !Object.prototype.hasOwnProperty.call(map, uid)) {
-                            return;
-                        }
+                    const uid = el.getAttribute('data-water-bulk-prev');
+                    if (!uid || !Object.prototype.hasOwnProperty.call(map, uid)) {
+                        return;
+                    }
 
-                        el.value = this.formatWaterPreviousReading(map[uid]);
-                    });
-                }
+                    el.value = this.formatWaterPreviousReading(map[uid]);
+                });
             } catch (e) {
                 if (window?.console?.debug) {
                     console.debug('Water previous reading autofill failed', e);

@@ -50,7 +50,12 @@
                         class="property-mobile-more-drawer__tile {{ $toneClass }} {{ $active ? 'is-active' : '' }}"
                     >
                         <i class="fa-solid {{ $item['icon'] }} text-lg" aria-hidden="true"></i>
-                        <span>{{ $item['label'] }}</span>
+                        <span class="inline-flex items-center">
+                            {{ $item['label'] }}
+                            @if (($item['key'] ?? '') === 'maintenance')
+                                @include('property.partials.maintenance_request_bell', ['count' => (int) ($item['badge'] ?? 0)])
+                            @endif
+                        </span>
                     </a>
                 @endforeach
             </div>

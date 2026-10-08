@@ -52,7 +52,7 @@ use App\Http\Controllers\Property\Tenant\TenantPortalController;
 use App\Http\Controllers\Property\Tenant\TenantWorkspaceFormController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
+Route::middleware(['property.portal:agent', 'property.module'])->prefix('property')->name('property.')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');
     Route::get('/dashboard/metrics', [DashboardController::class, 'metricsFrame'])->name('dashboard.metrics');
     Route::get('/search', [PropertySearchController::class, 'index'])->name('search');
@@ -327,33 +327,33 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/field/readings/pack', [PropertyFieldReadingsController::class, 'pack'])->name('field.readings.pack');
     Route::post('/field/readings/sync', [PropertyFieldReadingsController::class, 'sync'])->name('field.readings.sync');
     Route::get('/field-officers', [FieldOfficerController::class, 'index'])->name('field_officers.index');
-    Route::get('/field-officers/create', [FieldOfficerController::class, 'create'])->middleware('property.permission:properties.manage')->name('field_officers.create');
-    Route::post('/field-officers', [FieldOfficerController::class, 'store'])->middleware('property.permission:properties.manage')->name('field_officers.store');
+    Route::get('/field-officers/create', [FieldOfficerController::class, 'create'])->middleware('property.permission:team.users.manage')->name('field_officers.create');
+    Route::post('/field-officers', [FieldOfficerController::class, 'store'])->middleware('property.permission:team.users.manage')->name('field_officers.store');
     Route::get('/field-officers/{fieldOfficer}', [FieldOfficerController::class, 'show'])->whereNumber('fieldOfficer')->name('field_officers.show');
-    Route::get('/field-officers/{fieldOfficer}/edit', [FieldOfficerController::class, 'edit'])->whereNumber('fieldOfficer')->middleware('property.permission:properties.manage')->name('field_officers.edit');
-    Route::put('/field-officers/{fieldOfficer}', [FieldOfficerController::class, 'update'])->whereNumber('fieldOfficer')->middleware('property.permission:properties.manage')->name('field_officers.update');
-    Route::post('/field-officers/{fieldOfficer}/properties/assign', [FieldOfficerController::class, 'assignProperty'])->whereNumber('fieldOfficer')->middleware('property.permission:properties.manage')->name('field_officers.properties.assign');
-    Route::post('/field-officers/{fieldOfficer}/properties/detach', [FieldOfficerController::class, 'detachProperty'])->whereNumber('fieldOfficer')->middleware('property.permission:properties.manage')->name('field_officers.properties.detach');
+    Route::get('/field-officers/{fieldOfficer}/edit', [FieldOfficerController::class, 'edit'])->whereNumber('fieldOfficer')->middleware('property.permission:team.users.manage')->name('field_officers.edit');
+    Route::put('/field-officers/{fieldOfficer}', [FieldOfficerController::class, 'update'])->whereNumber('fieldOfficer')->middleware('property.permission:team.users.manage')->name('field_officers.update');
+    Route::post('/field-officers/{fieldOfficer}/properties/assign', [FieldOfficerController::class, 'assignProperty'])->whereNumber('fieldOfficer')->middleware('property.permission:team.users.manage')->name('field_officers.properties.assign');
+    Route::post('/field-officers/{fieldOfficer}/properties/detach', [FieldOfficerController::class, 'detachProperty'])->whereNumber('fieldOfficer')->middleware('property.permission:team.users.manage')->name('field_officers.properties.detach');
     Route::get('/hr', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('hr'))->name('hr.index');
     Route::get('/hr/employees', [PropertyHrEmployeesController::class, 'index'])->name('hr.employees.index');
-    Route::get('/hr/employees/create', [PropertyHrEmployeesController::class, 'create'])->middleware('property.permission:properties.manage')->name('hr.employees.create');
-    Route::post('/hr/employees', [PropertyHrEmployeesController::class, 'store'])->middleware('property.permission:properties.manage')->name('hr.employees.store');
+    Route::get('/hr/employees/create', [PropertyHrEmployeesController::class, 'create'])->middleware('property.permission:team.users.manage')->name('hr.employees.create');
+    Route::post('/hr/employees', [PropertyHrEmployeesController::class, 'store'])->middleware('property.permission:team.users.manage')->name('hr.employees.store');
     Route::get('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'show'])->whereNumber('employee')->name('hr.employees.show');
-    Route::get('/hr/employees/{employee}/edit', [PropertyHrEmployeesController::class, 'edit'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.edit');
-    Route::put('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'update'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.update');
+    Route::get('/hr/employees/{employee}/edit', [PropertyHrEmployeesController::class, 'edit'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.edit');
+    Route::put('/hr/employees/{employee}', [PropertyHrEmployeesController::class, 'update'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.update');
     Route::post('/hr/employees/{employee}/permissions', [PropertyHrEmployeesController::class, 'updatePermissions'])->whereNumber('employee')->name('hr.employees.permissions.update');
-    Route::post('/hr/employees/{employee}/send-login', [PropertyHrEmployeesController::class, 'sendLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.send_login');
-    Route::post('/hr/employees/{employee}/revoke-login', [PropertyHrEmployeesController::class, 'revokeLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.revoke_login');
-    Route::post('/hr/employees/{employee}/restore-login', [PropertyHrEmployeesController::class, 'restoreLogin'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.restore_login');
-    Route::post('/hr/employees/{employee}/status', [PropertyHrEmployeesController::class, 'updateStatus'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.status');
-    Route::post('/hr/employees/{employee}/complete-onboarding', [PropertyHrEmployeesController::class, 'completeOnboarding'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.complete_onboarding');
-    Route::post('/hr/employees/{employee}/offboard', [PropertyHrEmployeesController::class, 'offboard'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.offboard');
-    Route::post('/hr/employees/{employee}/properties/assign', [PropertyHrEmployeesController::class, 'assignProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.assign');
-    Route::post('/hr/employees/{employee}/properties/detach', [PropertyHrEmployeesController::class, 'detachProperty'])->whereNumber('employee')->middleware('property.permission:properties.manage')->name('hr.employees.properties.detach');
+    Route::post('/hr/employees/{employee}/send-login', [PropertyHrEmployeesController::class, 'sendLogin'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.send_login');
+    Route::post('/hr/employees/{employee}/revoke-login', [PropertyHrEmployeesController::class, 'revokeLogin'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.revoke_login');
+    Route::post('/hr/employees/{employee}/restore-login', [PropertyHrEmployeesController::class, 'restoreLogin'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.restore_login');
+    Route::post('/hr/employees/{employee}/status', [PropertyHrEmployeesController::class, 'updateStatus'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.status');
+    Route::post('/hr/employees/{employee}/complete-onboarding', [PropertyHrEmployeesController::class, 'completeOnboarding'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.complete_onboarding');
+    Route::post('/hr/employees/{employee}/offboard', [PropertyHrEmployeesController::class, 'offboard'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.offboard');
+    Route::post('/hr/employees/{employee}/properties/assign', [PropertyHrEmployeesController::class, 'assignProperty'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.properties.assign');
+    Route::post('/hr/employees/{employee}/properties/detach', [PropertyHrEmployeesController::class, 'detachProperty'])->whereNumber('employee')->middleware('property.permission:team.users.manage')->name('hr.employees.properties.detach');
     Route::get('/hr/leaves', [PropertyHrLeavesController::class, 'index'])->name('hr.leaves.index');
-    Route::get('/hr/leaves/create', [PropertyHrLeavesController::class, 'create'])->middleware('property.permission:properties.manage')->name('hr.leaves.create');
-    Route::post('/hr/leaves', [PropertyHrLeavesController::class, 'store'])->middleware('property.permission:properties.manage')->name('hr.leaves.store');
-    Route::post('/hr/leaves/{staffLeave}/status', [PropertyHrLeavesController::class, 'updateStatus'])->whereNumber('staffLeave')->middleware('property.permission:properties.manage')->name('hr.leaves.status');
+    Route::get('/hr/leaves/create', [PropertyHrLeavesController::class, 'create'])->middleware('property.permission:team.users.manage')->name('hr.leaves.create');
+    Route::post('/hr/leaves', [PropertyHrLeavesController::class, 'store'])->middleware('property.permission:team.users.manage')->name('hr.leaves.store');
+    Route::post('/hr/leaves/{staffLeave}/status', [PropertyHrLeavesController::class, 'updateStatus'])->whereNumber('staffLeave')->middleware('property.permission:team.users.manage')->name('hr.leaves.status');
     Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->whereNumber('landlord')->name('landlords.show');
     Route::get('/landlords/{landlord}/edit', [PropertyPortfolioController::class, 'editLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.edit');
     Route::put('/landlords/{landlord}', [PropertyPortfolioController::class, 'updateLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.update');
@@ -388,11 +388,15 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/properties/{property}', [PropertyPortfolioController::class, 'showProperty'])->whereNumber('property')->name('properties.show');
     Route::get('/properties', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('portfolio'))->name('properties.index');
 
+    Route::get('/maintenance/requests/open-count', [PmMaintenanceWebController::class, 'openRequestCount'])->name('maintenance.requests.open_count');
     Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
     Route::get('/maintenance/requests/export', [PmMaintenanceWebController::class, 'requestsExport'])->name('maintenance.requests.export');
     Route::post('/maintenance/requests', [PmMaintenanceWebController::class, 'storeRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.store');
+    Route::get('/maintenance/requests/{requestItem}/files/{file}', [PmMaintenanceWebController::class, 'showRequestFile'])->whereNumber(['requestItem', 'file'])->name('maintenance.requests.files.show');
+    Route::get('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'showRequest'])->whereNumber('requestItem')->name('maintenance.requests.show');
     Route::get('/maintenance/requests/{requestItem}/edit', [PmMaintenanceWebController::class, 'editRequest'])->name('maintenance.requests.edit');
     Route::put('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'updateRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.update');
+    Route::delete('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'destroyRequest'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.destroy');
     Route::post('/maintenance/requests/{requestItem}/status', [PmMaintenanceWebController::class, 'updateRequestStatus'])->middleware('property.permission:maintenance.manage')->name('maintenance.requests.status');
     Route::get('/maintenance/jobs', [PmMaintenanceWebController::class, 'jobs'])->name('maintenance.jobs');
     Route::get('/maintenance/jobs/export', [PmMaintenanceWebController::class, 'jobsExport'])->name('maintenance.jobs.export');
@@ -601,6 +605,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/listings', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('listings'))->name('listings.index');
 
     Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('property.permission:team.users.manage')->name('settings.roles');
+    Route::get('/settings/roles/{pmRole}/permissions', [PropertySettingsStoreWebController::class, 'rolePermissions'])->whereNumber('pmRole')->middleware('property.permission:settings.access.manage')->name('settings.roles.permissions');
     Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('property.permission:settings.access.manage')->name('settings.permissions');
     Route::get('/settings/activity-log', [PropertyActivityLogController::class, 'index'])->name('settings.activity_log');
     Route::get('/settings/team-users/create', [PropertyTeamUserController::class, 'create'])->middleware('property.permission:team.users.manage')->name('settings.team_users.create');
@@ -616,6 +621,8 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/settings/equity', [PropertySettingsStoreWebController::class, 'equity'])->name('settings.equity');
     Route::get('/settings/branding', [PropertySettingsStoreWebController::class, 'branding'])->name('settings.branding');
     Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
+    Route::get('/settings/sms', [PropertySettingsStoreWebController::class, 'smsSettings'])->name('settings.sms');
+    Route::post('/settings/sms', [PropertySettingsStoreWebController::class, 'storeSmsSettings'])->middleware('property.permission:settings.manage')->name('settings.sms.store');
 
     // Per-agent SMS forwarder token. Self-service: each agent sees and
     // manages only their own tokens. No permission gate beyond being a

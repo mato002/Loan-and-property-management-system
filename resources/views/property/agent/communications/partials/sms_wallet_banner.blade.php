@@ -1,11 +1,12 @@
 @php
     $wallet = (array) ($smsWallet ?? []);
     $balanceUrl = route('property.communications.sms_balance', absolute: false);
+    $compact = (bool) ($compact ?? false);
 @endphp
 
 @if ($wallet !== [])
     <div
-        class="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        class="{{ $compact ? '' : 'grid grid-cols-2 gap-3 lg:grid-cols-4' }}"
         data-sms-wallet-banner
         x-data="{
             wallet: @js($wallet),
@@ -42,6 +43,7 @@
                 <span x-text="Number(wallet.balance || 0).toFixed(2)"></span>
                 <span class="text-sm font-medium text-slate-500" x-text="wallet.currency || 'KES'"></span>
             </p>
+            @unless ($compact)
             <p class="mt-1 text-xs text-slate-600 dark:text-slate-300" x-show="wallet.provider_units">
                 <span x-text="Number(wallet.provider_units || 0).toFixed(0)"></span> SMS units (provider)
             </p>
@@ -55,20 +57,23 @@
                 Includes <span x-text="Number(wallet.balance_pending_debit || 0).toFixed(2)"></span>
                 <span x-text="wallet.currency || 'KES'"></span> from recent sends (provider API may lag).
             </p>
+            @endunless
         </div>
 
+        @unless ($compact)
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
             <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Cost per SMS</p>
-            <p class="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
+            <p class="mt-2 text-xl font-semibold text-slate-900 dark:text-white" x-show="Number(wallet.cost_per_sms || 0) > 0">
                 <span x-text="Number(wallet.cost_per_sms || 0).toFixed(2)"></span>
                 <span class="text-sm font-medium text-slate-500" x-text="wallet.currency || 'KES'"></span>
             </p>
+            <p class="mt-2 text-sm font-semibold text-slate-900 dark:text-white" x-show="Number(wallet.cost_per_sms || 0) <= 0" x-text="wallet.provider_label || 'Provider account'"></p>
             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-text="wallet.cost_source ? (wallet.cost_source + ' · per message') : 'Per outbound message'"></p>
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-gray-800/80">
             <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Max recipients now</p>
-            <p class="mt-2 text-xl font-semibold text-slate-900 dark:text-white" x-text="wallet.max_recipients || 0"></p>
+            <p class="mt-2 text-xl font-semibold text-slate-900 dark:text-white" x-text="wallet.max_recipients === null || wallet.max_recipients === undefined ? '—' : wallet.max_recipients"></p>
             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">At current balance</p>
         </div>
 
@@ -82,7 +87,8 @@
                 <p class="text-sm font-semibold text-slate-900 dark:text-white" x-text="wallet.provider_ok ? 'Connected' : 'Not connected'"></p>
             </div>
             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-show="!wallet.provider_ok && wallet.provider_error" x-text="wallet.provider_error"></p>
-            <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300" x-show="wallet.provider_ok">Pradytec API reachable</p>
+            <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300" x-show="wallet.provider_ok" x-text="(wallet.provider_label || 'Provider') + ' API reachable'"></p>
         </div>
+        @endunless
     </div>
 @endif

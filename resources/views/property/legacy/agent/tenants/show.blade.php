@@ -31,7 +31,7 @@
                     <span class="text-slate-500">Status:</span>
                     {!! \App\Support\Property\TenantProfileStatus::badge($tenant) !!}
                 </p>
-                <p><span class="text-slate-500">Phone:</span> {{ $tenant->phone ?: '—' }}</p>
+                <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$tenant->phone" /></p>
                 <p><span class="text-slate-500">Email:</span> {{ $tenant->email ?: '—' }}</p>
                 <p><span class="text-slate-500">National ID / ref:</span> {{ $tenant->national_id ?: '—' }}</p>
                 <p><span class="text-slate-500">Opening arrears total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_amount ?? 0)) }}</p>

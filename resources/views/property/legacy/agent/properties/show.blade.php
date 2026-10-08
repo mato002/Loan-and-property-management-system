@@ -215,7 +215,7 @@
                         <td class="px-4 py-3 font-medium text-slate-900" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->label }}</td>
                         <td class="px-4 py-3 capitalize text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->status }}</td>
                         <td class="px-4 py-3 text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_name ?: '—' }}</td>
-                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_phone ?: '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif><x-phone-link :value="$u->tenant_phone" /></td>
                         <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
                         <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))

@@ -32,7 +32,6 @@ class FieldOfficerController extends Controller
     {
         return redirect()->route('property.hr.employees.create', array_merge($request->query(), [
             'field_officer' => 1,
-            'job_title' => PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
         ]));
     }
 
@@ -40,7 +39,6 @@ class FieldOfficerController extends Controller
     {
         return redirect()->route('property.hr.employees.create', [
             'field_officer' => 1,
-            'job_title' => PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
         ]);
     }
 

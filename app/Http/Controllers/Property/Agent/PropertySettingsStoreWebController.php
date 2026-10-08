@@ -338,6 +338,23 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('Template setup saved.'));
     }
 
+    public function rolePermissions(PmRole $pmRole): View
+    {
+        $this->ensureAccessControlDefaults();
+        $pmRole->load('permissions:id');
+        $permissionsByGroup = PmPermission::query()
+            ->orderBy('group')
+            ->orderBy('name')
+            ->get(['id', 'key', 'name', 'group', 'description'])
+            ->groupBy('group');
+
+        return property_view('property.agent.settings.role_permissions', [
+            'role' => $pmRole,
+            'permissionsByGroup' => $permissionsByGroup,
+            'selectedIds' => $pmRole->permissions->pluck('id')->map(static fn ($id) => (int) $id)->all(),
+        ]);
+    }
+
     public function systemSetupAccess(): View
     {
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions')) {
@@ -896,10 +913,37 @@ class PropertySettingsStoreWebController extends Controller
         return [
             ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit for move event.', 'options' => ''],
             ['key' => 'movement_type', 'label' => 'Movement type', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Move-in or move-out.', 'options' => 'move_in, move_out'],
-            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Planning/execution state.', 'options' => 'planned, in_progress, done, cancelled'],
-            ['key' => 'scheduled_on', 'label' => 'Scheduled date', 'type' => 'date', 'required' => true, 'enabled' => true, 'help_text' => 'Expected move date.', 'options' => ''],
-            ['key' => 'notes', 'label' => 'Notes', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Operational notes for field teams.', 'options' => ''],
+            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'selected' => true, 'enabled' => true, 'help_text' => 'Planning/execution state.', 'options' => 'planned, in_progress, done, cancelled'],
         ];
+    }
+
+    public function smsSettings(): View
+    {
+        $currentDriver = PropertyPortalSetting::getGlobalValue('bulksms_driver');
+        $envDriver = config('bulksms.driver', 'pradytec');
+        $usingDatabaseSetting = $currentDriver !== null && trim($currentDriver) !== '';
+        $effectiveDriver = $usingDatabaseSetting ? $currentDriver : $envDriver;
+
+        return property_view('property.agent.settings.sms', [
+            'currentDriver' => $currentDriver,
+            'envDriver' => $envDriver,
+            'usingDatabaseSetting' => $usingDatabaseSetting,
+            'effectiveDriver' => $effectiveDriver,
+        ]);
+    }
+
+    public function storeSmsSettings(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'bulksms_driver' => ['required', 'in:pradytec,africastalking'],
+        ]);
+
+        PropertyPortalSetting::setGlobalValue('bulksms_driver', $data['bulksms_driver']);
+
+        // Clear SMS balance cache when provider changes
+        app(\App\Services\BulkSmsService::class)->clearProviderBalanceCache();
+
+        return back()->with('success', __('SMS provider settings saved.'));
     }
 
     private function renderModuleFieldSetup(string $module, string $title, string $subtitle): View
@@ -966,13 +1010,22 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Onboard internal staff', 'key' => 'team.users.manage', 'group' => 'settings'],
         ];
 
+        foreach (\App\Support\Property\PropertyCrudPermissions::definitions() as $crud) {
+            $defaultPermissions[] = [
+                'name' => $crud['name'],
+                'key' => $crud['key'],
+                'group' => $crud['group'],
+                'description' => $crud['description'],
+            ];
+        }
+
         foreach ($defaultPermissions as $perm) {
             PmPermission::query()->firstOrCreate(
                 ['key' => $perm['key']],
                 [
                     'name' => $perm['name'],
                     'group' => $perm['group'],
-                    'description' => 'Auto-created default permission.',
+                    'description' => $perm['description'] ?? 'Auto-created default permission.',
                 ]
             );
         }
@@ -1026,6 +1079,20 @@ class PropertySettingsStoreWebController extends Controller
                 'description' => 'Record collections without settlement/admin scope.',
                 'permissions' => [
                     'payments.record',
+                ],
+            ],
+            'field_officer' => [
+                'name' => 'Field Officer',
+                'portal_scope' => 'agent',
+                'description' => 'Portfolio officer. Assign properties from the employee profile. Adjust these permissions in access control.',
+                'permissions' => [
+                    'tenants.manage',
+                    'leases.manage',
+                    'maintenance.manage',
+                    'maintenance.resolve',
+                    'utilities.readings.capture',
+                    'payments.record',
+                    'communications.manage',
                 ],
             ],
             'settings_admin' => [

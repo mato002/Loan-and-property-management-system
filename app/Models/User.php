@@ -24,6 +24,20 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /** @var list<string>|null */
+    private ?array $rolePermissionKeys = null;
+
+    /** @var array<string, string>|null */
+    private ?array $directPmPermissionEffects = null;
+
+    private ?bool $hasAnyPmRole = null;
+
+    private ?bool $scopedStaffLogin = null;
+
+    private ?bool $terminatedEmployee = null;
+
+    private static ?bool $pmPermissionTablesReady = null;
+
     /**
      * @return BelongsToMany<Property, $this>
      */
@@ -507,7 +521,7 @@ class User extends Authenticatable
             return false;
         }
 
-        if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_user_role')) {
+        if (! self::pmPermissionTablesReady()) {
             return true; // Legacy-safe until RBAC tables are migrated.
         }
 
@@ -519,14 +533,89 @@ class User extends Authenticatable
             return true;
         }
 
-        $roles = $this->pmRoles()->with('permissions:id,key')->get();
-        if ($roles->isEmpty()) {
-            return true; // Keep existing behavior until roles are assigned.
+        $this->loadRolePermissionState();
+        if (! $this->hasAnyPmRole) {
+            // Company accounts with no role keep full access. A staff login must
+            // be given a role; otherwise every module stays closed.
+            return ! $this->isScopedStaffLogin();
         }
 
-        return $roles
+        if (in_array($permissionKey, $this->rolePermissionKeys ?? [], true)) {
+            return true;
+        }
+
+        return $this->permissionGrantedByManage($permissionKey);
+    }
+
+    /**
+     * Staff provisioned from HR are not the company account, even when they sign in as agents.
+     */
+    public function isScopedStaffLogin(): bool
+    {
+        if ($this->scopedStaffLogin !== null) {
+            return $this->scopedStaffLogin;
+        }
+
+        if (! Schema::hasTable('employees') || ! Schema::hasColumn('employees', 'user_id')) {
+            return $this->scopedStaffLogin = false;
+        }
+
+        $employee = Employee::query()
+            ->where('user_id', $this->id)
+            ->first(['id', 'user_id', 'agent_user_id']);
+
+        if (! $employee) {
+            return $this->scopedStaffLogin = false;
+        }
+
+        if ((int) $employee->agent_user_id === (int) $this->id) {
+            return $this->scopedStaffLogin = false;
+        }
+
+        return $this->scopedStaffLogin = true;
+    }
+
+    private function loadRolePermissionState(): void
+    {
+        if ($this->rolePermissionKeys !== null) {
+            return;
+        }
+
+        $roles = $this->relationLoaded('pmRoles')
+            ? $this->pmRoles
+            : $this->pmRoles()->with('permissions:id,key')->get();
+
+        if ($roles->isNotEmpty() && ! $roles->first()->relationLoaded('permissions')) {
+            $roles->load('permissions:id,key');
+        }
+
+        $this->hasAnyPmRole = $roles->isNotEmpty();
+        $this->rolePermissionKeys = $roles
             ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
-            ->contains($permissionKey);
+            ->map(fn ($key) => (string) $key)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Manage includes view, create, edit, and delete unless that action is denied.
+     */
+    private function permissionGrantedByManage(string $permissionKey): bool
+    {
+        $manageKey = \App\Support\Property\PropertyCrudPermissions::manageKeyFor($permissionKey);
+        if ($manageKey === null) {
+            return false;
+        }
+
+        if ($this->directPmPermissionEffect($manageKey) === 'deny') {
+            return false;
+        }
+        if ($this->directPmPermissionEffect($manageKey) === 'allow') {
+            return true;
+        }
+
+        return in_array($manageKey, $this->rolePermissionKeys ?? [], true);
     }
 
     /**
@@ -534,31 +623,61 @@ class User extends Authenticatable
      */
     public function directPmPermissionEffect(string $permissionKey): ?string
     {
+        return $this->directPmPermissionEffects()[$permissionKey] ?? null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function directPmPermissionEffects(): array
+    {
+        if ($this->directPmPermissionEffects !== null) {
+            return $this->directPmPermissionEffects;
+        }
+
         if (! Schema::hasTable('pm_user_permission') || ! Schema::hasTable('pm_permissions')) {
-            return null;
+            return $this->directPmPermissionEffects = [];
         }
 
         $query = DB::table('pm_user_permission as up')
             ->join('pm_permissions as p', 'p.id', '=', 'up.pm_permission_id')
-            ->where('up.user_id', $this->id)
-            ->where('p.key', $permissionKey);
+            ->where('up.user_id', $this->id);
 
         if (! Schema::hasColumn('pm_user_permission', 'effect')) {
-            return $query->exists() ? 'allow' : null;
+            return $this->directPmPermissionEffects = $query->pluck('p.key')
+                ->mapWithKeys(fn ($key) => [(string) $key => 'allow'])
+                ->all();
         }
 
-        $effect = $query->value('up.effect');
+        $effects = [];
+        foreach ($query->get(['p.key', 'up.effect']) as $row) {
+            $effect = (string) ($row->effect ?? '');
+            if (in_array($effect, ['allow', 'deny'], true)) {
+                $effects[(string) $row->key] = $effect;
+            }
+        }
 
-        return in_array($effect, ['allow', 'deny'], true) ? $effect : null;
+        return $this->directPmPermissionEffects = $effects;
+    }
+
+    private static function pmPermissionTablesReady(): bool
+    {
+        return self::$pmPermissionTablesReady ??= Schema::hasTable('pm_roles')
+            && Schema::hasTable('pm_permissions')
+            && Schema::hasTable('pm_user_role');
     }
 
     public function isTerminatedEmployee(): bool
     {
-        if (! Schema::hasTable('employees') || ! Schema::hasColumn('employees', 'employment_status')) {
-            return false;
+        if ($this->terminatedEmployee !== null) {
+            return $this->terminatedEmployee;
         }
 
-        return Employee::query()
+        if (! Schema::hasTable('employees') || ! Schema::hasColumn('employees', 'employment_status')) {
+            return $this->terminatedEmployee = false;
+        }
+
+        return $this->terminatedEmployee = Employee::query()
             ->where('user_id', $this->id)
             ->where('employment_status', 'terminated')
             ->exists();

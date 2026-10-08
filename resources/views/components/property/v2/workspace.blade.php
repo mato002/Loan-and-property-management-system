@@ -206,11 +206,6 @@
             ])>
                 @if ($hasToolbar || ($useLegacyToolbar && $canShowDefaultSearch) || $hasMobileFiltersExtra)
                     <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:block md:overflow-visible">
-                        @if ($compactList && $hasPageActions)
-                            <div class="property-inline-actions flex shrink-0 flex-nowrap items-center gap-2 md:hidden">
-                                {{ $actions }}
-                            </div>
-                        @endif
                         @if (! $hasToolbar && (($useLegacyToolbar && $canShowDefaultSearch) || $hasTable))
                             <div class="flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible">
                                 @if ($useLegacyToolbar && $canShowDefaultSearch)
@@ -274,15 +269,6 @@
                                             \App\Support\Property\FilterToolbarViewport::set('mobile');
                                         @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
-                                            @if ($useLegacyToolbar && $canShowDefaultSearch)
-                                                <input
-                                                    type="search"
-                                                    data-table-filter="parent"
-                                                    autocomplete="off"
-                                                    placeholder="Search…"
-                                                    class="min-h-[44px] w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-gray-800"
-                                                />
-                                            @endif
                                             {{ $toolbar }}
                                         </div>
                                     </x-slot>
@@ -292,10 +278,6 @@
                                 \App\Support\Property\FilterToolbarViewport::set('all');
                             @endphp
                         @endif
-                    </div>
-                @elseif ($compactList && $hasPageActions)
-                    <div class="property-inline-actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:hidden">
-                        {{ $actions }}
                     </div>
                 @endif
 
@@ -351,6 +333,9 @@
                                                 $__rowHref = null;
                                                 foreach ($row as $__rowCell) {
                                                     $__cellHtml = (string) $__rowCell;
+                                                    if (stripos($__cellHtml, '<details') !== false) {
+                                                        continue;
+                                                    }
                                                     if (preg_match('/<a[^>]+href=["\\\']([^"\\\']+)["\\\']/i', $__cellHtml, $__hrefMatch)) {
                                                         $__rowHref = $__hrefMatch[1] ?? null;
                                                         $__hrefLower = is_string($__rowHref) ? strtolower(trim($__rowHref)) : '';

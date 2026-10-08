@@ -14,7 +14,8 @@
                 <th class="px-4 py-3">Date</th>
                 <th class="px-4 py-3">Type</th>
                 <th class="px-4 py-3">Amount</th>
-                <th class="px-4 py-3">Balance</th>
+                <th class="px-4 py-3">Paid</th>
+                <th class="px-4 py-3">Unpaid</th>
                 <th class="px-4 py-3">Status</th>
                 <th class="px-4 py-3">Actions</th>
             </tr>
@@ -54,7 +55,8 @@
                     <td class="px-4 py-3">{{ $invoice->issue_date?->format('Y-m-d') ?? '—' }}</td>
                     <td class="px-4 py-3 capitalize">{{ str_replace('_', ' ', (string) ($invoice->invoice_type ?? 'charge')) }}</td>
                     <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $invoice->amount) }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($balance) }}</td>
+                    <td class="px-4 py-3 tabular-nums text-emerald-800">{{ \App\Services\Property\PropertyMoney::kes($allocated) }}</td>
+                    <td class="px-4 py-3 tabular-nums {{ $balance > 0.009 ? 'font-semibold text-rose-800' : 'text-slate-700' }}">{{ \App\Services\Property\PropertyMoney::kes($balance) }}</td>
                     <td class="px-4 py-3">
                         <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusClass }}">{{ $statusLabel }}</span>
                     </td>
@@ -63,7 +65,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No invoices yet.</td></tr>
+                <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">No invoices yet.</td></tr>
             @endforelse
         </tbody>
     </table>

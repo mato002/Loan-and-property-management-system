@@ -12,6 +12,7 @@ use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
+use App\Support\Property\PropertyCrudPermissions;
 use App\Support\Property\PropertyEntityHub;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,10 +61,7 @@ class PropertyHrEmployeesController extends Controller
         }
 
         if ($filters['role_type'] === 'field_officer') {
-            $query->where(function ($inner) {
-                $inner->where('job_title', PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE)
-                    ->orWhereHas('fieldOfficerProfile');
-            });
+            $this->hr->constrainFieldOfficers($query);
 
             if ($filters['portfolio'] === 'assigned') {
                 $query->whereHas('fieldOfficerProfile.properties');
@@ -76,8 +74,8 @@ class PropertyHrEmployeesController extends Controller
             $query->where('agent_user_id', $filters['agent_user_id']);
         }
 
-        $employees = $query->with(['fieldOfficerProfile', 'user'])->get();
-        $fieldOfficerCount = $employees->filter(fn (Employee $e) => $e->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($e->job_title))->count();
+        $employees = $query->with(['fieldOfficerProfile', 'user.pmRoles'])->get();
+        $fieldOfficerCount = $employees->filter(fn (Employee $e) => $this->hr->isFieldOfficerEmployee($e))->count();
 
         $isFieldOfficerList = $filters['role_type'] === 'field_officer';
         $tableRows = [];
@@ -89,7 +87,8 @@ class PropertyHrEmployeesController extends Controller
 
         foreach ($employees as $employee) {
             $showUrl = route('property.hr.employees.show', ['employee' => $employee->id], false);
-            $isFieldOfficer = $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title);
+            $roleLabel = $employee->user?->pmRoles?->pluck('name')->filter()->join(', ') ?: '—';
+            $isFieldOfficer = $this->hr->isFieldOfficerEmployee($employee);
             $portfolioStats = $employee->fieldOfficerProfile?->portfolioStats() ?? [];
             $loginState = $this->hr->loginActionState($employee);
             $canManage = $this->canManageHr($request);
@@ -120,6 +119,7 @@ class PropertyHrEmployeesController extends Controller
                         e($employee->full_name).
                         '</a>'
                     ),
+                    $roleLabel,
                     (string) ($portfolioStats['properties'] ?? 0),
                     (string) ($portfolioStats['units'] ?? 0),
                     (string) ($portfolioStats['tenants'] ?? 0),
@@ -151,13 +151,14 @@ class PropertyHrEmployeesController extends Controller
                     ),
                     (string) ($employee->department ?: '—'),
                     (string) ($employee->job_title ?: '—'),
+                    $roleLabel,
                     $employee->employmentStatusLabel(),
                     (string) ($employee->phone ?: ($employee->email ?: '—')),
                     $actions,
                 ];
             }
 
-            $tableRowFilters[] = mb_strtolower($employee->employee_number.' '.$employee->full_name.' '.$employee->email.' '.$employee->phone);
+            $tableRowFilters[] = mb_strtolower($employee->employee_number.' '.$employee->full_name.' '.$employee->email.' '.$employee->phone.' '.$roleLabel);
         }
 
         $stats = $isFieldOfficerList
@@ -175,14 +176,14 @@ class PropertyHrEmployeesController extends Controller
             ];
 
         $columns = $isFieldOfficerList
-            ? ['Number', 'Name', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact', 'Actions']
-            : ['Number', 'Name', 'Department', 'Job title', 'Status', 'Contact', 'Actions'];
+            ? ['Number', 'Name', 'Role', 'Properties', 'Units', 'Tenants', 'Rent portfolio', 'Contact', 'Actions']
+            : ['Number', 'Name', 'Department', 'Job title', 'Role', 'Status', 'Contact', 'Actions'];
 
         return property_view('property.agent.hr.employees.index', [
             'filters' => $filters,
             'agents' => $this->agentOptionsForForm($request),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
+            'departments' => $this->hr->distinctEmployeeColumn('department'),
+            'jobTitles' => $this->hr->distinctEmployeeColumn('job_title'),
             'stats' => $stats,
             'columns' => $columns,
             'tableRows' => $tableRows,
@@ -197,8 +198,6 @@ class PropertyHrEmployeesController extends Controller
         return property_view('property.agent.hr.employees.create', array_merge([
             'agents' => $this->agentOptionsForForm($request),
             'defaultAgentUserId' => $this->defaultAgentUserId($request),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
             'suggestedEmployeeNumber' => $this->hr->generateNextEmployeeNumber(),
             'defaultJobTitle' => (string) $request->query('job_title', ''),
             'defaultIsFieldOfficer' => $request->boolean('field_officer') || $request->query('job_title') === PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
@@ -323,8 +322,8 @@ class PropertyHrEmployeesController extends Controller
         $data = $request->validate([
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:pm_roles,id'],
-            'effects' => ['nullable', 'array'],
-            'effects.*' => ['string', Rule::in(['inherit', 'allow', 'deny'])],
+            'granted' => ['nullable', 'array'],
+            'granted.*' => ['integer', 'exists:pm_permissions,id'],
         ]);
 
         $roleIds = array_values(array_unique(array_map('intval', $data['role_ids'] ?? [])));
@@ -353,18 +352,45 @@ class PropertyHrEmployeesController extends Controller
 
         $permissions = PmPermission::query()->get(['id', 'key'])->keyBy('id');
         $previous = $user->pmPermissions()->get()->keyBy('id');
+        $grantedIds = array_fill_keys(array_map('intval', $data['granted'] ?? []), true);
+        $selectedRoles = PmRole::query()
+            ->with('permissions:id,key')
+            ->whereIn('id', $allowedRoleIds === [] ? [0] : $allowedRoleIds)
+            ->get();
+        $fromRoleIds = $selectedRoles
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip();
+        $roleKeys = $selectedRoles
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+            ->map(fn ($key) => (string) $key)
+            ->unique()
+            ->flip();
         $sync = [];
         foreach ($permissions as $permission) {
-            $effect = (string) ($data['effects'][$permission->id] ?? $data['effects'][(string) $permission->id] ?? 'inherit');
-            if (! in_array($effect, ['inherit', 'allow', 'deny'], true)) {
-                $effect = 'inherit';
+            $id = (int) $permission->id;
+            $wants = isset($grantedIds[$id]);
+            $manageKey = PropertyCrudPermissions::manageKeyFor((string) $permission->key);
+            $fromRole = $fromRoleIds->has($id) || ($manageKey !== null && $roleKeys->has($manageKey));
+            if ($rank < 2 && $wants && ! $fromRole && ! $actor->hasPmPermission((string) $permission->key)) {
+                $kept = $previous->get($id);
+                $wants = $kept && (string) ($kept->pivot->effect ?? '') === 'allow';
             }
-            if ($rank < 2 && $effect === 'allow' && ! $actor->hasPmPermission((string) $permission->key)) {
-                $kept = $previous->get($permission->id);
-                $effect = $kept && (string) ($kept->pivot->effect ?? 'allow') === 'allow' ? 'allow' : 'inherit';
+            $manageStillWanted = true;
+            if ($manageKey !== null) {
+                $managePermission = $permissions->first(
+                    fn (PmPermission $row): bool => (string) $row->key === $manageKey
+                );
+                $manageStillWanted = $managePermission !== null
+                    && isset($grantedIds[(int) $managePermission->id]);
             }
-            if ($effect === 'allow' || $effect === 'deny') {
-                $sync[$permission->id] = ['effect' => $effect];
+            if ($wants && ! $fromRole) {
+                $sync[$id] = ['effect' => 'allow'];
+            } elseif (! $wants && $fromRole) {
+                $sync[$id] = ['effect' => 'deny'];
+            } elseif ($wants && $manageKey !== null && ! $manageStillWanted) {
+                $sync[$id] = ['effect' => 'allow'];
             }
         }
 
@@ -418,15 +444,13 @@ class PropertyHrEmployeesController extends Controller
 
     public function edit(Request $request, Employee $employee): View
     {
-        $employee->loadMissing('fieldOfficerProfile');
+        $employee->loadMissing(['fieldOfficerProfile', 'user.pmRoles']);
 
         return property_view('property.agent.hr.employees.edit', array_merge([
             'employee' => $employee,
             'agents' => $this->agentOptionsForForm($request),
             'defaultAgentUserId' => (int) ($employee->agent_user_id ?: $this->defaultAgentUserId($request)),
-            'departments' => PropertyHrEmployeeService::DEPARTMENTS,
-            'jobTitles' => PropertyHrEmployeeService::JOB_TITLES,
-            'isFieldOfficer' => (bool) $employee->fieldOfficerProfile || $this->hr->isFieldOfficerJobTitle($employee->job_title),
+            'isFieldOfficer' => $this->hr->isFieldOfficerEmployee($employee),
             'propertyRoles' => $this->hr->propertyRolesForForm(),
             'rolesReady' => $this->hr->propertyRolesForForm()->isNotEmpty(),
             'linkedRoleIds' => $employee->user?->pmRoles?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [],
@@ -699,11 +723,10 @@ class PropertyHrEmployeesController extends Controller
                 : ['required', 'integer', 'exists:users,id'],
         ]);
 
-        $isFieldOfficer = $request->boolean('is_field_officer')
-            || $this->hr->isFieldOfficerJobTitle($validated['job_title'] ?? null);
-
         $provisionLogin = $request->boolean('provision_login');
         $roleIds = array_values(array_unique(array_filter(array_map('intval', (array) ($validated['role_ids'] ?? [])))));
+        $isFieldOfficer = $this->hr->rolesIncludeFieldOfficer($roleIds)
+            || $this->hr->isFieldOfficerJobTitle($validated['job_title'] ?? null);
 
         if ($provisionLogin && $roleIds === [] && ! $employee?->user_id) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -737,7 +760,9 @@ class PropertyHrEmployeesController extends Controller
                 'assigned_tools' => trim((string) ($validated['assigned_tools'] ?? '')) ?: null,
             ],
             'is_field_officer' => $isFieldOfficer,
-            'portal_access' => $request->boolean('portal_access'),
+            'portal_access' => $request->boolean('portal_access')
+                || $provisionLogin
+                || (bool) $employee?->fieldOfficerProfile?->portal_access,
             'provision_login' => $provisionLogin,
             'role_ids' => $roleIds,
         ];
@@ -855,6 +880,11 @@ class PropertyHrEmployeesController extends Controller
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->flip() ?? collect();
+        $roleKeys = $user?->pmRoles
+            ?->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+            ->map(fn ($key) => (string) $key)
+            ->unique()
+            ->flip() ?? collect();
         $effects = [];
         foreach ($user?->pmPermissions ?? [] as $permission) {
             $effect = (string) ($permission->pivot->effect ?? 'allow');
@@ -863,24 +893,42 @@ class PropertyHrEmployeesController extends Controller
 
         $groups = collect();
         if (Schema::hasTable('pm_permissions')) {
+            app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
             $groups = PmPermission::query()
                 ->orderBy('group')
                 ->orderBy('name')
                 ->get(['id', 'key', 'name', 'group', 'description'])
                 ->groupBy(fn (PmPermission $permission) => $permission->group ?: 'general')
-                ->map(function ($rows) use ($fromRole, $effects, $accessRank) {
-                    return $rows->map(function (PmPermission $permission) use ($fromRole, $effects, $accessRank) {
+                ->map(function ($rows) use ($fromRole, $roleKeys, $effects, $accessRank) {
+                    return $rows->map(function (PmPermission $permission) use ($fromRole, $roleKeys, $effects, $accessRank) {
                         $id = (int) $permission->id;
+                        $key = (string) $permission->key;
+                        $manageKey = PropertyCrudPermissions::manageKeyFor($key);
+                        $included = $fromRole->has($id) || ($manageKey !== null && $roleKeys->has($manageKey));
 
                         return [
                             'id' => $id,
-                            'key' => (string) $permission->key,
+                            'key' => $key,
                             'name' => (string) $permission->name,
                             'description' => (string) ($permission->description ?? ''),
-                            'from_role' => $fromRole->has($id),
+                            'from_role' => $included,
                             'effect' => $effects[$id] ?? 'inherit',
+                            'granted' => ($effects[$id] ?? 'inherit') === 'allow'
+                                || (($effects[$id] ?? 'inherit') !== 'deny' && $included),
                             'can_grant' => $accessRank >= 2,
                         ];
+                    })->sortBy(function (array $row): string {
+                        $key = (string) $row['key'];
+                        $rank = match (true) {
+                            str_ends_with($key, '.view') => 0,
+                            str_ends_with($key, '.create') => 1,
+                            str_ends_with($key, '.update') => 2,
+                            str_ends_with($key, '.delete') => 3,
+                            str_ends_with($key, '.manage') => 4,
+                            default => 9,
+                        };
+
+                        return sprintf('%d-%s', $rank, strtolower((string) $row['name']));
                     })->values();
                 });
         }
@@ -912,6 +960,7 @@ class PropertyHrEmployeesController extends Controller
         }
 
         return ($user->is_super_admin ?? false) === true
+            || $user->hasPmPermission('team.users.manage')
             || $user->hasPmPermission('properties.manage');
     }
 

@@ -309,6 +309,7 @@
     <form
         method="post"
         action="{{ route('property.maintenance.requests.store') }}"
+        enctype="multipart/form-data"
         class="space-y-3"
         x-data="{
             propertyId: @js($defaultPropertyId),
@@ -363,6 +364,7 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Description</label>
                 <textarea name="description" rows="3" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('description') }}</textarea>
             </div>
+            @include('property.partials.maintenance_attachments_field')
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit request</button>
         @endif
     </form>

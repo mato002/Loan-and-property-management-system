@@ -102,7 +102,7 @@
                 </td>
                 <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{!! $statusCell !!}</td>
                 <td class="px-4 py-3 text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{!! is_string($tenantCell) ? e($tenantCell) : $tenantCell !!}</td>
-                <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_phone ?: '—' }}</td>
+                <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif><x-phone-link :value="$u->tenant_phone" /></td>
                 <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($listedRent) }}</td>
                 <td
                     class="px-4 py-3 tabular-nums {{ $hasArrearsAlert ? 'bg-rose-100 font-semibold text-rose-800' : '' }}"

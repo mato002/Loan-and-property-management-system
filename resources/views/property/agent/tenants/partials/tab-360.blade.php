@@ -82,11 +82,21 @@
                 <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                     <dt class="text-slate-500">Emergency {{ $idx + 1 }}</dt>
                     <dd class="text-slate-900 text-right">
-                        {{ collect([$contact['name'] ?? '', $contact['relationship'] ?? '', $contact['phone'] ?? '', $contact['email'] ?? ''])->filter()->implode(' · ') ?: '—' }}
+                        {{ collect([$contact['name'] ?? '', $contact['relationship'] ?? ''])->filter()->implode(' · ') }}
+                        @if (! empty($contact['phone']))
+                            @if (! empty($contact['name']) || ! empty($contact['relationship'])) · @endif
+                            <x-phone-link :value="$contact['phone']" />
+                        @endif
+                        @if (! empty($contact['email']))
+                            · {{ $contact['email'] }}
+                        @endif
+                        @if (empty($contact['name']) && empty($contact['relationship']) && empty($contact['phone']) && empty($contact['email']))
+                            —
+                        @endif
                     </dd>
                 </div>
             @empty
-                <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900">{{ $tenant->emergency_contact ?: '—' }}</dd></div>
+                <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Emergency contact</dt><dd class="text-slate-900"><x-phone-link :value="$tenant->emergency_contact" /></dd></div>
             @endforelse
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Bank</dt>
                 <dd class="text-slate-900 text-right">

@@ -93,7 +93,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        Users
+                        People
                     </a>
 
                     <a href="{{ route('superadmin.access_approvals') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.access_approvals') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
@@ -205,7 +205,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span class="sa-collapse-text">Users</span>
+                        <span class="sa-collapse-text">People</span>
                     </a>
 
                     <a href="{{ route('superadmin.access_approvals') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.access_approvals') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
@@ -297,7 +297,7 @@
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="text-[10px] sm:text-sm font-bold text-emerald-100 uppercase tracking-widest">Super Admin</div>
-                                <div class="text-sm sm:text-lg font-black text-white leading-snug break-words">{{ $title ?? 'Console' }}</div>
+                                <div class="text-sm sm:text-lg font-black text-white leading-snug break-words" data-open-task-title>{{ $title ?? 'Console' }}</div>
                             </div>
                         </div>
 
@@ -357,6 +357,8 @@
                     </div>
                 </header>
 
+                @include('layouts.partials.open-tasks', ['openTasksScope' => 'superadmin', 'openTasksFrame' => ''])
+
                 {{-- Content --}}
                 <main class="flex-1 min-w-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
                     @yield('content')
@@ -371,6 +373,7 @@
                 </footer>
             </div>
         </div>
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>
 

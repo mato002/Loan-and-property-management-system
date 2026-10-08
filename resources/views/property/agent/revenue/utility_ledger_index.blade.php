@@ -43,7 +43,7 @@
                     @forelse ($summaries as $row)
                         <tr class="border-t border-slate-100 hover:bg-slate-50/80">
                             <td class="px-4 py-3 font-medium text-slate-900">{{ $row['name'] }}</td>
-                            <td class="px-4 py-3 text-slate-600">{{ $row['phone'] }}</td>
+                            <td class="px-4 py-3 text-slate-600"><x-phone-link :value="$row['phone']" /></td>
                             <td class="px-4 py-3 text-right font-semibold tabular-nums {{ $row['utility_balance'] > 0 ? 'text-amber-800' : 'text-emerald-700' }}">
                                 {{ $row['utility_balance_display'] }}
                             </td>

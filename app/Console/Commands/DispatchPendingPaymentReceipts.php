@@ -20,7 +20,8 @@ class DispatchPendingPaymentReceipts extends Command
     public function handle(): int
     {
         if (! PropertyPortalSetting::isPaymentReceiptAutomationEnabled() || ! MpesaIntegrationConfig::autoReceiptEnabled()) {
-            $this->info('Payment receipt automation is off. Skipping.');
+            $paused = $this->pauseUnsentReceipts();
+            $this->info('Payment receipt automation is off. Skipping.'.($paused > 0 ? " Held {$paused} unsent payment(s)." : ''));
 
             return self::SUCCESS;
         }
@@ -32,10 +33,17 @@ class DispatchPendingPaymentReceipts extends Command
         }
 
         $limit = max(1, min(500, (int) $this->option('limit')));
+        $monthStart = now()->startOfMonth();
         $query = PmPayment::query()
             ->where('status', PmPayment::STATUS_COMPLETED)
             ->where('amount', '>', 0)
             ->whereNotNull('pm_tenant_id')
+            ->where(function ($q) use ($monthStart): void {
+                $q->where('paid_at', '>=', $monthStart)
+                    ->orWhere(function ($inner) use ($monthStart): void {
+                        $inner->whereNull('paid_at')->where('created_at', '>=', $monthStart);
+                    });
+            })
             ->where(function ($q): void {
                 $q->whereNull('meta')
                     ->orWhereRaw("JSON_EXTRACT(meta, '$.receipt_notified_at') IS NULL")
@@ -75,5 +83,49 @@ class DispatchPendingPaymentReceipts extends Command
         $this->info("Queued {$queued} payment receipt(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * While receipts are off, hold every completed payment that has not been texted
+     * so turning the switch back on does not send the backlog.
+     */
+    private function pauseUnsentReceipts(): int
+    {
+        if (! Schema::hasTable('pm_payments')) {
+            return 0;
+        }
+
+        $payments = PmPayment::query()
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where('amount', '>', 0)
+            ->whereNotNull('pm_tenant_id')
+            ->where(function ($q): void {
+                $q->whereNull('meta')
+                    ->orWhereRaw("JSON_EXTRACT(meta, '$.receipt_notified_at') IS NULL")
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.receipt_notified_at')) = ''");
+            })
+            ->where(function ($q): void {
+                $q->whereNull('meta')
+                    ->orWhereRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.skip_notification')), 'false') NOT IN ('true','1',1)");
+            })
+            ->orderBy('id')
+            ->limit(500)
+            ->get();
+
+        $paused = 0;
+        foreach ($payments as $payment) {
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            if (! empty($meta['receipt_notified_at']) || ! empty($meta['skip_notification'])) {
+                continue;
+            }
+
+            $meta['skip_notification'] = true;
+            $meta['receipt_skip_reason'] = 'receipts_paused';
+            unset($meta['receipt_claim_at'], $meta['receipt_claim_by']);
+            $payment->update(['meta' => $meta]);
+            $paused++;
+        }
+
+        return $paused;
     }
 }

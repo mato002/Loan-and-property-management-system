@@ -92,14 +92,33 @@ class PropertyPaymentSettlementService
             }
 
             $payment->load('allocations.invoice.unit');
-            $this->finalizeIdentifiedPayment($payment, null, $remaining);
-            $this->repairTenantIfDriftDetected((int) $payment->pm_tenant_id);
+            $this->reconcileTenantCreditQuietly((int) $payment->pm_tenant_id);
+            try {
+                $this->finalizeIdentifiedPayment($payment, null, $remaining);
+            } catch (\Throwable $e) {
+                Log::error('Payment settled but accounting finalize failed', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'pm_tenant_id' => (int) $payment->pm_tenant_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            try {
+                $this->repairTenantIfDriftDetected((int) $payment->pm_tenant_id);
+            } catch (\Throwable $e) {
+                Log::warning('Payment repair skipped after settlement', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             $fresh = $payment->fresh();
             $paymentId = (int) ($fresh?->id ?? 0);
             $skipNotification = (bool) data_get($payment->meta, 'skip_notification');
-            if ($paymentId > 0 && ! $skipNotification) {
+            if ($paymentId > 0 && ! $skipNotification && $this->receiptAutomationEnabled()) {
                 DB::afterCommit(function () use ($paymentId) {
+                    if (! $this->receiptAutomationEnabled()) {
+                        return;
+                    }
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);
                     } catch (\Throwable $e) {
@@ -263,9 +282,12 @@ class PropertyPaymentSettlementService
             $this->repairTenantIfDriftDetected($tenantId);
 
             $fresh = $payment->fresh(['allocations']);
-            if ($fresh && ! ($data['skip_notification'] ?? true)) {
+            if ($fresh && ! ($data['skip_notification'] ?? true) && $this->receiptAutomationEnabled()) {
                 $paymentId = (int) $fresh->id;
                 DB::afterCommit(function () use ($paymentId) {
+                    if (! $this->receiptAutomationEnabled()) {
+                        return;
+                    }
                     try {
                         SendPaymentReceiptJob::dispatch($paymentId);
                     } catch (\Throwable $e) {
@@ -421,9 +443,28 @@ class PropertyPaymentSettlementService
     }
 
     /**
+     * Credit bookkeeping must not roll back a payment that has already been received.
+     */
+    private function reconcileTenantCreditQuietly(int $tenantId): void
+    {
+        if ($tenantId <= 0) {
+            return;
+        }
+
+        try {
+            app(TenantCreditService::class)->reconcileBalanceToStatement($tenantId);
+        } catch (\Throwable $e) {
+            Log::error('Tenant credit reconcile skipped after payment settlement', [
+                'pm_tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Create one allocation row and derive invoice.amount_paid from allocations.
      */
-    public function createAllocation(PmPayment $payment, PmInvoice $invoice, float $amount): PmPaymentAllocation
+    public function createAllocation(PmPayment $payment, PmInvoice $invoice, float $amount, bool $syncTenantCredit = true): PmPaymentAllocation
     {
         $payment = $this->lockPayment($payment);
         $invoice = PmInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
@@ -443,6 +484,18 @@ class PropertyPaymentSettlementService
         $invoice->syncAmountPaidFromAllocations();
         $this->assertInvoiceAllocationInvariant($invoice);
         app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
+
+        if ($syncTenantCredit && (string) $payment->channel !== 'tenant_credit') {
+            try {
+                app(TenantCreditService::class)->syncOverpaymentCreditToPaymentRemainder($payment);
+            } catch (\Throwable $e) {
+                Log::warning('Overpayment credit sync skipped during allocation', [
+                    'pm_payment_id' => (int) $payment->id,
+                    'pm_invoice_id' => (int) $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         return $allocation;
     }
@@ -684,6 +737,12 @@ class PropertyPaymentSettlementService
         app(PropertyPaymentAllocationRepairService::class)->repairTenant($tenantId);
 
         return true;
+    }
+
+    private function receiptAutomationEnabled(): bool
+    {
+        return \App\Models\PropertyPortalSetting::isPaymentReceiptAutomationEnabled()
+            && \App\Support\Property\MpesaIntegrationConfig::autoReceiptEnabled();
     }
 
     private function lockPayment(PmPayment $payment): PmPayment

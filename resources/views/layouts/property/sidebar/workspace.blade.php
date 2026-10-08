@@ -124,11 +124,19 @@
                         class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
                         :title="sidebarDesktopOpen ? '' : '{{ $workspace['label'] }}'"
                     >
-                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                        <span class="property-workspace-icon-wrap relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
                             <i class="fa-solid {{ $workspace['icon'] }} text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                            @if (($workspace['key'] ?? '') === 'maintenance')
+                                @include('property.partials.maintenance_request_bell', ['count' => (int) ($workspace['badge'] ?? 0), 'variant' => 'dot'])
+                            @endif
                         </span>
                         <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
-                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $workspace['label'] }}</span>
+                            <span class="flex items-center gap-1 text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">
+                                {{ $workspace['label'] }}
+                                @if (($workspace['key'] ?? '') === 'maintenance')
+                                    @include('property.partials.maintenance_request_bell', ['count' => (int) ($workspace['badge'] ?? 0), 'variant' => 'inline'])
+                                @endif
+                            </span>
                             @if (! empty($workspace['sublabel']))
                                 <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">{{ $workspace['sublabel'] }}</span>
                             @endif

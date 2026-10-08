@@ -22,7 +22,7 @@
                 </div>
                 <div>
                     <p class="text-xs text-slate-500 dark:text-slate-400">Phone</p>
-                    <p class="font-medium text-slate-900 dark:text-white">{{ $application->applicant_phone ?? '—' }}</p>
+                    <p class="font-medium text-slate-900 dark:text-white"><x-phone-link :value="$application->applicant_phone" /></p>
                 </div>
                 <div>
                     <p class="text-xs text-slate-500 dark:text-slate-400">Email</p>

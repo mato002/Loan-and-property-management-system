@@ -160,10 +160,8 @@
                             <div class="flex justify-between"><span class="text-slate-600">Tax</span><span class="tabular-nums">KES {{ number_format($tax, 2) }}</span></div>
                         @endif
                         <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold"><span>Total</span><span class="tabular-nums">KES {{ number_format($total, 2) }}</span></div>
-                        @if ($paid > 0)
-                            <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums">KES {{ number_format($paid, 2) }}</span></div>
-                            <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-red-700"><span>Balance</span><span class="tabular-nums">KES {{ number_format($balance, 2) }}</span></div>
-                        @endif
+                        <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums text-emerald-800">KES {{ number_format($paid, 2) }}</span></div>
+                        <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold {{ $balance > 0.009 ? 'text-red-700' : 'text-emerald-800' }}"><span>Unpaid</span><span class="tabular-nums">KES {{ number_format($balance, 2) }}</span></div>
                     </div>
                 </div>
 

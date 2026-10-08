@@ -51,7 +51,7 @@ final class LiveWebRoot
      */
     public static function publish(string $webRoot): array
     {
-        $copied = [];
+        $copied = self::publishShellFiles($webRoot);
         $source = public_path('build');
         if (! is_dir($source)) {
             return $copied;
@@ -61,34 +61,51 @@ final class LiveWebRoot
         self::mirrorDirectory($source, $dest);
         $copied[] = $dest;
 
+        $hot = rtrim($webRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'hot';
+        if (is_file($hot)) {
+            @unlink($hot);
+        }
+
+        return $copied;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function publishShellFiles(string $webRoot): array
+    {
+        $copied = [];
+        $root = rtrim($webRoot, DIRECTORY_SEPARATOR);
+
         $pwa = public_path('pwa');
         if (is_dir($pwa)) {
-            $pwaDest = rtrim($webRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'pwa';
+            $pwaDest = $root.DIRECTORY_SEPARATOR.'pwa';
             self::mirrorDirectory($pwa, $pwaDest);
             $copied[] = $pwaDest;
         }
 
-        $readings = public_path('js/field-readings.js');
-        if (is_file($readings)) {
-            $jsDir = rtrim($webRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'js';
+        $jsDir = $root.DIRECTORY_SEPARATOR.'js';
+        foreach (['field-readings.js', 'pwa-install.js'] as $name) {
+            $src = public_path('js'.DIRECTORY_SEPARATOR.$name);
+            if (! is_file($src)) {
+                continue;
+            }
             if (! is_dir($jsDir)) {
                 mkdir($jsDir, 0755, true);
             }
-            $jsDest = $jsDir.DIRECTORY_SEPARATOR.'field-readings.js';
-            copy($readings, $jsDest);
-            $copied[] = $jsDest;
+            $dest = $jsDir.DIRECTORY_SEPARATOR.$name;
+            copy($src, $dest);
+            $copied[] = $dest;
         }
 
-        $sw = public_path('sw.js');
-        if (is_file($sw)) {
-            $swDest = rtrim($webRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'sw.js';
-            copy($sw, $swDest);
-            $copied[] = $swDest;
-        }
-
-        $hot = rtrim($webRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'hot';
-        if (is_file($hot)) {
-            @unlink($hot);
+        foreach (['sw.js', 'offline.html'] as $name) {
+            $src = public_path($name);
+            if (! is_file($src)) {
+                continue;
+            }
+            $dest = $root.DIRECTORY_SEPARATOR.$name;
+            copy($src, $dest);
+            $copied[] = $dest;
         }
 
         return $copied;

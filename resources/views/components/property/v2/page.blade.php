@@ -72,7 +72,7 @@
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="property-erp-header__actions print-hide hidden w-full md:ml-auto md:flex md:w-auto md:max-w-[70%] md:flex-wrap md:items-center md:justify-end md:gap-1.5">
+                    <div class="property-erp-header__actions print-hide flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto md:ml-auto md:w-auto md:max-w-[70%] md:flex-wrap md:justify-end">
                         {{ $actions }}
                     </div>
                 @endif

@@ -333,7 +333,7 @@
                     'sublabel' => 'Tickets & issues',
                     'route' => 'property.maintenance.requests',
                     'active' => ['property.maintenance.requests', 'property.maintenance.requests.store'],
-                    'badge' => null,
+                    'badge' => \App\Models\PmMaintenanceRequest::openAlertCount(),
                 ],
                 [
                     'label' => 'Maintenance jobs',
@@ -807,6 +807,7 @@
                     'route' => 'property.settings.roles',
                     'active' => [
                         'property.settings.roles',
+                        'property.settings.roles.*',
                         'property.settings.team_users.create',
                         'property.settings.team_users.store',
                     ],
@@ -1071,9 +1072,7 @@
                             @endif
                             <span class="flex items-start justify-between gap-2">
                                 <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
-                                @if (! empty($item['badge']))
-                                    <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
-                                @endif
+                                @include('property.partials.nav_text_or_bell', ['badge' => $item['badge'] ?? null, 'size' => 'text-[11px]'])
                             </span>
                         </span>
                     </a>
@@ -1156,9 +1155,7 @@
                                     >
                                         <span class="property-collapse-text text-sm font-semibold leading-snug tracking-tight">{{ $item['label'] }}</span>
                                         <span class="property-collapse-hide ml-auto flex items-center gap-1.5">
-                                            @if (! empty($item['badge']))
-                                                <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
-                                            @endif
+                                            @include('property.partials.nav_text_or_bell', ['badge' => $item['badge'] ?? null, 'size' => 'text-[10px]'])
                                             <i class="fa-solid fa-chevron-down text-[10px] text-[#8db1af] transition-transform duration-200 group-data-[section-active]:text-[#c5ebe8]" :class="{ 'rotate-180': open }" aria-hidden="true"></i>
                                         </span>
                                     </button>
@@ -1184,9 +1181,7 @@
                                                 class="group flex items-center justify-between gap-2 rounded-lg border-l-[3px] px-2.5 py-2 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
                                             >
                                                 <span class="property-collapse-text text-sm font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $child['label'] }}</span>
-                                                @if (! empty($child['badge']))
-                                                    <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $child['badge'] }}</span>
-                                                @endif
+                                                @include('property.partials.nav_text_or_bell', ['badge' => $child['badge'] ?? null, 'size' => 'text-[10px]'])
                                             </a>
                                         @endforeach
                                     </div>
@@ -1202,9 +1197,7 @@
                                 >
                                     <span class="property-collapse-text flex items-center justify-between gap-2 w-full min-w-0">
                                         <span class="text-sm font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
-                                        @if (! empty($item['badge']))
-                                            <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
-                                        @endif
+                                        @include('property.partials.nav_text_or_bell', ['badge' => $item['badge'] ?? null, 'size' => 'text-[11px]'])
                                     </span>
                                 </a>
                             @endif

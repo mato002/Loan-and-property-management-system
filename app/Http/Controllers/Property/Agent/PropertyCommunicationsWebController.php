@@ -410,20 +410,28 @@ class PropertyCommunicationsWebController extends Controller
     {
         /** @var BulkSmsService $bulk */
         $bulk = app(BulkSmsService::class);
-        $filters = $request->only(['status', 'page', 'per_page']);
+        $period = strtolower(trim((string) $request->query('period', 'month')));
+        if (! in_array($period, ['today', 'month', '30d'], true)) {
+            $period = 'month';
+        }
+        $filters = $request->only(['status', 'page', 'per_page', 'period']);
+        $filters['period'] = $period;
         $perPage = \App\Support\ListPageSize::resolve($filters['per_page'] ?? null, 20);
         $filters['per_page'] = $perPage;
 
         $history = $bulk->providerSmsHistory($filters);
-        $statistics = $bulk->providerSmsStatistics();
-        $stats = $this->providerSmsStatsCards($statistics);
+        $usage = $bulk->smsUsageSummary('property', $period, (string) ($filters['status'] ?? ''));
+        $wallet = $this->smsWalletStatus();
+        $currency = (string) ($wallet['currency'] ?? $bulk->currency());
 
         return property_view('property.agent.communications.sms_provider', [
-            'stats' => $stats,
+            'stats' => $this->smsUsageStatsCards($usage, $currency),
             'history' => $history,
-            'statistics' => $statistics,
+            'usage' => $usage,
             'filters' => $filters,
-            'smsWallet' => $this->smsWalletStatus(),
+            'smsWallet' => $wallet,
+            'smsDriver' => $bulk->smsDriver(),
+            'smsProviderLabel' => $bulk->providerLabel(),
             'smsTopup' => $this->smsTopupContext($request),
             'canManageCommunications' => $this->canManageCommunications($request),
             'webhookUrl' => url('/webhooks/property/communications/pradytec'),
@@ -2065,6 +2073,34 @@ class PropertyCommunicationsWebController extends Controller
     }
 
     /**
+     * @param  array{today: array{sms: int, failed: int, spend: float, priced: int}, month: array{sms: int, failed: int, spend: float, priced: int}, days30: array{sms: int, failed: int, spend: float, priced: int}}  $usage
+     * @return list<array{label: string, value: string, hint: string}>
+     */
+    private function smsUsageStatsCards(array $usage, string $currency): array
+    {
+        $card = function (string $label, array $window) use ($currency): array {
+            $sms = (int) ($window['sms'] ?? 0);
+            $failed = (int) ($window['failed'] ?? 0);
+            $priced = (int) ($window['priced'] ?? 0);
+            $spend = (float) ($window['spend'] ?? 0);
+            $spendText = $priced > 0 ? number_format($spend, 2).' '.$currency : '—';
+            $hint = $failed > 0 ? $spendText.' · '.$failed.' failed' : $spendText;
+
+            return [
+                'label' => $label,
+                'value' => number_format($sms).' SMS',
+                'hint' => $hint,
+            ];
+        };
+
+        return [
+            $card('Today', (array) ($usage['today'] ?? [])),
+            $card('This month', (array) ($usage['month'] ?? [])),
+            $card('Last 30 days', (array) ($usage['days30'] ?? [])),
+        ];
+    }
+
+    /**
      * @param  array{ok?:bool,statistics?:array<string,mixed>}  $statisticsResult
      * @return list<array{label:string,value:string,hint:string}>
      */
@@ -2102,25 +2138,7 @@ class PropertyCommunicationsWebController extends Controller
 
     private function maskAddress(string $value): string
     {
-        $value = trim($value);
-        if ($value === '') {
-            return '';
-        }
-        if (str_contains($value, '@')) {
-            [$local, $domain] = array_pad(explode('@', $value, 2), 2, '');
-            if ($local === '') {
-                return $value;
-            }
-            $prefix = substr($local, 0, min(2, strlen($local)));
-            return $prefix.str_repeat('*', max(0, strlen($local) - strlen($prefix))).'@'.$domain;
-        }
-
-        $digits = preg_replace('/\D+/', '', $value);
-        if ($digits === '' || strlen($digits) < 4) {
-            return '****';
-        }
-
-        return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
+        return trim($value);
     }
 
     public function schedules(Request $request): View|StreamedResponse

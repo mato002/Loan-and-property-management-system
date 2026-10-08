@@ -74,8 +74,8 @@
             </button>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table class="w-full text-sm">
+        <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <table class="w-full min-w-[72rem] text-sm">
                 <thead class="bg-slate-50 text-slate-600">
                     <tr>
                         <th class="px-4 py-3 text-left font-bold">Date</th>
@@ -84,6 +84,7 @@
                         <th class="px-4 py-3 text-left font-bold">Account</th>
                         <th class="px-4 py-3 text-left font-bold">Phone</th>
                         <th class="px-4 py-3 text-left font-bold">Source</th>
+                        <th class="px-4 py-3 text-left font-bold min-w-[20rem]">Message</th>
                         <th class="px-4 py-3 text-left font-bold">Reason</th>
                         <th class="px-4 py-3 text-right font-bold">Action</th>
                     </tr>
@@ -95,8 +96,15 @@
                             <td class="px-4 py-3">{{ $item->transaction_id }}</td>
                             <td class="px-4 py-3 text-right">{{ number_format((float) $item->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $item->account_number ?: '—' }}</td>
-                            <td class="px-4 py-3">{{ $item->phone ?: '—' }}</td>
+                            <td class="px-4 py-3"><x-phone-link :value="$item->phone" /></td>
                             <td class="px-4 py-3">{{ $item->source_label ?? 'Equity' }}</td>
+                            <td class="px-4 py-3 align-top">
+                                @if (! empty($item->display_message))
+                                    <div class="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-700">{{ $item->display_message }}</div>
+                                @else
+                                    <span class="text-slate-400">—</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">{{ $item->reason }}</td>
                             <td class="px-4 py-3 text-right">
                                 <form method="post" action="{{ route('property.equity.unmatched.rematch', $item) }}" data-turbo="false" class="inline-block">
@@ -117,7 +125,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">No unmatched transactions.</td></tr>
+                        <tr><td colspan="9" class="px-4 py-8 text-center text-slate-500">No unmatched transactions.</td></tr>
                     @endforelse
                 </tbody>
             </table>

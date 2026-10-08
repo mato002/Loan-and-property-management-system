@@ -1150,6 +1150,7 @@ return array (
         'active' => 
         array (
           0 => 'property.settings.roles',
+          1 => 'property.settings.roles.*',
         ),
         'requires_superadmin' => true,
       ),

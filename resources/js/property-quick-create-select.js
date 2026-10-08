@@ -23,6 +23,7 @@ function propertyQuickCreateSelect(config) {
         open: false,
         creating: false,
         pickerOpen: false,
+        openedAt: 0,
         query: '',
         selectedValue: '',
         pickerStyle: 'position:fixed;z-index:12000;',
@@ -85,15 +86,22 @@ function propertyQuickCreateSelect(config) {
         togglePicker() {
             this.pickerOpen = !this.pickerOpen;
             if (this.pickerOpen) {
+                this.openedAt = Date.now();
                 this.query = '';
                 this.$nextTick(() => {
                     this.placePicker();
-                    this.$refs.searchInput?.focus?.();
+                    const coarse = window.matchMedia?.('(pointer: coarse)')?.matches === true;
+                    if (!coarse) {
+                        this.$refs.searchInput?.focus?.();
+                    }
                 });
             }
         },
 
         closePicker() {
+            if (this.pickerOpen && Date.now() - this.openedAt < 450) {
+                return;
+            }
             this.pickerOpen = false;
             this.query = '';
         },
@@ -118,7 +126,8 @@ function propertyQuickCreateSelect(config) {
         pickOption(opt) {
             this.selectedValue = String(opt.value);
             this.syncHiddenSelect();
-            this.closePicker();
+            this.pickerOpen = false;
+            this.query = '';
         },
 
         syncHiddenSelect() {

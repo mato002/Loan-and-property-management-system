@@ -10,12 +10,12 @@
     :responsive-cards="false"
     :legacy-toolbar="false"
     :show-search="false"
-    table-min-width="960px"
+    table-min-width="1100px"
     empty-title="{{ ($isFieldOfficerList ?? false) ? 'No field officers yet' : 'No employees yet' }}"
     empty-hint="{{ ($isFieldOfficerList ?? false) ? 'Add an employee and enable the field officer role, then assign properties from their portfolio tab.' : 'Add staff here first. Mark field officers to link them to the property portfolio workspace.' }}"
 >
     <x-slot name="actions">
-        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+        @if (auth()->check() && (auth()->user()?->hasPmPermission('team.users.manage') || auth()->user()?->hasPmPermission('properties.manage')))
             <a href="{{ route('property.hr.employees.create', ($isFieldOfficerList ?? false) ? ['field_officer' => 1, 'job_title' => 'Field Officer'] : [], false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">{{ ($isFieldOfficerList ?? false) ? 'Add field officer' : 'Add employee' }}</a>
         @endif
     </x-slot>

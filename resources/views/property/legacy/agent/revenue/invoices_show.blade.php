@@ -56,7 +56,7 @@
                         <p class="text-xs font-semibold text-slate-500 uppercase">Tenant</p>
                         <p class="text-slate-800 font-medium">{{ $invoice->tenant?->name ?? '—' }}</p>
                         @if ($invoice->tenant?->phone)
-                            <p class="text-xs text-slate-500"><a href="tel:{{ $invoice->tenant->phone }}" class="hover:underline">{{ $invoice->tenant->phone }}</a></p>
+                            <p class="text-xs text-slate-500"><x-phone-link :value="$invoice->tenant->phone" /></p>
                         @endif
                         @if ($invoice->tenant?->email)
                             <p class="text-xs text-slate-500"><a href="mailto:{{ $invoice->tenant->email }}" class="hover:underline">{{ $invoice->tenant->email }}</a></p>
@@ -136,10 +136,8 @@
                             <div class="flex justify-between"><span class="text-slate-600">Tax</span><span class="tabular-nums">KES {{ number_format($tax, 2) }}</span></div>
                         @endif
                         <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold"><span>Total</span><span class="tabular-nums">KES {{ number_format($total, 2) }}</span></div>
-                        @if ($paid > 0)
-                            <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums">KES {{ number_format($paid, 2) }}</span></div>
-                            <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-red-700"><span>Balance</span><span class="tabular-nums">KES {{ number_format($balance, 2) }}</span></div>
-                        @endif
+                        <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums text-emerald-800">KES {{ number_format($paid, 2) }}</span></div>
+                        <div class="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold {{ $balance > 0.009 ? 'text-red-700' : 'text-emerald-800' }}"><span>Unpaid</span><span class="tabular-nums">KES {{ number_format($balance, 2) }}</span></div>
                     </div>
                 </div>
 

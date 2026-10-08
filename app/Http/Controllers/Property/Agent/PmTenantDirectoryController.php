@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\UserModuleAccess;
 use App\Mail\TenantPortalCredentialsMail;
 use App\Models\PmInvoice;
@@ -339,7 +340,7 @@ class PmTenantDirectoryController extends Controller
                     PmTenant::query()->create([
                         ...$payload,
                         'user_id' => $createPortal ? $user?->id : null,
-                        'agent_user_id' => (int) auth()->id(),
+                        'agent_user_id' => $this->tenantWorkspaceOwnerId(),
                     ]);
                     $created++;
                 }
@@ -993,7 +994,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'string',
                 'max:64',
-                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
             'email' => $createPortal
                 ? ['required', 'email', 'max:255', Rule::unique(User::class, 'email')]
@@ -1002,14 +1003,14 @@ class PmTenantDirectoryController extends Controller
                     'nullable',
                     'email',
                     'max:255',
-                    Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                    Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
                 ],
             'national_id' => [
                 Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
                 'nullable',
                 'string',
                 'max:64',
-                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
             'risk_level' => ['required', 'in:normal,medium,high'],
             'opening_arrears_items' => ['nullable', 'array'],
@@ -1038,7 +1039,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'string',
                 'max:32',
-                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
         ] + $this->tenantRecordFieldRules());
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
@@ -1073,7 +1074,7 @@ class PmTenantDirectoryController extends Controller
 
         $tenant = PmTenant::query()->create([
             'user_id' => $user?->id,
-            'agent_user_id' => (int) $request->user()->id,
+            'agent_user_id' => $this->tenantWorkspaceOwnerId(),
             'name' => $data['name'],
             'phone' => $data['phone'] ?? null,
             'email' => $createPortal ? Str::lower($data['email']) : ($data['email'] ?? null),
@@ -1195,7 +1196,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'string',
                 'max:64',
-                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
             'email' => [
                 ...($createPortal
@@ -1204,7 +1205,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'email',
                 'max:255',
-                Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
                 ...($createPortal ? [Rule::unique(User::class, 'email')] : []),
             ],
             'national_id' => [
@@ -1212,7 +1213,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'string',
                 'max:64',
-                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
             'risk_level' => ['nullable', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -1228,7 +1229,7 @@ class PmTenantDirectoryController extends Controller
                 'nullable',
                 'string',
                 'max:32',
-                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId())),
             ],
         ] + $this->tenantRecordFieldRules());
 
@@ -1252,7 +1253,7 @@ class PmTenantDirectoryController extends Controller
 
         $tenant = PmTenant::query()->create([
             'user_id' => $user?->id,
-            'agent_user_id' => (int) $request->user()->id,
+            'agent_user_id' => $this->tenantWorkspaceOwnerId(),
             'name' => $data['name'],
             'phone' => $data['phone'] ?? null,
             'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower((string) $data['email']) : null,
@@ -1749,7 +1750,7 @@ class PmTenantDirectoryController extends Controller
                     'string',
                     'max:64',
                     Rule::unique('pm_tenants', 'phone')
-                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId()))
                         ->ignore($tenant->id),
                 ],
                 'email' => [
@@ -1758,7 +1759,7 @@ class PmTenantDirectoryController extends Controller
                     'email',
                     'max:255',
                     Rule::unique('pm_tenants', 'email')
-                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId()))
                         ->ignore($tenant->id),
                 ],
                 'national_id' => [
@@ -1767,7 +1768,7 @@ class PmTenantDirectoryController extends Controller
                     'string',
                     'max:64',
                     Rule::unique('pm_tenants', 'national_id')
-                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId()))
                         ->ignore($tenant->id),
                 ],
                 'risk_level' => ['required', 'in:normal,medium,high'],
@@ -1797,7 +1798,7 @@ class PmTenantDirectoryController extends Controller
                     'string',
                     'max:32',
                     Rule::unique('pm_tenants', 'account_number')
-                        ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                        ->where(fn ($q) => $q->where('agent_user_id', $this->tenantWorkspaceOwnerId()))
                         ->ignore($tenant->id),
                 ],
             ] + $this->tenantRecordFieldRules());
@@ -1974,6 +1975,11 @@ class PmTenantDirectoryController extends Controller
         });
 
         return back()->with('success', "Tenant {$tenantName} deleted with all related records.");
+    }
+
+    private function tenantWorkspaceOwnerId(): int
+    {
+        return AgentWorkspaceScope::ownerIdForNewRecord();
     }
 
     /**

@@ -28,7 +28,13 @@ class BulkSmsService
      */
     public function smsDriver(): string
     {
-        $driver = strtolower(trim((string) config('bulksms.driver', 'pradytec')));
+        // Check database setting first, fall back to .env config
+        $dbDriver = \App\Models\PropertyPortalSetting::getGlobalValue('bulksms_driver');
+        if ($dbDriver !== null && trim($dbDriver) !== '') {
+            $driver = strtolower(trim($dbDriver));
+        } else {
+            $driver = strtolower(trim((string) config('bulksms.driver', 'pradytec')));
+        }
 
         return in_array($driver, ['pradytec', 'africastalking'], true) ? $driver : 'pradytec';
     }
@@ -71,8 +77,18 @@ class BulkSmsService
         return (float) SmsWallet::singleton()->balance;
     }
 
+    public function providerLabel(): string
+    {
+        return $this->isAfricasTalkingDriver() ? "Africa's Talking" : 'Pradytec';
+    }
+
     private function billingMode(): string
     {
+        // Africa's Talking bills its own account. The local sms_wallets row is the Pradytec ledger.
+        if ($this->isAfricasTalkingDriver()) {
+            return 'provider';
+        }
+
         $mode = strtolower((string) config('bulksms.billing_mode', 'local_wallet'));
 
         return in_array($mode, ['local_wallet', 'provider', 'both'], true) ? $mode : 'local_wallet';
@@ -454,6 +470,113 @@ class BulkSmsService
         $json = is_array($response['json'] ?? null) ? $response['json'] : [];
 
         return ['ok' => true, 'statistics' => $json];
+    }
+
+    /**
+     * Local send log for expenditure: today, this calendar month, and the last 30 days.
+     *
+     * @return array{
+     *     currency: string,
+     *     today: array{sms: int, failed: int, spend: float, priced: int},
+     *     month: array{sms: int, failed: int, spend: float, priced: int},
+     *     days30: array{sms: int, failed: int, spend: float, priced: int},
+     *     days: list<array{day: string, sms: int, failed: int, spend: float, priced: int}>,
+     *     recent: list<array{phone: string, status: string, spend: float|null, at: string}>
+     * }
+     */
+    public function smsUsageSummary(string $module = 'property', string $period = 'month', string $status = ''): array
+    {
+        $empty = ['sms' => 0, 'failed' => 0, 'spend' => 0.0, 'priced' => 0];
+        $summary = [
+            'currency' => $this->currency(),
+            'today' => $empty,
+            'month' => $empty,
+            'days30' => $empty,
+            'days' => [],
+            'recent' => [],
+        ];
+
+        if (! Schema::hasTable('sms_logs') || ! Schema::hasColumn('sms_logs', 'module')) {
+            return $summary;
+        }
+
+        $now = now();
+        $summary['today'] = $this->smsUsageWindow($module, $now->copy()->startOfDay(), $now->copy()->endOfDay());
+        $summary['month'] = $this->smsUsageWindow($module, $now->copy()->startOfMonth(), $now->copy()->endOfMonth());
+        $summary['days30'] = $this->smsUsageWindow($module, $now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay());
+
+        [$rangeStart, $rangeEnd] = match ($period) {
+            'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
+            '30d' => [$now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay()],
+            default => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+        };
+
+        $dayRows = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$rangeStart])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$rangeEnd])
+            ->selectRaw('DATE(COALESCE(sent_at, created_at)) as day')
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 0 ELSE 1 END) as sms")
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN charged_amount ELSE 0 END) as spend")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN 1 ELSE 0 END) as priced")
+            ->groupByRaw('DATE(COALESCE(sent_at, created_at))')
+            ->orderByDesc('day')
+            ->get();
+
+        $summary['days'] = $dayRows->map(fn ($row) => [
+            'day' => (string) $row->day,
+            'sms' => (int) $row->sms,
+            'failed' => (int) $row->failed,
+            'spend' => (float) $row->spend,
+            'priced' => (int) $row->priced,
+        ])->all();
+
+        $status = strtolower(trim($status));
+        $recent = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$rangeStart])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$rangeEnd])
+            ->when(in_array($status, ['sent', 'failed'], true), fn ($query) => $query->where('status', $status))
+            ->orderByDesc(DB::raw('COALESCE(sent_at, created_at)'))
+            ->limit(40)
+            ->get(['phone', 'status', 'charged_amount', 'sent_at', 'created_at']);
+
+        $summary['recent'] = $recent->map(function (SmsLog $log) {
+            $at = $log->sent_at ?? $log->created_at;
+
+            return [
+                'phone' => (string) $log->phone,
+                'status' => (string) $log->status,
+                'spend' => $log->charged_amount !== null && (float) $log->charged_amount > 0 ? (float) $log->charged_amount : null,
+                'at' => $at ? $at->format('Y-m-d H:i') : '',
+            ];
+        })->all();
+
+        return $summary;
+    }
+
+    /**
+     * @return array{sms: int, failed: int, spend: float, priced: int}
+     */
+    private function smsUsageWindow(string $module, \Illuminate\Support\Carbon $start, \Illuminate\Support\Carbon $end): array
+    {
+        $row = SmsLog::query()
+            ->where('module', $module)
+            ->whereRaw('COALESCE(sent_at, created_at) >= ?', [$start])
+            ->whereRaw('COALESCE(sent_at, created_at) <= ?', [$end])
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 0 ELSE 1 END) as sms")
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN charged_amount ELSE 0 END) as spend")
+            ->selectRaw("SUM(CASE WHEN status <> 'failed' AND charged_amount > 0 THEN 1 ELSE 0 END) as priced")
+            ->first();
+
+        return [
+            'sms' => (int) ($row->sms ?? 0),
+            'failed' => (int) ($row->failed ?? 0),
+            'spend' => (float) ($row->spend ?? 0),
+            'priced' => (int) ($row->priced ?? 0),
+        ];
     }
 
     private function providerBalanceCacheKey(): string
@@ -871,6 +994,10 @@ class BulkSmsService
 
     public function costPerSms(): float
     {
+        if ($this->isAfricasTalkingDriver()) {
+            return $this->africasTalkingUnitCost();
+        }
+
         $meta = $this->cachedProviderWalletMeta();
         if (($meta['balance'] ?? null) !== null || ($meta['units'] ?? null) !== null || ($meta['price_per_unit'] ?? null) !== null) {
             return $this->resolveCostPerUnit(
@@ -913,6 +1040,17 @@ class BulkSmsService
     private function configuredCostFallback(): float
     {
         return max(0.0001, (float) config('bulksms.cost_per_sms', 0.6));
+    }
+
+    /**
+     * Africa's Talking does not use the Pradytec 0.60 fallback.
+     * Returns 0 when no Africa's Talking tariff is configured.
+     */
+    private function africasTalkingUnitCost(): float
+    {
+        $cost = (float) config('bulksms.africastalking.cost_per_sms', 0);
+
+        return $cost > 0 ? round($cost, 4) : 0.0;
     }
 
     public function currency(): string
@@ -1033,13 +1171,18 @@ class BulkSmsService
 
         $providerOk = ($provider['ok'] ?? false) === true;
         $providerError = $providerOk ? null : (string) ($provider['error'] ?? 'Could not load provider SMS balance.');
-        $cost = $providerOk
-            ? $this->resolveCostPerUnit(
+        $providerLabel = $this->providerLabel();
+        if ($this->isAfricasTalkingDriver()) {
+            $cost = $this->africasTalkingUnitCost();
+        } elseif ($providerOk) {
+            $cost = $this->resolveCostPerUnit(
                 isset($provider['price_per_unit']) ? (float) $provider['price_per_unit'] : null,
                 isset($provider['balance']) ? (float) $provider['balance'] : null,
                 isset($provider['units']) ? (float) $provider['units'] : null,
-            )
-            : $this->configuredCostFallback();
+            );
+        } else {
+            $cost = $this->configuredCostFallback();
+        }
 
         $needsProviderBalance = in_array($mode, ['provider', 'both'], true)
             || $source === 'provider'
@@ -1047,12 +1190,15 @@ class BulkSmsService
 
         $balanceKnown = ! ($needsProviderBalance && ! $providerOk);
         $providerUnits = ($provider['units'] ?? null);
-        if ($providerOk && $providerUnits !== null && (float) $providerUnits > 0) {
+        if ($this->isAfricasTalkingDriver() && $cost <= 0) {
+            $providerUnits = null;
+            $maxRecipients = $providerOk && $balance > 0 ? null : 0;
+        } elseif ($providerOk && $providerUnits !== null && (float) $providerUnits > 0 && ! $this->isAfricasTalkingDriver()) {
             $maxRecipients = (int) floor((float) $providerUnits);
         } else {
             $maxRecipients = $cost > 0 ? (int) floor($balance / $cost) : 0;
         }
-        $canSendOne = $maxRecipients >= 1;
+        $canSendOne = $maxRecipients === null ? ($providerOk && $balance > 0) : $maxRecipients >= 1;
         $lowThreshold = max(5, (int) config('bulksms.low_balance_recipient_threshold', 10));
 
         if (! $balanceKnown) {
@@ -1069,7 +1215,7 @@ class BulkSmsService
                 number_format($balance, 2),
                 $currency
             );
-        } elseif ($maxRecipients <= $lowThreshold) {
+        } elseif ($maxRecipients !== null && $maxRecipients <= $lowThreshold) {
             $status = 'low';
             $headline = 'Low SMS balance';
             $detail = sprintf(
@@ -1083,22 +1229,34 @@ class BulkSmsService
         } else {
             $status = 'ok';
             $headline = 'SMS balance available';
-            $detail = sprintf(
-                'About %d SMS can be sent (%s %s available at %s %s each).',
-                $maxRecipients,
-                number_format($balance, 2),
-                $currency,
-                number_format($cost, 2),
-                $currency
-            );
+            if ($maxRecipients === null) {
+                $detail = sprintf(
+                    '%s account has %s %s. Sends use that balance. This provider is not billed at the Pradytec 0.60 rate.',
+                    $providerLabel,
+                    number_format($balance, 2),
+                    $currency
+                );
+            } else {
+                $detail = sprintf(
+                    'About %d SMS can be sent (%s %s available at %s %s each).',
+                    $maxRecipients,
+                    number_format($balance, 2),
+                    $currency,
+                    number_format($cost, 2),
+                    $currency
+                );
+            }
         }
 
         $balanceSourceLabel = match (true) {
-            $source === 'provider' || ($source === 'auto' && $providerOk) => 'Provider account',
+            $this->isAfricasTalkingDriver() && $providerOk => "Africa's Talking account",
+            $source === 'provider' || ($source === 'auto' && $providerOk) => 'Pradytec account',
             default => 'Local SMS wallet',
         };
 
         $costSource = match (true) {
+            $this->isAfricasTalkingDriver() && $cost > 0 => "Africa's Talking tariff",
+            $this->isAfricasTalkingDriver() => "Billed on the Africa's Talking account",
             $providerOk && ($provider['price_per_unit'] ?? 0) > 0 => 'Provider tariff',
             $providerOk && ($provider['units'] ?? 0) > 0 && ($provider['balance'] ?? 0) > 0 => 'Derived from provider balance ÷ units',
             default => 'Configured fallback (set BULKSMS_COST_PER_SMS to match CRM Price/Unit)',
@@ -1110,6 +1268,7 @@ class BulkSmsService
 
         return [
             'balance' => round($balance, 2),
+            'provider_label' => $providerLabel,
             'cost_per_sms' => round($cost, 4),
             'cost_source' => $costSource,
             'provider_units' => $providerOk && $providerUnits !== null ? round((float) $providerUnits, 2) : null,
@@ -1134,7 +1293,8 @@ class BulkSmsService
     private function assertSufficientBalance(int $recipientCount): array
     {
         $cost = $this->costPerSms();
-        $total = round($recipientCount * $cost, 4);
+        $tariffKnown = $cost > 0;
+        $total = $tariffKnown ? round($recipientCount * $cost, 4) : 0.0;
         $mode = $this->billingMode();
         $available = null;
 
@@ -1170,11 +1330,26 @@ class BulkSmsService
                 ];
             }
             $providerBal = (float) ($bal['balance'] ?? 0);
-            if ($providerBal < $total) {
+            if (! $tariffKnown && $providerBal <= 0) {
                 return [
                     'ok' => false,
                     'error' => sprintf(
-                        'Insufficient provider balance. Need %s %s for %d message(s); available %s %s.',
+                        'Insufficient %s balance. The account has %s %s.',
+                        $this->providerLabel(),
+                        number_format($providerBal, 2),
+                        $this->currency()
+                    ),
+                    'required' => 0,
+                    'available' => $providerBal,
+                    'currency' => $this->currency(),
+                ];
+            }
+            if ($tariffKnown && $providerBal < $total) {
+                return [
+                    'ok' => false,
+                    'error' => sprintf(
+                        'Insufficient %s balance. Need %s %s for %d message(s); available %s %s.',
+                        $this->providerLabel(),
                         number_format($total, 2),
                         $this->currency(),
                         $recipientCount,
@@ -1249,10 +1424,18 @@ class BulkSmsService
             }
 
             $now = now();
+            $chargedTotal = 0.0;
             foreach ($phones as $phone) {
                 $phoneStatus = (array) ($send['per_phone'][$phone] ?? []);
                 $status = (string) ($phoneStatus['status'] ?? 'sent');
                 $providerId = (string) ($phoneStatus['provider_message_id'] ?? '');
+                $providerCost = isset($phoneStatus['cost']) ? (float) $phoneStatus['cost'] : 0.0;
+                $charged = $providerCost > 0
+                    ? round($providerCost, 4)
+                    : ($status === 'failed' || $cost <= 0 ? null : $cost);
+                if ($charged !== null && $status !== 'failed') {
+                    $chargedTotal += (float) $charged;
+                }
 
                 SmsLog::create([
                     'user_id' => $userId,
@@ -1262,7 +1445,7 @@ class BulkSmsService
                     'message' => $message,
                     'status' => $status === 'failed' ? 'failed' : 'sent',
                     'error' => $status === 'failed' ? (string) ($phoneStatus['error'] ?? 'Provider send failed') : null,
-                    'charged_amount' => $cost,
+                    'charged_amount' => $charged,
                     'sent_at' => $status === 'failed' ? null : $now,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -1283,7 +1466,7 @@ class BulkSmsService
             }
 
             if (in_array($mode, ['provider', 'both'], true)) {
-                $this->debitCachedProviderBalance($total);
+                $this->debitCachedProviderBalance($chargedTotal > 0 ? $chargedTotal : $total);
             }
 
             if ($wallet !== null && in_array($mode, ['local_wallet', 'both'], true)) {
@@ -1548,7 +1731,7 @@ class BulkSmsService
                 return ['ok' => false, 'error' => 'Africa\'s Talking balance response did not include a usable balance.'];
             }
 
-            $price = $this->configuredCostFallback();
+            $price = $this->africasTalkingUnitCost();
             $units = $price > 0 ? round($balance / $price, 4) : null;
             $parsed = [
                 'balance' => $balance,
@@ -1580,7 +1763,7 @@ class BulkSmsService
                     if ($balance === null) {
                         return ['ok' => false, 'error' => 'Africa\'s Talking balance response did not include a usable balance.'];
                     }
-                    $price = $this->configuredCostFallback();
+                    $price = $this->africasTalkingUnitCost();
                     $units = $price > 0 ? round($balance / $price, 4) : null;
                     $parsed = [
                         'balance' => $balance,
@@ -1713,6 +1896,7 @@ class BulkSmsService
                     'status' => $ok ? 'sent' : 'failed',
                     'provider_message_id' => (string) ($row['messageId'] ?? ''),
                     'error' => $ok ? null : (string) ($row['status'] ?? 'Failed at provider'),
+                    'cost' => $this->parseCurrencyAmount((string) ($row['cost'] ?? '')),
                 ];
             }
 

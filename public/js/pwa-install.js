@@ -1,5 +1,5 @@
 /**
- * PWA install prompt for mobile and desktop (Chrome, Edge, Safari).
+ * PWA install prompt for the public website and the property portal.
  */
 const CONTEXT = document.documentElement.dataset.pwaContext || 'public';
 const DISMISS_KEY = `gaitho-pwa-install-dismissed-until-${CONTEXT}`;
@@ -35,6 +35,14 @@ function isDismissed() {
     }
 }
 
+function suppressInstallOffer() {
+    document.documentElement.classList.add('pwa-install-suppressed');
+}
+
+function revealInstallOffer() {
+    document.documentElement.classList.remove('pwa-install-suppressed');
+}
+
 function dismissPrompt() {
     try {
         const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000;
@@ -46,15 +54,25 @@ function dismissPrompt() {
 }
 
 function hideUi() {
+    suppressInstallOffer();
     document.getElementById('pwa-install-fab')?.classList.add('hidden');
     document.getElementById('pwa-install-ios-panel')?.classList.add('hidden');
     document.getElementById('pwa-install-desktop-panel')?.classList.add('hidden');
 }
 
-function showFab() {
+function showInstallUi() {
     if (isStandalone() || isDismissed()) {
+        hideUi();
         return;
     }
+
+    revealInstallOffer();
+    updateInstallLabels();
+
+    if (CONTEXT === 'public') {
+        return;
+    }
+
     document.getElementById('pwa-install-fab')?.classList.remove('hidden');
 }
 
@@ -83,52 +101,62 @@ function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) {
         return;
     }
+
+    const swUrl = document.documentElement.dataset.pwaSw || new URL('/sw.js', window.location.origin).href;
+    const scope = new URL('./', swUrl).href;
+
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
-            // Non-fatal: install UI may still work on some browsers
+        navigator.serviceWorker.register(swUrl, { scope }).catch(() => {
+            // Non-fatal: the install instructions can still be shown.
         });
     });
 }
 
 let deferredInstallPrompt = null;
 
+async function runInstall() {
+    if (isIos()) {
+        document.getElementById('pwa-install-ios-panel')?.classList.remove('hidden');
+        return;
+    }
+
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        if (choice.outcome === 'accepted') {
+            hideUi();
+        }
+        return;
+    }
+
+    document.getElementById('pwa-install-desktop-panel')?.classList.remove('hidden');
+}
+
 function wireInstallFab() {
-    const btn = document.getElementById('pwa-install-btn');
     const dismiss = document.getElementById('pwa-install-dismiss');
-    const iosPanel = document.getElementById('pwa-install-ios-panel');
     const iosClose = document.getElementById('pwa-install-ios-close');
-    const desktopPanel = document.getElementById('pwa-install-desktop-panel');
     const desktopClose = document.getElementById('pwa-install-desktop-close');
 
-    updateInstallLabels();
-
     dismiss?.addEventListener('click', dismissPrompt);
-    iosClose?.addEventListener('click', () => iosPanel?.classList.add('hidden'));
-    desktopClose?.addEventListener('click', () => desktopPanel?.classList.add('hidden'));
+    document.getElementById('pwa-install-banner-dismiss')?.addEventListener('click', dismissPrompt);
+    iosClose?.addEventListener('click', () => {
+        document.getElementById('pwa-install-ios-panel')?.classList.add('hidden');
+    });
+    desktopClose?.addEventListener('click', () => {
+        document.getElementById('pwa-install-desktop-panel')?.classList.add('hidden');
+    });
 
-    btn?.addEventListener('click', async () => {
-        if (isIos()) {
-            iosPanel?.classList.remove('hidden');
-            return;
-        }
-
-        if (deferredInstallPrompt) {
-            deferredInstallPrompt.prompt();
-            await deferredInstallPrompt.userChoice;
-            deferredInstallPrompt = null;
-            hideUi();
-            return;
-        }
-
-        if (isDesktopSafari() || isDesktop()) {
-            desktopPanel?.classList.remove('hidden');
-        }
+    document.getElementById('pwa-install-btn')?.addEventListener('click', runInstall);
+    document.getElementById('pwa-install-banner-btn')?.addEventListener('click', runInstall);
+    document.querySelectorAll('[data-pwa-install-trigger]').forEach((trigger) => {
+        trigger.addEventListener('click', runInstall);
     });
 
     window.addEventListener('beforeinstallprompt', (event) => {
         event.preventDefault();
         deferredInstallPrompt = event;
-        showFab();
+        showInstallUi();
     });
 
     window.addEventListener('appinstalled', () => {
@@ -136,9 +164,7 @@ function wireInstallFab() {
         hideUi();
     });
 
-    if ((isIos() || isDesktopSafari()) && !isStandalone()) {
-        showFab();
-    }
+    showInstallUi();
 }
 
 if (document.readyState === 'loading') {
@@ -148,7 +174,3 @@ if (document.readyState === 'loading') {
 }
 
 registerServiceWorker();
-
-if (isStandalone()) {
-    hideUi();
-}

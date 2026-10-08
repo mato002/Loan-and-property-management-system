@@ -340,6 +340,8 @@
                     @include('layouts.loan_topbar')
                 </div>
 
+                @include('layouts.partials.open-tasks', ['openTasksScope' => 'loan', 'openTasksFrame' => 'loan-main'])
+
                 <!-- Scrollable Content Area (Topbar/Footer remain constant) -->
                 <main id="loan-workspace-main" class="relative flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">
                     <div id="loan-global-nav-progress" aria-hidden="true"><span></span></div>
@@ -602,5 +604,6 @@
                 </div>
             </div>
         </div>
+        @include('layouts.partials.mobile-filter-collapse')
     </body>
 </html>

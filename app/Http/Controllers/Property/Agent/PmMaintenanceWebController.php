@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmMaintenanceRequestFile;
 use App\Models\PmMessageLog;
 use App\Models\PmVendor;
 use App\Models\Property;
@@ -17,9 +18,15 @@ use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyHrWorkflowService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -68,25 +75,33 @@ class PmMaintenanceWebController extends Controller
             ['label' => 'Total', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
         ];
 
-        $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) {
-            $actionsBody = '<a href="'.route('property.maintenance.requests.edit', $r).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
+        $canManageRequests = (bool) $request->user()?->hasPmPermission('maintenance.manage');
+        $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) use ($canManageRequests) {
+            $actionsBody = '<a href="'.route('property.maintenance.requests.show', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">View</a>'
+                .'<a href="'.route('property.maintenance.requests.edit', $r).'" data-turbo-frame="property-main" data-turbo-prefetch="false" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
             if (! in_array($r->status, ['done', 'closed'], true)) {
                 $actionsBody .=
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="in_progress" />'.
                     '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Triage</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" data-turbo-frame="property-main" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
                     '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
                     '</form>';
             }
+            if ($canManageRequests) {
+                $actionsBody .=
+                    '<form method="POST" action="'.route('property.maintenance.requests.destroy', $r).'" data-turbo-frame="property-main" class="block" data-swal-title="Delete this request?" data-swal-confirm="Delete maintenance request #'.$r->id.'? Linked jobs are removed with it." data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                    '</form>';
+            }
 
             $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
+                '<div class="relative inline-block text-left" data-row-ignore-click>'.
+                '<details data-property-dropdown-root>'.
                 '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<div data-property-dropdown-menu class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
                 $actionsBody.
                 '</div>'.
                 '</details>'.
@@ -94,8 +109,8 @@ class PmMaintenanceWebController extends Controller
             );
 
             return [
-                '#'.$r->id,
-                $r->unit->property->name.'/'.$r->unit->label,
+                new HtmlString('<a href="'.route('property.maintenance.requests.show', $r).'" data-turbo-frame="property-main" class="font-medium text-blue-700 hover:underline">#'.$r->id.'</a>'),
+                $r->locationLabel(),
                 $r->category,
                 Str::limit($r->description, 40),
                 $r->created_at->format('Y-m-d'),
@@ -131,7 +146,7 @@ class PmMaintenanceWebController extends Controller
                 foreach ($rows as $r) {
                     yield [
                         '#'.$r->id,
-                        ($r->unit?->property?->name ?? '').'/'.($r->unit?->label ?? ''),
+                        $r->locationLabel(),
                         $r->category,
                         $r->description,
                         optional($r->created_at)->format('Y-m-d'),
@@ -156,28 +171,39 @@ class PmMaintenanceWebController extends Controller
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'property_unit_id' => [
-                'required',
+                'nullable',
                 Rule::exists('property_units', 'id')->where(fn ($q) => $q->where('property_id', (int) $request->input('property_id'))),
             ],
             'category' => ['required', 'string', 'max:64'],
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'in:normal,urgent,emergency'],
         ]);
+        $this->prepareMaintenanceAttachments($request);
 
-        $pmTenantId = $this->resolveTenantIdForMaintenanceUnit((int) $data['property_unit_id']);
+        $unitId = (int) ($data['property_unit_id'] ?? 0);
+        if ($unitId <= 0 && ! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            return back()->withErrors(['property_unit_id' => 'Choose a unit, or run the latest migrations before logging a whole-property request.'])->withInput();
+        }
+        $pmTenantId = $unitId > 0 ? $this->resolveTenantIdForMaintenanceUnit($unitId) : null;
 
         $property = Property::query()->findOrFail((int) $data['property_id']);
         app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateMaintenance($property);
 
-        $ticket = PmMaintenanceRequest::query()->create([
-            'property_unit_id' => (int) $data['property_unit_id'],
+        $attributes = [
+            'property_unit_id' => $unitId > 0 ? $unitId : null,
             'pm_tenant_id' => $pmTenantId,
             'reported_by_user_id' => $request->user()->id,
             'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
             'category' => (string) $data['category'],
             'description' => (string) $data['description'],
             'urgency' => (string) $data['urgency'],
-        ]);
+        ];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            $attributes['property_id'] = (int) $data['property_id'];
+        }
+
+        $ticket = PmMaintenanceRequest::query()->create($attributes);
+        $this->storeMaintenanceAttachments($request, $ticket);
         $routedTo = app(PropertyHrWorkflowService::class)->routeMaintenanceRequest($ticket);
 
         $success = $routedTo
@@ -221,7 +247,7 @@ class PmMaintenanceWebController extends Controller
         ]);
         $newStatus = (string) $data['status'];
         if ($oldStatus !== $newStatus) {
-            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $unitLabel = $requestItem->locationLabel();
             $this->notifyTenantProgress(
                 $requestItem,
                 'Maintenance request #'.$requestItem->id.' update',
@@ -236,9 +262,33 @@ class PmMaintenanceWebController extends Controller
         return back()->with('success', 'Request status updated.');
     }
 
+    public function showRequest(PmMaintenanceRequest $requestItem): View
+    {
+        $requestItem->load(['unit.property', 'property', 'reportedBy', 'assignedUser', 'pmTenant', 'jobs.vendor']);
+        $this->loadRequestFiles($requestItem);
+
+        return property_view('property.agent.maintenance.request_show', [
+            'requestItem' => $requestItem,
+            'canManage' => (bool) auth()->user()?->hasPmPermission('maintenance.manage'),
+        ]);
+    }
+
+    public function destroyRequest(PmMaintenanceRequest $requestItem): RedirectResponse
+    {
+        $showUrl = route('property.maintenance.requests.show', $requestItem);
+        $requestItem->delete();
+        $previous = url()->previous();
+        if ($previous === '' || str_starts_with($previous, $showUrl)) {
+            return redirect()->route('property.maintenance.requests')->with('success', 'Maintenance request deleted.');
+        }
+
+        return back()->with('success', 'Maintenance request deleted.');
+    }
+
     public function editRequest(Request $request, PmMaintenanceRequest $requestItem): View
     {
         $requestItem->load(['unit.property', 'reportedBy']);
+        $this->loadRequestFiles($requestItem);
 
         return property_view('property.agent.maintenance.request_edit', array_merge([
             'requestItem' => $requestItem,
@@ -249,18 +299,39 @@ class PmMaintenanceWebController extends Controller
     public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse|Response
     {
         $data = $request->validate([
-            'property_unit_id' => ['required', 'exists:property_units,id'],
+            'property_unit_id' => ['nullable', 'exists:property_units,id'],
             'category' => ['required', 'string', 'max:64'],
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'in:normal,urgent,emergency'],
             'status' => ['required', 'in:open,in_progress,done,closed'],
         ]);
+        $this->prepareMaintenanceAttachments($request, $requestItem);
 
         $oldStatus = (string) $requestItem->status;
+        $unitId = (int) ($data['property_unit_id'] ?? 0);
+        if ($unitId > 0) {
+            $unit = PropertyUnit::query()->findOrFail($unitId);
+            $data['property_unit_id'] = (int) $unit->id;
+            $data['property_id'] = (int) $unit->property_id;
+            $data['pm_tenant_id'] = $this->resolveTenantIdForMaintenanceUnit((int) $unit->id);
+        } else {
+            $requestItem->loadMissing('unit');
+            $data['property_unit_id'] = null;
+            $data['pm_tenant_id'] = null;
+            $data['property_id'] = (int) ($requestItem->property_id ?: $requestItem->unit?->property_id);
+            if ($data['property_id'] <= 0 || ! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+                unset($data['property_id']);
+            }
+        }
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            unset($data['property_id']);
+        }
         $requestItem->update($data);
+        $this->storeMaintenanceAttachments($request, $requestItem);
+        $requestItem->refresh();
         $newStatus = (string) ($data['status'] ?? $oldStatus);
         if ($oldStatus !== $newStatus) {
-            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $unitLabel = $requestItem->locationLabel();
             $this->notifyTenantProgress(
                 $requestItem,
                 'Maintenance request #'.$requestItem->id.' update',
@@ -347,10 +418,10 @@ class PmMaintenanceWebController extends Controller
             }
 
             $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
+                '<div class="relative inline-block text-left" data-row-ignore-click>'.
+                '<details data-property-dropdown-root>'.
                 '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<div data-property-dropdown-menu class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
                 $actionsBody.
                 '</div>'.
                 '</details>'.
@@ -359,7 +430,7 @@ class PmMaintenanceWebController extends Controller
 
             return [
                 '#'.$j->id,
-                $j->request->unit->property->name.'/'.$j->request->unit->label,
+                $j->request?->locationLabel() ?? '—',
                 $j->vendor?->name ?? '—',
                 $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
                 $approved,
@@ -393,7 +464,7 @@ class PmMaintenanceWebController extends Controller
                 foreach ($rows as $j) {
                     yield [
                         $j->id,
-                        $j->request->unit->property->name.'/'.$j->request->unit->label,
+                        $j->request?->locationLabel() ?? '—',
                         $j->vendor?->name,
                         $j->quote_amount,
                         $j->status,
@@ -482,7 +553,7 @@ class PmMaintenanceWebController extends Controller
             }
         }
         if ($oldStatus !== $status && $job->request) {
-            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $unitLabel = $job->request->locationLabel();
             $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
             $this->notifyTenantProgress(
                 $job->request,
@@ -538,7 +609,7 @@ class PmMaintenanceWebController extends Controller
             }
         }
         if ($oldStatus !== $status && $job->request) {
-            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $unitLabel = $job->request->locationLabel();
             $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
             $this->notifyTenantProgress(
                 $job->request,
@@ -557,7 +628,7 @@ class PmMaintenanceWebController extends Controller
     public function history(): View
     {
         $jobs = PmMaintenanceJob::query()
-            ->with(['request.unit.property', 'vendor'])
+            ->with(['request.unit.property', 'request.property', 'vendor'])
             ->where(function ($q) {
                 $q->where('status', 'done')->orWhere('status', 'cancelled');
             })
@@ -575,7 +646,7 @@ class PmMaintenanceWebController extends Controller
         $rows = $jobs->map(fn (PmMaintenanceJob $j) => [
             $j->completed_at?->format('Y-m-d') ?? '—',
             '#'.$j->id,
-            $j->request->unit->property->name.'/'.$j->request->unit->label,
+            $j->request?->locationLabel() ?? '—',
             $j->vendor?->name ?? '—',
             $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
             ucfirst(str_replace('_', ' ', $j->status)),
@@ -643,6 +714,9 @@ class PmMaintenanceWebController extends Controller
     private function requestsQuery(array $filters): Builder
     {
         $with = ['unit.property', 'reportedBy'];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'property_id')) {
+            $with[] = 'property';
+        }
         if (\Illuminate\Support\Facades\Schema::hasColumn('pm_maintenance_requests', 'assigned_user_id')) {
             $with[] = 'assignedUser';
         }
@@ -656,7 +730,8 @@ class PmMaintenanceWebController extends Controller
                     ->orWhereHas('unit', function (Builder $u) use ($search) {
                         $u->where('label', 'like', '%'.$search.'%')
                             ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
-                    });
+                    })
+                    ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
             });
         }
 
@@ -693,7 +768,7 @@ class PmMaintenanceWebController extends Controller
 
     private function jobsQuery(array $filters): Builder
     {
-        $q = PmMaintenanceJob::query()->with(['request.unit.property', 'vendor']);
+        $q = PmMaintenanceJob::query()->with(['request.unit.property', 'request.property', 'vendor']);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
@@ -784,6 +859,134 @@ class PmMaintenanceWebController extends Controller
             'columns' => ['Month', 'Tickets', 'Categories touched', 'Emergency', 'Repeat units', 'Notes'],
             'tableRows' => $rows,
         ]);
+    }
+
+    public function openRequestCount(): JsonResponse
+    {
+        return response()->json([
+            'count' => PmMaintenanceRequest::openAlertCount(),
+        ]);
+    }
+
+    public function showRequestFile(PmMaintenanceRequest $requestItem, PmMaintenanceRequestFile $file): BinaryFileResponse
+    {
+        abort_unless((int) $file->pm_maintenance_request_id === (int) $requestItem->id, 404);
+        $disk = Storage::disk($file->disk ?: 'local');
+        abort_unless($disk->exists($file->path), 404);
+
+        return response()->file($disk->path($file->path), [
+            'Content-Type' => $file->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="'.str_replace(['"', "\r", "\n"], '', (string) $file->original_name).'"',
+        ]);
+    }
+
+    private function loadRequestFiles(PmMaintenanceRequest $requestItem): void
+    {
+        if (Schema::hasTable('pm_maintenance_request_files')) {
+            $requestItem->load('files');
+        }
+    }
+
+    private function prepareMaintenanceAttachments(Request $request, ?PmMaintenanceRequest $ticket = null): void
+    {
+        $uploads = $this->maintenanceAttachmentUploads($request);
+        if ($uploads->isEmpty()) {
+            return;
+        }
+        if (! Schema::hasTable('pm_maintenance_request_files')) {
+            throw ValidationException::withMessages([
+                'attachments' => 'Photos and videos need the latest database migration before they can be saved.',
+            ]);
+        }
+
+        $request->validate([
+            'attachments' => ['array', 'max:30'],
+            'attachments.*' => ['file', 'max:1048576'],
+        ]);
+
+        foreach ($uploads as $file) {
+            $mime = (string) ($file->getMimeType() ?: '');
+            $extension = strtolower($file->getClientOriginalExtension());
+            $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'mp4', 'mov', 'webm', 'mkv', 'avi', '3gp', 'm4v', 'mpeg', 'mpg'];
+            if (! str_starts_with($mime, 'image/') && ! str_starts_with($mime, 'video/') && ! in_array($extension, $allowedExtensions, true)) {
+                throw ValidationException::withMessages([
+                    'attachments' => 'Only photos and videos can be attached.',
+                ]);
+            }
+        }
+
+        $existing = 0;
+        if ($ticket) {
+            $existing = (int) $ticket->files()->sum('size_bytes');
+        }
+        $incoming = (int) $uploads->sum(fn (UploadedFile $file) => (int) $file->getSize());
+        if ($existing + $incoming > 1073741824) {
+            throw ValidationException::withMessages([
+                'attachments' => 'Photos and videos must stay within 1 GB in total.',
+            ]);
+        }
+    }
+
+    private function storeMaintenanceAttachments(Request $request, PmMaintenanceRequest $ticket): void
+    {
+        $uploads = $this->maintenanceAttachmentUploads($request);
+        if ($uploads->isEmpty()) {
+            return;
+        }
+
+        $stored = [];
+        try {
+            foreach ($uploads as $file) {
+                $path = $file->store('maintenance-requests/'.$ticket->id, 'local');
+                if (! is_string($path) || $path === '') {
+                    throw ValidationException::withMessages([
+                        'attachments' => 'One of the files could not be saved. Try again with a smaller photo or video.',
+                    ]);
+                }
+                $stored[] = $path;
+                $mime = (string) ($file->getMimeType() ?: '');
+                if ($mime === '' || $mime === 'application/octet-stream') {
+                    $videoExtensions = ['mp4', 'mov', 'webm', 'mkv', 'avi', '3gp', 'm4v', 'mpeg', 'mpg'];
+                    $mime = in_array(strtolower($file->getClientOriginalExtension()), $videoExtensions, true)
+                        ? 'video/mp4'
+                        : 'image/jpeg';
+                }
+                $ticket->files()->create([
+                    'disk' => 'local',
+                    'path' => $path,
+                    'original_name' => mb_substr($file->getClientOriginalName() ?: 'attachment', 0, 180),
+                    'mime_type' => mb_substr($mime, 0, 120),
+                    'size_bytes' => (int) $file->getSize(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            foreach ($stored as $path) {
+                Storage::disk('local')->delete($path);
+            }
+            $ticket->files()->whereIn('path', $stored)->delete();
+            throw $e;
+        }
+    }
+
+    /**
+     * @return Collection<int, UploadedFile>
+     */
+    private function maintenanceAttachmentUploads(Request $request): Collection
+    {
+        return collect($request->file('attachments', []))
+            ->filter(function ($file) {
+                if (! $file instanceof UploadedFile) {
+                    return false;
+                }
+                if (! $file->isValid()) {
+                    throw ValidationException::withMessages([
+                        'attachments' => $file->getErrorMessage() ?: 'One of the files could not be uploaded.',
+                    ]);
+                }
+
+                return $file->getSize() > 0;
+            })
+            ->values();
     }
 
     private function resolveTenantIdForMaintenanceUnit(int $propertyUnitId): ?int

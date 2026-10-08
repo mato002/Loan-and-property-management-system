@@ -107,8 +107,8 @@ class PropertyHrWorkflowService
 
     public function routeMaintenanceRequest(PmMaintenanceRequest $request): ?string
     {
-        $request->loadMissing('unit.property');
-        $propertyId = (int) ($request->unit?->property_id ?? 0);
+        $request->loadMissing('unit.property', 'property');
+        $propertyId = (int) ($request->property_id ?: $request->unit?->property_id ?: 0);
         $staff = $this->usersHolding($this->assignedEmployees($propertyId), 'maintenance.resolve');
         if ($staff->isEmpty()) {
             return null;
@@ -127,7 +127,7 @@ class PropertyHrWorkflowService
         }
 
         $propertyName = (string) ($request->unit?->property?->name ?? 'a property');
-        $unitLabel = (string) ($request->unit?->label ?? '—');
+        $unitLabel = (string) ($request->unit?->label ?? 'Whole property');
         $subject = 'Maintenance request #'.$request->id.' assigned';
         $body = 'A '.$request->urgency.' '.$request->category.' request at '.$propertyName.' / '.$unitLabel.' was routed to you because you can resolve maintenance on this property.';
 

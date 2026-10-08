@@ -80,22 +80,40 @@ final class PropertyNavigation
         $workspaces = array_values(array_filter(
             $ordered,
             static function (array $workspace) use ($user): bool {
-                $perm = $workspace['requires_pm_permission'] ?? null;
-                if ($perm === null || $perm === '') {
-                    return true;
-                }
-                if (! $user instanceof User) {
+                $key = (string) ($workspace['key'] ?? '');
+                $required = PropertyModuleAccess::forWorkspace($key);
+                if ($required !== null && ! PropertyModuleAccess::userHasAny($user, $required)) {
                     return false;
                 }
 
-                return $user->hasPmPermission($perm);
+                $perm = $workspace['requires_pm_permission'] ?? null;
+                if (is_string($perm) && $perm !== '' && ! PropertyModuleAccess::userHasAny($user, [$perm])) {
+                    return false;
+                }
+
+                if ($key !== '' && in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true)) {
+                    return PropertyWorkspaceTabs::tabsFor($key, $user) !== [];
+                }
+
+                return true;
             }
         ));
 
-        return array_map(static function (array $workspace): array {
+        return array_map(static function (array $workspace) use ($user): array {
             unset($workspace['sidebar']);
 
             $key = (string) ($workspace['key'] ?? '');
+            if ($key === 'maintenance') {
+                $workspace['badge'] = \App\Models\PmMaintenanceRequest::openAlertCount();
+            }
+            $flyout = ($key !== '' && in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true))
+                ? PropertyWorkspaceTabs::flyoutFor($key, $user)
+                : ($workspace['flyout'] ?? []);
+            $workspace['flyout'] = array_values(array_filter(
+                $flyout,
+                static fn (array $item): bool => PropertyModuleAccess::allows($user, (string) ($item['route'] ?? '')),
+            ));
+
             if ($key === '' || ! in_array($key, PropertyWorkspaceTabs::implementedWorkspaceKeys(), true)) {
                 return $workspace;
             }
@@ -115,10 +133,6 @@ final class PropertyNavigation
                 $workspace['route_query'] = $entry['query'];
             } else {
                 unset($workspace['route_query']);
-            }
-
-            if ($key === 'settings') {
-                $workspace['flyout'] = PropertyWorkspaceTabs::flyoutFor('settings');
             }
 
             return $workspace;
@@ -493,9 +507,9 @@ final class PropertyNavigation
     }
 
     /**
-     * Header workspace strip — shown only when desktop sidebar is collapsed.
+     * Green header workspace strip, including workspaces that stay off the left rail.
      *
-     * @return list<array{label: string, route: string, patterns: list<string>, key: string}>
+     * @return list<array{label: string, route: string, patterns: list<string>, key: string, badge: int}>
      */
     public static function agentHeaderWorkspaces(?User $user = null): array
     {
@@ -507,8 +521,9 @@ final class PropertyNavigation
                 'route_params' => $workspace['route_params'] ?? [],
                 'route_query' => $workspace['route_query'] ?? [],
                 'patterns' => $workspace['active'],
+                'badge' => (int) ($workspace['badge'] ?? 0),
             ];
-        }, self::agentWorkspaces($user));
+        }, self::allAgentWorkspaces($user));
     }
 
     public static function routeIsActive(string $routeName, array $patterns): bool
@@ -597,10 +612,12 @@ final class PropertyNavigation
                 continue;
             }
             $nav[] = [
+                'key' => $key,
                 'label' => (string) ($workspace['label'] ?? $key),
                 'icon' => (string) ($workspace['icon'] ?? 'fa-circle'),
                 'route' => (string) ($workspace['route'] ?? 'property.dashboard'),
                 'patterns' => $workspace['active'] ?? [],
+                'badge' => (int) ($workspace['badge'] ?? 0),
             ];
         }
 

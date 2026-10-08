@@ -219,11 +219,50 @@ class PropertyUtilityChargeController extends Controller
                     $rate = $fixed;
                     $fixed = 0.0;
                 }
-                $effectiveByType[$type] = [
+                if ($type === 'water') {
+                    $waterRate = is_numeric($row['water_amount'] ?? null) ? (float) $row['water_amount'] : 0.0;
+                    $maintenanceFee = is_numeric($row['maintenance_fee'] ?? null) ? (float) $row['maintenance_fee'] : 0.0;
+                    if ($waterRate > 0.009) {
+                        $rate = $waterRate;
+                        $fixed = $maintenanceFee;
+                    } elseif ($maintenanceFee > 0.009 && $fixed <= 0.009) {
+                        $fixed = $maintenanceFee;
+                    }
+                }
+                $incoming = [
                     'rate_per_unit' => $rate,
                     'fixed_charge' => $fixed,
                     'label' => $label,
+                    'specific' => $scopeUnitId !== null,
                 ];
+                $current = $effectiveByType[$type] ?? null;
+                if (! is_array($current)) {
+                    $effectiveByType[$type] = $incoming;
+                } elseif ($incoming['specific'] && empty($current['specific'])) {
+                    if ($incoming['rate_per_unit'] <= 0.009) {
+                        $incoming['rate_per_unit'] = (float) $current['rate_per_unit'];
+                    }
+                    if ($incoming['fixed_charge'] <= 0.009) {
+                        $incoming['fixed_charge'] = (float) $current['fixed_charge'];
+                    }
+                    if ($incoming['label'] === '') {
+                        $incoming['label'] = (string) $current['label'];
+                    }
+                    $effectiveByType[$type] = $incoming;
+                } elseif (! $incoming['specific'] && ! empty($current['specific'])) {
+                    if ((float) $current['rate_per_unit'] <= 0.009 && $incoming['rate_per_unit'] > 0.009) {
+                        $current['rate_per_unit'] = $incoming['rate_per_unit'];
+                    }
+                    if ((float) $current['fixed_charge'] <= 0.009 && $incoming['fixed_charge'] > 0.009) {
+                        $current['fixed_charge'] = $incoming['fixed_charge'];
+                    }
+                    $effectiveByType[$type] = $current;
+                } else {
+                    $effectiveByType[$type] = $incoming;
+                }
+            }
+            foreach ($effectiveByType as $typeKey => $resolved) {
+                unset($effectiveByType[$typeKey]['specific']);
             }
             if ($effectiveByType !== []) {
                 $utilityTemplateByUnit[(string) $unit->id] = $effectiveByType;

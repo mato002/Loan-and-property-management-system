@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\PmFieldOfficer;
 use App\Models\PmLease;
 use App\Models\PmMessageLog;
+use App\Models\PmPermission;
 use App\Models\PmRole;
 use App\Models\Property;
 use App\Models\PropertyUnit;
@@ -75,12 +76,77 @@ class PropertyHrEmployeeService
             return collect();
         }
 
+        $this->ensureFieldOfficerRole();
+
         return PmRole::query()
             ->whereIn('portal_scope', ['agent', 'any'])
             ->orderBy('name')
             ->get(['id', 'name', 'slug'])
             ->unique('id')
             ->values();
+    }
+
+    public function ensureFieldOfficerRole(): void
+    {
+        if (! Schema::hasTable('pm_roles')) {
+            return;
+        }
+
+        $existing = PmRole::query()
+            ->get(['id', 'name', 'slug'])
+            ->first(fn (PmRole $role) => $this->isFieldOfficerRole($role));
+        if ($existing) {
+            return;
+        }
+
+        $role = PmRole::query()->create([
+            'slug' => 'field_officer',
+            'name' => 'Field Officer',
+            'portal_scope' => 'agent',
+            'description' => 'Portfolio officer. Assign properties from the employee profile. Adjust these permissions in access control.',
+        ]);
+
+        if (! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_role_permission')) {
+            return;
+        }
+
+        $keys = [
+            'tenants.manage',
+            'leases.manage',
+            'maintenance.manage',
+            'maintenance.resolve',
+            'utilities.readings.capture',
+            'payments.record',
+            'communications.manage',
+        ];
+        $permIds = PmPermission::query()->whereIn('key', $keys)->pluck('id')->all();
+        if ($permIds !== []) {
+            $role->permissions()->sync($permIds);
+        }
+    }
+
+    /**
+     * @param  list<int>  $roleIds
+     */
+    public function rolesIncludeFieldOfficer(array $roleIds): bool
+    {
+        if ($roleIds === [] || ! Schema::hasTable('pm_roles')) {
+            return false;
+        }
+
+        return PmRole::query()
+            ->whereIn('id', $roleIds)
+            ->get(['id', 'name', 'slug'])
+            ->contains(fn (PmRole $role) => $this->isFieldOfficerRole($role));
+    }
+
+    public function isFieldOfficerRole(PmRole $role): bool
+    {
+        $slug = Str::lower(str_replace('_', '-', (string) $role->slug));
+        $name = Str::slug((string) $role->name);
+
+        return in_array($slug, ['field-officer', 'fieldofficer'], true)
+            || str_contains($name, 'field-officer');
     }
 
     /**
@@ -896,8 +962,55 @@ class PropertyHrEmployeeService
 
     public function isFieldOfficerEmployee(Employee $employee): bool
     {
-        return $this->isFieldOfficerJobTitle($employee->job_title)
-            || $employee->fieldOfficerProfile()->exists();
+        if ($this->isFieldOfficerJobTitle($employee->job_title)) {
+            return true;
+        }
+
+        if ($employee->relationLoaded('fieldOfficerProfile')) {
+            if ($employee->fieldOfficerProfile) {
+                return true;
+            }
+        } elseif ($employee->fieldOfficerProfile()->exists()) {
+            return true;
+        }
+
+        $roles = $employee->user?->pmRoles;
+
+        return (bool) $roles?->contains(fn (PmRole $role) => $this->isFieldOfficerRole($role));
+    }
+
+    public function constrainFieldOfficers(Builder $query): void
+    {
+        $query->where(function (Builder $inner): void {
+            $inner->where('job_title', self::FIELD_OFFICER_JOB_TITLE)
+                ->orWhereHas('fieldOfficerProfile')
+                ->orWhereHas('user.pmRoles', function (Builder $roles): void {
+                    $roles->where(function (Builder $match): void {
+                        $match->whereIn('slug', ['field_officer', 'field-officer'])
+                            ->orWhere('name', 'like', '%Field Officer%');
+                    });
+                });
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function distinctEmployeeColumn(string $column): array
+    {
+        if (! in_array($column, ['department', 'job_title'], true) || ! Schema::hasColumn('employees', $column)) {
+            return [];
+        }
+
+        return $this->queryForActor()
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->distinct()
+            ->orderBy($column)
+            ->pluck($column)
+            ->map(fn ($value) => (string) $value)
+            ->values()
+            ->all();
     }
 
     public function resolveFieldOfficerForEmployee(Employee $employee): ?PmFieldOfficer

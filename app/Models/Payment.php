@@ -57,6 +57,23 @@ class Payment extends Model
      */
     protected static function booted(): void
     {
+        static::creating(function (Payment $payment): void {
+            if (! Schema::hasColumn('payments', 'agent_user_id')) {
+                return;
+            }
+
+            $ownerId = AgentWorkspaceScope::ownerIdForNewRecord();
+            if ($ownerId <= 0) {
+                return;
+            }
+
+            $stamped = (int) ($payment->agent_user_id ?? 0);
+            $actorId = (int) (auth()->id() ?? 0);
+            if ($actorId > 0 && ($stamped === 0 || $stamped === $actorId)) {
+                $payment->agent_user_id = $ownerId;
+            }
+        });
+
         static::addGlobalScope('agent_workspace', function (Builder $query) {
             $agentId = AgentWorkspaceScope::currentAgentUserId();
             if ($agentId === null) {

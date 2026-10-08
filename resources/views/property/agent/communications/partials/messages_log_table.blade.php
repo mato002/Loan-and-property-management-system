@@ -1,28 +1,6 @@
 @php
     use Illuminate\Support\Str;
 
-    $maskAddress = static function (string $value): string {
-        $value = trim($value);
-        if ($value === '') {
-            return '—';
-        }
-        if (str_contains($value, '@')) {
-            [$local, $domain] = array_pad(explode('@', $value, 2), 2, '');
-            if ($local === '') {
-                return $value;
-            }
-            $prefix = substr($local, 0, min(2, strlen($local)));
-
-            return $prefix.str_repeat('*', max(0, strlen($local) - strlen($prefix))).'@'.$domain;
-        }
-        $digits = preg_replace('/\D+/', '', $value);
-        if ($digits === '' || strlen($digits) < 4) {
-            return '****';
-        }
-
-        return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
-    };
-
     $resendActions = (array) ($resendActions ?? []);
     $logPresentations = (array) ($logPresentations ?? []);
     $errorPresenter = app(\App\Services\Property\SmsDeliveryErrorPresenter::class);
@@ -122,7 +100,7 @@
                         <td class="px-4 py-3">
                             <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusClass }}">{{ strtoupper($status) }}</span>
                         </td>
-                        <td class="px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-nowrap">{{ $maskAddress((string) $log->to_address) }}</td>
+                        <td class="px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-nowrap">{{ trim((string) $log->to_address) !== '' ? $log->to_address : '—' }}</td>
                         <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ $log->subject ?: '—' }}</td>
                         @if (($filters['duplicates'] ?? '') === 'yes')
                             <td class="px-4 py-3 whitespace-nowrap">

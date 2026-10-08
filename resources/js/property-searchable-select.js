@@ -26,11 +26,12 @@ function optionCount(select) {
     return select?.options?.length ?? 0;
 }
 
+function isNarrowViewport() {
+    return window.matchMedia?.('(max-width: 767.98px)')?.matches === true;
+}
+
 function shouldEnhance(select) {
     if (!(select instanceof HTMLSelectElement)) {
-        return false;
-    }
-    if (/(?:^|_)per_page$/.test(select.name || '') || select.dataset.pageSizeSelect === '1') {
         return false;
     }
     if (select.getAttribute(ENHANCED_ATTR) === '1') {
@@ -54,12 +55,31 @@ function shouldEnhance(select) {
     if (select.closest('.property-print-only')) {
         return false;
     }
+    if (isNarrowViewport() && select.closest('[data-property-filter-form-desktop], .property-filter-toolbar__static')) {
+        return false;
+    }
+    // Phone browsers do not open a native <select> inside the portal scroll lock.
+    // Filter lists use the portaled panel instead, including short option lists.
+    if (
+        isNarrowViewport()
+        && optionCount(select) >= 2
+        && select.closest('[data-filter-toolbar-mobile-panel], [data-filter-disclosure-panel], .mobile-filter-collapse__body')
+    ) {
+        return true;
+    }
+
+    if (/(?:^|_)per_page$/.test(select.name || '') || select.dataset.pageSizeSelect === '1') {
+        return false;
+    }
 
     const flag = (select.dataset.propertySearchable || select.dataset.searchable || '').toLowerCase();
     if (flag === 'false' || flag === '0' || flag === 'off') {
         return false;
     }
     if (flag === 'true' || flag === '1' || flag === 'on') {
+        return true;
+    }
+    if (select.closest('[data-property-modal]') && optionCount(select) >= 2) {
         return true;
     }
 
@@ -189,6 +209,7 @@ function buildEnhancement(select) {
     select.addEventListener('mousedown', (event) => event.preventDefault());
 
     let open = false;
+    let openedAt = 0;
 
     const renderList = (query = '') => {
         const q = String(query || '').trim().toLowerCase();
@@ -221,12 +242,15 @@ function buildEnhancement(select) {
             btn.textContent = opt.label || (opt.value === '' ? placeholder : opt.value);
             btn.disabled = Boolean(opt.disabled);
             btn.addEventListener('mousedown', (event) => {
+                if (event.pointerType === 'touch') {
+                    return;
+                }
                 event.preventDefault();
             });
-            btn.addEventListener('click', (event) => {
+            const choose = (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (opt.disabled) {
+                if (!open || opt.disabled) {
                     return;
                 }
                 currentValue = String(opt.value);
@@ -238,8 +262,10 @@ function buildEnhancement(select) {
                 select.dispatchEvent(new Event('input', { bubbles: true }));
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 labelEl.textContent = selectedLabel(options, currentValue, placeholder);
-                closePanel();
-            });
+                closePanel(true);
+            };
+            btn.addEventListener('pointerup', choose);
+            btn.addEventListener('click', choose);
             li.appendChild(btn);
             list.appendChild(li);
         });
@@ -251,17 +277,23 @@ function buildEnhancement(select) {
         }
         panel.style.zIndex = String(resolvePanelZIndex());
         const rect = trigger.getBoundingClientRect();
-        const width = Math.max(rect.width, 180);
-        const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+        const viewport = window.visualViewport;
+        const viewWidth = viewport?.width || window.innerWidth;
+        const viewHeight = viewport?.height || window.innerHeight;
+        const offsetLeft = viewport?.offsetLeft || 0;
+        const offsetTop = viewport?.offsetTop || 0;
+        const width = Math.max(rect.width, isNarrowViewport() ? Math.min(viewWidth - 16, 280) : 180);
+        const left = Math.min(Math.max(8, rect.left), Math.max(8, offsetLeft + viewWidth - width - 8));
         panel.style.width = `${width}px`;
         panel.style.left = `${left}px`;
+        panel.style.maxHeight = isNarrowViewport() ? '50vh' : '';
         panel.style.top = `${rect.bottom + 4}px`;
 
-        const spaceBelow = window.innerHeight - rect.bottom - 12;
-        const spaceAbove = rect.top - 12;
-        const needed = Math.min(panel.scrollHeight || 240, 320);
+        const spaceBelow = offsetTop + viewHeight - rect.bottom - 12;
+        const spaceAbove = rect.top - offsetTop - 12;
+        const needed = Math.min(panel.scrollHeight || 240, isNarrowViewport() ? viewHeight * 0.5 : 320);
         if (spaceBelow < needed && spaceAbove > spaceBelow) {
-            panel.style.top = `${Math.max(8, rect.top - needed - 4)}px`;
+            panel.style.top = `${Math.max(offsetTop + 8, rect.top - needed - 4)}px`;
         }
     };
 
@@ -273,6 +305,8 @@ function buildEnhancement(select) {
         searchInput.value = '';
     };
 
+    const prefersCoarsePointer = () => window.matchMedia?.('(pointer: coarse)')?.matches === true;
+
     const openPanel = () => {
         openPanelClosers.forEach((close) => {
             if (close !== closePanel) {
@@ -280,6 +314,7 @@ function buildEnhancement(select) {
             }
         });
         open = true;
+        openedAt = Date.now();
         openPanelClosers.add(closePanel);
         document.body.appendChild(panel);
         panel.classList.remove('hidden');
@@ -289,7 +324,9 @@ function buildEnhancement(select) {
         placePanel();
         queueMicrotask(() => {
             placePanel();
-            searchInput.focus();
+            if (!prefersCoarsePointer()) {
+                searchInput.focus();
+            }
         });
     };
 
@@ -301,10 +338,38 @@ function buildEnhancement(select) {
         }
     };
 
-    trigger.addEventListener('click', (event) => {
+    let toggleStamp = 0;
+    const requestToggle = (event) => {
         event.preventDefault();
+        const now = Date.now();
+        if (now - toggleStamp < 500) {
+            return;
+        }
+        toggleStamp = now;
         togglePanel();
+    };
+    trigger.addEventListener('pointerup', (event) => {
+        if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+        }
+        requestToggle(event);
     });
+    trigger.addEventListener('click', (event) => {
+        if (Date.now() - toggleStamp < 500) {
+            event.preventDefault();
+
+            return;
+        }
+        requestToggle(event);
+    });
+    if (select.id) {
+        document.querySelectorAll(`label[for="${CSS.escape(select.id)}"]`).forEach((label) => {
+            label.addEventListener('click', (event) => {
+                event.preventDefault();
+                requestToggle(event);
+            });
+        });
+    }
 
     searchInput.addEventListener('input', () => {
         renderList(searchInput.value);
@@ -328,6 +393,9 @@ function buildEnhancement(select) {
 
     document.addEventListener('click', (event) => {
         if (!open) {
+            return;
+        }
+        if (Date.now() - openedAt < 700) {
             return;
         }
         if (event.target instanceof Node && !root.contains(event.target) && !panel.contains(event.target)) {

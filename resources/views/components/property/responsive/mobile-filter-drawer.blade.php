@@ -11,6 +11,9 @@
     $hasMobileSlot = isset($mobile) && ! $mobile->isEmpty();
     $desktopContent = $hasDesktopSlot ? $desktop : $slot;
     $mobileContent = $hasMobileSlot ? $mobile : $slot;
+    $mobilePrepared = \App\Support\Ui\MobileFilterSearchSplit::forDrawer((string) $mobileContent);
+    $showFilterButton = $mobilePrepared['showButton']
+        || (isset($mobile_filters_extra) && ! $mobile_filters_extra->isEmpty());
 @endphp
 
 <div
@@ -19,15 +22,23 @@
     x-on:turbo:before-visit.window="filterOpen = false"
     x-on:turbo:frame-load.window="if ($event.target?.id === @js($turboFrame)) filterOpen = false"
     data-property-filter-drawer-host
-    {{ $attributes->merge(['class' => 'min-w-0 w-auto shrink-0 md:w-full']) }}
+    {{ $attributes->merge(['class' => 'min-w-0 w-full']) }}
 >
     {{-- Desktop: filters inline --}}
     <div class="hidden md:block w-full min-w-0">
         {{ $desktopContent }}
     </div>
 
-    {{-- Mobile: compact trigger, kept in the horizontal action row --}}
-    <div class="md:hidden w-auto shrink-0">
+    {{-- Mobile: search stays on the page. Other filters open from the button. --}}
+    <div class="md:hidden flex w-full min-w-0 flex-col gap-2">
+        @if ($mobilePrepared['search'] !== '')
+            <div class="w-full min-w-0" data-mobile-filter-search data-drawer-search-slot>
+                {!! $mobilePrepared['search'] !!}
+            </div>
+        @else
+            <div class="w-full min-w-0" data-mobile-filter-search data-drawer-search-slot></div>
+        @endif
+
         @isset($chips)
             @if (! $chips->isEmpty())
                 <div class="flex flex-wrap gap-1.5">
@@ -36,10 +47,17 @@
             @endif
         @endisset
 
+        @if ($mobilePrepared['inline'] !== '')
+            <div class="flex w-full min-w-0 flex-col gap-2" data-mobile-filter-inline>
+                {!! $mobilePrepared['inline'] !!}
+            </div>
+        @endif
+
+        @if ($showFilterButton)
         <button
             type="button"
             @click="filterOpen = true; $nextTick(() => window.dispatchEvent(new CustomEvent('property:filter-drawer-open')))"
-            class="inline-flex w-auto shrink-0 min-h-[40px] items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            class="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             <i class="fa-solid fa-sliders text-slate-500" aria-hidden="true"></i>
             {{ $label }}
@@ -47,9 +65,11 @@
                 <span class="inline-flex min-w-[1.25rem] h-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold text-white">{{ $activeCount }}</span>
             @endif
         </button>
+        @endif
     </div>
 
     {{-- Mobile drawer --}}
+    @if ($showFilterButton)
     <div
         x-show="filterOpen"
         x-cloak
@@ -100,7 +120,7 @@
                         </div>
                     @endif
                 @endisset
-                {{ $mobileContent }}
+                {!! $mobilePrepared['sheet'] !!}
             </div>
             <div class="shrink-0 px-4 py-3 border-t border-slate-200 dark:border-slate-700 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <button
@@ -113,4 +133,5 @@
             </div>
         </div>
     </div>
+    @endif
 </div>

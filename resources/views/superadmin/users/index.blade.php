@@ -1,19 +1,37 @@
-@php($title = 'Users — Super Admin')
+@php($title = 'People — Super Admin')
 @extends('layouts.superadmin', ['title' => $title])
 
 @section('content')
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-            <h1 class="text-2xl font-black tracking-tight text-slate-900">Users</h1>
-            <p class="text-sm text-slate-600 mt-1">Approve module access, manage roles and permissions, and create staff accounts.</p>
+            <h1 class="text-2xl font-black tracking-tight text-slate-900">People</h1>
+            <p class="text-sm text-slate-600 mt-1">Platform operators sit outside the agent companies. Everyone else is an agent company, or an employee, landlord, or tenant of one company.</p>
         </div>
         <a href="{{ route('superadmin.users.create') }}" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700">
             Add user
         </a>
     </div>
 
+    <div class="mb-4 flex flex-wrap gap-2">
+        @foreach ([
+            'platform' => 'Platform operators',
+            'agent' => 'Agent companies',
+            'employee' => 'Employees',
+            'landlord' => 'Landlords',
+            'tenant' => 'Tenants',
+        ] as $key => $label)
+            <a
+                href="{{ route('superadmin.users.index', array_merge(request()->except(['page', 'category']), ['category' => ($category ?? '') === $key ? null : $key, 'company' => $companyId ?: null])) }}"
+                class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold {{ ($category ?? '') === $key ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}"
+            >
+                {{ $label }}
+                <span class="tabular-nums text-slate-500">{{ number_format((int) (($counts ?? [])[$key] ?? 0)) }}</span>
+            </a>
+        @endforeach
+    </div>
+
     <form method="get" data-sa-auto-filter class="mb-6">
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <input
                 type="text"
                 name="q"
@@ -21,13 +39,17 @@
                 placeholder="Search name or email…"
                 class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 lg:col-span-2"
             />
-            <select name="role" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <option value="">All roles</option>
-                <option value="super_admin" @selected(($role ?? '') === 'super_admin')>Super Admin</option>
-                <option value="agent" @selected(($role ?? '') === 'agent')>Agent</option>
-                <option value="landlord" @selected(($role ?? '') === 'landlord')>Landlord</option>
-                <option value="tenant" @selected(($role ?? '') === 'tenant')>Tenant</option>
-                <option value="none" @selected(($role ?? '') === 'none')>No property role</option>
+            <select name="category" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">All places</option>
+                @foreach (($categories ?? []) as $key => $label)
+                    <option value="{{ $key }}" @selected(($category ?? '') === $key)>{{ $label }}</option>
+                @endforeach
+            </select>
+            <select name="company" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">All companies</option>
+                @foreach (($companies ?? []) as $company)
+                    <option value="{{ $company['id'] }}" @selected((int) ($companyId ?? 0) === (int) $company['id'])>{{ $company['label'] }}</option>
+                @endforeach
             </select>
             <select name="per_page" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                 @foreach ([10, 20, 50, 100, 200] as $size)
@@ -81,9 +103,10 @@
                         <span class="sr-only">Select</span>
                         <input type="checkbox" id="users-select-page" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" title="Select all on this page" aria-label="Select all users on this page">
                     </th>
-                    <th class="px-5 py-3 text-left font-bold">ID</th>
-                    <th class="px-5 py-3 text-left font-bold">User</th>
-                    <th class="px-5 py-3 text-left font-bold">Flags</th>
+                    <th class="px-5 py-3 text-left font-bold">Person</th>
+                    <th class="px-5 py-3 text-left font-bold">Place</th>
+                    <th class="px-5 py-3 text-left font-bold">Company</th>
+                    <th class="px-5 py-3 text-left font-bold">Access</th>
                     <th class="px-5 py-3 text-right font-bold">Actions</th>
                 </tr>
             </thead>
@@ -93,12 +116,31 @@
                         <td class="px-3 py-4 align-middle">
                             <input type="checkbox" value="{{ $u->id }}" class="users-row-cb rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" aria-label="Select {{ $u->name }}">
                         </td>
-                        <td class="px-5 py-4 font-mono text-xs font-semibold text-slate-600 tabular-nums">
-                            {{ $u->id }}
-                        </td>
                         <td class="px-5 py-4">
                             <div class="font-semibold text-slate-900">{{ $u->name }}</div>
                             <div class="text-slate-500">{{ $u->email }}</div>
+                            <div class="mt-0.5 font-mono text-[11px] text-slate-400">#{{ $u->id }}</div>
+                        </td>
+                        <td class="px-5 py-4">
+                            <span @class([
+                                'inline-flex items-center rounded-full px-3 py-1 text-xs font-bold',
+                                'bg-amber-100 text-amber-900' => ($u->directory_category ?? '') === 'platform',
+                                'bg-indigo-100 text-indigo-900' => ($u->directory_category ?? '') === 'agent',
+                                'bg-sky-100 text-sky-900' => ($u->directory_category ?? '') === 'employee',
+                                'bg-violet-100 text-violet-900' => ($u->directory_category ?? '') === 'landlord',
+                                'bg-emerald-100 text-emerald-900' => ($u->directory_category ?? '') === 'tenant',
+                                'bg-teal-100 text-teal-900' => ($u->directory_category ?? '') === 'loan',
+                                'bg-slate-100 text-slate-700' => ! in_array((string) ($u->directory_category ?? ''), ['platform', 'agent', 'employee', 'landlord', 'tenant', 'loan'], true),
+                            ])>{{ $u->directory_label ?? 'Not placed' }}</span>
+                        </td>
+                        <td class="px-5 py-4">
+                            <div class="font-semibold text-slate-900">{{ $u->directory_company ?? '—' }}</div>
+                            @if (! empty($u->directory_note))
+                                <div class="text-xs text-slate-500">{{ $u->directory_note }}</div>
+                            @endif
+                            @if (! empty($u->directory_company_id))
+                                <a href="{{ route('superadmin.users.index', ['company' => $u->directory_company_id]) }}" class="mt-1 inline-flex text-xs font-semibold text-indigo-700 hover:underline">People in this company</a>
+                            @endif
                         </td>
                         <td class="px-5 py-4">
                             @php($loanAccessRow = $u->relationLoaded('moduleAccesses') ? $u->moduleAccesses->firstWhere('module', 'loan') : null)
@@ -124,7 +166,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="px-5 py-10 text-center text-slate-500">No users found.</td>
+                        <td colspan="6" class="px-5 py-10 text-center text-slate-500">No one in this group.</td>
                     </tr>
                 @endforelse
             </tbody>

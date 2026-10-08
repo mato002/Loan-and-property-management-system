@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Property\PropertyCrudPermissions;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,11 +16,16 @@ class EnsurePropertyPermission
             abort(401);
         }
 
-        if (! $user->hasPmPermission($permissionKey)) {
+        $slice = PropertyCrudPermissions::sliceFor($permissionKey, $request);
+        if ($slice !== null && $user->directPmPermissionEffect($slice) === 'deny') {
             abort(403, 'You do not have permission to perform this action.');
         }
 
-        return $next($request);
+        if ($user->hasPmPermission($permissionKey) || ($slice !== null && $user->hasPmPermission($slice))) {
+            return $next($request);
+        }
+
+        abort(403, 'You do not have permission to perform this action.');
     }
 }
 

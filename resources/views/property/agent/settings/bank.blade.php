@@ -188,7 +188,11 @@
                     <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Go-live checklist</h2>
                     <ol class="list-decimal pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1.5">
                         <li>Save API credentials + paybill number for this bank, enable auto sync if available.</li>
-                        <li>Register the webhook URL above in the bank developer portal (header <code class="font-mono text-[11px]">X-Property-Bank-Webhook-Secret</code>).</li>
+                        @if ($provider === 'coop')
+                            <li>Send Co-operative Bank the IPN URL below. It must be HTTPS on a hostname that resolves to a static IP. They register it, then share the API credentials.</li>
+                        @else
+                            <li>Register the webhook URL above in the bank developer portal (header <code class="font-mono text-[11px]">X-Property-Bank-Webhook-Secret</code>).</li>
+                        @endif
                         <li>Configure STK / B2C under <a href="{{ route('property.settings.payments', [], false) }}" class="text-blue-600 hover:underline">Payment config</a> for M-Pesa collection and landlord/payroll payouts.</li>
                         <li>Optional backup: <a href="{{ route('property.settings.forwarder', [], false) }}" class="text-blue-600 hover:underline">SMS Forwarder</a> token on the office phone.</li>
                         <li>Confirm cron (<code class="font-mono text-[11px]">schedule:run</code>) and a queue worker are running.</li>
@@ -228,12 +232,19 @@
 
                 @if ($supportsWebhook)
                     <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-3">
-                        <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Bank webhook</h2>
-                        <p class="text-xs text-slate-500">Register this URL with {{ $providerLabel }} for real-time payment push:</p>
+                        <h2 class="text-sm font-semibold text-slate-900 dark:text-white">{{ $provider === 'coop' ? 'Co-op IPN notification URL' : 'Bank webhook' }}</h2>
+                        @if ($provider === 'coop')
+                            <p class="text-xs text-slate-500">Give this URL to Co-operative Bank (Transaction Banking). They POST each credit here. The hostname must resolve to a static IP.</p>
+                        @else
+                            <p class="text-xs text-slate-500">Register this URL with {{ $providerLabel }} for real-time payment push:</p>
+                        @endif
                         <div class="flex gap-2">
-                            <input id="bank-webhook-url" readonly value="{{ $webhookUrl }}" class="flex-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-mono px-3 py-2" />
+                            <input id="bank-webhook-url" readonly value="{{ $provider === 'coop' ? route('webhooks.property.payments.coop_ipn') : $webhookUrl }}" class="flex-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-mono px-3 py-2" />
                             <button type="button" data-copy-target="#bank-webhook-url" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Copy</button>
                         </div>
+                        @if ($provider === 'coop')
+                            <p class="text-xs text-slate-500">POST JSON using the B2B IPN 2025 fields (<code class="font-mono text-[11px]">AcctNo</code>, <code class="font-mono text-[11px]">TransactionId</code>, <code class="font-mono text-[11px]">Narration</code>). A received event is answered with <code class="font-mono text-[11px]">MessageCode 200</code> and <code class="font-mono text-[11px]">Successfully received data</code>. Auth, once you save it: HTTP Basic (username and password, or the webhook secret as the password) or <code class="font-mono text-[11px]">Authorization: Bearer</code> with the webhook secret.</p>
+                        @endif
                     </div>
                 @endif
 

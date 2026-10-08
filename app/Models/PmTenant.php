@@ -84,13 +84,18 @@ class PmTenant extends Model
             if (! Schema::hasColumn('pm_tenants', 'agent_user_id')) {
                 return;
             }
-            if (! empty($tenant->agent_user_id)) {
+
+            $ownerId = AgentWorkspaceScope::ownerIdForNewRecord();
+            if ($ownerId <= 0) {
                 return;
             }
 
-            $agentId = AgentWorkspaceScope::currentAgentUserId();
-            if ($agentId !== null) {
-                $tenant->agent_user_id = $agentId;
+            $stamped = (int) ($tenant->agent_user_id ?? 0);
+            $actorId = (int) (auth()->id() ?? 0);
+            // Staff and super-admin saves used to stamp the login id. File the
+            // row under the company so that company's employees can see it.
+            if ($actorId > 0 && ($stamped === 0 || $stamped === $actorId)) {
+                $tenant->agent_user_id = $ownerId;
             }
         });
 
