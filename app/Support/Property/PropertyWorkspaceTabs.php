@@ -196,6 +196,7 @@ final class PropertyWorkspaceTabs
             'property.revenue.statements.show',
             'property.payments.receipt.show',
             'property.revenue.utilities.periods.show',
+            'property.listings.create',
         ];
 
         if (! in_array($routeName, $keepWorkspaceTabs, true)) {

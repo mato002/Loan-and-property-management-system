@@ -85,7 +85,7 @@ final class LiveWebRoot
         }
 
         $jsDir = $root.DIRECTORY_SEPARATOR.'js';
-        foreach (['field-readings.js', 'pwa-install.js'] as $name) {
+        foreach (['field-readings.js', 'pwa-install.js', 'maintenance-media.js'] as $name) {
             $src = public_path('js'.DIRECTORY_SEPARATOR.$name);
             if (! is_file($src)) {
                 continue;

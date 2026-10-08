@@ -115,10 +115,15 @@ function copyLiveAssets(webRoot) {
     }
 
     const readingsSource = path.join(appRoot, 'public', 'js', 'field-readings.js');
+    fs.mkdirSync(path.join(webRoot, 'js'), { recursive: true });
     if (fs.existsSync(readingsSource)) {
-        fs.mkdirSync(path.join(webRoot, 'js'), { recursive: true });
         fs.copyFileSync(readingsSource, path.join(webRoot, 'js', 'field-readings.js'));
         console.log('Copied field-readings.js into the live js folder');
+    }
+    const mediaSource = path.join(appRoot, 'public', 'js', 'maintenance-media.js');
+    if (fs.existsSync(mediaSource)) {
+        fs.copyFileSync(mediaSource, path.join(webRoot, 'js', 'maintenance-media.js'));
+        console.log('Copied maintenance-media.js into the live js folder');
     }
 
     const swSource = path.join(appRoot, 'public', 'sw.js');

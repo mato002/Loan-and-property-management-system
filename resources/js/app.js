@@ -26,6 +26,7 @@ import './property-listing-publish';
 import './property-invoice-create-sync';
 import './property-payment-reversal';
 import './property-dashboard';
+import './maintenance-media';
 import './utility-analytics';
 import './utility-operations';
 import './utility-revenue-page-modals';

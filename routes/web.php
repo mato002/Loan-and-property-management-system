@@ -37,6 +37,7 @@ Route::get('/property/field/manifest.webmanifest', [\App\Http\Controllers\PwaMan
 Route::get('/pwa/meters-{size}.png', [\App\Http\Controllers\PwaManifestController::class, 'meterIcon'])
     ->where('size', '192|512');
 Route::get('/js/field-readings.js', [\App\Http\Controllers\PwaManifestController::class, 'fieldScript']);
+Route::get('/js/maintenance-media.js', [\App\Http\Controllers\PwaManifestController::class, 'maintenanceMediaScript']);
 Route::get('/build/{path}', [\App\Http\Controllers\PublicViteBuildController::class, 'show'])
     ->where('path', '.*')
     ->name('public.vite_build');

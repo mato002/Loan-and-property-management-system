@@ -73,6 +73,17 @@ class PwaManifestController extends Controller
         ]);
     }
 
+    public function maintenanceMediaScript(): BinaryFileResponse
+    {
+        $path = public_path('js/maintenance-media.js');
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => 'text/javascript; charset=UTF-8',
+            'Cache-Control' => 'no-cache',
+        ]);
+    }
+
     public function field(): JsonResponse
     {
         return $this->manifest(
