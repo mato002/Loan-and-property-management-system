@@ -5,7 +5,7 @@
  * after visiting the page once at the office.
  */
 const SHELL_CACHE = 'pwa-shell-v2';
-const FIELD_CACHE = 'passion-field-readings-v2';
+const FIELD_CACHE = 'passion-field-readings-v3';
 const SHELL_URLS = [
     './offline.html',
     './pwa/icon-192.png',

@@ -4,9 +4,11 @@ namespace App\Services\Property;
 
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Models\Employee;
+use App\Models\ExpenseDefinition;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Illuminate\Support\Facades\Schema;
@@ -60,9 +62,9 @@ class FieldMeterCaptureService
             ->get(['id', 'property_id', 'label', 'water_meter', 'electricity_meter']);
 
         $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $waterLatest = $this->latestWater($unitIds);
-        $waterThisMonth = $this->waterRecordedThisMonth($unitIds, $month);
-        $chargeLatest = $this->latestCharges($unitIds, $month);
+        $water = $this->waterSnapshots($unitIds, $month);
+        $charges = $this->chargeSnapshots($unitIds, $month);
+        $billed = $this->billedMeterKinds($propertyIds, $units, $water, $charges);
 
         $grouped = $units->groupBy('property_id');
         $rows = [];
@@ -70,17 +72,21 @@ class FieldMeterCaptureService
             $propertyUnits = [];
             foreach ($grouped->get($property->id, collect()) as $unit) {
                 $unitId = (int) $unit->id;
-                $water = $waterLatest[$unitId] ?? null;
-                $electric = $chargeLatest[$unitId]['electricity'] ?? null;
-                $other = $chargeLatest[$unitId]['other'] ?? null;
+                $kinds = $billed[$unitId] ?? [];
+                $meters = [];
+                if (isset($kinds['water'])) {
+                    $meters[] = $this->meterRow('water', 'Water', (string) ($unit->water_meter ?? ''), $water[$unitId] ?? null);
+                }
+                if (isset($kinds['electricity'])) {
+                    $meters[] = $this->meterRow('electricity', 'Electricity', (string) ($unit->electricity_meter ?? ''), $charges[$unitId]['electricity'] ?? null);
+                }
+                if (isset($kinds['other'])) {
+                    $meters[] = $this->meterRow('other', 'Other utility', '', $charges[$unitId]['other'] ?? null);
+                }
                 $propertyUnits[] = [
                     'id' => $unitId,
                     'label' => (string) $unit->label,
-                    'meters' => [
-                        $this->meterRow('water', 'Water', (string) ($unit->water_meter ?? ''), $water, isset($waterThisMonth[$unitId])),
-                        $this->meterRow('electricity', 'Electricity', (string) ($unit->electricity_meter ?? ''), $electric, (bool) ($electric['recorded_this_month'] ?? false)),
-                        $this->meterRow('other', 'Other utility', '', $other, (bool) ($other['recorded_this_month'] ?? false)),
-                    ],
+                    'meters' => $meters,
                 ];
             }
             $rows[] = [
@@ -269,27 +275,30 @@ class FieldMeterCaptureService
     }
 
     /**
-     * @param  array{previous?: float, current?: float, rate?: float, fixed?: float}|null  $latest
+     * @param  array{previous?: float, current?: float, rate?: float, fixed?: float, recorded?: bool}|null  $snap
      * @return array<string, mixed>
      */
-    private function meterRow(string $kind, string $label, string $meterNo, ?array $latest, bool $recorded): array
+    private function meterRow(string $kind, string $label, string $meterNo, ?array $snap): array
     {
+        $recorded = (bool) ($snap['recorded'] ?? false);
+
         return [
             'kind' => $kind,
             'label' => $label,
             'meter_no' => $meterNo,
-            'previous' => round((float) ($latest['current'] ?? 0), 3),
-            'rate' => round((float) ($latest['rate'] ?? 0), 2),
-            'fixed' => round((float) ($latest['fixed'] ?? 0), 2),
+            'previous' => round((float) ($snap['previous'] ?? 0), 3),
+            'current' => $recorded ? round((float) ($snap['current'] ?? 0), 3) : null,
+            'rate' => round((float) ($snap['rate'] ?? 0), 2),
+            'fixed' => round((float) ($snap['fixed'] ?? 0), 2),
             'already_recorded' => $recorded,
         ];
     }
 
     /**
      * @param  list<int>  $unitIds
-     * @return array<int, array{current: float, rate: float, fixed: float}>
+     * @return array<int, array{previous: float, current: float, rate: float, fixed: float, recorded: bool, has_history: bool}>
      */
-    private function latestWater(array $unitIds): array
+    private function waterSnapshots(array $unitIds, string $month): array
     {
         if ($unitIds === [] || ! Schema::hasTable('pm_water_readings')) {
             return [];
@@ -299,56 +308,59 @@ class FieldMeterCaptureService
             ->whereIn('property_unit_id', $unitIds)
             ->orderByDesc('billing_month')
             ->orderByDesc('id')
-            ->get(['property_unit_id', 'current_reading', 'rate_per_unit', 'fixed_charge', 'billing_month']);
+            ->get(['property_unit_id', 'billing_month', 'previous_reading', 'current_reading', 'rate_per_unit', 'fixed_charge']);
 
-        $latest = [];
+        $grouped = [];
         foreach ($rows as $row) {
-            $unitId = (int) $row->property_unit_id;
-            if (isset($latest[$unitId])) {
-                continue;
+            $grouped[(int) $row->property_unit_id][] = $row;
+        }
+
+        $snapshots = [];
+        foreach ($grouped as $unitId => $list) {
+            $thisMonth = null;
+            $prior = null;
+            foreach ($list as $row) {
+                $rowMonth = (string) $row->billing_month;
+                if ($rowMonth === $month && $thisMonth === null) {
+                    $thisMonth = $row;
+                } elseif ($rowMonth < $month && $prior === null) {
+                    $prior = $row;
+                }
             }
-            $latest[$unitId] = [
-                'current' => (float) $row->current_reading,
-                'rate' => (float) $row->rate_per_unit,
-                'fixed' => (float) $row->fixed_charge,
+            $source = $thisMonth ?? $list[0];
+            $snapshots[$unitId] = [
+                'previous' => $thisMonth
+                    ? (float) ($prior !== null ? $prior->current_reading : ($thisMonth->previous_reading ?? 0))
+                    : (float) $source->current_reading,
+                'current' => $thisMonth ? (float) $thisMonth->current_reading : 0.0,
+                'rate' => (float) $source->rate_per_unit,
+                'fixed' => (float) $source->fixed_charge,
+                'recorded' => $thisMonth !== null,
+                'has_history' => true,
             ];
         }
 
-        return $latest;
+        return $snapshots;
     }
 
     /**
      * @param  list<int>  $unitIds
-     * @return array<int, true>
+     * @return array<int, array<string, array{previous: float, current: float, rate: float, fixed: float, recorded: bool, has_history: bool}>>
      */
-    private function waterRecordedThisMonth(array $unitIds, string $month): array
-    {
-        if ($unitIds === [] || ! Schema::hasTable('pm_water_readings')) {
-            return [];
-        }
-
-        return PmWaterReading::query()
-            ->whereIn('property_unit_id', $unitIds)
-            ->where('billing_month', $month)
-            ->pluck('property_unit_id')
-            ->mapWithKeys(fn ($id) => [(int) $id => true])
-            ->all();
-    }
-
-    /**
-     * @param  list<int>  $unitIds
-     * @return array<int, array<string, array{current: float, rate: float, fixed: float, recorded_this_month: bool}>>
-     */
-    private function latestCharges(array $unitIds, string $month): array
+    private function chargeSnapshots(array $unitIds, string $month): array
     {
         if ($unitIds === [] || ! Schema::hasTable('pm_unit_utility_charges')) {
             return [];
         }
 
         $hasCurrent = Schema::hasColumn('pm_unit_utility_charges', 'current_reading');
+        $hasPrevious = Schema::hasColumn('pm_unit_utility_charges', 'previous_reading');
         $columns = ['property_unit_id', 'charge_type', 'billing_month', 'rate_per_unit', 'fixed_charge', 'notes'];
         if ($hasCurrent) {
             $columns[] = 'current_reading';
+        }
+        if ($hasPrevious) {
+            $columns[] = 'previous_reading';
         }
 
         $rows = PmUnitUtilityCharge::query()
@@ -358,30 +370,169 @@ class FieldMeterCaptureService
             ->orderByDesc('id')
             ->get($columns);
 
-        $latest = [];
+        $grouped = [];
         foreach ($rows as $row) {
-            $unitId = (int) $row->property_unit_id;
-            $type = (string) $row->charge_type;
-            if (isset($latest[$unitId][$type])) {
-                if ((string) $row->billing_month === ($latest[$unitId][$type]['month'] ?? '')) {
-                    $latest[$unitId][$type]['recorded_this_month'] = true;
-                }
-
-                continue;
-            }
-            $current = $hasCurrent ? (float) ($row->current_reading ?? 0) : 0.0;
-            if ($current <= 0 && preg_match('/meter\s+([0-9.]+)\s+→\s+([0-9.]+)/', (string) $row->notes, $match) === 1) {
-                $current = (float) $match[2];
-            }
-            $latest[$unitId][$type] = [
-                'current' => $current,
-                'rate' => (float) $row->rate_per_unit,
-                'fixed' => (float) $row->fixed_charge,
-                'month' => (string) $row->billing_month,
-                'recorded_this_month' => (string) $row->billing_month === $month,
-            ];
+            $grouped[(int) $row->property_unit_id][(string) $row->charge_type][] = $row;
         }
 
-        return $latest;
+        $snapshots = [];
+        foreach ($grouped as $unitId => $byType) {
+            foreach ($byType as $type => $list) {
+                $thisMonth = null;
+                $prior = null;
+                $hasHistory = false;
+                foreach ($list as $row) {
+                    $parsed = $this->chargeReading($row, $hasCurrent, $hasPrevious);
+                    if ($parsed['current'] > 0 || $parsed['previous'] > 0) {
+                        $hasHistory = true;
+                    }
+                    $rowMonth = (string) $row->billing_month;
+                    if ($rowMonth === $month && $thisMonth === null) {
+                        $thisMonth = [$row, $parsed];
+                    } elseif ($rowMonth < $month && $prior === null && ($parsed['current'] > 0 || $parsed['previous'] > 0)) {
+                        $prior = $parsed;
+                    }
+                }
+                $source = $thisMonth[0] ?? $list[0];
+                $currentParsed = $thisMonth[1] ?? $this->chargeReading($source, $hasCurrent, $hasPrevious);
+                $snapshots[$unitId][$type] = [
+                    'previous' => $thisMonth
+                        ? (float) (is_array($prior) ? $prior['current'] : $currentParsed['previous'])
+                        : (float) $currentParsed['current'],
+                    'current' => $thisMonth ? (float) $currentParsed['current'] : 0.0,
+                    'rate' => (float) $source->rate_per_unit,
+                    'fixed' => (float) $source->fixed_charge,
+                    'recorded' => $thisMonth !== null && ((float) $currentParsed['current'] > 0 || (float) $currentParsed['previous'] > 0),
+                    'has_history' => $hasHistory,
+                ];
+            }
+        }
+
+        return $snapshots;
+    }
+
+    /**
+     * @return array{previous: float, current: float}
+     */
+    private function chargeReading(PmUnitUtilityCharge $row, bool $hasCurrent, bool $hasPrevious): array
+    {
+        $current = $hasCurrent ? (float) ($row->current_reading ?? 0) : 0.0;
+        $previous = $hasPrevious ? (float) ($row->previous_reading ?? 0) : 0.0;
+        if ($current <= 0 && preg_match('/meter\s+([0-9.]+)\s+→\s+([0-9.]+)/', (string) $row->notes, $match) === 1) {
+            $previous = $previous > 0 ? $previous : (float) $match[1];
+            $current = (float) $match[2];
+        }
+
+        return ['previous' => $previous, 'current' => $current];
+    }
+
+    /**
+     * @param  list<int>  $propertyIds
+     * @param  iterable<int, PropertyUnit>  $units
+     * @param  array<int, array{has_history?: bool}>  $water
+     * @param  array<int, array<string, array{has_history?: bool}>>  $charges
+     * @return array<int, array<string, true>>
+     */
+    private function billedMeterKinds(array $propertyIds, iterable $units, array $water, array $charges): array
+    {
+        $rules = $this->meterRulesByProperty($propertyIds);
+        $kinds = [];
+        foreach ($units as $unit) {
+            $unitId = (int) $unit->id;
+            $show = [];
+            foreach ($rules[(int) $unit->property_id] ?? [] as $rule) {
+                if ($rule['unit_id'] !== null && $rule['unit_id'] !== $unitId) {
+                    continue;
+                }
+                $show[$rule['kind']] = true;
+            }
+            if (trim((string) ($unit->water_meter ?? '')) !== '' || ($water[$unitId]['has_history'] ?? false)) {
+                $show['water'] = true;
+            }
+            if ($charges[$unitId]['electricity']['has_history'] ?? false) {
+                $show['electricity'] = true;
+            }
+            if ($charges[$unitId]['other']['has_history'] ?? false) {
+                $show['other'] = true;
+            }
+            $kinds[$unitId] = $show;
+        }
+
+        return $kinds;
+    }
+
+    /**
+     * Meter fields only: water, and electricity/other when the rule is a per-unit meter rate.
+     *
+     * @param  list<int>  $propertyIds
+     * @return array<int, list<array{kind: string, unit_id: ?int}>>
+     */
+    private function meterRulesByProperty(array $propertyIds): array
+    {
+        $rules = [];
+        $wanted = array_fill_keys(array_map('strval', $propertyIds), true);
+
+        $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
+        $templates = json_decode($raw, true);
+        if (is_array($templates)) {
+            foreach ($templates as $propertyId => $rows) {
+                if (! isset($wanted[(string) $propertyId]) || ! is_array($rows)) {
+                    continue;
+                }
+                foreach ($rows as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $kind = $this->meterKind((string) ($row['charge_type'] ?? ''), (float) ($row['rate_per_unit'] ?? 0));
+                    if ($kind === null) {
+                        continue;
+                    }
+                    $unitId = isset($row['property_unit_id']) && $row['property_unit_id'] !== '' && $row['property_unit_id'] !== null
+                        ? (int) $row['property_unit_id']
+                        : null;
+                    $rules[(int) $propertyId][] = ['kind' => $kind, 'unit_id' => $unitId];
+                }
+            }
+        }
+
+        if (Schema::hasTable('expense_definitions')) {
+            $definitions = ExpenseDefinition::query()
+                ->where('is_active', true)
+                ->whereIn('property_id', $propertyIds)
+                ->get(['property_id', 'property_unit_id', 'charge_key', 'amount_mode', 'amount_value']);
+            foreach ($definitions as $definition) {
+                $rate = (string) $definition->amount_mode === ExpenseDefinition::MODE_RATE_PER_UNIT
+                    ? (float) $definition->amount_value
+                    : 0.0;
+                $kind = $this->meterKind((string) $definition->charge_key, $rate);
+                if ($kind === null) {
+                    continue;
+                }
+                $rules[(int) $definition->property_id][] = [
+                    'kind' => $kind,
+                    'unit_id' => $definition->property_unit_id ? (int) $definition->property_unit_id : null,
+                ];
+            }
+        }
+
+        return $rules;
+    }
+
+    private function meterKind(string $key, float $ratePerUnit): ?string
+    {
+        $key = strtolower(trim($key));
+        $key = (string) preg_replace('/[^a-z0-9]+/', '_', $key);
+        $key = trim($key, '_');
+        if (in_array($key, ['water', 'utility_water', 'water_meter'], true) || str_contains($key, 'water')) {
+            return 'water';
+        }
+        if (in_array($key, ['electricity', 'utility_electricity', 'electric', 'power'], true) || str_contains($key, 'electric')) {
+            return $ratePerUnit > 0 ? 'electricity' : null;
+        }
+        if (in_array($key, ['other', 'utility_other'], true)) {
+            return $ratePerUnit > 0 ? 'other' : null;
+        }
+
+        return null;
     }
 }

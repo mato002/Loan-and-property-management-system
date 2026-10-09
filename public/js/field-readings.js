@@ -135,10 +135,18 @@
             const title = document.createElement('h3');
             title.textContent = unit.label;
             card.appendChild(title);
-            (unit.meters || []).forEach((meter) => {
+            const meters = unit.meters || [];
+            if (meters.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'muted';
+                empty.textContent = 'No meter charges';
+                card.appendChild(empty);
+            }
+            meters.forEach((meter) => {
                 const saved = queuedFor(unit.id, meter.kind, month);
+                const already = Boolean(meter.already_recorded) && !saved;
                 const row = document.createElement('div');
-                row.className = 'meter';
+                row.className = already ? 'meter done' : 'meter';
                 const who = document.createElement('div');
                 who.className = 'who';
                 const name = document.createElement('strong');
@@ -148,30 +156,46 @@
                 previous.className = 'muted';
                 previous.textContent = 'Prev ' + Number(meter.previous || 0);
                 who.appendChild(previous);
-                const reset = document.createElement('input');
-                reset.type = 'checkbox';
-                reset.checked = Boolean(saved?.is_meter_reset);
-                const resetLabel = document.createElement('label');
-                resetLabel.className = 'reset';
-                resetLabel.appendChild(reset);
-                resetLabel.appendChild(document.createTextNode('Replaced'));
-                who.appendChild(resetLabel);
-                row.appendChild(who);
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.inputMode = 'decimal';
-                input.step = '0.001';
-                input.min = '0';
-                input.placeholder = 'Now';
-                input.setAttribute('aria-label', meter.label + ' current reading');
-                input.value = saved ? String(saved.current_reading) : '';
-                row.appendChild(input);
-                const save = document.createElement('button');
-                save.type = 'button';
-                save.className = 'save';
-                save.textContent = saved ? 'Saved' : 'Save';
-                save.addEventListener('click', () => saveLocal(property, unit, meter, month, input.value, reset.checked, save));
-                row.appendChild(save);
+                if (!already) {
+                    const reset = document.createElement('input');
+                    reset.type = 'checkbox';
+                    reset.checked = Boolean(saved?.is_meter_reset);
+                    const resetLabel = document.createElement('label');
+                    resetLabel.className = 'reset';
+                    resetLabel.appendChild(reset);
+                    resetLabel.appendChild(document.createTextNode('Replaced'));
+                    who.appendChild(resetLabel);
+                    row.appendChild(who);
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.inputMode = 'decimal';
+                    input.step = '0.001';
+                    input.min = '0';
+                    input.placeholder = 'Now';
+                    input.setAttribute('aria-label', meter.label + ' current reading');
+                    input.value = saved ? String(saved.current_reading) : '';
+                    row.appendChild(input);
+                    const save = document.createElement('button');
+                    save.type = 'button';
+                    save.className = 'save';
+                    save.textContent = saved ? 'Saved' : 'Save';
+                    save.addEventListener('click', () => saveLocal(property, unit, meter, month, input.value, reset.checked, save));
+                    row.appendChild(save);
+                } else {
+                    row.appendChild(who);
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.readOnly = true;
+                    input.setAttribute('aria-label', meter.label + ' already recorded');
+                    input.value = meter.current === null || meter.current === undefined ? '' : String(meter.current);
+                    row.appendChild(input);
+                    const save = document.createElement('button');
+                    save.type = 'button';
+                    save.className = 'save';
+                    save.disabled = true;
+                    save.textContent = 'Already in';
+                    row.appendChild(save);
+                }
                 card.appendChild(row);
             });
             unitsEl.appendChild(card);
@@ -325,7 +349,16 @@
     });
     propertyEl.addEventListener('change', renderUnits);
     searchEl.addEventListener('input', renderUnits);
-    monthEl.addEventListener('change', renderUnits);
+    monthEl.addEventListener('change', () => {
+        if (navigator.onLine) {
+            downloadPack().catch(() => setMessage('Could not load that month. Readings already on the phone are safe.'));
+            return;
+        }
+        if (pack && pack.billing_month && pack.billing_month !== monthEl.value) {
+            setMessage('This phone has ' + pack.billing_month + '. Download ' + monthEl.value + ' when you are online.');
+        }
+        renderUnits();
+    });
     window.addEventListener('online', () => {
         paintStatus();
         syncQueue().catch(() => {});

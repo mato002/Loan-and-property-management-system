@@ -122,14 +122,12 @@ class PmMaintenanceRequest extends Model
 
     public static function openAlertCount(): int
     {
-        static $count = null;
-        if ($count !== null) {
-            return $count;
-        }
-        if (! Schema::hasTable('pm_maintenance_requests')) {
-            return $count = 0;
-        }
+        return once(function (): int {
+            if (! Schema::hasTable('pm_maintenance_requests')) {
+                return 0;
+            }
 
-        return $count = (int) static::query()->whereIn('status', ['open', 'in_progress'])->count();
+            return (int) static::query()->whereIn('status', ['open', 'in_progress'])->count();
+        });
     }
 }

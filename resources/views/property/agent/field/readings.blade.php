@@ -40,6 +40,8 @@
         .meter .who { min-width: 0; }
         .meter .who strong { display: block; font-size: 0.82rem; }
         .meter input { margin: 0; }
+        .meter.done input { background: #ecfdf5; color: #065f46; }
+        .meter.done .save:disabled { background: #047857; opacity: 1; }
         .save { background: #0f172a; padding: 0 10px; font-size: 0.75rem; }
         .reset { display: flex; align-items: center; gap: 4px; margin: 4px 0 0; font-size: 0.68rem; color: #64748b; }
         .reset input { width: auto; min-height: 0; margin: 0; }
@@ -85,6 +87,6 @@
             <div id="field-units"></div>
         </div>
     </main>
-    <script src="{{ asset('js/field-readings.js') }}?v=5" defer></script>
+    <script src="{{ asset('js/field-readings.js') }}?v=6" defer></script>
 </body>
 </html>
