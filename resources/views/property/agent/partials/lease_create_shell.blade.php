@@ -31,7 +31,7 @@
         </p>
         <p id="lease-create-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></p>
         <turbo-frame
-            id="lease-create-modal"
+            id="lease-create-frame"
             data-create-url="{{ $leaseCreateFormUrl ?? route('property.leases.create_form', absolute: false) }}"
             class="block w-full"
         ></turbo-frame>
@@ -40,7 +40,7 @@
 
 <script>
     window.initLeaseCreateModalShell = window.initLeaseCreateModalShell || function () {
-        const frame = document.getElementById('lease-create-modal');
+        const frame = document.getElementById('lease-create-frame');
         const loadingEl = document.getElementById('lease-create-loading');
         const errorEl = document.getElementById('lease-create-error');
         if (! frame) {
@@ -103,7 +103,7 @@
                 const response = await fetch(createUrl, {
                     headers: {
                         Accept: 'text/html',
-                        'Turbo-Frame': 'lease-create-modal',
+                        'Turbo-Frame': 'lease-create-frame',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'same-origin',
@@ -115,7 +115,7 @@
 
                 const html = await response.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
-                const source = doc.querySelector('turbo-frame#lease-create-modal');
+                const source = doc.querySelector('turbo-frame#lease-create-frame');
 
                 if (! source) {
                     throw new Error('Lease form response was invalid. Refresh the page and try again.');

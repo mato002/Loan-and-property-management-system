@@ -60,13 +60,13 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (with vacant units)</label>
-                <select id="lease-property-select" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <select id="lease-property-select" data-property-searchable="true" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="">All properties</option>
                 </select>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (vacant)</label>
-                <select id="lease-unit-select" name="property_unit_ids[]" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <select id="lease-unit-select" name="property_unit_ids[]" data-property-searchable="true" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="">Loading units…</option>
                 </select>
                 <p class="mt-1 text-xs text-slate-500">A tenant can only be assigned one unit.</p>

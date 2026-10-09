@@ -1,4 +1,4 @@
-<turbo-frame id="lease-create-modal">
+<turbo-frame id="lease-create-frame">
     @php
         $leaseCfg = $leaseFields ?? [];
         $leaseRequired = fn (string $k, bool $d = false) => (bool) (($leaseCfg[$k]['required'] ?? $d) && ($leaseCfg[$k]['enabled'] ?? true));
@@ -13,7 +13,7 @@
         </button>
     </div>
     @include('property.agent.tenants.partials.lease_create_form_content', [
-        'leaseFormTurboFrame' => 'lease-create-modal',
+        'leaseFormTurboFrame' => 'lease-create-frame',
     ])
     @include('property.agent.tenants.partials.lease_create_form_script')
 </turbo-frame>

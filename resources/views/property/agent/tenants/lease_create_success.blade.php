@@ -1,4 +1,4 @@
-<turbo-frame id="lease-create-modal">
+<turbo-frame id="lease-create-frame">
     <script>
         (function () {
             if (typeof window.closeLeaseCreateModal === 'function') {
@@ -6,7 +6,7 @@
             } else {
                 const panel = document.getElementById('lease-create-panel');
                 panel?.classList.add('hidden');
-                const frame = document.getElementById('lease-create-modal');
+                const frame = document.getElementById('lease-create-frame');
                 if (frame) {
                     frame.removeAttribute('src');
                     frame.innerHTML = '';

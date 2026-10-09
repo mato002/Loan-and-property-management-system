@@ -746,7 +746,7 @@
             document.addEventListener('turbo:load', window.initLeaseFormLogic);
             document.addEventListener('turbo:frame-load', (event) => {
                 const frame = event.target;
-                if (frame && (frame.id === 'property-main' || frame.id === 'lease-create-modal')) {
+                if (frame && (frame.id === 'property-main' || frame.id === 'lease-create-frame')) {
                     window.initLeaseFormLogic();
                 }
             });
