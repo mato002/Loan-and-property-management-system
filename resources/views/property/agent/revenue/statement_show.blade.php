@@ -68,7 +68,7 @@
                     <th class="px-3 py-2">Date</th>
                     <th class="px-3 py-2">Reference</th>
                     <th class="px-3 py-2">Phone</th>
-                    <th class="px-3 py-2">Payer on bank</th>
+                    <th class="px-3 py-2">Payer</th>
                     <th class="px-3 py-2">Tenant / paid to</th>
                     <th class="px-3 py-2">Amount</th>
                     <th class="px-3 py-2">Status</th>
