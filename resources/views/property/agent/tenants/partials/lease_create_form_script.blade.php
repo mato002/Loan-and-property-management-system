@@ -626,6 +626,8 @@
                 if (getSelectedUnitOption()) {
                     syncMonthlyRentFromUnit();
                 }
+                // Always sync deposit rules after setup to ensure they render
+                syncDepositRules();
             };
             leaseForm._runVisibleSetup = runVisibleFormSetup;
 
@@ -761,6 +763,8 @@
                     console.error('Failed to load lease form context', error);
                 }
                 runVisibleFormSetup();
+                // Ensure deposit rules sync after property rules are loaded
+                syncDepositRules();
             };
 
             bootstrapLeaseFormContext();
