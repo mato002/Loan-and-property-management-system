@@ -5,7 +5,7 @@
         @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.deposits'])
 
         <div class="rounded-xl border border-slate-200 bg-white p-4">
-            <form method="POST" action="{{ route('property.settings.deposits.store') }}" class="space-y-3">
+            <form method="POST" action="{{ route('property.settings.deposits.store') }}" data-turbo="false" class="space-y-3">
                 @csrf
                 <div class="flex items-center justify-between">
                     <p class="text-sm text-slate-600">Settings -> Property Finance Rules -> Deposit Types</p>
@@ -13,7 +13,7 @@
                 </div>
 
                 <div id="deposit-definition-rows" class="space-y-2">
-                    @forelse(old('definitions', $definitions->toArray()) as $idx => $row)
+                    @forelse($definitions->toArray() as $idx => $row)
                         <div class="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 deposit-rule-row rounded-lg border border-slate-200 p-2">
                             <select name="definitions[{{ $idx }}][property_id]" class="rounded-lg border border-slate-200 px-2 py-2 text-sm">
                                 @foreach($properties as $property)

@@ -1633,7 +1633,9 @@ class PropertySettingsStoreWebController extends Controller
             ->values();
 
         DB::transaction(function () use ($rows): void {
+            // Delete all existing definitions first
             DepositDefinition::query()->delete();
+            // Create new definitions from the submitted data
             foreach ($rows as $row) {
                 DepositDefinition::query()->create($row);
             }
@@ -1641,7 +1643,7 @@ class PropertySettingsStoreWebController extends Controller
 
         $this->logSettingsActivity('deposits', 'Deposit rules updated');
 
-        return back()->with('success', __('Deposit rules saved.'));
+        return back()->withInput()->with('success', __('Deposit rules saved.'));
     }
 
     public function expenses(): View
