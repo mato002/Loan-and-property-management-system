@@ -487,7 +487,7 @@
                 }
             };
 
-            const syncMonthlyRentFromUnit = () => {
+            const syncMonthlyRentFromUnit = async () => {
                 const selected = unitSelect.options[unitSelect.selectedIndex];
                 if (!selected) return;
                 const rent = selected.getAttribute('data-rent');
@@ -501,6 +501,11 @@
                 refreshUtilityTypeSources();
                 refreshOpeningArrearsChargeTypes();
                 renderOpeningDepositArrearsRows();
+                // Ensure property rules are loaded before syncing deposits
+                const propertyId = getCurrentPropertyId();
+                if (propertyId !== '' && !depositDefinitionsByProperty[propertyId]) {
+                    await loadPropertyRules(propertyId);
+                }
                 syncDepositRules();
             };
 
@@ -716,6 +721,7 @@
                 syncOptionalSectionState();
                 await loadPropertyRules(getCurrentPropertyId());
                 syncPropertyScopedFields();
+                syncDepositRules();
             });
             unitSelect.addEventListener('change', syncMonthlyRentFromUnit);
 
