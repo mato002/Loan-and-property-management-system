@@ -1117,12 +1117,18 @@ class PropertyPortfolioController extends Controller
         $hasChargeTemplates = $request->boolean('utility_templates_save') || $request->has('charge_templates');
         $hasExpenseDefinitions = $request->has('expense_definitions');
         $hasDepositDefinitions = $request->boolean('deposit_rules_save') || $request->has('deposit_definitions');
+        \Log::info('Deposit rules save check', [
+            'deposit_rules_save' => $request->boolean('deposit_rules_save'),
+            'has_deposit_definitions' => $request->has('deposit_definitions'),
+            'deposit_definitions_input' => $request->input('deposit_definitions'),
+        ]);
         $chargeTemplates = $this->appendBilledUtilityTemplates(
             (int) $property->id,
             $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? [])),
         );
         $expenseDefinitions = $this->normalizePropertyExpenseDefinitions((int) $property->id, (array) ($data['expense_definitions'] ?? []));
         $depositDefinitions = $this->normalizePropertyDepositDefinitions((int) $property->id, (array) ($data['deposit_definitions'] ?? []));
+        \Log::info('Normalized deposit definitions', ['count' => count($depositDefinitions), 'data' => $depositDefinitions]);
         if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
             $data['rent_due_day'] = null;
         } elseif (isset($data['rent_due_day'])) {
@@ -1155,7 +1161,9 @@ class PropertyPortfolioController extends Controller
             $this->setPropertyExpenseDefinitions((int) $property->id, $expenseDefinitions);
         }
         if ($hasDepositDefinitions) {
+            \Log::info('Calling setPropertyDepositDefinitions', ['property_id' => $property->id, 'count' => count($depositDefinitions)]);
             $this->setPropertyDepositDefinitions((int) $property->id, $depositDefinitions);
+            \Log::info('setPropertyDepositDefinitions completed');
         }
 
         $success = 'Property updated.';
