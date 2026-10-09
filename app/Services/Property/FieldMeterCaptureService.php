@@ -83,11 +83,17 @@ class FieldMeterCaptureService
                 if (isset($kinds['other'])) {
                     $meters[] = $this->meterRow('other', 'Other utility', '', $charges[$unitId]['other'] ?? null);
                 }
+                if ($meters === []) {
+                    continue;
+                }
                 $propertyUnits[] = [
                     'id' => $unitId,
                     'label' => (string) $unit->label,
                     'meters' => $meters,
                 ];
+            }
+            if ($propertyUnits === []) {
+                continue;
             }
             $rows[] = [
                 'id' => (int) $property->id,
@@ -445,15 +451,6 @@ class FieldMeterCaptureService
                     continue;
                 }
                 $show[$rule['kind']] = true;
-            }
-            if (trim((string) ($unit->water_meter ?? '')) !== '' || ($water[$unitId]['has_history'] ?? false)) {
-                $show['water'] = true;
-            }
-            if ($charges[$unitId]['electricity']['has_history'] ?? false) {
-                $show['electricity'] = true;
-            }
-            if ($charges[$unitId]['other']['has_history'] ?? false) {
-                $show['other'] = true;
             }
             $kinds[$unitId] = $show;
         }

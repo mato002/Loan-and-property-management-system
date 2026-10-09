@@ -84,17 +84,24 @@
         netEl.className = online ? 'online' : 'offline';
         pendingEl.textContent = queue.length + ' waiting to send';
         if (pack?.downloaded_at) {
-            downloadedEl.textContent = (pack.properties || []).length + ' properties on this phone';
+            downloadedEl.textContent = chargedProperties().length + ' properties on this phone';
         }
+    }
+
+    function chargedProperties() {
+        return (pack?.properties || []).map((property) => ({
+            ...property,
+            units: (property.units || []).filter((unit) => (unit.meters || []).length > 0),
+        })).filter((property) => property.units.length > 0);
     }
 
     function selectedProperty() {
         const id = Number(propertyEl.value || 0);
-        return (pack?.properties || []).find((property) => Number(property.id) === id) || null;
+        return chargedProperties().find((property) => Number(property.id) === id) || null;
     }
 
     function renderProperties() {
-        const properties = pack?.properties || [];
+        const properties = chargedProperties();
         propertyEl.innerHTML = '';
         if (properties.length === 0) {
             const option = document.createElement('option');
@@ -264,7 +271,7 @@
         renderProperties();
         renderUnits();
         paintStatus();
-        setMessage((data.properties || []).length ? 'Route ready.' : 'No properties assigned.');
+        setMessage(chargedProperties().length ? 'Route ready.' : 'No properties are being charged.');
     }
 
     async function syncQueue() {

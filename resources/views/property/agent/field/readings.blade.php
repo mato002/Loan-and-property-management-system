@@ -87,6 +87,6 @@
             <div id="field-units"></div>
         </div>
     </main>
-    <script src="{{ asset('js/field-readings.js') }}?v=6" defer></script>
+    <script src="{{ asset('js/field-readings.js') }}?v=7" defer></script>
 </body>
 </html>
