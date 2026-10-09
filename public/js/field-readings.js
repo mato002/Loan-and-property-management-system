@@ -412,8 +412,14 @@
         renderProperties();
         renderUnits();
         paintStatus();
-        if (navigator.onLine && queue.length > 0) {
-            syncQueue().catch(() => {});
+        if (navigator.onLine) {
+            downloadPack()
+                .then(() => {
+                    if (queue.length > 0) {
+                        return syncQueue();
+                    }
+                })
+                .catch(() => {});
         }
     }).catch(() => setMessage('This browser cannot store readings on the phone.'));
 })();
