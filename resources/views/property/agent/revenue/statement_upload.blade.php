@@ -52,7 +52,7 @@
     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="flex flex-wrap items-end justify-between gap-3">
             <h2 class="text-sm font-semibold text-slate-900">Recent uploads</h2>
-            <form method="get" action="{{ route('property.revenue.statements.index', false) }}" class="flex flex-wrap items-center gap-2">
+            <form method="get" action="{{ route('property.revenue.statements.index', false) }}" data-turbo="false" class="flex flex-wrap items-center gap-2">
                 <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Bank, account, or file" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
                 <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Filter</button>
                 @if (($filters['q'] ?? '') !== '')
