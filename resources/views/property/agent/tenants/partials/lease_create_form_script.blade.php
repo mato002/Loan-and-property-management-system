@@ -526,44 +526,71 @@
             };
             const syncDepositRules = () => {
                 const defs = getEffectiveDepositDefinitions();
-                const byLabel = new Map(defs.map((d) => [String(d.label || ''), d]));
-                const rentDef = defs.find((d) => String(d.deposit_key || '') === 'rent_deposit');
-                if (rentDepositInput && rentDef) {
-                    const required = !!rentDef.is_required;
-                    if (!rentDepositInput.value || Number(rentDepositInput.value) === 0) {
-                        rentDepositInput.value = toMoney(computeDefinitionAmount(rentDef));
-                    }
-                    rentDepositInput.readOnly = required && !canCustomDepositOverride;
-                    if (rentDepositMeta) rentDepositMeta.textContent = renderDepositMeta(rentDef);
+                const depositSection = document.getElementById('deposit-rules-section');
+                const depositContainer = document.getElementById('deposit-rules-container');
+                
+                if (!depositSection || !depositContainer) return;
+                
+                // Hide section if no deposit rules configured
+                if (defs.length === 0) {
+                    depositSection.classList.add('hidden');
+                    return;
                 }
-                additionalDepositsWrap?.querySelectorAll('.additional-deposit-label').forEach((el) => {
-                    if (!(el instanceof HTMLSelectElement)) return;
-                    const current = el.value || '';
-                    el.innerHTML = additionalLabelOptionsHtml(defs, current);
-                    const row = el.closest('.additional-deposit-row');
-                    const def = byLabel.get(el.value || '');
-                    const metaEl = row?.querySelector('.deposit-line-meta');
-                    if (metaEl) metaEl.textContent = renderDepositMeta(def);
-                    if (row) styleDepositRow(row, def);
+                
+                depositSection.classList.remove('hidden');
+                depositContainer.innerHTML = '';
+                
+                const oldDeposits = @json((array) ($additionalDeposits ?? []));
+                const oldDepositMap = new Map(oldDeposits.map((d) => [String(d.label || ''), d.amount]));
+                
+                defs.forEach((def) => {
+                    const key = String(def.deposit_key || '');
+                    const label = String(def.label || '');
+                    const required = !!def.is_required;
+                    const amount = computeDefinitionAmount(def);
+                    const oldValue = oldDepositMap.get(label) || old('deposit_amount', '');
+                    const initialValue = oldValue !== '' ? oldValue : toMoney(amount);
+                    const isReadOnly = required && !canCustomDepositOverride;
+                    
+                    const div = document.createElement('div');
+                    div.className = required ? 'bg-amber-50/40 rounded-lg p-2' : '';
+                    div.innerHTML = `
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            ${escapeHtml(label)}
+                            ${required ? '<span class="text-amber-600">*</span>' : ''}
+                        </label>
+                        <input 
+                            form="${leaseFormId}" 
+                            type="hidden" 
+                            name="deposits[${key}][label]" 
+                            value="${escapeHtml(label)}"
+                        />
+                        <input 
+                            form="${leaseFormId}" 
+                            type="hidden" 
+                            name="deposits[${key}][is_refundable]" 
+                            value="${def.is_refundable ? '1' : '0'}"
+                        />
+                        <input 
+                            form="${leaseFormId}" 
+                            type="hidden" 
+                            name="deposits[${key}][deposit_definition_id]" 
+                            value="${def.id || ''}"
+                        />
+                        <input 
+                            form="${leaseFormId}" 
+                            type="number" 
+                            name="deposits[${key}][amount]" 
+                            value="${initialValue}" 
+                            step="0.01" 
+                            min="0" 
+                            ${isReadOnly ? 'readonly' : ''}
+                            class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 ${isReadOnly ? 'bg-slate-50' : ''}"
+                        />
+                        <p class="mt-1 text-xs text-slate-500">${renderDepositMeta(def)}</p>
+                    `;
+                    depositContainer.appendChild(div);
                 });
-                const requiredOptional = defs.filter((d) => d.is_required && String(d.deposit_key || '') !== 'rent_deposit');
-                const existing = new Set(Array.from(additionalDepositsWrap?.querySelectorAll('.additional-deposit-label') ?? []).map((el) => el.value || ''));
-                requiredOptional.forEach((d) => {
-                    const label = String(d.label || '');
-                    if (!label || existing.has(label)) return;
-                    createDepositRow(label, toMoney(computeDefinitionAmount(d)), true);
-                });
-                const rows = Array.from(additionalDepositsWrap?.querySelectorAll('.additional-deposit-row') ?? []);
-                rows
-                    .sort((a, b) => {
-                        const aLabel = a.querySelector('.additional-deposit-label')?.value || '';
-                        const bLabel = b.querySelector('.additional-deposit-label')?.value || '';
-                        const aReq = !!byLabel.get(aLabel)?.is_required;
-                        const bReq = !!byLabel.get(bLabel)?.is_required;
-                        return Number(bReq) - Number(aReq);
-                    })
-                    .forEach((row) => additionalDepositsWrap?.appendChild(row));
-                reindexDepositRows();
             };
             const runVisibleFormSetup = () => {
                 filterUnits();

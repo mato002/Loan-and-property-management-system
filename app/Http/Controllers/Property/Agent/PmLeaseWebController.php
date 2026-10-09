@@ -1706,7 +1706,9 @@ SQL;
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'monthly_rent' => [Rule::requiredIf($this->isFieldRequired($cfg, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
-            'deposit_amount' => [Rule::requiredIf($this->isFieldRequired($cfg, 'deposit_amount')), 'nullable', 'numeric', 'min:0'],
+            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'deposits' => ['nullable', 'array', 'max:20'],
+            'deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
             'utility_expense_type' => ['nullable', 'string', 'max:50'],
             'utility_expense_rate' => ['nullable', 'numeric', 'min:0', 'required_with:utility_expense_type'],
             'utility_expenses' => ['nullable', 'array', 'max:20'],
@@ -2569,8 +2571,31 @@ SQL;
     {
         $lines = [];
 
+        // Handle new deposits array format from dynamic form
+        $newDeposits = (array) ($data['deposits'] ?? []);
+        foreach ($newDeposits as $key => $depositData) {
+            $key = (string) $key;
+            $amount = (float) ($depositData['amount'] ?? 0);
+            if ($key === '' || $amount <= 0) {
+                continue;
+            }
+
+            $lines[$key] = [
+                'deposit_definition_id' => (int) ($depositData['deposit_definition_id'] ?? 0) ?: null,
+                'deposit_key' => $key,
+                'label' => trim((string) ($depositData['label'] ?? $key)),
+                'expected_amount' => $amount,
+                'paid_amount' => 0.0,
+                'balance_amount' => $amount,
+                'is_refundable' => (bool) ($depositData['is_refundable'] ?? true),
+                'refund_status' => 'not_refunded',
+                'meta' => ['source' => 'deposits_array'],
+            ];
+        }
+
+        // Handle legacy deposit_amount field for backward compatibility
         $rentDeposit = (float) ($data['deposit_amount'] ?? 0);
-        if ($rentDeposit > 0) {
+        if ($rentDeposit > 0 && !isset($lines['rent_deposit'])) {
             $lines['rent_deposit'] = [
                 'deposit_definition_id' => null,
                 'deposit_key' => 'rent_deposit',
@@ -2584,6 +2609,7 @@ SQL;
             ];
         }
 
+        // Handle legacy additional_deposits for backward compatibility
         foreach ($this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? [])) as $row) {
             $label = trim((string) ($row['label'] ?? ''));
             $amount = (float) ($row['amount'] ?? 0);
