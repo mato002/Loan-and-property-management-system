@@ -76,7 +76,9 @@ class PmTenant extends Model
             }
 
             $tenant->updateQuietly([
-                'account_number' => self::generatedAccountNumber((int) $tenant->id),
+                'account_number' => self::nextTntAccountNumber(
+                    (int) ($tenant->agent_user_id ?? 0) > 0 ? (int) $tenant->agent_user_id : null
+                ),
             ]);
         });
 
@@ -136,6 +138,37 @@ class PmTenant extends Model
     public static function generatedAccountNumber(int $tenantId): string
     {
         return 'TEN-'.str_pad((string) max(1, $tenantId), 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Next Passion Homes collection number: TNT plus the highest existing TNT sequence, padded to 6 digits.
+     * Co-op IPN matches this same Ac/No from the payment narration. It does not issue a separate tenant number.
+     */
+    public static function nextTntAccountNumber(?int $agentUserId = null): string
+    {
+        $query = static::query()->withoutGlobalScopes()->where('account_number', 'like', 'TNT%');
+        if ($agentUserId !== null && $agentUserId > 0 && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $query->where('agent_user_id', $agentUserId);
+        }
+
+        return self::nextTntFromExisting($query->pluck('account_number')->all());
+    }
+
+    /**
+     * @param  list<mixed>  $existing
+     */
+    public static function nextTntFromExisting(array $existing): string
+    {
+        $max = 0;
+        foreach ($existing as $account) {
+            if (preg_match('/^TNT0*(\d+)$/i', trim((string) $account), $match) === 1) {
+                $max = max($max, (int) $match[1]);
+            }
+        }
+
+        $next = $max + 1;
+
+        return 'TNT'.str_pad((string) $next, max(6, strlen((string) $next)), '0', STR_PAD_LEFT);
     }
 
     /** @var array<string, string> */

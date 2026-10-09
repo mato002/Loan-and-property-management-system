@@ -103,7 +103,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ac/No (Tenant Payment Account)</label>
-                    <input type="text" name="account_number" value="{{ old('account_number') }}" @required($tenantRequired('account_number', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Auto-generated if blank" />
+                    <input type="text" name="account_number" value="{{ old('account_number') }}" @required($tenantRequired('account_number', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Next TNT number if blank" />
                     @error('account_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>

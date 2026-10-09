@@ -298,6 +298,29 @@ class PmMaintenanceWebController extends Controller
 
     public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse|Response
     {
+        try {
+            return $this->performUpdateRequest($request, $requestItem);
+        } catch (ValidationException $e) {
+            if (! \App\Support\Property\PropertyFormModal::fromModal($request)) {
+                throw $e;
+            }
+
+            $request->flash();
+            $requestItem->load(['unit.property', 'reportedBy']);
+            $this->loadRequestFiles($requestItem);
+            $errors = new \Illuminate\Support\ViewErrorBag;
+            $errors->put('default', $e->validator->getMessageBag());
+
+            return response(property_view('property.agent.maintenance.request_edit', array_merge([
+                'requestItem' => $requestItem,
+                'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
+                'errors' => $errors,
+            ], $this->propertyFormModalViewData($request))), 422);
+        }
+    }
+
+    private function performUpdateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse|Response
+    {
         $data = $request->validate([
             'property_unit_id' => ['nullable', 'exists:property_units,id'],
             'category' => ['required', 'string', 'max:64'],
@@ -976,6 +999,9 @@ class PmMaintenanceWebController extends Controller
         return collect($request->file('attachments', []))
             ->filter(function ($file) {
                 if (! $file instanceof UploadedFile) {
+                    return false;
+                }
+                if ($file->getError() === \UPLOAD_ERR_NO_FILE || trim($file->getClientOriginalName()) === '') {
                     return false;
                 }
                 if (! $file->isValid()) {

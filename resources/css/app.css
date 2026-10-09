@@ -2259,6 +2259,49 @@
   }
 
   @media (min-width: 768px) {
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form),
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form),
+    .property-workspace-toolbar-host form > .grid {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: flex-end;
+      gap: 0.35rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) > *,
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) > *,
+    .property-workspace-toolbar-host form > .grid > * {
+      flex: 1 1 0;
+      min-width: 0 !important;
+      width: auto !important;
+      max-width: none;
+    }
+
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) > button,
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) > button,
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) > a,
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) > a {
+      flex: 0 0 auto;
+      width: auto !important;
+    }
+
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) input,
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) input,
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) select,
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) select,
+    .property-workspace-toolbar-host form > .grid input,
+    .property-workspace-toolbar-host form > .grid select,
+    .property-workspace-toolbar-host form.flex:not(.property-filter-toolbar__form) [data-property-searchable-root],
+    .property-workspace-toolbar-host form.grid:not(.property-filter-toolbar__form) [data-property-searchable-root],
+    .property-workspace-toolbar-host form > .grid [data-property-searchable-root] {
+      min-width: 0 !important;
+      width: 100%;
+      max-width: 100%;
+    }
+
     .property-workspace-toolbar-host,
     .property-filter-toolbar.property-workspace-toolbar-host {
       position: sticky;
