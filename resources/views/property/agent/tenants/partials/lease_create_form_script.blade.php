@@ -88,6 +88,20 @@
                 } else if (selectedTenantId > 0) {
                     tenantSelect.value = String(selectedTenantId);
                 }
+                // Update Alpine component options if it exists
+                const tenantSelectRoot = tenantSelect.closest('[x-data*="propertyQuickCreateSelect"]');
+                if (tenantSelectRoot && window.Alpine) {
+                    const alpineData = window.Alpine.$data(tenantSelectRoot);
+                    if (alpineData) {
+                        alpineData.options = (items || []).map((item) => ({
+                            value: String(item.value ?? ''),
+                            label: String(item.label ?? item.value ?? ''),
+                            search: String(item.label ?? item.value ?? '').toLowerCase(),
+                        }));
+                        // Trigger reactivity
+                        alpineData.$nextTick?.();
+                    }
+                }
             };
 
             const populatePropertySelect = (properties, selectedPropertyId = '') => {

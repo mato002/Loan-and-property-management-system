@@ -43,6 +43,7 @@
                         :options="[]"
                         placeholder="Loading tenants…"
                         :create="\App\Support\Property\PmTenantQuickCreateFields::quickCreateConfig()"
+                        :searchable="true"
                     />
                     @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
