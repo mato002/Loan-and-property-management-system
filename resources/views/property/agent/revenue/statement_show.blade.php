@@ -9,7 +9,6 @@
         ['label' => 'Bank only', 'value' => (string) ($counts['bank_only'] ?? 0)],
         ['label' => 'Credits', 'value' => \App\Services\Property\PropertyMoney::kes((float) $statement->total_credit)],
     ]"
-    data-turbo-permanent
 >
     <x-slot name="actions">
         <form method="POST" action="{{ route('property.revenue.statements.auto_assign', $statement) }}" class="inline">
@@ -43,7 +42,7 @@
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'unmatched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'matched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'bank_only'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
-        <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" data-turbo="false" class="ml-auto flex flex-wrap items-center gap-2">
+        <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" class="ml-auto flex flex-wrap items-center gap-2">
             @if ($status !== '')
                 <input type="hidden" name="status" value="{{ $status }}">
             @endif
@@ -198,7 +197,7 @@
     <div class="mt-4">{{ $lines->links() }}</div>
 </x-property.workspace>
 
-<script data-turbo-permanent>
+<script>
     (function () {
         const tenants = @json($assignTenants ?? []);
         const landlords = @json($assignLandlords ?? []);
@@ -253,7 +252,7 @@
             menu = box;
         }
 
-        function initTenantDropdowns() {
+        function initDropdowns() {
             document.querySelectorAll('[data-statement-assign]').forEach((form) => {
                 const query = form.querySelector('[data-tenant-query]');
                 const hidden = form.querySelector('[name="tenant_id"]');
@@ -284,21 +283,19 @@
                     hidden.value = String(match.id);
                 });
             });
-        }
 
-        function payeeFields(form) {
-            const kind = form.querySelector('[data-payee-kind]')?.value || 'landlord';
-            const landlord = form.querySelector('[data-landlord-query]');
-            const other = form.querySelector('[name="paid_to_name"]');
-            if (landlord) {
-                landlord.hidden = kind !== 'landlord';
+            function payeeFields(form) {
+                const kind = form.querySelector('[data-payee-kind]')?.value || 'landlord';
+                const landlord = form.querySelector('[data-landlord-query]');
+                const other = form.querySelector('[name="paid_to_name"]');
+                if (landlord) {
+                    landlord.hidden = kind !== 'landlord';
+                }
+                if (other) {
+                    other.hidden = kind !== 'other';
+                }
             }
-            if (other) {
-                other.hidden = kind !== 'other';
-            }
-        }
 
-        function initLandlordDropdowns() {
             document.querySelectorAll('[data-statement-payee]').forEach((form) => {
                 const query = form.querySelector('[data-landlord-query]');
                 const hidden = form.querySelector('[name="landlord_id"]');
@@ -378,12 +375,8 @@
             }
         });
 
-        initTenantDropdowns();
-        initLandlordDropdowns();
-
-        document.addEventListener('turbo:render', () => {
-            initTenantDropdowns();
-            initLandlordDropdowns();
-        });
+        initDropdowns();
+        document.addEventListener('turbo:render', initDropdowns);
+        document.addEventListener('turbo:frame-render', initDropdowns);
     })();
 </script>
