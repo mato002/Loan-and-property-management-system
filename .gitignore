@@ -26,3 +26,6 @@ Thumbs.db
 
 # Capacitor local server URL (copy from capacitor.env.example)
 /capacitor.env
+rr
+rr.exe
+.rr.yaml

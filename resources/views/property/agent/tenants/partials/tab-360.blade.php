@@ -5,15 +5,16 @@
     $depositSnapshot = $depositSnapshot ?? ['held' => 0.0, 'expected' => 0.0, 'lines' => []];
 @endphp
 
-<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="flex flex-wrap items-start justify-between gap-2">
-        <div>
-            <h3 class="text-sm font-semibold text-slate-900">360° tenant view</h3>
-            <p class="mt-1 text-xs text-slate-500">Identity, occupancy, standing extras, deposits, and canonical balances in one place.</p>
-        </div>
-        <span class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{{ $profileStatus['label'] ?? '—' }} · {{ $profileStatus['hint'] ?? '' }}</span>
+<div class="flex flex-wrap items-start justify-between gap-2">
+    <div>
+        <h3 class="text-sm font-semibold text-slate-900">360° tenant view</h3>
+        <p class="mt-1 text-xs text-slate-500">Identity, occupancy, standing extras, deposits, and canonical balances in one place.</p>
     </div>
-    <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+    <span class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{{ $profileStatus['label'] ?? '—' }} · {{ $profileStatus['hint'] ?? '' }}</span>
+</div>
+
+<div class="profile-beside-cards">
+    <div class="profile-beside-cards__aside auto-fit-cards">
         <div class="rounded-xl bg-rose-50 border border-rose-100 p-3">
             <p class="text-xs text-rose-700 uppercase font-semibold">Invoice AR</p>
             <p class="mt-1 text-lg font-bold text-rose-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['invoice_ar'] ?? 0)) }}</p>
@@ -31,11 +32,7 @@
             <p class="mt-1 text-lg font-bold text-indigo-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)) }}</p>
             <p class="mt-1 text-[11px] text-indigo-700">AR + uninvoiced CF − credit</p>
         </div>
-    </div>
-</div>
-
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-    <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <p class="text-[11px] uppercase tracking-wide text-slate-500">Billable invoices</p>
         <p class="mt-1 text-lg font-semibold text-slate-900">{{ (string) ($invoiceTotals['count'] ?? 0) }}</p>
         <p class="text-xs text-slate-500">{{ (string) ($invoiceTotals['open_count'] ?? 0) }} open</p>
@@ -55,10 +52,7 @@
         <p class="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($depositSnapshot['held'] ?? 0)) }}</p>
         <p class="text-xs text-slate-500">Expected {{ \App\Services\Property\PropertyMoney::kes((float) ($depositSnapshot['expected'] ?? 0)) }}</p>
     </div>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="profile-beside-cards__main rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 class="text-sm font-semibold text-slate-900">Identity</h3>
         @if ($tenant->photoUrl())
             <img src="{{ $tenant->photoUrl() }}" alt="" class="mt-3 h-16 w-16 rounded-full object-cover border border-slate-200" />
@@ -107,7 +101,9 @@
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Risk</dt><dd class="capitalize text-slate-900">{{ $tenant->risk_level ?: 'normal' }}</dd></div>
         </dl>
     </div>
+</div>
 
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 class="text-sm font-semibold text-slate-900">Occupancy</h3>
         <dl class="mt-3 space-y-2 text-sm">
@@ -143,7 +139,7 @@
     @endif
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<div class="profile-beside-cards">
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Standing extras</h3>

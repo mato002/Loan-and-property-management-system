@@ -7,7 +7,8 @@
     'portalCredentials' => $portalCredentials ?? null,
 ])
 
-<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 w-full min-w-0">
+<div class="profile-beside-cards">
+    <div class="profile-beside-cards__aside auto-fit-cards">
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3">
         <p class="text-[11px] uppercase tracking-wide text-slate-500">Active tenants</p>
         <p class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ $totals['active_tenants'] ?? 0 }}</p>
@@ -28,10 +29,8 @@
         <p class="text-[11px] uppercase tracking-wide text-slate-500">Owner occupied</p>
         <p class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">{{ $totals['units_owner_occupied'] ?? 0 }}</p>
     </div>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 w-full min-w-0">
-    <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+    </div>
+    <div class="profile-beside-cards__main property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Profile</h3>
         <dl class="mt-3 space-y-2 text-sm">
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Name</dt><dd class="text-slate-900 dark:text-white font-medium">{{ $landlord->name }}</dd></div>

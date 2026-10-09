@@ -606,32 +606,47 @@
     }
   }
 
-  /* Compact KPI / summary metric grids — 2 cols @360px, 3 @sm, 4 @xl */
+  /* Summary cards fill the row, then wrap. */
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: 0.75rem;
     width: 100%;
     min-width: 0;
   }
 
-  @media (min-width: 640px) {
-    .stat-grid {
-      gap: 0.625rem;
-    }
+  /* Profile on the left, summary cards in the leftover width. */
+  .profile-beside-cards {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 1rem;
+    width: 100%;
+    min-width: 0;
   }
 
-  @media (min-width: 768px) {
-    .stat-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 0.75rem;
-    }
+  .profile-beside-cards > :not(.profile-beside-cards__main):not(.profile-beside-cards__aside) {
+    flex: 1 1 22rem;
+    min-width: min(100%, 18rem);
   }
 
-  @media (min-width: 1280px) {
-    .stat-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
+  .profile-beside-cards__main {
+    flex: 1.15 1 22rem;
+    min-width: min(100%, 18rem);
+    order: -1;
+  }
+
+  .profile-beside-cards__aside {
+    flex: 1.45 1 28rem;
+    min-width: min(100%, 18rem);
+  }
+
+  .auto-fit-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+    gap: 1rem;
+    min-width: 0;
+    align-content: start;
   }
 
   .stat-grid-dense {

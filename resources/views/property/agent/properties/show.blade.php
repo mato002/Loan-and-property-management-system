@@ -144,10 +144,9 @@
     />
 
     <div>
-    @if (in_array($activeTab, ['overview', 'landlords'], true))
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        @if ($activeTab === 'overview')
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    @if ($activeTab === 'overview')
+    <div class="profile-beside-cards">
+        <div class="profile-beside-cards__main rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900">Property profile</h3>
             <div class="mt-2 text-sm text-slate-700 space-y-1">
                 <p><span class="text-slate-500">Name:</span> {{ $property->name }}</p>
@@ -175,9 +174,13 @@
                 <p><span class="text-slate-500">Active leases:</span> {{ (int) ($activeLeasesCount ?? 0) }} ({{ \App\Services\Property\PropertyMoney::kes((float) ($activeLeaseRent ?? 0)) }} / month)</p>
             </div>
         </div>
-        @endif
-        @if ($activeTab === 'landlords')
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
+        <div class="profile-beside-cards__aside auto-fit-cards">
+            @include('property.agent.properties.partials.overview_rate_cards')
+        </div>
+    </div>
+    @endif
+    @if ($activeTab === 'landlords')
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
             </div>
@@ -225,8 +228,6 @@
             </div>
             <p class="mt-2 text-xs text-slate-500">Commission rate used: {{ number_format((float) ($commissionPct ?? 0), 2) }}%</p>
         </div>
-        @endif
-    </div>
     @endif
 
     @if ($activeTab === 'utilities')
@@ -241,23 +242,9 @@
         </div>
     @endif
 
-    @if (in_array($activeTab, ['overview', 'occupancy', 'performance'], true))
-    <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Occupancy rate</p>
-            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format((float) ($reporting['occupancy_rate'] ?? 0), 1) }}%</p>
-            <p class="mt-1 text-xs text-slate-500">Occupied units over total doors</p>
-        </div>
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Collection rate ({{ $periodLabel }})</p>
-            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format((float) ($reporting['collection_rate'] ?? 0), 1) }}%</p>
-            <p class="mt-1 text-xs text-slate-500">Collected amount over invoiced amount</p>
-        </div>
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Average arrears per unit</p>
-            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($reporting['avg_arrears_per_unit'] ?? 0)) }}</p>
-            <p class="mt-1 text-xs text-slate-500">Across all units in this property</p>
-        </div>
+    @if (in_array($activeTab, ['occupancy', 'performance'], true))
+    <div class="mt-5 auto-fit-cards">
+        @include('property.agent.properties.partials.overview_rate_cards')
     </div>
     @endif
 
