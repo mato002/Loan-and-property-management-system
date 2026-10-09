@@ -541,17 +541,6 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('User direct permissions updated.'));
     }
 
-    /**
-     * @return list<array{
-     *   key:string,
-     *   label:string,
-     *   type:string,
-     *   required:bool,
-     *   enabled:bool,
-     *   help_text:string,
-     *   options:string
-     * }>
-     */
     private function configuredFields(string $module): array
     {
         $settingKey = match ($module) {
@@ -614,9 +603,6 @@ class PropertySettingsStoreWebController extends Controller
         };
     }
 
-    /**
-     * @return list<array{key:string,label:string}>
-     */
     private function systemSetupFieldModules(): array
     {
         return [
@@ -679,9 +665,6 @@ class PropertySettingsStoreWebController extends Controller
         };
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function validateDynamicFields(Request $request): array
     {
         $data = $request->validate([
@@ -726,9 +709,6 @@ class PropertySettingsStoreWebController extends Controller
         return array_values($uniqueByKey);
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultPropertyOnboardingFields(): array
     {
         return [
@@ -742,9 +722,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultUnitFields(): array
     {
         return [
@@ -762,9 +739,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultAmenityFields(): array
     {
         return [
@@ -775,9 +749,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultLandlordFields(): array
     {
         return [
@@ -791,9 +762,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultLeadFields(): array
     {
         return [
@@ -805,9 +773,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultRentalApplicationFields(): array
     {
         return [
@@ -819,9 +784,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultTenantFields(): array
     {
         return [
@@ -834,9 +796,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultLeaseFields(): array
     {
         return [
@@ -849,9 +808,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultMaintenanceFields(): array
     {
         return [
@@ -863,9 +819,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultVendorFields(): array
     {
         return [
@@ -877,9 +830,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultInvoiceFields(): array
     {
         return [
@@ -891,9 +841,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultTenantNoticeFields(): array
     {
         return [
@@ -905,9 +852,6 @@ class PropertySettingsStoreWebController extends Controller
         ];
     }
 
-    /**
-     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
-     */
     private function defaultMovementFields(): array
     {
         return [
@@ -940,7 +884,6 @@ class PropertySettingsStoreWebController extends Controller
 
         PropertyPortalSetting::setGlobalValue('bulksms_driver', $data['bulksms_driver']);
 
-        // Clear SMS balance cache when provider changes
         app(\App\Services\BulkSmsService::class)->clearProviderBalanceCache();
 
         return back()->with('success', __('SMS provider settings saved.'));
@@ -1415,7 +1358,6 @@ class PropertySettingsStoreWebController extends Controller
         ]);
     }
 
-    /** @deprecated Use bank() — kept for old bookmarks. */
     public function equity(Request $request): RedirectResponse
     {
         return redirect()->route('property.settings.bank', ['provider' => 'equity']);
@@ -1506,7 +1448,6 @@ class PropertySettingsStoreWebController extends Controller
             ->with('success', __(':bank settings saved.', ['bank' => BankIntegrationRegistry::label($provider)]));
     }
 
-    /** @deprecated */
     public function storeEquity(Request $request, EquityBankService $equityBankService): RedirectResponse
     {
         return redirect()->route('property.settings.bank', ['provider' => 'equity']);
@@ -1599,6 +1540,7 @@ class PropertySettingsStoreWebController extends Controller
         }
 
         $data = $request->validate([
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'definitions' => ['nullable', 'array', 'max:200'],
             'definitions.*.property_id' => ['required', 'integer', 'exists:properties,id'],
             'definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
@@ -1612,6 +1554,8 @@ class PropertySettingsStoreWebController extends Controller
             'definitions.*.sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'definitions.*.is_active' => ['nullable', 'in:0,1'],
         ]);
+
+        $scopedPropertyId = $request->input('property_id');
 
         $rows = collect($data['definitions'] ?? [])
             ->map(function (array $row): array {
@@ -1634,10 +1578,15 @@ class PropertySettingsStoreWebController extends Controller
 
         \Log::info('Deposit rules save attempt', ['count' => $rows->count(), 'rows' => $rows->toArray()]);
 
-        DB::transaction(function () use ($rows): void {
-            // Delete all existing definitions first
-            DepositDefinition::query()->delete();
-            // Create new definitions from the submitted data
+        DB::transaction(function () use ($rows, $scopedPropertyId): void {
+            if ($scopedPropertyId) {
+                // Delete ONLY definitions for this specific property
+                DepositDefinition::query()->where('property_id', $scopedPropertyId)->delete();
+            } else {
+                // Global settings page delete
+                DepositDefinition::query()->delete();
+            }
+
             foreach ($rows as $row) {
                 DepositDefinition::query()->create($row);
             }
@@ -1647,7 +1596,8 @@ class PropertySettingsStoreWebController extends Controller
 
         $this->logSettingsActivity('deposits', 'Deposit rules updated');
 
-        return back()->with('success', __('Deposit rules saved successfully.'));
+        return back()->with('success', __('Deposit rules saved successfully.'))
+                     ->with('swal_success', __('Deposit rules saved successfully.'));
     }
 
     public function expenses(): View
@@ -1713,11 +1663,6 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('Expense charge rules saved.'));
     }
 
-    /**
-     * Keep legacy property utility templates in sync with rules.
-     *
-     * @param  array<int,array<string,mixed>>  $rows
-     */
     private function syncUtilityTemplatesFromExpenseRules(array $rows): void
     {
         $groupedByProperty = collect($rows)
@@ -1852,9 +1797,6 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('Branding settings saved.'));
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     private function logSettingsActivity(string $section, string $summary, array $payload = []): void
     {
         PropertyActivityLogger::settingsChanged($section, $summary, $payload);
