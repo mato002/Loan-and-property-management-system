@@ -9,6 +9,7 @@
         ['label' => 'Bank only', 'value' => (string) ($counts['bank_only'] ?? 0)],
         ['label' => 'Credits', 'value' => \App\Services\Property\PropertyMoney::kes((float) $statement->total_credit)],
     ]"
+    data-turbo-permanent
 >
     <x-slot name="actions">
         <form method="POST" action="{{ route('property.revenue.statements.auto_assign', $statement) }}" class="inline">
@@ -42,7 +43,7 @@
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'unmatched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'unmatched' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700' }}">Unmatched</a>
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'matched'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'matched' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700' }}">Matched</a>
         <a href="{{ route('property.revenue.statements.show', array_filter(['statement' => $statement, 'status' => 'bank_only'] + $tabQuery)) }}" class="rounded-lg px-3 py-1.5 {{ $status === 'bank_only' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">Bank only</a>
-        <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" class="ml-auto flex flex-wrap items-center gap-2">
+        <form method="get" action="{{ route('property.revenue.statements.show', $statement, false) }}" data-turbo="false" class="ml-auto flex flex-wrap items-center gap-2">
             @if ($status !== '')
                 <input type="hidden" name="status" value="{{ $status }}">
             @endif
@@ -197,7 +198,7 @@
     <div class="mt-4">{{ $lines->links() }}</div>
 </x-property.workspace>
 
-<script>
+<script data-turbo-permanent>
     (function () {
         const tenants = @json($assignTenants ?? []);
         const landlords = @json($assignLandlords ?? []);
@@ -252,36 +253,38 @@
             menu = box;
         }
 
-        document.querySelectorAll('[data-statement-assign]').forEach((form) => {
-            const query = form.querySelector('[data-tenant-query]');
-            const hidden = form.querySelector('[name="tenant_id"]');
-            if (!query || !hidden) {
-                return;
-            }
-            query.addEventListener('input', () => {
-                hidden.value = '';
-                openMenu(query, hidden);
-            });
-            query.addEventListener('focus', () => openMenu(query, hidden));
-            query.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
-                    closeMenu();
-                }
-            });
-            form.addEventListener('submit', (event) => {
-                const typed = (query.value || '').trim().toLowerCase();
-                const match = tenants.find((tenant) => (tenant.label || '').toLowerCase() === typed)
-                    || (hidden.value ? tenants.find((tenant) => String(tenant.id) === hidden.value) : null);
-                if (!match) {
-                    event.preventDefault();
-                    query.setCustomValidity('Choose a tenant from the list.');
-                    query.reportValidity();
+        function initTenantDropdowns() {
+            document.querySelectorAll('[data-statement-assign]').forEach((form) => {
+                const query = form.querySelector('[data-tenant-query]');
+                const hidden = form.querySelector('[name="tenant_id"]');
+                if (!query || !hidden) {
                     return;
                 }
-                query.setCustomValidity('');
-                hidden.value = String(match.id);
+                query.addEventListener('input', () => {
+                    hidden.value = '';
+                    openMenu(query, hidden);
+                });
+                query.addEventListener('focus', () => openMenu(query, hidden));
+                query.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape') {
+                        closeMenu();
+                    }
+                });
+                form.addEventListener('submit', (event) => {
+                    const typed = (query.value || '').trim().toLowerCase();
+                    const match = tenants.find((tenant) => (tenant.label || '').toLowerCase() === typed)
+                        || (hidden.value ? tenants.find((tenant) => String(tenant.id) === hidden.value) : null);
+                    if (!match) {
+                        event.preventDefault();
+                        query.setCustomValidity('Choose a tenant from the list.');
+                        query.reportValidity();
+                        return;
+                    }
+                    query.setCustomValidity('');
+                    hidden.value = String(match.id);
+                });
             });
-        });
+        }
 
         function payeeFields(form) {
             const kind = form.querySelector('[data-payee-kind]')?.value || 'landlord';
@@ -295,74 +298,92 @@
             }
         }
 
-        document.querySelectorAll('[data-statement-payee]').forEach((form) => {
-            const query = form.querySelector('[data-landlord-query]');
-            const hidden = form.querySelector('[name="landlord_id"]');
-            const kind = form.querySelector('[data-payee-kind]');
-            payeeFields(form);
-            kind?.addEventListener('change', () => {
-                if (hidden && kind.value !== 'landlord') {
-                    hidden.value = '';
-                }
+        function initLandlordDropdowns() {
+            document.querySelectorAll('[data-statement-payee]').forEach((form) => {
+                const query = form.querySelector('[data-landlord-query]');
+                const hidden = form.querySelector('[name="landlord_id"]');
+                const kind = form.querySelector('[data-payee-kind]');
                 payeeFields(form);
-            });
-            if (!query || !hidden) {
-                return;
-            }
-            query.addEventListener('input', () => {
-                hidden.value = '';
-                closeMenu();
-                const needle = query.value.trim().toLowerCase();
-                const items = needle === '' ? [] : landlords.filter((row) => (row.label || '').toLowerCase().includes(needle)).slice(0, 12);
-                if (items.length === 0) {
-                    return;
-                }
-                const box = document.createElement('div');
-                box.setAttribute('data-tenant-menu', '1');
-                box.className = 'fixed z-[80] max-h-60 w-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg';
-                const rect = query.getBoundingClientRect();
-                box.style.top = (rect.bottom + 4) + 'px';
-                box.style.left = Math.max(8, rect.right - 288) + 'px';
-                items.forEach((row) => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'block w-full px-3 py-1.5 text-left text-xs text-slate-800 hover:bg-emerald-50';
-                    button.textContent = row.label;
-                    button.addEventListener('mousedown', (event) => {
-                        event.preventDefault();
-                        hidden.value = String(row.id);
-                        query.value = row.label;
-                        closeMenu();
-                    });
-                    box.appendChild(button);
+                kind?.addEventListener('change', () => {
+                    if (hidden && kind.value !== 'landlord') {
+                        hidden.value = '';
+                    }
+                    payeeFields(form);
                 });
-                document.body.appendChild(box);
-                menu = box;
-            });
-            form.addEventListener('submit', (event) => {
-                if ((kind?.value || 'landlord') !== 'landlord') {
+                if (!query || !hidden) {
                     return;
                 }
-                const typed = (query.value || '').trim().toLowerCase();
-                const match = landlords.find((row) => (row.label || '').toLowerCase() === typed)
-                    || (hidden.value ? landlords.find((row) => String(row.id) === hidden.value) : null);
-                if (!match) {
-                    event.preventDefault();
-                    query.setCustomValidity('Choose a landlord from the list.');
-                    query.reportValidity();
-                    return;
-                }
-                query.setCustomValidity('');
-                hidden.value = String(match.id);
+                query.addEventListener('input', () => {
+                    hidden.value = '';
+                    closeMenu();
+                    const needle = query.value.trim().toLowerCase();
+                    const items = needle === '' ? [] : landlords.filter((row) => (row.label || '').toLowerCase().includes(needle)).slice(0, 12);
+                    if (items.length === 0) {
+                        return;
+                    }
+                    const box = document.createElement('div');
+                    box.setAttribute('data-tenant-menu', '1');
+                    box.className = 'fixed z-[80] max-h-60 w-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg';
+                    const rect = query.getBoundingClientRect();
+                    box.style.top = (rect.bottom + 4) + 'px';
+                    box.style.left = Math.max(8, rect.right - 288) + 'px';
+                    items.forEach((landlord) => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'block w-full px-3 py-1.5 text-left text-xs text-slate-800 hover:bg-emerald-50';
+                        button.textContent = landlord.label;
+                        button.addEventListener('mousedown', (event) => {
+                            event.preventDefault();
+                            hidden.value = String(landlord.id);
+                            query.value = landlord.label;
+                            query.setCustomValidity('');
+                            closeMenu();
+                        });
+                        box.appendChild(button);
+                    });
+                    document.body.appendChild(box);
+                    menu = box;
+                });
+                query.addEventListener('focus', () => {
+                    if (query.value.trim() !== '') {
+                        query.dispatchEvent(new Event('input'));
+                    }
+                });
+                query.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape') {
+                        closeMenu();
+                    }
+                });
+                form.addEventListener('submit', (event) => {
+                    const typed = (query.value || '').trim().toLowerCase();
+                    const match = landlords.find((row) => (row.label || '').toLowerCase() === typed)
+                        || (hidden.value ? landlords.find((row) => String(row.id) === hidden.value) : null);
+                    if (kind.value === 'landlord' && !match) {
+                        event.preventDefault();
+                        query.setCustomValidity('Choose a landlord from the list.');
+                        query.reportValidity();
+                        return;
+                    }
+                    query.setCustomValidity('');
+                    if (kind.value === 'landlord') {
+                        hidden.value = String(match?.id ?? '');
+                    }
+                });
             });
-        });
+        }
 
         document.addEventListener('click', (event) => {
-            if (event.target?.closest?.('[data-statement-assign], [data-statement-payee], [data-tenant-menu]')) {
-                return;
+            if (!event.target.closest('[data-tenant-menu]') && !event.target.closest('[data-tenant-query]') && !event.target.closest('[data-landlord-query]')) {
+                closeMenu();
             }
-            closeMenu();
         });
-        window.addEventListener('scroll', closeMenu, true);
+
+        initTenantDropdowns();
+        initLandlordDropdowns();
+
+        document.addEventListener('turbo:render', () => {
+            initTenantDropdowns();
+            initLandlordDropdowns();
+        });
     })();
 </script>
