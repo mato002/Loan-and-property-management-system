@@ -4,6 +4,18 @@
     <x-property.page title="Property Finance Rules" subtitle="Define allowed deposit types per property with optional unit-level overrides.">
         @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.deposits'])
 
+        @if(session('success'))
+            <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        @if(session('error'))
+            <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {{ session('error') }}
+            </div>
+        @endif
+
         <div class="rounded-xl border border-slate-200 bg-white p-4">
             <form method="POST" action="{{ route('property.settings.deposits.store') }}" data-turbo="false" class="space-y-3">
                 @csrf

@@ -1632,6 +1632,8 @@ class PropertySettingsStoreWebController extends Controller
             ->filter(fn (array $row): bool => $row['property_id'] > 0 && $row['deposit_key'] !== '' && $row['label'] !== '')
             ->values();
 
+        \Log::info('Deposit rules save attempt', ['count' => $rows->count(), 'rows' => $rows->toArray()]);
+
         DB::transaction(function () use ($rows): void {
             // Delete all existing definitions first
             DepositDefinition::query()->delete();
@@ -1641,9 +1643,11 @@ class PropertySettingsStoreWebController extends Controller
             }
         });
 
+        \Log::info('Deposit rules saved successfully', ['count' => $rows->count()]);
+
         $this->logSettingsActivity('deposits', 'Deposit rules updated');
 
-        return back()->withInput()->with('success', __('Deposit rules saved.'));
+        return back()->with('success', __('Deposit rules saved successfully.'));
     }
 
     public function expenses(): View
