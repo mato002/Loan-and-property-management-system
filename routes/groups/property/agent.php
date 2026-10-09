@@ -111,7 +111,9 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/revenue/mpesa-inbox/{payment}/verify-stk', [PmPaymentController::class, 'verifyPendingStk'])->middleware('property.permission:payments.settle')->name('revenue.mpesa_inbox.verify_stk');
     Route::get('/revenue/statements', [PropertyStatementImportController::class, 'index'])->name('revenue.statements.index');
     Route::post('/revenue/statements', [PropertyStatementImportController::class, 'store'])->middleware('property.permission:payments.record')->name('revenue.statements.store');
-    Route::get('/revenue/statements/{statement}', [PropertyStatementImportController::class, 'show'])->name('revenue.statements.show');
+    Route::get('/revenue/statements/search/tenants', [PropertyStatementImportController::class, 'searchTenants'])->name('revenue.statements.search.tenants');
+    Route::get('/revenue/statements/search/landlords', [PropertyStatementImportController::class, 'searchLandlords'])->name('revenue.statements.search.landlords');
+    Route::get('/revenue/statements/{statement}', [PropertyStatementImportController::class, 'show'])->whereNumber('statement')->name('revenue.statements.show');
     Route::post('/revenue/statements/{statement}/recover', [PropertyStatementImportController::class, 'recover'])->middleware('property.permission:payments.record')->name('revenue.statements.recover');
     Route::post('/revenue/statements/{statement}/lines/{line}/recover', [PropertyStatementImportController::class, 'recoverLine'])->middleware('property.permission:payments.record')->name('revenue.statements.lines.recover');
     Route::post('/revenue/statements/{statement}/lines/{line}/assign', [PropertyStatementImportController::class, 'assignLine'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.assign');

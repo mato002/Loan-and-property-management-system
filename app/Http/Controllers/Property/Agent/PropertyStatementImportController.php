@@ -18,6 +18,7 @@ use App\Services\Property\PropertyStatementUploadService;
 use App\Support\ListPageSize;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -256,6 +257,101 @@ class PropertyStatementImportController extends Controller
         ]);
     }
 
+    public function searchTenants(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q', ''));
+        $query = PmTenant::query();
+
+        if ($q !== '') {
+            $digits = preg_replace('/\D+/', '', $q) ?? '';
+            $query->where(function (Builder $builder) use ($q, $digits): void {
+                $builder->where('name', 'like', '%'.$q.'%')
+                    ->orWhere('account_number', 'like', '%'.$q.'%')
+                    ->orWhere('email', 'like', '%'.$q.'%')
+                    ->orWhere('national_id', 'like', '%'.$q.'%');
+
+                if ($digits !== '') {
+                    $builder->orWhere('phone', 'like', '%'.$digits.'%');
+                    if (str_starts_with($digits, '254') && strlen($digits) >= 10) {
+                        $builder->orWhere('phone', 'like', '%0'.substr($digits, 3).'%');
+                    } elseif (str_starts_with($digits, '0') && strlen($digits) >= 10) {
+                        $builder->orWhere('phone', 'like', '%254'.substr($digits, 1).'%');
+                    }
+                } else {
+                    $builder->orWhere('phone', 'like', '%'.$q.'%');
+                }
+
+                if (Schema::hasTable('pm_leases') && Schema::hasTable('pm_lease_unit') && Schema::hasTable('property_units')) {
+                    $builder->orWhereHas('leases.units', function (Builder $uq) use ($q): void {
+                        $uq->where('unit_number', 'like', '%'.$q.'%')
+                            ->orWhere('unit_name', 'like', '%'.$q.'%');
+                    });
+                }
+            });
+        }
+
+        $tenants = $query->orderBy('name')->limit(30)->get(['id', 'name', 'phone', 'account_number']);
+
+        $items = $tenants->map(function (PmTenant $tenant) {
+            $acct = trim((string) ($tenant->account_number ?? ''));
+            $phone = trim((string) ($tenant->phone ?? ''));
+            $parts = array_filter([$tenant->name, $acct, $phone]);
+
+            return [
+                'id' => (int) $tenant->id,
+                'name' => (string) $tenant->name,
+                'phone' => $phone,
+                'account_number' => $acct,
+                'label' => implode(' · ', $parts),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'ok' => true,
+            'items' => $items,
+        ]);
+    }
+
+    public function searchLandlords(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q', ''));
+        $query = User::query()
+            ->where('property_portal_role', 'landlord')
+            ->whereHas('landlordProperties');
+
+        if ($q !== '') {
+            $digits = preg_replace('/\D+/', '', $q) ?? '';
+            $query->where(function (Builder $builder) use ($q, $digits): void {
+                $builder->where('name', 'like', '%'.$q.'%')
+                    ->orWhere('email', 'like', '%'.$q.'%');
+                if ($digits !== '') {
+                    $builder->orWhere('phone', 'like', '%'.$digits.'%');
+                } else {
+                    $builder->orWhere('phone', 'like', '%'.$q.'%');
+                }
+            });
+        }
+
+        $landlords = $query->orderBy('name')->limit(30)->get(['id', 'name', 'phone']);
+
+        $items = $landlords->map(function (User $landlord) {
+            $phone = trim((string) ($landlord->phone ?? ''));
+            $parts = array_filter([$landlord->name, $phone]);
+
+            return [
+                'id' => (int) $landlord->id,
+                'name' => (string) $landlord->name,
+                'phone' => $phone,
+                'label' => implode(' · ', $parts),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'ok' => true,
+            'items' => $items,
+        ]);
+    }
+
     public function recover(
         Request $request,
         PmBankStatement $statement,
@@ -311,7 +407,7 @@ class PropertyStatementImportController extends Controller
         PropertyStatementMissingPaymentRecoveryService $recovery,
         EquityPaymentRepository $payments,
         PaymentAuditLogRepository $auditLogs,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $this->authorizeStatement($request, $statement);
         if ((int) $line->pm_bank_statement_id !== (int) $statement->id) {
             abort(404);
@@ -323,10 +419,18 @@ class PropertyStatementImportController extends Controller
 
         $tenant = PmTenant::query()->find($data['tenant_id']);
         if (! $tenant) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'That tenant is not in this workspace.'], 422);
+            }
+
             return back()->withErrors(['tenant_id' => 'That tenant is not in this workspace.'])->withInput();
         }
 
         if ($line->isAllocatedToTenant()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'This line is already on a tenant.'], 422);
+            }
+
             return back()->with('status', 'This line is already on a tenant.');
         }
 
@@ -337,6 +441,10 @@ class PropertyStatementImportController extends Controller
             if ($unassignedId <= 0) {
                 $message = $prepared['errors'][0] ?? 'This line could not be prepared for assignment.';
 
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => false, 'message' => $message], 422);
+                }
+
                 return back()->withErrors(['tenant_id' => $message])->withInput();
             }
             $line->refresh();
@@ -344,6 +452,10 @@ class PropertyStatementImportController extends Controller
 
         $unassigned = UnassignedPayment::query()->find($unassignedId);
         if (! $unassigned) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'The unmatched payment for this line is no longer available.'], 422);
+            }
+
             return back()->withErrors(['tenant_id' => 'The unmatched payment for this line is no longer available.'])->withInput();
         }
 
@@ -396,6 +508,23 @@ class PropertyStatementImportController extends Controller
         ]);
 
         $unassigned->delete();
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Assigned to '.$tenant->name.' and posted.',
+                'line_id' => (int) $line->id,
+                'tenant' => [
+                    'id' => (int) $tenant->id,
+                    'name' => (string) $tenant->name,
+                    'account_number' => (string) ($tenant->account_number ?? ''),
+                    'show_url' => route('property.tenants.show', $tenant->id),
+                ],
+                'receipt_url' => (int) ($payment->pm_payment_id ?? 0) > 0
+                    ? route('property.payments.receipt.show', (int) $payment->pm_payment_id)
+                    : null,
+            ]);
+        }
 
         return back()->with('status', 'Assigned to '.$tenant->name.' and posted.');
     }

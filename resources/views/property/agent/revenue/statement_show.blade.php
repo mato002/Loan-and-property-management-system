@@ -85,7 +85,7 @@
                         $phone = $line->displayPhone();
                         $paymentId = (int) ($line->pm_payment_id ?? 0);
                     @endphp
-                    <tr>
+                    <tr data-line-row="{{ $line->id }}">
                         <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-3 py-2">
                             <div class="font-mono text-xs font-semibold text-slate-900">{{ $line->reference ?: '—' }}</div>
@@ -104,7 +104,7 @@
                             @endif
                         </td>
                         <td class="px-3 py-2">{{ $line->counterparty ?: '—' }}</td>
-                        <td class="px-3 py-2">
+                        <td data-col="tenant" class="px-3 py-2">
                             @if ($tenantAccount !== '' || $tenantName !== '')
                                 @if ($tenantAccount !== '')
                                     <div class="font-mono text-xs font-semibold text-slate-900">{{ $tenantAccount }}</div>
@@ -132,20 +132,25 @@
                         <td class="px-3 py-2 tabular-nums {{ $line->direction === 'debit' ? 'text-rose-700' : 'text-emerald-800' }}">
                             {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}
                         </td>
-                        <td class="px-3 py-2">
+                        <td data-col="status" class="px-3 py-2">
                             @php $shownStatus = $line->displayMatchStatus(); @endphp
                             <span class="text-xs font-semibold {{ $shownStatus === 'Matched' || $shownStatus === 'Landlord' ? 'text-emerald-700' : ($shownStatus === 'Unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
                                 {{ $shownStatus }}
                             </span>
                         </td>
-                        <td class="px-3 py-2 text-right">
+                        <td data-col="actions" class="px-3 py-2 text-right">
                             <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
                                 @if (! $line->isAllocatedToTenant() && $line->direction === 'credit' && $line->line_type === 'mpesa_c2b')
-                                    <form method="POST" action="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}" data-statement-assign class="flex items-center gap-1">
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}" data-statement-assign data-line-id="{{ $line->id }}" data-line-phone="{{ $phone }}" data-line-counterparty="{{ $line->counterparty }}" class="flex items-center gap-1">
                                         @csrf
                                         <input type="hidden" name="tenant_id" value="">
-                                        <input type="text" data-tenant-query data-auto-submit="off" autocomplete="off" placeholder="Tenant, account, or phone" required class="h-8 w-52 rounded-lg border border-slate-300 px-2 text-xs" />
-                                        <button type="submit" class="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800">Assign</button>
+                                        <div class="relative flex items-center">
+                                            <input type="text" data-tenant-query data-auto-submit="off" autocomplete="off" placeholder="Tenant, account, or phone" required class="h-8 w-52 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all" />
+                                            <span data-search-spinner class="pointer-events-none absolute right-1.5 hidden text-slate-400">
+                                                <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                            </span>
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800 transition-colors whitespace-nowrap">Assign</button>
                                     </form>
                                 @elseif ($paymentId > 0)
                                     <a href="{{ route('property.payments.receipt.show', $paymentId) }}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
@@ -164,7 +169,12 @@
                                             <option value="other" @selected($line->paid_to_kind === 'other')>Other</option>
                                         </select>
                                         <input type="hidden" name="landlord_id" value="{{ $line->paid_to_landlord_id }}">
-                                        <input type="text" data-landlord-query autocomplete="off" placeholder="Landlord" value="{{ $line->paid_to_kind === 'landlord' ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 text-xs">
+                                        <div class="relative flex items-center">
+                                            <input type="text" data-landlord-query autocomplete="off" placeholder="Landlord" value="{{ $line->paid_to_kind === 'landlord' ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600">
+                                            <span data-search-spinner class="pointer-events-none absolute right-1.5 hidden text-slate-400">
+                                                <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                            </span>
+                                        </div>
                                         <input type="text" name="paid_to_name" value="{{ $line->paid_to_kind === 'other' ? $line->paid_to_name : '' }}" placeholder="Who was paid" class="h-8 w-36 rounded-lg border border-slate-300 px-2 text-xs">
                                         <input type="text" name="paid_to_note" value="{{ $line->paid_to_note }}" placeholder="Cheque / note" class="h-8 w-28 rounded-lg border border-slate-300 px-2 text-xs">
                                         <button type="submit" class="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800">Save</button>
