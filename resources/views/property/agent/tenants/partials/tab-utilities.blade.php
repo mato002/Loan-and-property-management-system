@@ -9,6 +9,7 @@
     <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
             <tr>
+                <th class="px-4 py-3">Meter</th>
                 <th class="px-4 py-3">Billing month</th>
                 <th class="px-4 py-3">Previous</th>
                 <th class="px-4 py-3">Current</th>
@@ -19,14 +20,20 @@
         <tbody>
             @forelse(($utilityReadings ?? []) as $reading)
                 <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                    <td class="px-4 py-3">
+                        <div>{{ $reading->meter ?? 'Water' }}</div>
+                        @if (! empty($reading->unit_label))
+                            <div class="text-xs text-slate-500">{{ $reading->unit_label }}</div>
+                        @endif
+                    </td>
                     <td class="px-4 py-3">{{ $reading->billing_month ?? '—' }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($reading->previous_reading ?? 0), 2) }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($reading->current_reading ?? 0), 2) }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ $reading->previous_reading === null ? '—' : number_format((float) $reading->previous_reading, 2) }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ $reading->current_reading === null ? '—' : number_format((float) $reading->current_reading, 2) }}</td>
                     <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($reading->units_used ?? 0), 2) }}</td>
                     <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) ($reading->amount ?? 0)) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">No utility readings linked to this tenant's units.</td></tr>
+                <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No utility readings linked to this tenant's units.</td></tr>
             @endforelse
         </tbody>
     </table>

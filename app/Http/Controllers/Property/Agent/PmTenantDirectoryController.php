@@ -14,6 +14,7 @@ use App\Models\PmTenant;
 use App\Models\PmTenantDeposit;
 use App\Models\PmTenantDepositRefund;
 use App\Models\PmTenantNotice;
+use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
@@ -1393,14 +1394,7 @@ class PmTenantDirectoryController extends Controller
             ->limit(25)
             ->get();
 
-        $utilityReadings = $unitIds->isEmpty() || ! Schema::hasTable('pm_water_readings')
-            ? collect()
-            : PmWaterReading::query()
-                ->whereIn('property_unit_id', $unitIds)
-                ->orderByDesc('billing_month')
-                ->orderByDesc('id')
-                ->limit(25)
-                ->get();
+        $utilityReadings = $this->tenantUtilityReadings($tenant, $unitIds);
 
         $standingExtras = $this->tenantStandingExtras($tenant);
         $depositSnapshot = $this->tenantDepositSnapshot($tenant);
@@ -2241,6 +2235,194 @@ class PmTenantDirectoryController extends Controller
             'penalty' => 'Penalty',
             'other' => 'Other charge',
             'custom_charge' => 'Custom charge',
+        ];
+    }
+
+    /**
+     * Water readings plus electricity and other meter charges for this tenant.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $leaseUnitIds
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function tenantUtilityReadings(PmTenant $tenant, $leaseUnitIds): \Illuminate\Support\Collection
+    {
+        $unitIds = $this->tenantUtilityUnitIds($tenant, $leaseUnitIds);
+        $rows = collect();
+        $coveredWater = [];
+
+        if (Schema::hasTable('pm_water_readings')) {
+            $water = PmWaterReading::query()
+                ->withoutGlobalScopes()
+                ->with(['unit' => fn ($q) => $q->withoutGlobalScopes()->with(['property' => fn ($pq) => $pq->withoutGlobalScopes()])])
+                ->where(function ($q) use ($unitIds, $tenant): void {
+                    $this->constrainUtilityRowsToTenant($q, 'pm_water_readings', $unitIds, $tenant);
+                })
+                ->orderByDesc('billing_month')
+                ->orderByDesc('id')
+                ->limit(80)
+                ->get();
+
+            foreach ($water as $reading) {
+                $unitId = (int) $reading->property_unit_id;
+                $coveredWater[$unitId.'|'.(string) $reading->billing_month] = true;
+                $rows->push((object) [
+                    'billing_month' => $reading->billing_month,
+                    'meter' => 'Water',
+                    'unit_label' => $this->utilityUnitLabel($reading->unit),
+                    'previous_reading' => $reading->previous_reading,
+                    'current_reading' => $reading->current_reading,
+                    'units_used' => $reading->units_used,
+                    'amount' => $reading->amount,
+                    'sort' => (string) ($reading->billing_month ?? ''),
+                    'id' => (int) $reading->id,
+                ]);
+            }
+        }
+
+        if (Schema::hasTable('pm_unit_utility_charges')) {
+            $charges = PmUnitUtilityCharge::query()
+                ->withoutGlobalScopes()
+                ->with(['unit' => fn ($q) => $q->withoutGlobalScopes()->with(['property' => fn ($pq) => $pq->withoutGlobalScopes()])])
+                ->where(function ($q) use ($unitIds, $tenant): void {
+                    $this->constrainUtilityRowsToTenant($q, 'pm_unit_utility_charges', $unitIds, $tenant);
+                })
+                ->where(function ($q): void {
+                    $q->where('units_consumed', '>', 0);
+                    if (Schema::hasColumn('pm_unit_utility_charges', 'previous_reading')) {
+                        $q->orWhereNotNull('previous_reading')
+                            ->orWhereNotNull('current_reading');
+                    }
+                    $q->orWhere('notes', 'like', '%reading%')
+                        ->orWhere('notes', 'like', '%meter%');
+                })
+                ->orderByDesc('billing_month')
+                ->orderByDesc('id')
+                ->limit(80)
+                ->get();
+
+            foreach ($charges as $charge) {
+                $type = (string) ($charge->charge_type ?? '');
+                $unitId = (int) $charge->property_unit_id;
+                if ($type === 'water' && isset($coveredWater[$unitId.'|'.(string) $charge->billing_month])) {
+                    continue;
+                }
+                [$previous, $current] = $this->meterPointersFromCharge($charge);
+                $rows->push((object) [
+                    'billing_month' => $charge->billing_month,
+                    'meter' => $this->utilityMeterLabel($charge),
+                    'unit_label' => $this->utilityUnitLabel($charge->unit),
+                    'previous_reading' => $previous,
+                    'current_reading' => $current,
+                    'units_used' => $charge->units_consumed,
+                    'amount' => $charge->amount,
+                    'sort' => (string) ($charge->billing_month ?? ''),
+                    'id' => (int) $charge->id,
+                ]);
+            }
+        }
+
+        return $rows
+            ->sortByDesc(fn ($row) => $row->sort.'-'.str_pad((string) $row->id, 8, '0', STR_PAD_LEFT))
+            ->take(40)
+            ->values();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $leaseUnitIds
+     * @return list<int>
+     */
+    private function tenantUtilityUnitIds(PmTenant $tenant, $leaseUnitIds): array
+    {
+        $unitIds = collect($leaseUnitIds)->map(fn ($id) => (int) $id);
+
+        if (Schema::hasTable('pm_lease_unit') && Schema::hasTable('pm_leases')) {
+            $unitIds = $unitIds->merge(
+                DB::table('pm_lease_unit as lu')
+                    ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                    ->where('l.pm_tenant_id', $tenant->id)
+                    ->pluck('lu.property_unit_id')
+            );
+        }
+
+        if (Schema::hasTable('pm_invoices') && Schema::hasColumn('pm_invoices', 'property_unit_id')) {
+            $unitIds = $unitIds->merge(
+                DB::table('pm_invoices')
+                    ->where('pm_tenant_id', $tenant->id)
+                    ->whereNotNull('property_unit_id')
+                    ->pluck('property_unit_id')
+            );
+        }
+
+        return $unitIds
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $unitIds
+     */
+    private function constrainUtilityRowsToTenant($query, string $table, array $unitIds, PmTenant $tenant): void
+    {
+        $query->where(function ($inner) use ($table, $unitIds, $tenant): void {
+            $started = false;
+            if ($unitIds !== []) {
+                $inner->whereIn($table.'.property_unit_id', $unitIds);
+                $started = true;
+            }
+            if (Schema::hasColumn($table, 'pm_invoice_id') && Schema::hasTable('pm_invoices')) {
+                $method = $started ? 'orWhereIn' : 'whereIn';
+                $inner->{$method}($table.'.pm_invoice_id', function ($sub) use ($tenant): void {
+                    $sub->select('id')->from('pm_invoices')->where('pm_tenant_id', $tenant->id);
+                });
+                $started = true;
+            }
+            if (! $started) {
+                $inner->whereRaw('1 = 0');
+            }
+        });
+    }
+
+    private function utilityMeterLabel(PmUnitUtilityCharge $charge): string
+    {
+        return match ((string) $charge->charge_type) {
+            'water' => 'Water',
+            'electricity' => 'Electricity',
+            'garbage' => 'Garbage',
+            default => trim((string) ($charge->label ?? '')) !== '' ? (string) $charge->label : 'Utility',
+        };
+    }
+
+    private function utilityUnitLabel($unit): ?string
+    {
+        if ($unit === null) {
+            return null;
+        }
+        $property = trim((string) ($unit->property->name ?? ''));
+        $label = trim((string) ($unit->label ?? ''));
+        $text = trim($property.($property !== '' && $label !== '' ? ' / ' : '').$label);
+
+        return $text !== '' ? $text : null;
+    }
+
+    /**
+     * @return array{0: float|null, 1: float|null}
+     */
+    private function meterPointersFromCharge(PmUnitUtilityCharge $charge): array
+    {
+        $previous = $charge->previous_reading ?? null;
+        $current = $charge->current_reading ?? null;
+        $notes = (string) ($charge->notes ?? '');
+        if (($previous === null || $current === null) && preg_match('/(\d+(?:\.\d+)?)\s*(?:→|->|to)\s*(\d+(?:\.\d+)?)/u', $notes, $match) === 1) {
+            $previous ??= (float) $match[1];
+            $current ??= (float) $match[2];
+        }
+
+        return [
+            $previous === null ? null : (float) $previous,
+            $current === null ? null : (float) $current,
         ];
     }
 

@@ -62,13 +62,13 @@
         @php
             $showBulkFormByDefault = $errors->hasAny(['channel','segment_label','recipients','subject','message','schedule_at']);
         @endphp
-        <details class="space-y-3 group" @if($showBulkFormByDefault) open @endif>
-        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+        <div x-data="{ showBulkForm: @js($showBulkFormByDefault) }">
+        <button type="button" @click="showBulkForm = true" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
-            <span class="group-open:hidden">Send bulk message</span>
-            <span class="hidden group-open:inline">Hide bulk form</span>
-        </summary>
-        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl" x-data="{
+            <span>Send bulk message</span>
+        </button>
+        <x-property.modal show="showBulkForm" close="showBulkForm = false" name="bulk-message" title="Send bulk communication" max-width="2xl" :close-on-escape="true">
+        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="space-y-3" x-data="{
             channel: @js(old('channel', 'sms')),
             bodyText: @js(old('message', '')),
             subjectText: @js(old('subject', '')),
@@ -85,12 +85,6 @@
             }
         }">
             @csrf
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Send bulk communication</h3>
-                    <p class="text-xs text-slate-500 mt-1">Wallet (SMS): {{ $walletBalance ?? '0' }} {{ $currency ?? 'KES' }}  -  Cost/SMS: {{ number_format((float) ($costPerSms ?? 0.5), 2) }} {{ $currency ?? 'KES' }}</p>
-                </div>
-            </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
                 <select id="pm-bulk-channel" name="channel" x-model="channel" @change="templateId = ''" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
@@ -170,7 +164,8 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Send / schedule</button>
         </form>
-        </details>
+        </x-property.modal>
+        </div>
     </x-slot>
 </x-property.workspace>
 <script>
