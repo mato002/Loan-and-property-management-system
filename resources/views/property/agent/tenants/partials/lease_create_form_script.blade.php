@@ -150,6 +150,7 @@
                 } else if (selectedUnitId > 0) {
                     unitSelect.value = String(selectedUnitId);
                 }
+                console.log('populateUnitSelect: Units loaded', units.length, 'first unit rent:', units[0]?.rent_amount);
             };
 
             const loadTenants = async (search = '') => {
@@ -503,10 +504,13 @@
 
             const syncMonthlyRentFromUnit = async () => {
                 const selected = unitSelect.options[unitSelect.selectedIndex];
+                console.log('syncMonthlyRentFromUnit: selected', selected, 'selectedIndex', unitSelect.selectedIndex);
                 if (!selected) return;
                 const rent = selected.getAttribute('data-rent');
+                console.log('syncMonthlyRentFromUnit: rent from data-rent', rent, 'selected.value', selected.value);
                 if (!rent || selected.value === '') return;
                 monthlyRentInput.value = Number(rent).toFixed(2);
+                console.log('syncMonthlyRentFromUnit: set monthly rent to', monthlyRentInput.value);
                 const selectedPropertyId = (selected.getAttribute('data-property-id') || '').toString();
                 if (selectedPropertyId !== '' && propertySelect.value !== selectedPropertyId) {
                     propertySelect.value = selectedPropertyId;
@@ -517,6 +521,7 @@
                 renderOpeningDepositArrearsRows();
                 // Ensure property rules are loaded before syncing deposits
                 const propertyId = getCurrentPropertyId();
+                console.log('syncMonthlyRentFromUnit: propertyId', propertyId, 'depositDefinitionsByProperty[propertyId]', depositDefinitionsByProperty[propertyId]);
                 if (propertyId !== '' && !depositDefinitionsByProperty[propertyId]) {
                     await loadPropertyRules(propertyId);
                 }
@@ -547,17 +552,21 @@
                 const defs = getEffectiveDepositDefinitions();
                 const depositSection = document.getElementById('deposit-rules-section');
                 const depositContainer = document.getElementById('deposit-rules-container');
-                
+
+                console.log('syncDepositRules: defs', defs, 'depositSection', depositSection, 'depositContainer', depositContainer);
+
                 if (!depositSection || !depositContainer) return;
-                
+
                 // Hide section if no deposit rules configured
                 if (defs.length === 0) {
                     depositSection.classList.add('hidden');
+                    console.log('syncDepositRules: No deposit rules, hiding section');
                     return;
                 }
-                
+
                 depositSection.classList.remove('hidden');
                 depositContainer.innerHTML = '';
+                console.log('syncDepositRules: Showing section with', defs.length, 'deposit rules');
                 
                 const oldDeposits = @json((array) ($additionalDeposits ?? []));
                 const oldDepositMap = new Map(oldDeposits.map((d) => [String(d.label || ''), d.amount]));
