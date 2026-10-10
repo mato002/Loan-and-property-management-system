@@ -19,30 +19,27 @@
             </tr>
         </thead>
         <tbody>
-            @forelse(($standingExtras ?? []) as $charge)
-                @if (!in_array(($charge->charge_type ?? 'other'), ['service', 'garbage', 'electricity'], true))
-                    @continue
-                @endif
+            @forelse(($utilityCharges ?? []) as $charge)
                 <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-                            @if (($charge->charge_type ?? 'other') === 'electricity') bg-amber-100 text-amber-800
-                            @elseif (($charge->charge_type ?? 'other') === 'service') bg-blue-100 text-blue-800
-                            @elseif (($charge->charge_type ?? 'other') === 'garbage') bg-green-100 text-green-800
+                            @if (($charge['charge_type'] ?? 'other') === 'electricity') bg-amber-100 text-amber-800
+                            @elseif (($charge['charge_type'] ?? 'other') === 'service') bg-blue-100 text-blue-800
+                            @elseif (($charge['charge_type'] ?? 'other') === 'garbage') bg-green-100 text-green-800
                             @else bg-slate-100 text-slate-800
                             @endif
                         ">
-                            {{ ucfirst(($charge->charge_type ?? 'other')) }}
+                            {{ ucfirst(($charge['charge_type'] ?? 'other')) }}
                         </span>
                     </td>
-                    <td class="px-4 py-3">{{ $charge->label ?? '—' }}</td>
-                    <td class="px-4 py-3">{{ $charge->billing_month ?? '—' }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge->units_consumed ?? 0), 2) }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge->rate_per_unit ?? 0), 2) }}</td>
-                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge->fixed_charge ?? 0), 2) }}</td>
-                    <td class="px-4 py-3 tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($charge->amount ?? 0)) }}</td>
+                    <td class="px-4 py-3">{{ $charge['label'] ?? '—' }}</td>
+                    <td class="px-4 py-3">{{ $charge['billing_month'] ?? '—' }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge['units_consumed'] ?? 0), 2) }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge['rate_per_unit'] ?? 0), 2) }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($charge['fixed_charge'] ?? 0), 2) }}</td>
+                    <td class="px-4 py-3 tabular-nums font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($charge['amount'] ?? 0)) }}</td>
                     <td class="px-4 py-3">
-                        @if (($charge->is_invoiced ?? false))
+                        @if (($charge['is_invoiced'] ?? false))
                             <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Yes</span>
                         @else
                             <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">No</span>

@@ -1397,6 +1397,7 @@ class PmTenantDirectoryController extends Controller
         $utilityReadings = $this->tenantUtilityReadings($tenant, $unitIds);
 
         $standingExtras = $this->tenantStandingExtras($tenant);
+        $utilityCharges = $this->tenantUtilityCharges($tenant, $unitIds);
         $depositSnapshot = $this->tenantDepositSnapshot($tenant);
         $activityFeed = $this->tenantActivityFeed($tenant, $lastPayment, $lastPaymentAmount, $recentInvoices, $recentNotices);
         $alerts = $this->tenantHubAlerts($tenant, $billing['total_due'] ?? [], $profileStatus);
@@ -1439,6 +1440,7 @@ class PmTenantDirectoryController extends Controller
             'recentNotices' => $recentNotices,
             'utilityReadings' => $utilityReadings,
             'standingExtras' => $standingExtras,
+            'utilityCharges' => $utilityCharges,
             'depositSnapshot' => $depositSnapshot,
             'depositRefunds' => $this->tenantDepositRefunds($tenant),
             'activityFeed' => $activityFeed,
@@ -2450,6 +2452,36 @@ class PmTenantDirectoryController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * @return list<array{charge_type: string, label: string, billing_month: string, units_consumed: float, rate_per_unit: float, fixed_charge: float, amount: float, is_invoiced: bool}>
+     */
+    private function tenantUtilityCharges(PmTenant $tenant, array $unitIds): array
+    {
+        if (! Schema::hasTable('pm_unit_utility_charges') || $unitIds === []) {
+            return [];
+        }
+
+        return PmUnitUtilityCharge::query()
+            ->with(['unit' => fn ($q) => $q->withoutGlobalScopes()->with(['property' => fn ($pq) => $pq->withoutGlobalScopes()])])
+            ->whereIn('property_unit_id', $unitIds)
+            ->whereIn('charge_type', ['service', 'garbage', 'electricity'])
+            ->orderByDesc('billing_month')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(fn ($charge) => [
+                'charge_type' => (string) ($charge->charge_type ?? 'other'),
+                'label' => (string) ($charge->label ?? '—'),
+                'billing_month' => (string) ($charge->billing_month ?? '—'),
+                'units_consumed' => (float) ($charge->units_consumed ?? 0),
+                'rate_per_unit' => (float) ($charge->rate_per_unit ?? 0),
+                'fixed_charge' => (float) ($charge->fixed_charge ?? 0),
+                'amount' => (float) ($charge->amount ?? 0),
+                'is_invoiced' => (bool) ($charge->is_invoiced ?? false),
+            ])
+            ->all();
     }
 
     /**
