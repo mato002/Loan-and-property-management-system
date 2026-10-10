@@ -55,10 +55,16 @@
                                 @if ($c->is_invoiced && $c->pm_invoice_id)
                                     <div class="flex flex-col gap-1">
                                         <a href="{{ route('property.revenue.invoices.show', $c->pm_invoice_id, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">{{ $c->invoice?->invoice_no ?? 'Invoice' }}</a>
-                                        <form method="post" action="{{ route('property.revenue.invoices.cancel', $c->pm_invoice_id) }}" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt.">
-                                            @csrf
-                                            <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Reverse</button>
-                                        </form>
+                                        <div class="flex gap-2">
+                                            <form method="post" action="{{ route('property.revenue.invoices.cancel', $c->pm_invoice_id) }}" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt.">
+                                                @csrf
+                                                <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Cancel</button>
+                                            </form>
+                                            <form method="post" action="{{ route('property.revenue.invoices.credit_note', $c->pm_invoice_id) }}" data-swal-confirm="Create credit note for this invoice?">
+                                                @csrf
+                                                <button type="submit" class="text-xs font-semibold text-amber-600 hover:underline">Credit Note</button>
+                                            </form>
+                                        </div>
                                     </div>
                                 @else
                                     <span class="text-xs text-slate-500">Not invoiced</span>
