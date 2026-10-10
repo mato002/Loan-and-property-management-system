@@ -7,6 +7,8 @@
     $destroyAction = route('property.revenue.invoices.destroy', $invoice, false);
     $pdfAction = route('property.revenue.invoices.pdf', $invoice, false);
     $statusAction = route('property.revenue.invoices.status', $invoice, false);
+    $cancelAction = route('property.revenue.invoices.cancel', $invoice, false);
+    $creditNoteAction = route('property.revenue.invoices.credit_note', $invoice, false);
 @endphp
 
 <x-property.action-menu>
@@ -15,6 +17,18 @@
     <a href="{{ $pdfAction }}" target="_blank" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Download PDF</a>
     @if ($balance > 0)
         <a href="{{ $showAction }}#record-payment" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-700/50">Record payment</a>
+    @endif
+    @if ((string) $invoice->status !== PmInvoice::STATUS_CANCELLED)
+        <form method="post" action="{{ $cancelAction }}" data-turbo-frame="property-main" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt." class="block px-3 py-2 border-t border-slate-100 dark:border-slate-700">
+            @csrf
+            <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-700/50">Cancel invoice</button>
+        </form>
+    @endif
+    @if ((float) $invoice->amount_paid > 0)
+        <form method="post" action="{{ $creditNoteAction }}" data-turbo-frame="property-main" data-swal-confirm="Create credit note for this invoice?" class="block px-3 py-2 border-t border-slate-100 dark:border-slate-700">
+            @csrf
+            <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-slate-700/50">Credit note</button>
+        </form>
     @endif
     <form method="post" action="{{ $statusAction }}" data-turbo-frame="property-main" class="block px-3 py-2 border-t border-slate-100 dark:border-slate-700">
         @csrf
