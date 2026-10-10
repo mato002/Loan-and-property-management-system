@@ -375,7 +375,7 @@
             <div
                 id="property-shell-sidebar"
                 data-turbo-permanent
-                class="property-print-hide h-full w-0 min-w-0 max-w-0 overflow-hidden lg:flex-shrink-0 lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] transition-all duration-300"
+                class="property-print-hide h-full w-0 min-w-0 max-w-0 overflow-hidden lg:flex-shrink-0 lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}]"
                 :class="sidebarDesktopOpen ? 'lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] lg:opacity-100' : 'lg:w-[{{ $propertySidebarCollapsed }}] lg:max-w-[{{ $propertySidebarCollapsed }}] lg:min-w-[{{ $propertySidebarCollapsed }}] lg:opacity-100'"
                 :style="window.matchMedia('(min-width: 1024px)').matches
                     ? (sidebarDesktopOpen
