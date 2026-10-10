@@ -17,9 +17,11 @@
                         <th class="px-3 py-2 w-10"></th>
                         <th class="px-3 py-2">Label</th>
                         <th class="px-3 py-2">Unit</th>
+                        <th class="px-3 py-2">Tenant</th>
                         <th class="px-3 py-2">How billed</th>
                         <th class="px-3 py-2">Month</th>
                         <th class="px-3 py-2">Amount</th>
+                        <th class="px-3 py-2">Invoice</th>
                         <th class="px-3 py-2">Notes</th>
                         <th class="px-3 py-2"></th>
                     </tr>
@@ -31,7 +33,8 @@
                                 <input type="checkbox" name="charge_ids[]" value="{{ $c->id }}" class="charge-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                             </td>
                             <td class="px-3 py-2 font-medium">{{ $c->label }}</td>
-                            <td class="px-3 py-2">{{ $c->unit?->property?->name ?? '—' }} / {{ $c->unit?->label ?? '—' }}</td>
+                            <td class="px-3 py-2 max-w-[150px] break-words">{{ $c->unit?->property?->name ?? '—' }} / {{ $c->unit?->label ?? '—' }}</td>
+                            <td class="px-3 py-2">{{ $c->unit?->leases?->first()?->pmTenant?->name ?? '—' }}</td>
                             <td class="px-3 py-2 text-xs text-slate-600">{{ $c->billingExplanation() }}</td>
                             <td class="px-3 py-2 text-slate-700 whitespace-nowrap">
                                 @php
@@ -48,16 +51,33 @@
                                 {{ $chargeMonthLabel }}
                             </td>
                             <td class="px-3 py-2 tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) $c->amount) }}</td>
+                            <td class="px-3 py-2">
+                                @if ($c->is_invoiced && $c->pm_invoice_id)
+                                    <div class="flex flex-col gap-1">
+                                        <a href="{{ route('revenue.invoices.show', $c->pm_invoice_id, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">{{ $c->invoice?->invoice_no ?? 'Invoice' }}</a>
+                                        <form method="post" action="{{ route('revenue.invoices.cancel', $c->pm_invoice_id) }}" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt.">
+                                            @csrf
+                                            <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Reverse</button>
+                                        </form>
+                                    </div>
+                                @else
+                                    <span class="text-xs text-slate-500">Not invoiced</span>
+                                @endif
+                            </td>
                             <td class="px-3 py-2 text-slate-600 max-w-xs truncate">{{ $c->notes ?? '—' }}</td>
                             <td class="px-3 py-2">
-                                <form method="post" action="{{ route('property.revenue.utilities.destroy', $c) }}" data-swal-confirm="Delete this charge line?">
-                                    @csrf @method('DELETE')
-                                    <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Remove</button>
-                                </form>
+                                @if (! $c->is_invoiced)
+                                    <form method="post" action="{{ route('property.revenue.utilities.destroy', $c) }}" data-swal-confirm="Delete this charge line?">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Remove</button>
+                                    </form>
+                                @else
+                                    <span class="text-xs text-slate-400">Locked</span>
+                                @endif
                             </td>
                         </tr>
                 @empty
-                    <tr><td colspan="8" class="px-4 py-10 text-center text-slate-500">No posted charge lines yet. Standing extras are on the Standing charges tab.</td></tr>
+                    <tr><td colspan="10" class="px-4 py-10 text-center text-slate-500">No posted charge lines yet. Standing extras are on the Standing charges tab.</td></tr>
                 @endforelse
             </tbody>
         </table>

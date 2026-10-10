@@ -50,6 +50,11 @@ class PmUnitUtilityCharge extends Model
         return $this->belongsTo(PropertyUnit::class, 'property_unit_id');
     }
 
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(PmInvoice::class, 'pm_invoice_id');
+    }
+
     /**
      * Plain-language billing breakdown for the posted-charges table.
      */

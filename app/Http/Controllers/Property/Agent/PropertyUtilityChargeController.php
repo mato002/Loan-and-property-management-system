@@ -64,8 +64,10 @@ class PropertyUtilityChargeController extends Controller
             ->with(['unit' => function ($q): void {
                 $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
                     $pq->withoutGlobalScopes();
+                }])->with(['leases' => function ($lq): void {
+                    $lq->where('status', 'active')->with(['pmTenant:id,name']);
                 }]);
-            }])
+            }])->with(['invoice:id,invoice_no'])
             ->whereNotNull('id');
         $query = app(PropertyFilterCascadeCatalog::class)->applyToUtilityChargeQuery($query, $filters);
         if ($filters['q'] !== '') {
@@ -991,6 +993,10 @@ class PropertyUtilityChargeController extends Controller
 
     public function destroy(PmUnitUtilityCharge $charge): RedirectResponse
     {
+        if ($charge->is_invoiced && $charge->pm_invoice_id) {
+            return back()->withErrors(['charge' => 'This charge has already been invoiced. Please reverse the invoice instead to remove the charge.']);
+        }
+
         $charge->delete();
 
         return back()->with('success', __('Charge removed.'));
@@ -1004,6 +1010,13 @@ class PropertyUtilityChargeController extends Controller
         ]);
 
         $ids = collect($data['charge_ids'])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        
+        $charges = PmUnitUtilityCharge::query()->whereIn('id', $ids)->get();
+        $invoicedCount = $charges->filter(fn ($c) => $c->is_invoiced && $c->pm_invoice_id)->count();
+        
+        if ($invoicedCount > 0) {
+            return back()->withErrors(['charges' => $invoicedCount.' charge line(s) are already invoiced. Please reverse the invoices instead to remove these charges.']);
+        }
         
         $deleted = PmUnitUtilityCharge::query()
             ->whereIn('id', $ids)
