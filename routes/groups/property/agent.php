@@ -572,6 +572,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'rentTemplates'])->name('communications.rent_templates');
     Route::post('/communications/rent-templates', [PropertyCommunicationsWebController::class, 'saveRentTemplateMessages'])->middleware('property.permission:communications.manage')->name('communications.rent_templates.store');
     Route::post('/communications/rent-templates/preview', [PropertyCommunicationsWebController::class, 'previewRentTemplatesJson'])->name('communications.rent_templates.preview');
+    Route::patch('/communications/rent-templates/toggle-stage', [PropertyCommunicationsWebController::class, 'toggleRentTemplateStage'])->middleware('property.permission:communications.manage')->name('communications.rent_templates.toggle_stage');
     Route::get('/communications/conversations', [PropertyCommunicationsWebController::class, 'conversationsPage'])->middleware('property.permission:communications.manage')->name('communications.conversations');
     Route::get('/communications/conversations-data', [PropertyCommunicationsWebController::class, 'conversations'])->middleware('property.permission:communications.manage')->name('communications.conversations.data');
     Route::get('/communications/conversations/{conversation}', [PropertyCommunicationsWebController::class, 'showConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.show');

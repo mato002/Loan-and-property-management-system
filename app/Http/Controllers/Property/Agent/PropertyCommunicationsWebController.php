@@ -1164,9 +1164,11 @@ class PropertyCommunicationsWebController extends Controller
         $stageKeys = $stageService->editableStageKeys();
         $stageMessages = $stageService->editableStageMessagesForForm();
         $stageLabels = [];
+        $enabledStages = [];
         foreach ($stageKeys as $key) {
             $def = $stageService->stageDefinition($key);
             $stageLabels[$key] = (string) ($def['display_label'] ?? $key);
+            $enabledStages[$key] = $stageService->isStageEnabled($key);
         }
 
         $defaultStage = 'D+7';
@@ -1182,6 +1184,7 @@ class PropertyCommunicationsWebController extends Controller
             'stageKeys' => $stageKeys,
             'stageMessages' => $stageMessages,
             'stageLabels' => $stageLabels,
+            'enabledStages' => $enabledStages,
             'preview' => $preview,
             'costPerSms' => $bulk->costPerSms(),
             'currency' => $bulk->currency(),
@@ -1201,6 +1204,21 @@ class PropertyCommunicationsWebController extends Controller
         $stageService->saveEditableStageMessages((array) ($data['messages'] ?? []));
 
         return back()->with('success', __('Rent reminder wording saved.'));
+    }
+
+    public function toggleRentTemplateStage(Request $request): RedirectResponse
+    {
+        $stageKey = (string) $request->input('stage');
+        $stageService = app(TenantCommunicationStageService::class);
+        
+        if (! in_array($stageKey, $stageService->editableStageKeys(), true)) {
+            return back()->withErrors(['stage' => 'Invalid stage key.']);
+        }
+
+        $currentStatus = $stageService->isStageEnabled($stageKey);
+        $stageService->setStageEnabled($stageKey, ! $currentStatus);
+
+        return back()->with('success', ! $currentStatus ? __('Stage enabled.') : __('Stage disabled.'));
     }
 
     public function previewRentTemplatesJson(Request $request): JsonResponse

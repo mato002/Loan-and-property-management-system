@@ -177,6 +177,20 @@ class TenantCommunicationStageService
         return ['D-3', 'D-1', 'D+0', 'D+1', 'D+3', 'D+7', 'D+14', 'D+30'];
     }
 
+    public function isStageEnabled(string $stageKey): bool
+    {
+        $settingKey = 'rent_reminder_stage_enabled_'.$stageKey;
+        $value = PropertyPortalSetting::getValue($settingKey, 'true');
+        
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    public function setStageEnabled(string $stageKey, bool $enabled): void
+    {
+        $settingKey = 'rent_reminder_stage_enabled_'.$stageKey;
+        PropertyPortalSetting::setValue($settingKey, $enabled ? 'true' : 'false');
+    }
+
     /**
      * @param  array<string, mixed>  $context
      */

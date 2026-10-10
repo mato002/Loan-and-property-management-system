@@ -88,6 +88,22 @@
                             @endforeach
                         </div>
 
+                        <div class="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-gray-900/40 p-3">
+                            <span class="text-xs font-medium text-slate-600 dark:text-slate-400">Enable stages:</span>
+                            @foreach ($stageKeys as $key)
+                                <div class="flex items-center gap-1">
+                                    <form method="post" action="{{ route('property.communications.rent_templates.toggle_stage', ['stage' => $key]) }}" class="inline">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {{ ($enabledStages[$key] ?? true) ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600' }}">
+                                            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {{ ($enabledStages[$key] ?? true) ? 'translate-x-4' : 'translate-x-0.5' }}"></span>
+                                        </button>
+                                    </form>
+                                    <span class="text-[10px] text-slate-600 dark:text-slate-400">{{ $key }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+
                         @foreach ($stageKeys as $key)
                             <div x-show="stageKey === @js($key)" x-cloak>
                                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">

@@ -62,6 +62,7 @@ class SendRentReminders extends Command
             RentReminderEligibilityService::REASON_TENANT_SMS_TODAY => 0,
             RentReminderEligibilityService::REASON_CREDIT_COVERS => 0,
             RentReminderEligibilityService::REASON_SETTLED => 0,
+            'stage_disabled' => 0,
         ];
         $scanned = $invoices->count();
         $tenantsSmsSentToday = [];
@@ -84,9 +85,14 @@ class SendRentReminders extends Command
                 continue;
             }
 
+            $internalStage = (string) $stage['internal_stage'];
+            if (! $stageService->isStageEnabled($internalStage)) {
+                $skipped['stage_disabled']++;
+                continue;
+            }
+
             $tenant = $inv->tenant;
             $tenantId = (int) ($inv->pm_tenant_id ?? 0);
-            $internalStage = (string) $stage['internal_stage'];
             $invoiceNo = (string) $inv->invoice_no;
 
             $messageContext = $eligibility->buildRentReminderContext($inv, $stage, $agentContacts);
