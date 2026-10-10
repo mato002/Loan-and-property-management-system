@@ -43,6 +43,7 @@ class PropertyUtilityChargeController extends Controller
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'charge_type' => strtolower(trim((string) $request->query('charge_type', ''))),
             'month' => trim((string) $request->query('month', '')),
+            'is_invoiced' => $request->query('is_invoiced', ''),
             'sort' => strtolower(trim((string) $request->query('sort', 'id'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
             'wr_q' => trim((string) $request->query('wr_q', '')),
@@ -83,7 +84,10 @@ class PropertyUtilityChargeController extends Controller
         if ($filters['month'] !== '' && preg_match('/^\d{4}\-\d{2}$/', $filters['month']) === 1) {
             $query->where('billing_month', $filters['month']);
         }
-        $sortMap = ['id' => 'id', 'amount' => 'amount', 'created_at' => 'created_at', 'label' => 'label', 'billing_month' => 'billing_month'];
+        if ($filters['is_invoiced'] !== '') {
+            $query->where('is_invoiced', $filters['is_invoiced'] === '1');
+        }
+        $sortMap = ['id' => 'id', 'amount' => 'amount', 'created_at' => 'created_at', 'label' => 'label', 'billing_month' => 'billing_month', 'charge_type' => 'charge_type'];
         $sortBy = $sortMap[$filters['sort']] ?? 'id';
         $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
         $query->orderBy($sortBy, $dir)->orderByDesc('id');

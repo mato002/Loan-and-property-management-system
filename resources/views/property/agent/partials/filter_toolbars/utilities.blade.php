@@ -44,8 +44,6 @@
 </style>
 
 <x-property.filter-toolbar
-    single-row
-    data-filter-compact
     :action="$utilitiesUrl"
     :reset-url="$utilitiesUrl"
     :drawer-label="$drawerLabel"
@@ -58,10 +56,13 @@
         'unit_id' => 'Unit',
         'charge_type' => 'Type',
         'month' => 'Billing month',
+        'is_invoiced' => 'Invoiced',
+        'sort' => 'Sort',
+        'dir' => 'Order',
     ]"
 >
     <x-slot name="primary">
-        <x-property.filter-field type="search" name="q" placeholder="Search tenant, unit…" :value="$filters['q'] ?? ''" />
+        <x-property.filter-field type="search" name="q" placeholder="Search tenant, unit, label…" :value="$filters['q'] ?? ''" wide />
         <input type="hidden" name="ops_tab" x-bind:value="typeof activeTab === 'string' ? activeTab : @js($filters['ops_tab'] ?? '')" value="{{ $filters['ops_tab'] ?? '' }}" />
         @include('property.agent.partials.filter_toolbars.partials.property_unit_fields', [
             'filters' => $filters,
@@ -83,6 +84,16 @@
         />
         <x-property.filter-field type="month" name="month" label="Billing month" :value="$filters['month'] ?? ''" />
         <x-property.filter-field type="select"
+            name="is_invoiced"
+            label="Invoiced"
+            empty-option="Invoiced: All"
+            :options="[
+                ['value' => '1', 'label' => 'Yes'],
+                ['value' => '0', 'label' => 'No'],
+            ]"
+            :value="$filters['is_invoiced'] ?? ''"
+        />
+        <x-property.filter-field type="select"
             name="sort"
             label="Sort"
             :options="[
@@ -91,6 +102,7 @@
                 ['value' => 'amount', 'label' => 'Amount'],
                 ['value' => 'label', 'label' => 'Label'],
                 ['value' => 'billing_month', 'label' => 'Billing month'],
+                ['value' => 'charge_type', 'label' => 'Charge type'],
             ]"
             :value="$filters['sort'] ?? 'id'"
         />
@@ -113,6 +125,7 @@
             'csvUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'csv']), false),
             'xlsUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'xls']), false),
             'pdfUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'pdf']), false),
+            'wordUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'word']), false),
         ])
     </x-slot>
 </x-property.filter-toolbar>
