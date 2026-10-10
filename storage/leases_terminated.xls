@@ -1,0 +1,993 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">
+	<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+		<Author/>
+		<Title/>
+		<Description/>
+		<Subject/>
+	</DocumentProperties>
+	<Styles>
+		<Style ss:ID="HyperlinkId" ss:Name="Hyperlink">
+			<Font ss:Color="#0000ff"/>
+		</Style>
+		<Style ss:ID="1">
+			<NumberFormat ss:Format="yyyy-M-d HH:mm:ss AM/PM"/>
+		</Style>
+		<Style ss:ID="31">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.0" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="27">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="23">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="24">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="25">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="26">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="28">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="30">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+			<NumberFormat ss:Format="#,##0.00"/>
+		</Style>
+		<Style ss:ID="29">
+			<Alignment ss:Horizontal="Right" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Bold="1" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+			<NumberFormat ss:Format="###,##0"/>
+		</Style>
+		<Style ss:ID="21">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+		</Style>
+		<Style ss:ID="20">
+			<Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom"/>
+				<Border ss:Position="Top"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="10.5" ss:Bold="1" ss:Underline="Single" ss:Color="#000000"/>
+		</Style>
+		<Style ss:ID="22">
+			<Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>
+			<Borders>
+				<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+				<Border ss:Position="Left"/>
+				<Border ss:Position="Right"/>
+				<Border ss:Position="DiagonalLeft"/>
+			</Borders>
+			<Font ss:FontName="sans-serif" ss:Size="8.25" ss:Color="#000000"/>
+			<Interior ss:Color="#add8e6" ss:Pattern="Solid"/>
+		</Style>
+	</Styles>
+	<Names>
+		<NamedRange ss:Name="__bookmark_1" ss:RefersTo="Report!R3C1:R25C11"/>
+	</Names>
+
+<Worksheet ss:Name="Report">
+	<ss:Table>
+		<ss:Column ss:Width="126.336" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="158.08" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="55.296" ss:AutoFitWidth="0"/>
+		<ss:Column ss:Width="79.104" ss:AutoFitWidth="0"/>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="20" ss:MergeAcross="10">
+				<Data ss:Type="String">PASSION SHELTAZ INVESTMENTS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="20" ss:MergeAcross="10">
+				<Data ss:Type="String">TERMINATED TENANT &amp; LEASES DETAILS</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="22">
+				<Data ss:Type="String">Property</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="22">
+				<Data ss:Type="String">Unit No</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="22">
+				<Data ss:Type="String">A/c No</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="22">
+				<Data ss:Type="String">Name</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="22">
+				<Data ss:Type="String">A/c Bal</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="22">
+				<Data ss:Type="String">Phone</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="22">
+				<Data ss:Type="String">Email</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="22">
+				<Data ss:Type="String">Rent</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="22">
+				<Data ss:Type="String">Lease From</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="22">
+				<Data ss:Type="String">Lease To</Data>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="22">
+				<Data ss:Type="String">Period</Data>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[D00023A] DR. MURAGE (LUGAS APARTMENTS)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 3</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001262</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">DEOUS MWANGI KIMEMIA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">3665.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0794345705</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">15/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[D00023A] DR. MURAGE (LUGAS APARTMENTS)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 8</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001261</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">PERITA ELLABONGA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0141206252</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">PERITAELABONGA@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">15/05/2026</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[D00045A] LEMAYAN APPARTMENT B</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 4</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001113</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">JEPHRICE AMBASA ODUORY</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0728924642</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">JEPHAMBASA@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">12000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00001A] MUIGAI BARNABAS</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 7</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000923</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">JUDDY WANGARI NGUGI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0714373176</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/05/2024</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00001A] MUIGAI BARNABAS</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 11</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000025</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">KEVIN KIMANI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">5100.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0797607512</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">5100.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2022</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00004A] MR. JOHN ITIBI KAHUGU ( ETB APARTMENT)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE B1</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000092</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">BRIAN NAMATSA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">21686.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0718814264</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">3500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2022</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00004A] MR. JOHN ITIBI KAHUGU ( ETB APARTMENT)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE B3</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001148</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">ESHITIKA CLINTON CHENGO</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0705779948</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">7500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/10/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00004A] MR. JOHN ITIBI KAHUGU ( ETB APARTMENT)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE B7</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001147</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">OTIENO WILBERFORCE ONYANGO</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">7700.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0114825238</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">7500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/10/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00004A] MR. JOHN ITIBI KAHUGU ( ETB APARTMENT)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE B13</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001005</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">HARRIET CHERONO</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0757006913</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">HARRIERONOH@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/12/2024</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00013A] MR. PAUL KAHURIA  NJENGA (WORKERS)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 1</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000150</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">EDWIN ROKTOK</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0713153978</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">4500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2022</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00013A] MR. PAUL KAHURIA  NJENGA (WORKERS)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 2</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000151</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">NAFTALI MAINA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">7870.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0704640523</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">6000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2022</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00014A] MRS. MARY MARGARET CHEGE (TEACHERS)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 3</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001305</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">MOUREEN ISIYO CHETI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">24400.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0790890869</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">MOUREENCHETI@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">9000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">15/08/2026</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00015A] MRS. SILVIA KARIUKI - TEACHER OFF MUHORO RD</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 1</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001268</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">EDWARD WANGILA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0740439839</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">EDWARDWANGILA19@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">4500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2026</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00024A] MR &amp; MRS. JOYCE &amp; THOMAS GITHUA - BARNABAS</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 8</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001067</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">FRANCIS KARANJA KIINGATI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">36410.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0701946381</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">FRANCKARANJA10@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">10000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/04/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00024B] MR &amp; MRS. JOYCE &amp; THOMAS GITHUA - KIRATINA</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE C4</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000723</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">NEWTON KAMAU</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">606.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0710746756</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">7000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2023</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00025A] MRS. FRACIAH NYAMBURA GITHUA -FRACIAH MZEE WANYAMA</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 7</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001075</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">KELVIN MUNENE MURIITHI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">-100.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0715215722</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">KMUNENE56@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">5000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/05/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00027A] MR &amp; MRS. JOHN CHEGE WANYOIKE - MY REDEEMER LIVES NAKA</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE C4</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000380</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">JANE WANJIRU WAMBUI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">0.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0723953999</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">20000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/06/2022</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00033A] MR &amp; MRS. DAVID C. NJOGA - MWISHO WA LAMI</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">HSE 6</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001237</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">ONDIEKI ZACHARY ACHACHI</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">2000.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0791431474</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">1000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/04/2026</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00034A] MR &amp; MRS. PATRICK MWANGI(GOROFA)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">1</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT000682</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">CLINTON OYUNGE</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">8250.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0745441366</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">4000.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/04/2023</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00034A] MR &amp; MRS. PATRICK MWANGI(GOROFA)</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">7</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001018</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">BEATRICE WAIRIMU KINYUA</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">20120.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0719662037</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">3500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/01/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="25">
+				<Data ss:Type="String">[M00034B] WINTA END APARTMENT</Data>
+			</Cell>
+			<Cell ss:Index="2" ss:StyleID="25">
+				<Data ss:Type="String">B7</Data>
+			</Cell>
+			<Cell ss:Index="3" ss:StyleID="25">
+				<Data ss:Type="String">TNT001115</Data>
+			</Cell>
+			<Cell ss:Index="4" ss:StyleID="25">
+				<Data ss:Type="String">SAMUEL MUIRU</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="26">
+				<Data ss:Type="Number">28088.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="25">
+				<Data ss:Type="String">0757913325</Data>
+			</Cell>
+			<Cell ss:Index="7" ss:StyleID="25">
+				<Data ss:Type="String">MUIRUSAMUEL030@GMAIL.COM</Data>
+			</Cell>
+			<Cell ss:Index="8" ss:StyleID="26">
+				<Data ss:Type="Number">5500.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="25">
+				<Data ss:Type="String">01/08/2025</Data>
+			</Cell>
+			<Cell ss:Index="10" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+			<Cell ss:Index="11" ss:StyleID="25">
+				<Data ss:Type="String"/>
+			</Cell>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="27"/>
+			<Cell ss:Index="2" ss:StyleID="27"/>
+			<Cell ss:Index="3" ss:StyleID="27"/>
+			<Cell ss:Index="4" ss:StyleID="28">
+				<Data ss:Type="Number">21</Data>
+			</Cell>
+			<Cell ss:Index="5" ss:StyleID="29">
+				<Data ss:Type="Number">165795.0</Data>
+			</Cell>
+			<Cell ss:Index="6" ss:StyleID="27"/>
+			<Cell ss:Index="7" ss:StyleID="27"/>
+			<Cell ss:Index="8" ss:StyleID="30">
+				<Data ss:Type="Number">141600.0</Data>
+			</Cell>
+			<Cell ss:Index="9" ss:StyleID="27"/>
+			<Cell ss:Index="10" ss:StyleID="27"/>
+			<Cell ss:Index="11" ss:StyleID="27"/>
+		</Row>
+		<Row ss:AutoFitHeight="1">
+			<Cell ss:Index="1" ss:StyleID="31" ss:MergeAcross="10">
+				<Data ss:Type="String">Oct 10, 2026, 10:13 AM</Data>
+			</Cell>
+		</Row>
+	</ss:Table>
+	<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+		<PageSetup>
+			<PageMargins x:Bottom="0.25" x:Left="0.25" x:Right="0.25" x:Top="0.25"/>
+			<Layout x:Orientation="Landscape"/>
+		</PageSetup>
+		<Print>
+			<PaperSizeIndex>9</PaperSizeIndex>
+		</Print>
+	</WorksheetOptions>
+</Worksheet>
+</Workbook>
