@@ -54,8 +54,8 @@
                             <td class="px-3 py-2">
                                 @if ($c->is_invoiced && $c->pm_invoice_id)
                                     <div class="flex flex-col gap-1">
-                                        <a href="{{ route('revenue.invoices.show', $c->pm_invoice_id, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">{{ $c->invoice?->invoice_no ?? 'Invoice' }}</a>
-                                        <form method="post" action="{{ route('revenue.invoices.cancel', $c->pm_invoice_id) }}" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt.">
+                                        <a href="{{ route('property.revenue.invoices.show', $c->pm_invoice_id, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">{{ $c->invoice?->invoice_no ?? 'Invoice' }}</a>
+                                        <form method="post" action="{{ route('property.revenue.invoices.cancel', $c->pm_invoice_id) }}" data-swal-confirm="Cancel this invoice? This will reverse the charge and remove the debt.">
                                             @csrf
                                             <button type="submit" class="text-xs font-semibold text-rose-600 hover:underline">Reverse</button>
                                         </form>
