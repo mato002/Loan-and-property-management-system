@@ -263,8 +263,11 @@
             const computeDefinitionAmount = (definition) => {
                 const monthlyRent = Number(monthlyRentInput?.value || 0);
                 const val = Number(definition?.amount_value || 0);
+                console.log('computeDefinitionAmount: monthlyRent', monthlyRent, 'val', val, 'mode', definition?.amount_mode);
                 if (!Number.isFinite(val) || val <= 0) return 0;
-                return String(definition?.amount_mode || '') === 'percent_rent' ? (monthlyRent * val) / 100 : val;
+                const result = String(definition?.amount_mode || '') === 'percent_rent' ? (monthlyRent * val) / 100 : val;
+                console.log('computeDefinitionAmount: result', result);
+                return result;
             };
             const additionalLabelOptionsHtml = (definitions, selected = '') => {
                 const optionalDefs = definitions.filter((d) => String(d.deposit_key || '') !== 'rent_deposit');
