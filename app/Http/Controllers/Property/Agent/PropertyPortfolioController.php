@@ -1173,11 +1173,7 @@ class PropertyPortfolioController extends Controller
             $success = 'Deposit rules saved.';
         }
 
-        return $this->redirectOrPropertyFormModalSuccess(
-            $request,
-            back()->with('success', $success),
-            $success,
-        );
+        return back()->with('success', $success);
     }
 
     public function destroyProperty(Property $property): RedirectResponse
@@ -4227,10 +4223,14 @@ class PropertyPortfolioController extends Controller
             return;
         }
 
+        \Log::info('setPropertyDepositDefinitions before delete', ['property_id' => $propertyId, 'definitions_count' => count($definitions)]);
         DepositDefinition::query()->where('property_id', $propertyId)->delete();
+        \Log::info('setPropertyDepositDefinitions after delete', ['property_id' => $propertyId]);
         foreach ($definitions as $row) {
             DepositDefinition::query()->create($row);
+            \Log::info('Created deposit definition', ['row' => $row]);
         }
+        \Log::info('setPropertyDepositDefinitions completed', ['property_id' => $propertyId, 'created_count' => count($definitions)]);
     }
 
     /**
