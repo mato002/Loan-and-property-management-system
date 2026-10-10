@@ -250,7 +250,7 @@
         <x-slot:footer>
             <div class="flex justify-end gap-2">
                 <button type="button" @click="resetDraft()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button type="button" @click="addOrUpdate()" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700" x-text="editingIndex === null ? 'Add deposit rule' : 'Update deposit rule'"></button>
+                <button type="button" @click="addOrUpdate(); $el.closest('form').requestSubmit();" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700" x-text="editingIndex === null ? 'Save deposit rule' : 'Update deposit rule'"></button>
             </div>
         </x-slot:footer>
     </x-property.modal>
