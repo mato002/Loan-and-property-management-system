@@ -2466,6 +2466,7 @@ class PmTenantDirectoryController extends Controller
         return PmUnitUtilityCharge::query()
             ->with(['unit' => fn ($q) => $q->withoutGlobalScopes()->with(['property' => fn ($pq) => $pq->withoutGlobalScopes()])])
             ->whereIn('property_unit_id', $unitIds)
+            ->whereIn('charge_type', ['service', 'garbage', 'electricity', 'other', 'SERVICE_CHARGE', 'GARBAGE_CHARGE', 'Service Charge', 'Garbage Charge'])
             ->orderByDesc('billing_month')
             ->orderByDesc('id')
             ->limit(500)
