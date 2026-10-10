@@ -802,7 +802,9 @@ class PropertyCommunicationsWebController extends Controller
         $recipients = [];
 
         if ($type === 'tenants') {
-            $q = PmTenant::query();
+            $q = PmTenant::query()->whereHas('leases', function (Builder $b) {
+                $b->where('status', 'active');
+            });
             // Optional narrow by property via active leases tied to units of a property
             if ($propertyId) {
                 $q->whereHas('leases.units', function (Builder $b) use ($propertyId) {
