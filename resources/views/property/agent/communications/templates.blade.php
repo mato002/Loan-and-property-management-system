@@ -64,17 +64,26 @@
     </x-slot>
 
     <div class="space-y-2">
-        <p class="text-xs font-medium text-slate-600 dark:text-slate-400">Delete</p>
+        <p class="text-xs font-medium text-slate-600 dark:text-slate-400">Manage templates</p>
         <ul class="flex flex-wrap gap-2">
             @foreach ($messageTemplates as $t)
-                <li>
+                <li class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2">
+                    <form method="post" action="{{ route('property.communications.templates.toggle', $t) }}" class="inline">
+                        @csrf
+                        @method('PATCH')
+                        <button type="submit" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ $t->is_active ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600' }}">
+                            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {{ $t->is_active ? 'translate-x-5' : 'translate-x-0.5' }}"></span>
+                        </button>
+                    </form>
+                    <span class="text-xs {{ $t->is_active ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500' }}">{{ $t->name }}</span>
                     <form method="post" action="{{ route('property.communications.templates.destroy', $t) }}" data-swal-confirm="Delete template {{ $t->name }}?" class="inline">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $t->name }} ×</button>
+                        <button type="submit" class="text-xs text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-200">×</button>
                     </form>
                 </li>
             @endforeach
         </ul>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">Toggle to enable/disable templates. Disabled templates won't be used for automated reminders.</p>
     </div>
 </x-property.workspace>

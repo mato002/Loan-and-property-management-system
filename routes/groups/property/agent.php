@@ -565,6 +565,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/communications/recipients', [PropertyCommunicationsWebController::class, 'recipients'])->middleware('property.permission:communications.manage')->name('communications.recipients');
     Route::get('/communications/templates', [PropertyCommunicationsWebController::class, 'templates'])->name('communications.templates');
     Route::post('/communications/templates', [PropertyCommunicationsWebController::class, 'storeTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.store');
+    Route::patch('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'toggleTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.toggle');
     Route::delete('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'destroyTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.destroy');
     Route::get('/communications/schedules', [PropertyCommunicationsWebController::class, 'schedules'])->name('communications.schedules');
     Route::post('/communications/schedules', [PropertyCommunicationsWebController::class, 'updateSchedule'])->middleware('property.permission:communications.manage')->name('communications.schedules.update');

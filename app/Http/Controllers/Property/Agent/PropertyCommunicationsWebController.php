@@ -1148,6 +1148,13 @@ class PropertyCommunicationsWebController extends Controller
         return back()->with('success', __('Template deleted.'));
     }
 
+    public function toggleTemplate(PmMessageTemplate $template): RedirectResponse
+    {
+        $template->update(['is_active' => ! $template->is_active]);
+
+        return back()->with('success', $template->is_active ? __('Template enabled.') : __('Template disabled.'));
+    }
+
     public function rentTemplates(Request $request): View
     {
         $stageService = app(TenantCommunicationStageService::class);
