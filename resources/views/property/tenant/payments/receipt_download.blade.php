@@ -160,11 +160,11 @@
                     </div>
                 </div>
                 <div class="amount-card">
-                    <div class="row"><span>Subtotal</span><span>KES {{ number_format((float) $payment->amount, 2) }}</span></div>
-                    <div class="row"><span>Tax</span><span>0.00</span></div>
+                    <div class="row"><span>Subtotal</span><span>KES {{ number_format((float) $payment->amount, 0) }}</span></div>
+                    <div class="row"><span>Tax</span><span>0</span></div>
                     <div class="grand">
                         <span>Grand total</span>
-                        <strong>KES {{ number_format((float) $payment->amount, 2) }}</strong>
+                        <strong>KES {{ number_format((float) $payment->amount, 0) }}</strong>
                     </div>
                 </div>
             </div>

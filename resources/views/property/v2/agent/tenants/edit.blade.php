@@ -127,7 +127,7 @@
                             </div>
                             <div>
                                 <label class="block text-[11px] font-medium text-slate-600">Amount (KES)</label>
-                                <input type="number" min="0.01" step="0.01" :name="`opening_arrears_items[${idx}][amount]`" x-model="item.amount" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" placeholder="0.00" />
+                                <input type="number" min="1" step="1" :name="`opening_arrears_items[${idx}][amount]`" x-model="item.amount" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" placeholder="0" />
                             </div>
                             <div class="flex items-end">
                                 <button type="button" @click="removeArrearsItem(idx)" class="w-full rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100">Remove</button>

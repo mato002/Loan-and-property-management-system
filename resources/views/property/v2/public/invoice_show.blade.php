@@ -79,25 +79,25 @@
                         <tr>
                             <td class="px-3 py-2 text-slate-700">{{ $item->description }}</td>
                             <td class="px-3 py-2 text-right text-slate-600">{{ rtrim(rtrim(number_format((float) $item->quantity, 3), '0'), '.') }}</td>
-                            <td class="px-3 py-2 text-right text-slate-600">{{ number_format((float) $item->unit_price, 2) }}</td>
-                            <td class="px-3 py-2 text-right font-medium text-slate-800">{{ number_format((float) $item->line_total, 2) }}</td>
+                            <td class="px-3 py-2 text-right text-slate-600">{{ number_format((float) $item->unit_price, 0) }}</td>
+                            <td class="px-3 py-2 text-right font-medium text-slate-800">{{ number_format((float) $item->line_total, 0) }}</td>
                         </tr>
                     @empty
                         <tr>
                             <td class="px-3 py-2 text-slate-700">{{ $invoice->description ?: 'Property charge' }}</td>
                             <td class="px-3 py-2 text-right text-slate-600">1</td>
-                            <td class="px-3 py-2 text-right text-slate-600">{{ number_format((float) $invoice->amount, 2) }}</td>
-                            <td class="px-3 py-2 text-right font-medium text-slate-800">{{ number_format((float) $invoice->amount, 2) }}</td>
+                            <td class="px-3 py-2 text-right text-slate-600">{{ number_format((float) $invoice->amount, 0) }}</td>
+                            <td class="px-3 py-2 text-right font-medium text-slate-800">{{ number_format((float) $invoice->amount, 0) }}</td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
 
             <div class="mt-4 ml-auto max-w-xs space-y-1 text-sm">
-                <div class="flex justify-between"><span class="text-slate-600">Total</span><span class="font-semibold tabular-nums">KES {{ number_format($total, 2) }}</span></div>
+                <div class="flex justify-between"><span class="text-slate-600">Total</span><span class="font-semibold tabular-nums">KES {{ number_format($total, 0) }}</span></div>
                 @if ($paid > 0)
-                    <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums">KES {{ number_format($paid, 2) }}</span></div>
-                    <div class="flex justify-between text-red-700 font-bold border-t border-slate-200 pt-1"><span>Balance due</span><span class="tabular-nums">KES {{ number_format($balance, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-600">Paid</span><span class="tabular-nums">KES {{ number_format($paid, 0) }}</span></div>
+                    <div class="flex justify-between text-red-700 font-bold border-t border-slate-200 pt-1"><span>Balance due</span><span class="tabular-nums">KES {{ number_format($balance, 0) }}</span></div>
                 @endif
             </div>
 

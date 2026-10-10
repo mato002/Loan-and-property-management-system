@@ -69,7 +69,7 @@
                         @if ($focusInvoice)
                             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                                 <p class="font-semibold">Paying invoice {{ $focusInvoice->invoice_no }}</p>
-                                <p class="text-xs">{{ ucfirst((string) $focusInvoice->invoice_type) }} · {{ $focusInvoice->billing_period ?: optional($focusInvoice->issue_date)->format('Y-m') }} · Balance: KES {{ number_format((float) ($focusAmount ?? 0), 2) }}</p>
+                                <p class="text-xs">{{ ucfirst((string) $focusInvoice->invoice_type) }} · {{ $focusInvoice->billing_period ?: optional($focusInvoice->issue_date)->format('Y-m') }} · Balance: KES {{ number_format((float) ($focusAmount ?? 0), 0) }}</p>
                             </div>
                         @endif
                     @endisset
@@ -160,7 +160,7 @@
                                 <input 
                                     type="text" 
                                     name="custom_amount" 
-                                    value="{{ old('custom_amount', isset($focusAmount) && $focusAmount > 0 ? number_format($focusAmount, 2, '.', '') : '') }}" 
+                                    value="{{ old('custom_amount', isset($focusAmount) && $focusAmount > 0 ? number_format($focusAmount, 0, '.', '') : '') }}" 
                                     inputmode="decimal" 
                                     class="w-full rounded-xl border border-gray-200 bg-white text-sm pl-12 pr-4 py-3 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all" 
                                     placeholder="0.00"

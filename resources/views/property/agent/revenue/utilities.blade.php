@@ -375,7 +375,7 @@
                     @csrf
                     <label class="block text-xs text-slate-500">Billing month</label>
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
-                    <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">Create charge lines</button>
+                    <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900" data-swal-confirm="Create charge lines for this billing month?">Create charge lines</button>
                 </form>
                 <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3" data-billing-form="water-invoices">
                     @csrf
@@ -383,7 +383,7 @@
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
                     <label class="block text-xs text-slate-500">Due date</label>
                     <input type="date" name="due_date" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
-                    <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Generate water invoices</button>
+                    <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700" data-swal-confirm="Generate water invoices for this billing month?">Generate water invoices</button>
                 </form>
                 <form method="post" action="{{ route('property.revenue.utilities.invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3" data-billing-form="utility-invoices">
                     @csrf
@@ -391,7 +391,7 @@
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
                     <label class="block text-xs text-slate-500">Due date</label>
                     <input type="date" name="due_date" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
-                    <button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700">Generate other utility invoices</button>
+                    <button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700" data-swal-confirm="Generate other utility invoices for this billing month?">Generate other utility invoices</button>
                 </form>
                 <form method="post" action="{{ route('property.revenue.utilities.water_penalties.apply') }}" class="space-y-2 rounded-xl border border-slate-200 p-3">
                     @csrf
@@ -403,7 +403,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+        {{-- Filters are now per-tab in _workspace.blade.php --}}
     </x-slot>
 
     <x-slot name="above">

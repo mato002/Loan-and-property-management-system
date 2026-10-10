@@ -99,15 +99,15 @@
             <div class="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 p-4">
                 <div class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                     <span>Subtotal</span>
-                    <span>KES {{ number_format((float) $payment->amount, 2) }}</span>
+                    <span>KES {{ number_format((float) $payment->amount, 0) }}</span>
                 </div>
                 <div class="mt-2 flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                     <span>Tax</span>
-                    <span>0.00</span>
+                    <span>0</span>
                 </div>
                 <div class="mt-3 border-t border-blue-200 dark:border-blue-900/50 pt-3 flex items-center justify-between">
                     <span class="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-300 font-semibold">Grand total</span>
-                    <span class="text-2xl font-black text-slate-900 dark:text-white">KES {{ number_format((float) $payment->amount, 2) }}</span>
+                    <span class="text-2xl font-black text-slate-900 dark:text-white">KES {{ number_format((float) $payment->amount, 0) }}</span>
                 </div>
             </div>
         </div>

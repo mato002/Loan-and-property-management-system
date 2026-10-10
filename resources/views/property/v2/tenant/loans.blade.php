@@ -62,7 +62,7 @@
                                 <input type="hidden" name="loan_id" value="{{ $loan->id }}">
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-600 mb-1">Repay amount</label>
-                                    <input name="amount" type="number" min="0.01" step="0.01" value="{{ old('amount', number_format((float) ($loan->return_amount ?? 0), 2, '.', '')) }}" class="w-full rounded-lg border-slate-200 text-sm" required />
+                                    <input name="amount" type="number" min="1" step="1" value="{{ old('amount', number_format((float) ($loan->return_amount ?? 0), 0, '.', '')) }}" class="w-full rounded-lg border-slate-200 text-sm" required />
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-600 mb-1">Channel</label>

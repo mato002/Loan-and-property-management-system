@@ -122,7 +122,7 @@
                                 </svg>
                             </div>
                             <p class="text-2xl font-bold text-gray-900 tabular-nums">
-                                KES {{ number_format((float) $payment->amount, 2) }}
+                                KES {{ number_format((float) $payment->amount, 0) }}
                             </p>
                         </div>
                         <div class="rounded-xl bg-gray-50 p-4 hover:shadow-sm transition-shadow">
