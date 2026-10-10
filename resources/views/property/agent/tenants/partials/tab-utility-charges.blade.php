@@ -20,7 +20,7 @@
         </thead>
         <tbody>
             @forelse(($standingExtras ?? []) as $charge)
-                @if (in_array(($charge->charge_type ?? 'other'), ['water'], true))
+                @if (!in_array(($charge->charge_type ?? 'other'), ['service', 'garbage', 'electricity'], true))
                     @continue
                 @endif
                 <tr class="border-t border-slate-100 hover:bg-slate-50/70">
