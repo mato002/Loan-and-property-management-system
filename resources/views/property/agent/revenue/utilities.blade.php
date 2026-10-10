@@ -351,7 +351,7 @@
                 <h4 class="text-xs font-semibold text-slate-700 mb-2">Available utility charge types in system:</h4>
                 <div class="flex flex-wrap gap-2">
                     @php
-                        $availableChargeTypes = \App\Models\PropertyUtilityChargeTemplate::query()
+                        $availableChargeTypes = \App\Models\PmUnitUtilityCharge::query()
                             ->select('charge_type')
                             ->distinct()
                             ->orderBy('charge_type')
