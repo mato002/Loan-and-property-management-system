@@ -2528,17 +2528,17 @@ class PropertyPortfolioController extends Controller
      * Resolve landlord statement report options: property, period, summary vs full detail.
      *
      * @return array{
-     *      report: string,
-     *      property_id: int|null,
-     *      period_start: \Illuminate\Support\Carbon,
-     *      period_end: \Illuminate\Support\Carbon,
-     *      period_label: string,
-     *      month: string,
-     *      fy: int,
-     *      from: string,
-     *      to: string,
-     *      is_month: bool,
-     *      is_range: bool
+     *     report: string,
+     *     property_id: int|null,
+     *     period_start: \Illuminate\Support\Carbon,
+     *     period_end: \Illuminate\Support\Carbon,
+     *     period_label: string,
+     *     month: string,
+     *     fy: int,
+     *     from: string,
+     *     to: string,
+     *     is_month: bool,
+     *     is_range: bool
      * }
      */
     private function resolveLandlordStatementReportOptions(Request $request, User $landlord, int $defaultFy, string $defaultMonth = ''): array
@@ -4413,18 +4413,1781 @@ class PropertyPortfolioController extends Controller
         if ($propertyId <= 0) {
             return;
         }
-
         $type = $this->normalizeUtilityChargeType($rawType);
-        if ($type === '') {
+        if ($type === '' || in_array($type, ['rent', 'late_payment', 'mixed', 'other'], true)) {
             return;
         }
+        $types[$propertyId][$type] = $type;
+    }
 
-        if (! isset($types[$propertyId])) {
-            $types[$propertyId] = [];
+    private function userCanAccessOffboarding(): bool
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return false;
         }
 
-        if (! in_array($type, $types[$propertyId], true)) {
-            $types[$propertyId][] = $type;
+        return $user->hasPmPermission('property.archive.view')
+            || $user->hasPmPermission('property.offboarding.start')
+            || $user->hasPmPermission('properties.manage');
+    }
+
+    private function userCanStartOffboarding(): bool
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return false;
         }
+
+        return $user->hasPmPermission('property.offboarding.start')
+            || $user->hasPmPermission('properties.manage');
+    }
+
+    private function isAgentActor(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return ! (bool) ($user->is_super_admin ?? false)
+            && (string) ($user->property_portal_role ?? '') === 'agent';
+    }
+
+    private function landlordUsersQueryForActor(?User $actor)
+    {
+        return LandlordWorkspaceScope::applyToLandlordUsersQuery(
+            User::query()->where('property_portal_role', 'landlord'),
+            $actor,
+        );
+    }
+
+    /**
+     * @param  array{email_sent: bool, sms_sent: bool, summary: string}  $delivery
+     * @return array{
+     *   landlord_id: int,
+     *   name: string,
+     *   email: ?string,
+     *   phone: ?string,
+     *   temporary_password: string,
+     *   login_url: string,
+     *   delivery_summary: string
+     * }
+     */
+    private function landlordPortalCredentialsSession(User $landlord, string $plainPassword, array $delivery): array
+    {
+        return [
+            'landlord_id' => (int) $landlord->id,
+            'name' => (string) $landlord->name,
+            'email' => $landlord->email,
+            'phone' => $landlord->phone,
+            'temporary_password' => $plainPassword,
+            'login_url' => route('property.landlord.login'),
+            'delivery_summary' => (string) ($delivery['summary'] ?? ''),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function stashLandlordPortalCredentials(User $landlord, string $plainPassword, array $delivery): array
+    {
+        $credentials = $this->landlordPortalCredentialsSession($landlord, $plainPassword, $delivery);
+        session()->put('landlord_portal_credentials_pending_'.$landlord->id, $credentials);
+
+        return $credentials;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveLandlordPortalCredentialsForShow(User $landlord): ?array
+    {
+        $landlordId = (int) $landlord->id;
+        $candidates = [
+            session('landlord_portal_credentials'),
+            session('landlord_portal_credentials_pending_'.$landlordId),
+        ];
+
+        foreach ($candidates as $creds) {
+            if (! is_array($creds)) {
+                continue;
+            }
+            if ((int) ($creds['landlord_id'] ?? 0) !== $landlordId) {
+                continue;
+            }
+            if (trim((string) ($creds['temporary_password'] ?? '')) === '') {
+                continue;
+            }
+
+            return $creds;
+        }
+
+        return null;
+    }
+
+    private function ensureLandlordVisibleForActor(?User $actor, User $landlord): void
+    {
+        abort_unless(LandlordWorkspaceScope::landlordVisibleToActor($landlord, $actor), 404);
+    }
+
+    public function unitListExport(Request $request)
+    {
+        $format = strtolower(trim((string) $request->query('export', TabularExport::FORMAT_CSV)));
+        if (! in_array($format, [TabularExport::FORMAT_CSV, TabularExport::FORMAT_PDF, TabularExport::FORMAT_WORD], true)) {
+            $format = TabularExport::FORMAT_CSV;
+        }
+
+        $includeArchived = $request->boolean('include_archived');
+        $filters = $request->only([
+            'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max',
+        ]);
+
+        $query = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->with([
+            'property:id,name,code',
+            'leases' => function ($q) {
+                $q->where('pm_leases.status', PmLease::STATUS_ACTIVE)
+                    ->with('pmTenant:id,name,phone,account_number')
+                    ->orderBy('pm_leases.start_date')
+                    ->orderBy('pm_leases.id');
+            },
+        ]);
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('label', 'like', '%'.$search.'%')
+                    ->orWhere('unit_type', 'like', '%'.$search.'%')
+                    ->orWhereHas('property', fn ($p) => $p->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+        $propertyId = (int) ($filters['property_id'] ?? 0);
+        if ($propertyId > 0) {
+            $query->where('property_id', $propertyId);
+        }
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, PropertyUnit::statuses(), true)) {
+            $query->where('status', $status);
+        }
+        $unitType = trim((string) ($filters['unit_type'] ?? ''));
+        if ($unitType !== '') {
+            $query->where('unit_type', $unitType);
+        }
+        if (is_numeric($filters['beds_min'] ?? null)) {
+            $query->where('bedrooms', '>=', (int) $filters['beds_min']);
+        }
+        if (is_numeric($filters['beds_max'] ?? null)) {
+            $query->where('bedrooms', '<=', (int) $filters['beds_max']);
+        }
+        if (is_numeric($filters['rent_min'] ?? null)) {
+            $query->where('rent_amount', '>=', (float) $filters['rent_min']);
+        }
+        if (is_numeric($filters['rent_max'] ?? null)) {
+            $query->where('rent_amount', '<=', (float) $filters['rent_max']);
+        }
+
+        $rows = $query->get()->sortBy([
+            ['property_id', 'asc'],
+            fn (PropertyUnit $unit) => strtoupper((string) $unit->label),
+        ], SORT_NATURAL)->values();
+
+        $headers = [
+            'Unit ID', 'Property Code', 'Property', 'Unit', 'Type', 'Bedrooms', 'Listed Rent',
+            'Status', 'Tenant', 'Tenant Phone', 'Tenant Account', 'Lease Rent', 'Vacant Since',
+        ];
+
+        return TabularExport::stream(
+            'property_units_'.now()->format('Ymd_His'),
+            $headers,
+            function () use ($rows) {
+                foreach ($rows as $u) {
+                    $activeLease = $u->leases->first();
+                    $tenant = $activeLease?->pmTenant;
+                    $activeTenantName = (string) ($tenant?->name ?? '');
+
+                    yield [
+                        $u->id,
+                        (string) ($u->property->code ?? ''),
+                        (string) ($u->property->name ?? ''),
+                        (string) $u->label,
+                        $u->unitTypeLabel(),
+                        $u->bedroomsLabel(),
+                        number_format($u->listedRentAmount(), 2, '.', ''),
+                        (string) $u->status,
+                        $activeTenantName !== '' ? $activeTenantName : ($u->status === PropertyUnit::STATUS_OCCUPIED ? 'No active lease' : ''),
+                        (string) ($tenant?->phone ?? ''),
+                        (string) ($tenant?->account_number ?? ''),
+                        $activeLease ? number_format((float) $activeLease->monthly_rent, 2, '.', '') : '',
+                        $u->vacant_since?->format('Y-m-d') ?? '',
+                    ];
+                }
+            },
+            $format,
+            ['title' => 'Unit status export'],
+        );
+    }
+
+    public function storeUnit(Request $request): RedirectResponse
+    {
+        $unitFields = $this->unitFieldConfig();
+        if ($request->boolean('mixed_units_mode')) {
+            return $this->storeMixedUnits($request);
+        }
+
+        $data = $request->validate([
+            'property_id' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'property_id')), 'nullable', 'exists:properties,id'],
+            'label' => ['nullable', 'string', 'max:64'],
+            'unit_count' => ['nullable', 'integer', 'min:1', 'max:5000'],
+            'label_prefix' => ['nullable', 'string', 'max:32'],
+            'label_start' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'vacant_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'occupied_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'notice_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'status_mode' => ['nullable', 'in:single,split'],
+            'unit_type' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'unit_type')), 'nullable', 'string', 'max:64'],
+            // Bedrooms is conditional: some unit types have no separate bedroom and the UI disables the field.
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
+            'status' => [
+                Rule::requiredIf(fn () => $this->isFieldRequired($unitFields, 'status') && (string) $request->input('status_mode', 'single') !== 'split'),
+                'in:vacant,occupied,notice,owner_occupied',
+            ],
+            'public_listing_description' => ['nullable', 'string', 'max:20000'],
+            ...$this->unitExtendedFieldRules($unitFields),
+        ]);
+
+        $property = Property::query()->findOrFail((int) $data['property_id']);
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanAddUnit($property);
+
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT));
+
+        $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
+            ? $data['public_listing_description']
+            : null;
+        $extendedAttrs = $this->extractUnitExtendedAttributes($data, $request);
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
+        if ($requiresNoBedroom) {
+            $data['bedrooms'] = 0;
+        } elseif ($this->isFieldRequired($unitFields, 'bedrooms') && !isset($data['bedrooms'])) {
+            return back()
+                ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
+                ->withInput();
+        } elseif (! isset($data['bedrooms'])) {
+            $data['bedrooms'] = 1;
+        }
+
+        $unitCount = (int) ($data['unit_count'] ?? 1);
+        $labelStart = (int) ($data['label_start'] ?? 1);
+        $labelPrefix = trim((string) ($data['label_prefix'] ?? ''));
+        $baseLabel = trim((string) ($data['label'] ?? ''));
+        $vacantCount = (int) ($data['vacant_count'] ?? 0);
+        $occupiedCount = (int) ($data['occupied_count'] ?? 0);
+        $noticeCount = (int) ($data['notice_count'] ?? 0);
+        $statusMode = (string) ($data['status_mode'] ?? 'single');
+        $hasStatusSplit = $statusMode === 'split';
+        $labels = [];
+        if ($unitCount <= 1) {
+            if ($baseLabel === '') {
+                return back()
+                    ->withErrors(['label' => __('Label is required when saving a single unit.')])
+                    ->withInput();
+            }
+            $labels[] = $baseLabel;
+        } else {
+            $numericOnlyLabels = false;
+            // If user typed A1 in prefix and left label blank, auto-split to prefix A + start 1.
+            if ($baseLabel === '' && $labelPrefix !== '' && preg_match('/^(.*?)(\d+)$/', $labelPrefix, $m) === 1) {
+                $labelPrefix = trim((string) $m[1]);
+                $labelStart = (int) $m[2];
+                $numericOnlyLabels = $labelPrefix === '';
+            }
+
+            $baseLooksNumeric = preg_match('/\d/', $baseLabel) === 1;
+            if ($labelPrefix === '' && ! $baseLooksNumeric) {
+                $labelPrefix = $baseLabel;
+            }
+            // Support numeric-only labels for buildings that use doors like 1,2,3...
+            if ($labelPrefix === '' && preg_match('/^\d+$/', $baseLabel) === 1) {
+                $labelStart = (int) $baseLabel;
+                $numericOnlyLabels = true;
+            }
+
+            if ($labelPrefix === '' && ! $numericOnlyLabels) {
+                return back()
+                    ->withErrors(['label_prefix' => __('Set a label prefix for bulk creation (e.g. A, B, BLOCK-1-).')])
+                    ->withInput();
+            }
+            for ($i = 0; $i < $unitCount; $i++) {
+                $labels[] = $numericOnlyLabels
+                    ? (string) ($labelStart + $i)
+                    : $labelPrefix.($labelStart + $i);
+            }
+        }
+
+        if ($hasStatusSplit) {
+            if ($unitCount <= 1) {
+                return back()
+                    ->withErrors(['unit_count' => __('Status split is for bulk only. Set units greater than 1.')])
+                    ->withInput();
+            }
+            if (($vacantCount + $occupiedCount + $noticeCount) !== $unitCount) {
+                return back()
+                    ->withErrors(['unit_count' => __('Vacant + Occupied + Notice counts must equal total units.')])
+                    ->withInput();
+            }
+        }
+
+        $existing = PropertyUnit::query()
+            ->where('property_id', $data['property_id'])
+            ->whereIn('label', $labels)
+            ->pluck('label')
+            ->all();
+        if ($existing !== []) {
+            return back()
+                ->withErrors(['label' => __('Some labels already exist for this property: :labels', ['labels' => implode(', ', array_slice($existing, 0, 10))])])
+                ->withInput();
+        }
+
+        if (! $hasStatusSplit) {
+            $vacantCount = 0;
+            $occupiedCount = 0;
+            $noticeCount = 0;
+        }
+
+        $statuses = [];
+        if ($hasStatusSplit) {
+            for ($i = 0; $i < $vacantCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_VACANT;
+            }
+            for ($i = 0; $i < $occupiedCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_OCCUPIED;
+            }
+            for ($i = 0; $i < $noticeCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_NOTICE;
+            }
+        }
+
+        $created = [];
+        foreach ($labels as $idx => $label) {
+            $rowStatus = $hasStatusSplit
+                ? (string) ($statuses[$idx] ?? $data['status'])
+                : (string) $data['status'];
+            $created[] = PropertyUnit::query()->create([
+                'property_id' => $data['property_id'],
+                'label' => $label,
+                'unit_type' => $data['unit_type'],
+                'bedrooms' => (int) $data['bedrooms'],
+                'rent_amount' => $data['rent_amount'],
+                'status' => $rowStatus,
+                'public_listing_description' => $desc,
+                'vacant_since' => $rowStatus === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+                ...$extendedAttrs,
+            ]);
+        }
+        $unit = $created[0];
+
+        $actions = [
+            [
+                'label' => 'Add another unit',
+                'href' => route('property.properties.units', ['property_id' => $unit->property_id], absolute: false),
+                'kind' => 'primary',
+                'icon' => 'fa-solid fa-plus',
+                'turbo_frame' => 'property-main',
+            ],
+            [
+                'label' => 'Link landlord user',
+                'href' => route('property.properties.list', ['property_id' => $unit->property_id], absolute: false).'#link-landlord-form',
+                'kind' => 'secondary',
+                'icon' => 'fa-solid fa-user-tie',
+                'turbo_frame' => 'property-main',
+            ],
+            [
+                'label' => 'Go to Listings',
+                'href' => route('property.listings.index', absolute: false),
+                'kind' => 'ghost',
+                'icon' => 'fa-solid fa-bullhorn',
+                'turbo_frame' => 'property-main',
+            ],
+        ];
+
+        if ($unit->status === PropertyUnit::STATUS_VACANT) {
+            array_unshift($actions, [
+                'label' => 'Edit listing (vacant unit)',
+                'href' => route('property.listings.publish-panel', $unit, absolute: false),
+                'kind' => 'primary',
+                'icon' => 'fa-solid fa-pen-to-square',
+                'listing_publish' => true,
+                'listing_unit_id' => $unit->id,
+            ]);
+        }
+
+        $savedMessage = $unitCount > 1
+            ? 'Units saved: '.$unitCount.'.'
+            : 'Unit saved.';
+
+        $hubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $unit->property_id,
+            'units',
+            $savedMessage
+        );
+        if ($hubRedirect) {
+            return $hubRedirect->with('next_steps', [
+                'title' => 'Unit saved',
+                'message' => $unit->status === PropertyUnit::STATUS_VACANT
+                    ? ($unitCount > 1
+                        ? 'These units are vacant. You can now add photos and publish selected ones under Listings.'
+                        : 'This unit is vacant. You can now add photos and publish it under Listings.')
+                    : 'Next, add more units, link the landlord, or manage listings for vacant units.',
+                'actions' => $actions,
+            ]);
+        }
+
+        return back()
+            ->with('success', $savedMessage)
+            ->with('next_steps', [
+                'title' => 'Unit saved',
+                'message' => $unit->status === PropertyUnit::STATUS_VACANT
+                    ? ($unitCount > 1
+                        ? 'These units are vacant. You can now add photos and publish selected ones under Listings.'
+                        : 'This unit is vacant. You can now add photos and publish it under Listings.')
+                    : 'Next, add more units, link the landlord, or manage listings for vacant units.',
+                'actions' => $actions,
+            ]);
+    }
+
+    public function updateUnitStatus(Request $request, PropertyUnit $unit): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
+        ]);
+
+        $status = (string) ($data['status'] ?? PropertyUnit::STATUS_VACANT);
+        $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
+        if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit occupied without an active lease. Create/activate a lease first.',
+            ]);
+        }
+        if ($status === PropertyUnit::STATUS_VACANT && $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit vacant while it still has an active lease.',
+            ]);
+        }
+
+        $unit->update([
+            'status' => $status,
+            'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? ($unit->vacant_since?->toDateString() ?? now()->toDateString()) : null,
+        ]);
+
+        if ($status !== PropertyUnit::STATUS_VACANT) {
+            $unit->update(['public_listing_published' => false]);
+        }
+
+        return back()->with('success', 'Unit status updated.');
+    }
+
+    public function editUnit(Request $request, PropertyUnit $unit): View
+    {
+        $unit->loadMissing('property');
+
+        return view('property.agent.properties.edit_unit', array_merge([
+            'unit' => $unit,
+            'unitFields' => $this->unitFieldConfig(),
+            'unitTypes' => $this->propertyUnitTypeOptions((string) $unit->unit_type),
+            'bedroomOptionsByType' => $this->propertyBedroomOptionsByType((string) $unit->unit_type, (int) $unit->bedrooms),
+        ], $this->propertyFormModalViewData($request)));
+    }
+
+    public function updateUnit(Request $request, PropertyUnit $unit): RedirectResponse|Response
+    {
+        $unitFields = $this->unitFieldConfig();
+        $data = $request->validate([
+            'label' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'label')),
+                'string',
+                'max:64',
+                Rule::unique('property_units', 'label')
+                    ->where(fn ($q) => $q->where('property_id', $unit->property_id))
+                    ->ignore($unit->id),
+            ],
+            'unit_type' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'unit_type')), 'nullable', 'string', 'max:64'],
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
+            'status' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'status')), 'nullable', 'in:vacant,occupied,notice,owner_occupied'],
+            'public_listing_description' => ['nullable', 'string', 'max:20000'],
+            ...$this->unitExtendedFieldRules($unitFields),
+        ]);
+
+        $data['label'] = (string) ($data['label'] ?? $unit->label);
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? $unit->unit_type));
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
+        if ($requiresNoBedroom) {
+            $data['bedrooms'] = 0;
+        } elseif ($this->isFieldRequired($unitFields, 'bedrooms') && ! isset($data['bedrooms'])) {
+            return back()
+                ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
+                ->withInput();
+        } elseif (! isset($data['bedrooms'])) {
+            $data['bedrooms'] = (int) $unit->bedrooms;
+        }
+
+        $status = (string) ($data['status'] ?? $unit->status);
+        $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
+        if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit occupied without an active lease. Create/activate a lease first.',
+            ])->withInput();
+        }
+        if ($status === PropertyUnit::STATUS_VACANT && $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit vacant while it still has an active lease.',
+            ])->withInput();
+        }
+
+        $data['vacant_since'] = $status === PropertyUnit::STATUS_VACANT
+            ? ($unit->vacant_since?->toDateString() ?? now()->toDateString())
+            : null;
+
+        $unit->update(array_merge($data, $this->extractUnitExtendedAttributes($data, $request)));
+
+        if ($status !== PropertyUnit::STATUS_VACANT && $unit->public_listing_published) {
+            $unit->update(['public_listing_published' => false]);
+        }
+
+        $leaseRentSynced = app(\App\Services\Property\LeaseBillingRentSync::class)
+            ->syncFromUnitRent($unit->fresh() ?? $unit);
+
+        $message = 'Unit updated.';
+        if ($leaseRentSynced > 0) {
+            $message .= ' Active lease rent was updated to match so monthly invoices bill the new amount.';
+        }
+
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.properties.units', ['property_id' => $unit->property_id])
+                ->with('success', $message),
+            $message,
+        );
+    }
+
+    public function storeUnitJson(Request $request)
+    {
+        $unitFields = $this->unitFieldConfig();
+        $data = $request->validate([
+            'property_id' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'property_id')), 'nullable', 'integer', 'exists:properties,id'],
+            'label' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'label')), 'nullable', 'string', 'max:64'],
+            'unit_type' => ['nullable', 'string', 'max:64'],
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'rent_amount' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['nullable', 'in:vacant,occupied,notice,owner_occupied'],
+            ...$this->unitExtendedFieldRules($unitFields),
+        ]);
+
+        $propertyId = (int) ($data['property_id'] ?? 0);
+        $label = trim((string) ($data['label'] ?? ''));
+        if ($label === '') {
+            $label = 'UNIT-'.strtoupper(Str::random(6));
+        }
+
+        $exists = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->where('label', $label)
+            ->exists();
+        if ($exists) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'A unit with that label already exists for the selected property.',
+            ], 422);
+        }
+
+        $unitType = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT));
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $bedrooms = in_array($unitType, $noBedroomTypes, true)
+            ? 0
+            : (int) ($data['bedrooms'] ?? 1);
+
+        $status = (string) ($data['status'] ?? PropertyUnit::STATUS_VACANT);
+        $rentAmount = (float) ($data['rent_amount'] ?? 0);
+
+        $unit = PropertyUnit::query()->create([
+            'property_id' => $propertyId,
+            'label' => $label,
+            'unit_type' => $unitType,
+            'bedrooms' => $bedrooms,
+            'rent_amount' => $rentAmount,
+            'status' => $status,
+            'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+            ...$this->extractUnitExtendedAttributes($data, $request),
+        ]);
+
+        $unit->loadMissing('property');
+
+        return response()->json([
+            'ok' => true,
+            'item' => [
+                'id' => $unit->id,
+                'label' => ($unit->property?->name ?? 'Property '.$propertyId).' / '.$unit->label,
+            ],
+            'message' => 'Unit created.',
+        ]);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function propertyOnboardingFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'code' => ['enabled' => true, 'required' => false],
+            'city' => ['enabled' => true, 'required' => false],
+            'address_line' => ['enabled' => true, 'required' => false],
+            'commission_percent' => ['enabled' => true, 'required' => false],
+            'rent_due_day' => ['enabled' => true, 'required' => false],
+            'field_officer_id' => ['enabled' => true, 'required' => false],
+        ];
+
+        return $this->configuredFieldMap('system_setup_property_onboarding_fields_json', $defaults, ['name']);
+    }
+
+    /**
+     * Extra property records (title, area, listing, alerts) — optional, not required to create.
+     *
+     * @return array<string, mixed>
+     */
+    private function propertyRecordFieldRules(): array
+    {
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $rules = [
+            'acquired_at' => ['sometimes', 'nullable', 'date'],
+            'management_mode' => ['sometimes', 'nullable', 'in:managing,letting'],
+            'lr_number' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'category' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'property_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'specification' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'storey_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'floors_count' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:200'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'estate' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'zone' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'contact_info' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'gross_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'net_lettable_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'area_unit' => ['sometimes', 'nullable', 'in:sqm,sqft,acre'],
+            'rent_per_measure' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'statement_balance_cutoff_day' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:31'],
+            'listing_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'listing_agent_name' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'listing_contact_email' => ['sometimes', 'nullable', 'email', 'max:255'],
+            'listing_contact_phone' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'listing_min_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_min_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'listing_max_service_charge' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'exclude_from_fee_summary' => ['sometimes', 'nullable', 'in:0,1'],
+            'property_details_save' => ['sometimes', 'nullable'],
+        ];
+        foreach ($exemptKeys as $key) {
+            $rules['exempt_'.$key] = ['sometimes', 'nullable', 'in:0,1'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function applyPropertyRecordAttributes(Request $request, array $data): array
+    {
+        unset($data['property_details_save']);
+
+        $stringKeys = [
+            'management_mode', 'lr_number', 'category', 'property_type', 'specification',
+            'storey_type', 'country', 'estate', 'zone', 'notes', 'contact_info', 'area_unit',
+            'listing_notes', 'listing_agent_name', 'listing_contact_email', 'listing_contact_phone',
+        ];
+        foreach ($stringKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = is_string($data[$key]) ? trim($data[$key]) : $data[$key];
+            $data[$key] = ($value === '' || $value === null) ? null : $value;
+        }
+
+        $numericKeys = [
+            'floors_count', 'latitude', 'longitude', 'gross_lettable_area', 'net_lettable_area',
+            'rent_per_measure', 'statement_balance_cutoff_day', 'listing_min_rent', 'listing_max_rent',
+            'listing_min_service_charge', 'listing_max_service_charge',
+        ];
+        foreach ($numericKeys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($data[$key] === '' || $data[$key] === null) {
+                $data[$key] = null;
+            }
+        }
+
+        if (array_key_exists('acquired_at', $data) && ($data['acquired_at'] === '' || $data['acquired_at'] === null)) {
+            $data['acquired_at'] = null;
+        }
+
+        if (array_key_exists('exclude_from_fee_summary', $data) || $request->has('exclude_from_fee_summary')) {
+            $data['exclude_from_fee_summary'] = $request->boolean('exclude_from_fee_summary');
+        }
+
+        $exemptKeys = [
+            'sms_all', 'sms_invoice', 'sms_general', 'sms_receipt', 'sms_balance',
+            'email_all', 'email_invoice', 'email_general', 'email_receipt', 'email_balance',
+        ];
+        $hasExempt = false;
+        $exemptions = [];
+        foreach ($exemptKeys as $key) {
+            $field = 'exempt_'.$key;
+            if ($request->has($field)) {
+                $hasExempt = true;
+            }
+            $exemptions[$key] = $request->boolean($field);
+            unset($data[$field]);
+        }
+        if ($hasExempt && Schema::hasColumn('properties', 'communication_exemptions')) {
+            $data['communication_exemptions'] = $exemptions;
+        }
+
+        foreach (array_keys($data) as $key) {
+            if (! Schema::hasColumn('properties', $key)) {
+                unset($data[$key]);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function landlordFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'email' => ['enabled' => true, 'required' => false],
+            'phone' => ['enabled' => true, 'required' => false],
+            'id_number' => ['enabled' => true, 'required' => false],
+            'legacy_landlord_code' => ['enabled' => true, 'required' => false],
+            'kra_pin' => ['enabled' => true, 'required' => false],
+            'address_line' => ['enabled' => true, 'required' => false],
+        ];
+
+        return $this->configuredFieldMap('system_setup_landlord_fields_json', $defaults, ['name']);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function unitFieldConfig(): array
+    {
+        $defaults = [
+            'property_id' => ['enabled' => true, 'required' => true],
+            'label' => ['enabled' => true, 'required' => true],
+            'unit_type' => ['enabled' => true, 'required' => true],
+            'bedrooms' => ['enabled' => true, 'required' => false],
+            'rent_amount' => ['enabled' => true, 'required' => true],
+            'status' => ['enabled' => true, 'required' => true],
+            'market_rent' => ['enabled' => true, 'required' => false],
+            'legacy_area' => ['enabled' => true, 'required' => false],
+            'floor' => ['enabled' => true, 'required' => false],
+            'furnished' => ['enabled' => true, 'required' => false],
+            'available_from' => ['enabled' => true, 'required' => false],
+        ];
+
+        return $this->configuredFieldMap('system_setup_unit_fields_json', $defaults, ['property_id', 'label']);
+    }
+
+    /**
+     * @param array<string,array{enabled:bool,required:bool}> $defaults
+     * @param array<int,string> $alwaysOn
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function configuredFieldMap(string $settingKey, array $defaults, array $alwaysOn = []): array
+    {
+        $map = $defaults;
+        $raw = PropertyPortalSetting::getValue($settingKey, '');
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $key = trim((string) ($row['key'] ?? ''));
+                    if ($key === '' || ! array_key_exists($key, $map)) {
+                        continue;
+                    }
+                    $map[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+                    $map[$key]['required'] = (bool) ($row['required'] ?? false);
+                }
+            }
+        }
+
+        foreach ($alwaysOn as $fieldKey) {
+            if (! array_key_exists($fieldKey, $map)) {
+                continue;
+            }
+            $map[$fieldKey]['enabled'] = true;
+            $map[$fieldKey]['required'] = true;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string,array{enabled:bool,required:bool}> $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $landlordFields
+     * @return array<string, mixed>
+     */
+    private function landlordProfileFieldRules(array $landlordFields): array
+    {
+        return [
+            'legacy_landlord_code' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'legacy_landlord_code')),
+                'nullable',
+                'string',
+                'max:64',
+            ],
+            'landlord_type' => ['nullable', 'in:individual,corporation,organization,institution,government'],
+            'id_number' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'id_number')),
+                'nullable',
+                'string',
+                'max:64',
+            ],
+            'kra_pin' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'kra_pin')),
+                'nullable',
+                'string',
+                'max:32',
+            ],
+            'address_line' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'address_line')),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'location' => ['nullable', 'string', 'max:128'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_branch' => ['nullable', 'string', 'max:120'],
+            'bank_account_name' => ['nullable', 'string', 'max:120'],
+            'bank_account' => ['nullable', 'string', 'max:64'],
+            'mpesa_phone' => ['nullable', 'string', 'max:32'],
+        ];
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $unitFields
+     * @return array<string, mixed>
+     */
+    private function unitExtendedFieldRules(array $unitFields): array
+    {
+        return [
+            'market_rent' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'market_rent')),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'legacy_area' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'legacy_area')),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'floor' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'floor')),
+                'nullable',
+                'string',
+                'max:32',
+            ],
+            'available_from' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'available_from')),
+                'nullable',
+                'date',
+            ],
+            'furnished' => ['sometimes', 'boolean'],
+            'bathrooms' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:20'],
+            'parking_spaces' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:50'],
+            'rent_per_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'charge_frequency' => ['sometimes', 'nullable', 'in:monthly,one_off,daily,weekly,biweekly,bimonthly,quarterly,semiannually,annually,biennially,triennially,none'],
+            'take_on_letting_date' => ['sometimes', 'nullable', 'date'],
+            'unit_sequence' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            'floor_number' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'location_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'electricity_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'electricity_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_account' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'water_meter' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'extra_meters' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'extra_meters.*.meter_no' => ['nullable', 'string', 'max:64'],
+            'extra_meters.*.reading_setup' => ['nullable', 'string', 'max:120'],
+            'features' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'features.*.name' => ['nullable', 'string', 'max:120'],
+            'features.*.feature_type' => ['nullable', 'string', 'max:64'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function extractUnitExtendedAttributes(array $data, Request $request): array
+    {
+        $attrs = [];
+
+        foreach (['market_rent', 'legacy_area'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = $data[$key];
+            $attrs[$key] = ($value === null || $value === '') ? null : $value;
+        }
+
+        if (array_key_exists('floor', $data)) {
+            $floor = trim((string) ($data['floor'] ?? ''));
+            $attrs['floor'] = $floor !== '' ? $floor : null;
+        }
+
+        if (array_key_exists('available_from', $data)) {
+            $availableFrom = $data['available_from'];
+            $attrs['available_from'] = ($availableFrom === null || $availableFrom === '') ? null : $availableFrom;
+        }
+
+        if (array_key_exists('furnished', $data) || $request->has('furnished')) {
+            $raw = $data['furnished'] ?? $request->input('furnished');
+            $attrs['furnished'] = in_array($raw, [true, 1, '1', 'true', 'on', 'yes'], true);
+        }
+
+        foreach (['bathrooms', 'parking_spaces', 'unit_sequence'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : (int) $data[$key];
+        }
+
+        foreach (['rent_per_area'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $attrs[$key] = ($data[$key] === null || $data[$key] === '') ? null : $data[$key];
+        }
+
+        foreach ([
+            'charge_frequency', 'floor_number', 'notes', 'location_notes',
+            'electricity_account', 'electricity_meter', 'water_account', 'water_meter',
+        ] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = trim((string) ($data[$key] ?? ''));
+            $attrs[$key] = $value !== '' ? $value : null;
+        }
+
+        if (array_key_exists('take_on_letting_date', $data)) {
+            $value = $data['take_on_letting_date'];
+            $attrs['take_on_letting_date'] = ($value === null || $value === '') ? null : $value;
+        }
+
+        if (array_key_exists('extra_meters', $data) || $request->has('extra_meters')) {
+            $rows = is_array($data['extra_meters'] ?? null) ? $data['extra_meters'] : (array) $request->input('extra_meters', []);
+            $attrs['extra_meters'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $no = trim((string) ($row['meter_no'] ?? ''));
+                $setup = trim((string) ($row['reading_setup'] ?? ''));
+                if ($no === '' && $setup === '') {
+                    return null;
+                }
+
+                return ['meter_no' => $no, 'reading_setup' => $setup];
+            }, $rows)));
+        }
+
+        if (array_key_exists('features', $data) || $request->has('features')) {
+            $rows = is_array($data['features'] ?? null) ? $data['features'] : (array) $request->input('features', []);
+            $attrs['features'] = array_values(array_filter(array_map(static function ($row): ?array {
+                $row = is_array($row) ? $row : [];
+                $name = trim((string) ($row['name'] ?? ''));
+                $type = trim((string) ($row['feature_type'] ?? ''));
+                if ($name === '' && $type === '') {
+                    return null;
+                }
+
+                return ['name' => $name, 'feature_type' => $type];
+            }, $rows)));
+        }
+
+        foreach (array_keys($attrs) as $key) {
+            if (! Schema::hasColumn('property_units', $key)) {
+                unset($attrs[$key]);
+            }
+        }
+
+        return $attrs;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<PropertyUnit>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<PropertyUnit>
+     */
+    private function applyOperationalUnitScope($query, bool $includeArchived)
+    {
+        if ($includeArchived) {
+            return $query;
+        }
+
+        return $query->forOperationalProperty();
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<Property>
+     */
+    private function operationalPropertiesQuery(bool $includeArchived)
+    {
+        $query = Property::query();
+
+        if (! $includeArchived) {
+            $query->operational();
+        }
+
+        return $query;
+    }
+
+    public function destroyUnit(PropertyUnit $unit): RedirectResponse
+    {
+        $property = $unit->property;
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanDestroyUnit($property);
+        }
+
+        if ($unit->leases()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with lease history. Archived properties keep units for audit — no manual delete needed.']);
+        }
+        if ($unit->invoices()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with invoices.']);
+        }
+        if ($unit->utilityCharges()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with utility charges.']);
+        }
+        if ($unit->maintenanceRequests()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with maintenance records.']);
+        }
+
+        foreach ($unit->publicImages as $img) {
+            Storage::disk('public')->delete($img->path);
+            $img->delete();
+        }
+
+        $unit->delete();
+
+        return back()->with('success', 'Unit deleted.');
+    }
+
+    private function storeMixedUnits(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'exists:properties,id'],
+            'unit_groups' => ['required', 'array', 'min:1', 'max:200'],
+            'unit_groups.*.unit_count' => ['required', 'integer', 'min:1', 'max:5000'],
+            'unit_groups.*.label_prefix' => ['required', 'string', 'max:32'],
+            'unit_groups.*.label_start' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'unit_groups.*.unit_type' => ['required', 'string', 'max:64'],
+            'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
+            'unit_groups.*.market_rent' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.legacy_area' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.floor' => ['nullable', 'string', 'max:32'],
+            'unit_groups.*.available_from' => ['nullable', 'date'],
+            'unit_groups.*.furnished' => ['nullable', 'boolean'],
+            'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
+            'unit_groups.*.public_listing_description' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $propertyId = (int) $data['property_id'];
+        $property = Property::query()->findOrFail($propertyId);
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanAddUnit($property);
+        $groups = (array) $data['unit_groups'];
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+
+        $allLabels = [];
+        $toCreate = [];
+
+        foreach ($groups as $index => $group) {
+            $groupNumber = $index + 1;
+            $count = (int) ($group['unit_count'] ?? 0);
+            $prefix = trim((string) ($group['label_prefix'] ?? ''));
+            $start = (int) ($group['label_start'] ?? 1);
+            $numericOnlyLabels = false;
+            $unitType = $this->normalizeUnitTypeValue((string) ($group['unit_type'] ?? ''));
+            $status = (string) ($group['status'] ?? '');
+            $rentAmount = (float) ($group['rent_amount'] ?? 0);
+            $floor = trim((string) ($group['floor'] ?? ''));
+            $availableFrom = $group['available_from'] ?? null;
+            $marketRent = $group['market_rent'] ?? null;
+            $legacyArea = $group['legacy_area'] ?? null;
+            $furnished = ! empty($group['furnished']);
+            $desc = isset($group['public_listing_description']) && trim((string) $group['public_listing_description']) !== ''
+                ? (string) $group['public_listing_description']
+                : null;
+
+            if ($prefix !== '' && preg_match('/^(.*?)(\d+)$/', $prefix, $m) === 1) {
+                $prefix = trim((string) $m[1]);
+                $start = (int) $m[2];
+                $numericOnlyLabels = $prefix === '';
+            }
+
+            if ($prefix === '' && ! $numericOnlyLabels) {
+                return back()
+                    ->withErrors(['unit_groups' => __('Group :n: label prefix is required.', ['n' => $groupNumber])])
+                    ->withInput();
+            }
+
+            $requiresNoBedroom = in_array($unitType, $noBedroomTypes, true);
+            $bedrooms = $requiresNoBedroom ? 0 : ($group['bedrooms'] ?? null);
+            if (! $requiresNoBedroom && $bedrooms === null) {
+                return back()
+                    ->withErrors(['unit_groups' => __('Group :n: bedrooms is required for this unit type.', ['n' => $groupNumber])])
+                    ->withInput();
+            }
+
+            for ($i = 0; $i < $count; $i++) {
+                $label = $numericOnlyLabels
+                    ? (string) ($start + $i)
+                    : $prefix.($start + $i);
+                $allLabels[] = $label;
+                $toCreate[] = [
+                    'property_id' => $propertyId,
+                    'label' => $label,
+                    'unit_type' => $unitType,
+                    'bedrooms' => (int) $bedrooms,
+                    'rent_amount' => $rentAmount,
+                    'market_rent' => ($marketRent === null || $marketRent === '') ? null : $marketRent,
+                    'legacy_area' => ($legacyArea === null || $legacyArea === '') ? null : $legacyArea,
+                    'floor' => $floor !== '' ? $floor : null,
+                    'available_from' => ($availableFrom === null || $availableFrom === '') ? null : $availableFrom,
+                    'furnished' => $furnished,
+                    'status' => $status,
+                    'public_listing_description' => $desc,
+                    'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+                ];
+            }
+        }
+
+        $counts = array_count_values($allLabels);
+        $dupesInPayload = array_keys(array_filter($counts, static fn ($c) => $c > 1));
+        if ($dupesInPayload !== []) {
+            return back()
+                ->withErrors([
+                    'unit_groups' => __('Duplicate labels in your batch: :labels. Adjust label prefix/start so each group has a unique range (example: R1-R4, then R5-R8).', [
+                        'labels' => implode(', ', array_slice($dupesInPayload, 0, 10)),
+                    ]),
+                ])
+                ->withInput();
+        }
+
+        $existing = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->whereIn('label', $allLabels)
+            ->pluck('label')
+            ->all();
+        if ($existing !== []) {
+            return back()
+                ->withErrors(['unit_groups' => __('Some labels already exist for this property: :labels', ['labels' => implode(', ', array_slice($existing, 0, 10))])])
+                ->withInput();
+        }
+
+        DB::transaction(function () use ($toCreate): void {
+            foreach ($toCreate as $payload) {
+                PropertyUnit::query()->create($payload);
+            }
+        });
+
+        return back()->with('success', 'Units saved: '.count($toCreate).'.');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function propertyUnitTypeOptions(?string $forceInclude = null): array
+    {
+        $options = [];
+
+        $customTypes = PropertyUnit::query()
+            ->select('unit_type')
+            ->distinct()
+            ->pluck('unit_type')
+            ->map(fn ($value) => $this->normalizeUnitTypeValue((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($customTypes as $type) {
+            $options[$type] = (string) Str::of($type)->replace(['_', '-'], ' ')->title();
+        }
+
+        $forced = $this->normalizeUnitTypeValue((string) $forceInclude);
+        if ($forced !== '' && ! isset($options[$forced])) {
+            $options[$forced] = (string) Str::of($forced)->replace(['_', '-'], ' ')->title();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function propertyBedroomOptionsByType(?string $forceType = null, ?int $forceBedroom = null): array
+    {
+        $map = [];
+        $rows = PropertyUnit::query()
+            ->select(['unit_type', 'bedrooms'])
+            ->whereNotNull('unit_type')
+            ->whereNotNull('bedrooms')
+            ->distinct()
+            ->get()
+            ->all();
+
+        foreach ($rows as $row) {
+            $type = $this->normalizeUnitTypeValue((string) ($row->unit_type ?? ''));
+            $count = (int) ($row->bedrooms ?? -1);
+            if ($type === '' || $count < 0 || $count > 20) {
+                continue;
+            }
+            $map[$type] ??= [];
+            $map[$type][$count] = $count === 0 ? 'No separate bedroom' : $count.' '.Str::plural('bedroom', $count);
+        }
+
+        $forcedTypeValue = $this->normalizeUnitTypeValue((string) $forceType);
+        if ($forcedTypeValue !== '' && $forceBedroom !== null && $forceBedroom >= 0 && $forceBedroom <= 20) {
+            $map[$forcedTypeValue] ??= [];
+            $map[$forcedTypeValue][$forceBedroom] = $forceBedroom === 0
+                ? 'No separate bedroom'
+                : $forceBedroom.' '.Str::plural('bedroom', $forceBedroom);
+        }
+
+        foreach ($map as $type => $options) {
+            ksort($options);
+            $map[$type] = $options;
+        }
+
+        return $map;
+    }
+
+    private function normalizeUnitTypeValue(string $value): string
+    {
+        $normalized = (string) Str::of($value)->trim()->lower()->replaceMatches('/\s+/', '_');
+
+        return trim($normalized, '_');
+    }
+
+    private function agreedPayScheduleRules(): array
+    {
+        return [
+            'agreed_pay_day' => ['nullable', 'integer', 'min:1', 'max:28'],
+            'agreed_pay_notes' => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{agreed_pay_day: int|null, agreed_pay_notes: string|null}
+     */
+    private function agreedPayPivotFromRequest(array $data): array
+    {
+        $day = $data['agreed_pay_day'] ?? null;
+
+        return [
+            'agreed_pay_day' => $day !== null && $day !== '' ? (int) $day : null,
+            'agreed_pay_notes' => isset($data['agreed_pay_notes']) && trim((string) $data['agreed_pay_notes']) !== ''
+                ? trim((string) $data['agreed_pay_notes'])
+                : null,
+        ];
+    }
+
+    public function attachLandlord(Request $request): RedirectResponse
+    {
+        Log::warning('attachLandlord_debug: attachLandlord called', [
+            'property_id' => $request->input('property_id'),
+            'user_id' => $request->input('user_id'),
+            'ownership_percent' => $request->input('ownership_percent'),
+        ]);
+        $data = $request->validate(array_merge([
+            'property_id' => ['required', 'exists:properties,id'],
+            'user_id' => ['required', 'exists:users,id'],
+            'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ], $this->agreedPayScheduleRules()));
+
+        $property = Property::query()->findOrFail($data['property_id']);
+        if ($property->landlords()->exists()) {
+            return redirect()
+                ->route('property.properties.list')
+                ->withErrors(['property_id' => __('This property is already linked to a landlord.')])
+                ->withInput();
+        }
+        $landlordAllowed = $this->landlordUsersQueryForActor($request->user())
+            ->whereKey((int) $data['user_id'])
+            ->exists();
+        if (! $landlordAllowed) {
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['user_id' => __('You can only link landlord accounts in your workspace.')])
+                ->withInput();
+        }
+        $pct = (float) ($data['ownership_percent'] ?? 100);
+
+        $currentSum = (float) $property->landlords()->sum('property_landlord.ownership_percent');
+        if ($currentSum + $pct > 100.0001) {
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['ownership_percent' => __('Total ownership for this property would exceed 100%.')])
+                ->withInput();
+        }
+
+        $property->landlords()->syncWithoutDetaching([
+            $data['user_id'] => array_merge(
+                ['ownership_percent' => $pct],
+                $this->agreedPayPivotFromRequest($data),
+            ),
+        ]);
+
+        $hubPropertyRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $property->id,
+            'landlords',
+            'Landlord linked to property.'
+        );
+        if ($hubPropertyRedirect) {
+            return $hubPropertyRedirect;
+        }
+
+        $hubLandlordRedirect = \App\Support\Property\LandlordHubRedirect::toShow(
+            $request,
+            (int) $data['user_id'],
+            'properties',
+            'Property linked to landlord.'
+        );
+        if ($hubLandlordRedirect) {
+            return $hubLandlordRedirect;
+        }
+
+        return redirect()
+            ->route('property.properties.edit', $property->id)
+            ->with('success', 'Landlord linked to property.')
+            ->with('next_steps', [
+                'title' => 'Landlord linked',
+                'message' => 'Next, add units for this property, then publish vacant units under Listings.',
+                'actions' => [
+                    [
+                        'label' => 'Add units',
+                        'href' => route('property.properties.units', ['property_id' => $property->id], absolute: false),
+                        'kind' => 'primary',
+                        'icon' => 'fa-solid fa-building',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'View properties list',
+                        'href' => route('property.properties.list', ['property_id' => $property->id], absolute: false),
+                        'kind' => 'secondary',
+                        'icon' => 'fa-solid fa-list',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'Go to Listings',
+                        'href' => route('property.listings.index', absolute: false),
+                        'kind' => 'ghost',
+                        'icon' => 'fa-solid fa-bullhorn',
+                        'turbo_frame' => 'property-main',
+                    ],
+                ],
+            ]);
+    }
+
+    public function occupancy(Request $request)
+    {
+        $preset = trim((string) $request->query('preset', ''));
+        $status = trim((string) $request->query('status', ''));
+        if (! in_array($status, PropertyUnit::statuses(), true)) {
+            $status = '';
+        }
+        $ageBucket = trim((string) $request->query('age_bucket', ''));
+        if (! in_array($ageBucket, ['0_30', '31_60', '61_90', '90_plus'], true)) {
+            $ageBucket = '';
+        }
+        $propertyId = (int) $request->query('property_id', 0);
+        $search = trim((string) $request->query('q', ''));
+        $export = strtolower(trim((string) $request->query('export', '')));
+
+        if ($preset === 'vacant') {
+            $status = PropertyUnit::STATUS_VACANT;
+        } elseif ($preset === 'notice') {
+            $status = PropertyUnit::STATUS_NOTICE;
+        } elseif ($preset === 'long_vacant') {
+            $status = PropertyUnit::STATUS_VACANT;
+            $ageBucket = '90_plus';
+        }
+
+        $today = Carbon::today();
+        $d30 = $today->copy()->subDays(30)->toDateString();
+        $d60 = $today->copy()->subDays(60)->toDateString();
+        $d90 = $today->copy()->subDays(90)->toDateString();
+
+        $includeArchived = $request->boolean('include_archived');
+        $baseQuery = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)
+            ->with([
+                'property',
+                'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
+            ])
+            ->when($status !== '', fn ($q) => $q->where('status', $status))
+            ->when($propertyId > 0, fn ($q) => $q->where('property_id', $propertyId))
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($qq) use ($search) {
+                    $qq->where('label', 'like', '%'.$search.'%')
+                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$search.'%'));
+                });
+            })
+            ->when($ageBucket !== '', function ($q) use ($ageBucket, $d30, $d60, $d90) {
+                $q->whereNotNull('vacant_since');
+                if ($ageBucket === '0_30') {
+                    $q->whereDate('vacant_since', '>=', $d30);
+                } elseif ($ageBucket === '31_60') {
+                    $q->whereBetween('vacant_since', [$d60, Carbon::parse($d30)->subDay()->toDateString()]);
+                } elseif ($ageBucket === '61_90') {
+                    $q->whereBetween('vacant_since', [$d90, Carbon::parse($d60)->subDay()->toDateString()]);
+                } elseif ($ageBucket === '90_plus') {
+                    $q->whereDate('vacant_since', '<', $d90);
+                }
+            })
+            ->orderBy('property_id')
+            ->orderBy('label');
+
+        $units = (clone $baseQuery)->get();
+        $perPage = \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
+        $unitsPage = (clone $baseQuery)->paginate($perPage)->withQueryString();
+
+        $total = $units->count();
+        $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+        $vac = $units->where('status', PropertyUnit::STATUS_VACANT)->count();
+        $notice = $units->where('status', PropertyUnit::STATUS_NOTICE)->count();
+        $rate = $total > 0 ? round(100 * $occ / $total, 1) : null;
+        $vacantRentExposure = (float) $units
+            ->where('status', PropertyUnit::STATUS_VACANT)
+            ->sum(fn (PropertyUnit $u) => (float) $u->rent_amount);
+
+        $vacancyAging = [
+            '0_30' => ['label' => '0-30 days', 'count' => 0, 'rent' => 0.0],
+            '31_60' => ['label' => '31-60 days', 'count' => 0, 'rent' => 0.0],
+            '61_90' => ['label' => '61-90 days', 'count' => 0, 'rent' => 0.0],
+            '90_plus' => ['label' => '90+ days', 'count' => 0, 'rent' => 0.0],
+        ];
+        foreach ($units->where('status', PropertyUnit::STATUS_VACANT) as $vu) {
+            $days = $vu->vacant_since ? $vu->vacant_since->diffInDays($today) : 0;
+            $bucket = $days <= 30 ? '0_30' : ($days <= 60 ? '31_60' : ($days <= 90 ? '61_90' : '90_plus'));
+            $vacancyAging[$bucket]['count']++;
+            $vacancyAging[$bucket]['rent'] += (float) $vu->rent_amount;
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'occupancy-view',
+                ['Unit', 'Property', 'Status', 'Active Tenant', 'List Rent', 'Vacant Since'],
+                function () use ($units) {
+                    return $units->map(function (PropertyUnit $u) {
+                        $lease = $u->leases->first();
+                        $tenant = $lease?->pmTenant;
+
+                        return [
+                            (string) $u->label,
+                            (string) ($u->property->name ?? ''),
+                            (string) ucfirst($u->status),
+                            (string) ($tenant?->name ?? '—'),
+                            (string) number_format((float) $u->rent_amount, 2, '.', ''),
+                            (string) ($u->vacant_since?->format('Y-m-d') ?? '—'),
+                        ];
+                    });
+                },
+                $export
+            );
+        }
+
+        $stats = [
+            ['label' => 'Occupancy rate', 'value' => $rate !== null ? $rate.'%' : '—', 'hint' => 'Occupied / all units'],
+            ['label' => 'Occupied', 'value' => (string) $occ, 'hint' => 'Units'],
+            ['label' => 'Vacant', 'value' => (string) $vac, 'hint' => 'Units'],
+            ['label' => 'Notice', 'value' => (string) $notice, 'hint' => 'Move-out pipeline'],
+        ];
+
+        $rows = [];
+        $tableRowTones = [];
+        foreach ($unitsPage->getCollection() as $u) {
+            $lease = $u->leases->first();
+            $hasActiveLease = $lease !== null;
+            $tenant = $lease?->pmTenant;
+            $actions = [
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>',
+            ];
+
+            if ($u->status === PropertyUnit::STATUS_VACANT) {
+                $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.listings.publish-panel', $u, absolute: false).'" data-listing-publish data-listing-unit-id="'.$u->id.'" data-property-form-modal="off" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+            } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
+                if ($lease) {
+                    $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
+                }
+                if ($tenant?->name) {
+                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">View tenant</a>';
+                }
+            } elseif ($u->status === PropertyUnit::STATUS_NOTICE) {
+                $actions[] = '<a href="'.route('property.tenants.notices', ['q' => $u->label], absolute: false).'" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Prepare move-out</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant', ['q' => $u->property->name], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Market unit</a>';
+            }
+
+            $actionHtml = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                implode('', $actions).
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
+            $select = new HtmlString('<input form="occupancy-bulk-form" type="checkbox" name="unit_ids[]" value="'.$u->id.'" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />');
+
+            $rows[] = [
+                $select,
+                $u->label,
+                $u->property->name,
+                UnitListPresentation::statusBadge($u, $hasActiveLease),
+                UnitListPresentation::tenantCell($u, (string) ($tenant?->name ?? ''), $hasActiveLease),
+                PropertyMoney::kes((float) $u->rent_amount),
+                $u->vacant_since?->format('Y-m-d') ?? '—',
+                $actionHtml,
+            ];
+            $tableRowTones[] = UnitListPresentation::tone($u, $hasActiveLease);
+        }
+
+        $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $activityTrend = collect();
+        if ($unitIds !== []) {
+            $startMonth = Carbon::now()->startOfMonth()->subMonths(5);
+            $activityRows = DB::table('pm_unit_movements')
+                ->selectRaw('DATE_FORMAT(COALESCE(completed_on, scheduled_on), "%Y-%m") as ym, movement_type, COUNT(*) as c')
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereIn('movement_type', ['move_in', 'move_out'])
+                ->whereDate(DB::raw('COALESCE(completed_on, scheduled_on)'), '>=', $startMonth->toDateString())
+                ->groupBy('ym', 'movement_type')
+                ->get();
+
+            $activityTrend = collect(range(0, 5))->map(function ($i) use ($startMonth, $activityRows) {
+                $ym = $startMonth->copy()->addMonths($i)->format('Y-m');
+                $monthRows = $activityRows->where('ym', $ym);
+
+                return [
+                    'label' => Carbon::createFromFormat('Y-m', $ym)->format('M Y'),
+                    'move_in' => (int) ($monthRows->firstWhere('movement_type', 'move_in')->c ?? 0),
+                    'move_out' => (int) ($monthRows->firstWhere('movement_type', 'move_out')->c ?? 0),
+                ];
+            });
+        }
+
+        return view('property.agent.properties.occupancy', [
+            'stats' => $stats,
+            'columns' => ['Select', 'Unit', 'Property', 'Status', 'Active tenant', 'List rent', 'Vacant since', 'Actions'],
+            'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
+            'filters' => [
+                'preset' => $preset,
+                'status' => $status,
+                'age_bucket' => $ageBucket,
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '',
+                'q' => $search,
+                'per_page' => (string) $request->query('per_page', '30'),
+            ],
+            'propertyOptions' => $this->operationalPropertiesQuery($includeArchived)
+                ->whereIn('id', $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->select('property_id')->distinct())
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'vacancyAging' => $vacancyAging,
+            'vacantRentExposure' => $vacantRentExposure,
+            'activityTrend' => $activityTrend,
+            'unitsPage' => $unitsPage,
+        ]);
+    }
+
+    public function occupancyBulkAction(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'bulk_action' => ['required', Rule::in([
+                'mark_vacant',
+                'mark_occupied',
+                'mark_notice',
+                'open_assign',
+                'open_publish',
+                'open_property',
+            ])],
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['integer', 'exists:property_units,id'],
+        ]);
+
+        $units = PropertyUnit::query()->whereIn('id', $data['unit_ids'])->get();
+        if ($units->isEmpty()) {
+            return back()->with('error', 'Select at least one unit.');
+        }
+
+        $action = (string) $data['bulk_action'];
+        if ($action === 'mark_vacant') {
+            $activeLeaseCount = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->whereIn('lu.property_unit_id', $units->pluck('id'))
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->count();
+            if ($activeLeaseCount > 0) {
+                return back()->with('error', 'Some selected units still have active leases. End those leases before marking vacant.');
+            }
+
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_VACANT,
+                'vacant_since' => now()->toDateString(),
+            ]);
+
+            return back()->with('success', 'Selected units marked vacant.');
+        }
+        if ($action === 'mark_occupied') {
+            $activeLeaseUnitIds = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->whereIn('lu.property_unit_id', $units->pluck('id'))
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->distinct()
+                ->pluck('lu.property_unit_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $selectedIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $missing = array_values(array_diff($selectedIds, $activeLeaseUnitIds));
+            if ($missing !== []) {
+                return back()->with('error', 'Some selected units have no active lease. Only units with active leases can be marked occupied.');
+            }
+
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_OCCUPIED,
+                'vacant_since' => null,
+            ]);
+
+            return back()->with('success', 'Selected units marked occupied.');
+        }
+        if ($action === 'mark_notice') {
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_NOTICE,
+            ]);
+
+            return back()->with('success', 'Selected units marked notice.');
+        }
+        if ($action === 'open_assign') {
+            $target = $units->firstWhere('status', PropertyUnit::STATUS_VACANT) ?? $units->first();
+
+            return redirect()->route('property.tenants.leases', [
+                'property_id' => $target->property_id,
+                'unit_id' => $target->id,
+            ]);
+        }
+        if ($action === 'open_publish') {
+            $target = $units->firstWhere('status', PropertyUnit::STATUS_VACANT);
+            if (! $target) {
+                return back()->with('error', 'Choose at least one vacant unit to publish.');
+            }
+
+            return redirect()->route('property.listings.create', ['selected_unit' => $target->id])->withFragment('listing-publish');
+        }
+
+        $target = $units->first();
+
+        return redirect()->route('property.properties.show', ['property' => $target->property_id]);
+    }
+
+    public function propertyRegisterImportForm(): RedirectResponse
+    {
+        return redirect()
+            ->route('property.properties.list')
+            ->withFragment('import-register');
+    }
+
+    public function propertyRegisterImportTemplate(): Response
+    {
+        $csv = app(PropertyRegisterImportService::class)->templateCsv();
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="property_register_import_template.csv"',
+        ]);
+    }
+
+    public function propertyRegisterImportStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:csv,txt'],
+        ]);
+
+        $path = $data['file']->getRealPath();
+        if (! is_string($path) || $path === '') {
+            return redirect()
+                ->route('property.properties.list')
+                ->withFragment('import-register')
+                ->with('error', 'Upload failed. Please try again.');
+        }
+
+        $agentUserId = (int) $request->user()->id;
+        $result = app(PropertyRegisterImportService::class)->importFromPath($path, $agentUserId);
+
+        $errors = $result['errors'];
+        $warnings = $result['warnings'];
+
+        return redirect()
+            ->route('property.properties.list')
+            ->withFragment('import-register')
+            ->with('property_register_import_stats', [
+                'properties_created' => $result['properties_created'],
+                'properties_updated' => $result['properties_updated'],
+                'units_created' => $result['units_created'],
+                'units_updated' => $result['units_updated'],
+                'skipped' => $result['skipped'],
+                'errors' => count($errors),
+                'warnings' => count($warnings),
+            ])
+            ->with('property_register_import_errors', array_slice($errors, 0, 25))
+            ->with('property_register_import_warnings', array_slice($warnings, 0, 25))
+            ->with(
+                $errors === []
+                    ? 'success'
+                    : 'error',
+                $errors === []
+                    ? sprintf(
+                        'Import complete: %d properties created, %d units created.',
+                        $result['properties_created'],
+                        $result['units_created'],
+                    )
+                    : 'Import finished with errors. Review the list below.'
+            );
     }
 }
