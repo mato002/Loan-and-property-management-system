@@ -371,13 +371,13 @@
             </div>
             
             <div class="grid gap-3 sm:grid-cols-2">
-                <form method="post" action="{{ route('property.revenue.utilities.attached.materialize') }}" class="space-y-2 rounded-xl border border-slate-200 p-3">
+                <form method="post" action="{{ route('property.revenue.utilities.attached.materialize') }}" class="space-y-2 rounded-xl border border-slate-200 p-3" data-billing-form="materialize">
                     @csrf
                     <label class="block text-xs text-slate-500">Billing month</label>
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
                     <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">Create charge lines</button>
                 </form>
-                <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3">
+                <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3" data-billing-form="water-invoices">
                     @csrf
                     <label class="block text-xs text-slate-500">Billing month</label>
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
@@ -385,7 +385,7 @@
                     <input type="date" name="due_date" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
                     <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Generate water invoices</button>
                 </form>
-                <form method="post" action="{{ route('property.revenue.utilities.invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3">
+                <form method="post" action="{{ route('property.revenue.utilities.invoices.generate') }}" class="space-y-2 rounded-xl border border-slate-200 p-3" data-billing-form="utility-invoices">
                     @csrf
                     <label class="block text-xs text-slate-500">Billing month</label>
                     <input type="month" name="billing_month" required class="w-full rounded-lg border border-slate-200 text-sm px-3 py-2" />
@@ -409,4 +409,61 @@
     <x-slot name="above">
         @include('property.agent.revenue.utilities._workspace')
     </x-slot>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const billingForms = document.querySelectorAll('[data-billing-form]');
+            billingForms.forEach(form => {
+                form.addEventListener('submit', function(e) {
+                    const formType = form.getAttribute('data-billing-form');
+                    const formData = new FormData(form);
+                    const billingMonth = formData.get('billing_month') || 'N/A';
+                    
+                    // Show loading alert
+                    if (window.Swal) {
+                        window.Swal.fire({
+                            title: 'Processing...',
+                            text: 'Billing in progress. Please wait.',
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                window.Swal.showLoading();
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Check for billing stats in session and show detailed alert
+            @if(session('billing_stats'))
+                @php
+                    $stats = session('billing_stats');
+                    $statsHtml = '<div style="text-align: left; font-size: 14px;">';
+                    $statsHtml .= '<p><strong>Created:</strong> ' . ($stats['created'] ?? 0) . ' charge line(s)</p>';
+                    if (($stats['skipped_duplicate'] ?? 0) > 0) {
+                        $statsHtml .= '<p style="color: #f59e0b;"><strong>Skipped (already existed):</strong> ' . $stats['skipped_duplicate'] . '</p>';
+                    }
+                    if (($stats['skipped_no_lease'] ?? 0) > 0) {
+                        $statsHtml .= '<p style="color: #f59e0b;"><strong>Skipped (no active lease):</strong> ' . $stats['skipped_no_lease'] . '</p>';
+                    }
+                    if (($stats['skipped_rate_only'] ?? 0) > 0) {
+                        $statsHtml .= '<p style="color: #f59e0b;"><strong>Skipped (rate-only):</strong> ' . $stats['skipped_rate_only'] . '</p>';
+                    }
+                    if (($stats['skipped_no_amount'] ?? 0) > 0) {
+                        $statsHtml .= '<p style="color: #f59e0b;"><strong>Skipped (no amount):</strong> ' . $stats['skipped_no_amount'] . '</p>';
+                    }
+                    $statsHtml .= '</div>';
+                @endphp
+                
+                if (window.Swal) {
+                    window.Swal.fire({
+                        icon: 'success',
+                        title: 'Billing Complete',
+                        html: {!! $statsHtml !!},
+                        confirmButtonColor: '#3b82f6',
+                        width: '400px'
+                    });
+                }
+            @endif
+        });
+    </script>
 </x-property.workspace>

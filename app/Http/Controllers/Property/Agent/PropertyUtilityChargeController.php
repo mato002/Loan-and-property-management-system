@@ -655,7 +655,7 @@ class PropertyUtilityChargeController extends Controller
             $msg .= ' '.$stats['skipped_rate_only'].' rate-only rule(s) need manual usage entry.';
         }
 
-        return back()->with('success', $msg);
+        return back()->with('success', $msg)->with('billing_stats', $stats);
     }
 
     public function storeWaterReading(Request $request, WaterBillingService $billing): RedirectResponse
