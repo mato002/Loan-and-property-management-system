@@ -42,6 +42,7 @@
     method="post"
     action="{{ route('property.properties.update', $property) }}"
     data-turbo="false"
+    id="deposit-rules-form"
     x-data="{
         formOpen: false,
         unitLabels: @js($unitLabelMap),
@@ -254,3 +255,17 @@
         </x-slot:footer>
     </x-property.modal>
 </form>
+
+<script>
+    (function() {
+        const form = document.getElementById('deposit-rules-form');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                console.log('Deposit rules form submitting');
+                console.log('Form action:', form.action);
+                console.log('Form method:', form.method);
+                console.log('Deposit definitions input:', form.querySelector('input[name="deposit_rules_save"]')?.value);
+            });
+        }
+    })();
+</script>
