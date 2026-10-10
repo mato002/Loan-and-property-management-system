@@ -31,6 +31,7 @@ final class PropertyEntityHub
         ['key' => 'deposits', 'label' => 'Deposits'],
         ['key' => 'notices', 'label' => 'Notices'],
         ['key' => 'utilities', 'label' => 'Utilities'],
+        ['key' => 'utility_charges', 'label' => 'Utility charges'],
         ['key' => 'maintenance', 'label' => 'Maintenance'],
         ['key' => 'statement', 'label' => 'Statement'],
     ];

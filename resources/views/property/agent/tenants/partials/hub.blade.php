@@ -21,6 +21,7 @@
     @includeWhen($activeTab === 'deposits', 'property.agent.tenants.partials.tab-deposits')
     @includeWhen($activeTab === 'notices', 'property.agent.tenants.partials.tab-notices')
     @includeWhen($activeTab === 'utilities', 'property.agent.tenants.partials.tab-utilities')
+    @includeWhen($activeTab === 'utility_charges', 'property.agent.tenants.partials.tab-utility-charges')
     @includeWhen($activeTab === 'maintenance', 'property.agent.tenants.partials.tab-maintenance')
     @includeWhen($activeTab === 'statement', 'property.agent.tenants.partials.tab-statement')
 </div>
