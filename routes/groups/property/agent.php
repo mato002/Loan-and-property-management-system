@@ -151,6 +151,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/revenue/utilities-charges/water-penalties/preview', [PropertyUtilityChargeController::class, 'previewWaterPenalties'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.preview');
     Route::post('/revenue/utilities-charges/water-penalties/reverse', [PropertyUtilityChargeController::class, 'reverseWaterPenalty'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.reverse');
     Route::delete('/revenue/utilities-charges/{charge}', [PropertyUtilityChargeController::class, 'destroy'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.destroy');
+    Route::delete('/revenue/utilities-charges/bulk', [PropertyUtilityChargeController::class, 'bulkDestroy'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.bulk_destroy');
     Route::get('/revenue/utilities/reconciliation', [UtilityLedgerController::class, 'reconciliation'])->name('revenue.utilities.reconciliation');
     Route::get('/revenue/utilities/ledger', [UtilityLedgerController::class, 'index'])->name('revenue.utilities.ledger');
     Route::get('/revenue/utilities/analytics', [UtilityAnalyticsController::class, 'index'])->name('revenue.utilities.analytics');

@@ -996,6 +996,22 @@ class PropertyUtilityChargeController extends Controller
         return back()->with('success', __('Charge removed.'));
     }
 
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'charge_ids' => ['required', 'array', 'min:1'],
+            'charge_ids.*' => ['integer', 'exists:pm_unit_utility_charges,id'],
+        ]);
+
+        $ids = collect($data['charge_ids'])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        
+        $deleted = PmUnitUtilityCharge::query()
+            ->whereIn('id', $ids)
+            ->delete();
+
+        return back()->with('success', $deleted.' charge line(s) deleted.');
+    }
+
     public function waterReadingsBulkAction(Request $request): RedirectResponse
     {
         $data = $request->validate([

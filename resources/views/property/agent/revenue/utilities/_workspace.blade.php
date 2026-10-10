@@ -366,7 +366,9 @@
                 </div>
             </div>
             <div x-show="activeTab === 'charges'" x-cloak class="space-y-4">
-                @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+                <div x-if="activeTab === 'charges'">
+                    @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+                </div>
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Posted charge lines</h3>
                     <button type="button" data-property-modal-open="showAddChargeForm" @click="showAddChargeForm = true" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 min-h-[44px]">Add charge line</button>
@@ -374,7 +376,9 @@
                 @include('property.agent.revenue.utilities._charges_list')
             </div>
             <div x-show="activeTab === 'standing'" x-cloak class="space-y-4">
-                @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+                <div x-if="activeTab === 'standing'">
+                    @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
+                </div>
                 @include('property.agent.revenue.utilities._standing_register')
             </div>
             <x-property.utility.penalty-preview-modal />
