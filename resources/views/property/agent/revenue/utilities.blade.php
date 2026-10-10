@@ -345,6 +345,31 @@
             max-width="3xl"
         >
             <p class="text-sm text-slate-600 mb-3">Garbage, service charge, and other fixed extras become charge lines, then invoices. Water uses meter readings separately.</p>
+            
+            {{-- Available Utility Charge Types --}}
+            <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <h4 class="text-xs font-semibold text-slate-700 mb-2">Available utility charge types in system:</h4>
+                <div class="flex flex-wrap gap-2">
+                    @php
+                        $availableChargeTypes = \App\Models\PropertyUtilityChargeTemplate::query()
+                            ->select('charge_type')
+                            ->distinct()
+                            ->orderBy('charge_type')
+                            ->pluck('charge_type')
+                            ->map(fn($type) => ucfirst(str_replace('_', ' ', $type)))
+                            ->filter()
+                            ->values();
+                    @endphp
+                    @if($availableChargeTypes->count() > 0)
+                        @foreach($availableChargeTypes as $type)
+                            <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">{{ $type }}</span>
+                        @endforeach
+                    @else
+                        <span class="text-xs text-slate-500">No utility charge types configured yet</span>
+                    @endif
+                </div>
+            </div>
+            
             <div class="grid gap-3 sm:grid-cols-2">
                 <form method="post" action="{{ route('property.revenue.utilities.attached.materialize') }}" class="space-y-2 rounded-xl border border-slate-200 p-3">
                     @csrf
