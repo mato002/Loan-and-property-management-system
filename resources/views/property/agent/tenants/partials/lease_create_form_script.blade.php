@@ -580,7 +580,7 @@
                     const label = String(def.label || '');
                     const required = !!def.is_required;
                     const amount = computeDefinitionAmount(def);
-                    const oldValue = oldDepositMap.get(label) || old('deposit_amount', '');
+                    const oldValue = oldDepositMap.get(label) || '';
                     const initialValue = oldValue !== '' ? oldValue : toMoney(amount);
                     const isReadOnly = required && !canCustomDepositOverride;
                     
