@@ -6,6 +6,6 @@ final class PropertyMoney
 {
     public static function kes(float|int|string|null $amount): string
     {
-        return 'KES '.number_format((float) $amount, 2);
+        return 'KES '.number_format((float) $amount, 0);
     }
 }
