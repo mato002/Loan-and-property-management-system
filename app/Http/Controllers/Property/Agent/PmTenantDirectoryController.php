@@ -1397,7 +1397,7 @@ class PmTenantDirectoryController extends Controller
         $utilityReadings = $this->tenantUtilityReadings($tenant, $unitIds);
 
         $standingExtras = $this->tenantStandingExtras($tenant);
-        $utilityCharges = $this->tenantUtilityCharges($tenant, $unitIds);
+        $utilityCharges = $this->tenantUtilityCharges($tenant, $unitIds->all());
         $depositSnapshot = $this->tenantDepositSnapshot($tenant);
         $activityFeed = $this->tenantActivityFeed($tenant, $lastPayment, $lastPaymentAmount, $recentInvoices, $recentNotices);
         $alerts = $this->tenantHubAlerts($tenant, $billing['total_due'] ?? [], $profileStatus);
