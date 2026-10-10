@@ -582,7 +582,7 @@
                     const amount = computeDefinitionAmount(def);
                     const oldValue = oldDepositMap.get(label) || '';
                     const initialValue = oldValue !== '' ? oldValue : toMoney(amount);
-                    const isReadOnly = required && !canCustomDepositOverride;
+                    const isReadOnly = required;
                     
                     const div = document.createElement('div');
                     div.className = required ? 'bg-amber-50/40 rounded-lg p-2' : '';
