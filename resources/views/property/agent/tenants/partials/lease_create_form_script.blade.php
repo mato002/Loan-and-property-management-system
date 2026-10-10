@@ -245,16 +245,20 @@
             };
             const getEffectiveDepositDefinitions = () => {
                 const propertyId = getCurrentPropertyId();
+                console.log('getEffectiveDepositDefinitions: propertyId', propertyId);
                 if (!propertyId) return [];
                 const selectedUnit = getSelectedUnitOption();
                 const unitId = selectedUnit ? Number(selectedUnit.value || 0) : 0;
                 const rows = Array.isArray(depositDefinitionsByProperty[String(propertyId)]) ? depositDefinitionsByProperty[String(propertyId)] : [];
+                console.log('getEffectiveDepositDefinitions: rows for property', propertyId, rows);
                 const map = new Map();
                 rows
                     .filter((r) => !r.property_unit_id || Number(r.property_unit_id) === unitId)
                     .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
                     .forEach((r) => map.set(String(r.deposit_key || ''), r));
-                return Array.from(map.values());
+                const result = Array.from(map.values());
+                console.log('getEffectiveDepositDefinitions: filtered result', result);
+                return result;
             };
             const computeDefinitionAmount = (definition) => {
                 const monthlyRent = Number(monthlyRentInput?.value || 0);
