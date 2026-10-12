@@ -16,7 +16,7 @@ class SuperAdminOpsConsoleController extends Controller
         $agentId = (int) $request->query('agent_id', 0);
         $inspectLandlordId = (int) $request->query('inspect_landlord_id', 0);
         $tab = (string) $request->query('tab', 'landlord-scope');
-        if (! in_array($tab, ['landlord-scope', 'commands'], true)) {
+        if (! in_array($tab, ['landlord-scope', 'commands', 'maintenance'], true)) {
             $tab = 'landlord-scope';
         }
 

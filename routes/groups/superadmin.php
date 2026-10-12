@@ -43,6 +43,7 @@ Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->grou
     Route::put('/users/{user}', [SuperAdminUserController::class, 'update'])->name('users.update');
 
     Route::get('/ops', [SuperAdminOpsConsoleController::class, 'index'])->name('ops.index');
+    Route::get('/maintenance', fn () => redirect()->route('superadmin.ops.index', ['tab' => 'maintenance']))->name('maintenance');
     Route::post('/ops/landlord-scope/assign', [SuperAdminOpsConsoleController::class, 'assignLandlord'])->name('ops.landlord_scope.assign');
     Route::post('/ops/landlord-scope/release', [SuperAdminOpsConsoleController::class, 'releaseLandlord'])->name('ops.landlord_scope.release');
 });

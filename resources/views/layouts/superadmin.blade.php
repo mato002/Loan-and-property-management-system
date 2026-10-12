@@ -116,9 +116,13 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Audit trail
                     </a>
-                    <a href="{{ route('superadmin.ops.index') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.ops.*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.ops.index') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.ops.*') && request('tab') !== 'maintenance' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         Operations console
+                    </a>
+                    <a href="{{ route('superadmin.maintenance') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.ops.*') && request('tab') === 'maintenance' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4h2l1 3 3 1 2-1 1 2-2 2v3l2 2-1 2-3-1-2 2h-2l-1-3-3-1-2 1-1-2 2-2v-3L4 9l1-2 3 1 2-2z" /></svg>
+                        Maintenance
                     </a>
 
                     <div class="border-t border-slate-200 my-2"></div>
@@ -228,9 +232,13 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         <span class="sa-collapse-text">Audit trail</span>
                     </a>
-                    <a href="{{ route('superadmin.ops.index') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.ops.*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
+                    <a href="{{ route('superadmin.ops.index') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.ops.*') && request('tab') !== 'maintenance' ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         <span class="sa-collapse-text">Operations console</span>
+                    </a>
+                    <a href="{{ route('superadmin.maintenance') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.ops.*') && request('tab') === 'maintenance' ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4h2l1 3 3 1 2-1 1 2-2 2v3l2 2-1 2-3-1-2 2h-2l-1-3-3-1-2 1-1-2 2-2v-3L4 9l1-2 3 1 2-2z" /></svg>
+                        <span class="sa-collapse-text">Maintenance</span>
                     </a>
 
                     <div class="border-t border-[#406866]/40 my-2"></div>

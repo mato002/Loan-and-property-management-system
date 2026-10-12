@@ -1,11 +1,11 @@
-@php($title = 'Operations console — Super Admin')
+@php($title = (($tab ?? '') === 'maintenance' ? 'Maintenance center' : 'Operations console').' — Super Admin')
 @extends('layouts.superadmin', ['title' => $title])
 
 @section('content')
     <div class="mb-6">
-        <h1 class="text-2xl font-black tracking-tight text-slate-900">Operations console</h1>
+        <h1 class="text-2xl font-black tracking-tight text-slate-900">{{ $tab === 'maintenance' ? 'System maintenance' : 'Operations console' }}</h1>
         <p class="mt-1 text-sm text-slate-600 max-w-3xl">
-            Super-admin only tools for server operations: landlord/agent visibility, command reference, and quick repairs without SSH.
+            {{ $tab === 'maintenance' ? 'Central reference for the artisan commands used to repair, reconcile, deploy, and monitor the system.' : 'Super-admin only tools for server operations: landlord/agent visibility, command reference, and quick repairs.' }}
         </p>
     </div>
 
@@ -22,12 +22,53 @@
         >
             Command reference
         </a>
+        <a
+            href="{{ route('superadmin.ops.index', ['tab' => 'maintenance']) }}"
+            class="inline-flex rounded-xl px-4 py-2 text-sm font-bold transition {{ $tab === 'maintenance' ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50' }}"
+        >
+            Maintenance
+        </a>
     </div>
 
-    @if ($tab === 'commands')
+    @if (in_array($tab, ['commands', 'maintenance'], true))
+        @if ($tab === 'maintenance')
+            <div class="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <section class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-sm">
+                    <p class="text-xs font-black uppercase tracking-wide text-emerald-800">Common repair · payment allocations</p>
+                    <h2 class="mt-1 text-lg font-black text-slate-900">Rebuild tenant receipt allocations</h2>
+                    <p class="mt-2 text-sm text-slate-700">Reassign completed tenant payments to open invoices oldest-due-first, then sync invoice paid totals. This can move existing allocations, so confirm the database backup and run it from the production app directory.</p>
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <code class="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">php artisan payments:repair-allocations --limit=10000</code>
+                        <button type="button" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800" data-copy-command="php artisan payments:repair-allocations --limit=10000">Copy command</button>
+                    </div>
+                    <p class="mt-2 text-xs text-slate-600">The limit is the maximum number of tenants processed. Raise it if your portfolio has more.</p>
+                </section>
+                <section class="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
+                    <p class="text-xs font-black uppercase tracking-wide text-sky-800">Invoice totals · allocation drift</p>
+                    <h2 class="mt-1 text-lg font-black text-slate-900">Recalculate paid/status fields</h2>
+                    <p class="mt-2 text-sm text-slate-700">Use this when payment allocation rows are already correct but stored invoice totals or statuses do not match them. It does not rebuild or move receipts between invoices.</p>
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <code class="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">php artisan finance:detect-allocation-drift --fix</code>
+                        <button type="button" class="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white hover:bg-sky-800" data-copy-command="php artisan finance:detect-allocation-drift --fix">Copy command</button>
+                    </div>
+                </section>
+            </div>
+        @endif
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm prose prose-slate max-w-none">
             {!! $commandReferenceHtml !!}
         </div>
+        @if ($tab === 'maintenance')
+            <script>
+                document.querySelectorAll('[data-copy-command]').forEach((button) => {
+                    button.addEventListener('click', async () => {
+                        await navigator.clipboard.writeText(button.dataset.copyCommand || '');
+                        const original = button.textContent;
+                        button.textContent = 'Copied';
+                        window.setTimeout(() => { button.textContent = original; }, 1400);
+                    });
+                });
+            </script>
+        @endif
     @else
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div class="xl:col-span-1 space-y-6">
