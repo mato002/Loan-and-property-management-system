@@ -32,7 +32,7 @@ final class PropertyStatementAutoAssignService
     {
         set_time_limit(0);
         $summary = ['posted' => 0, 'linked' => 0, 'skipped' => 0, 'errors' => []];
-        $tenantsByPhone = $this->tenantsByPhone((int) $statement->agent_user_id);
+        $tenantsByPhone = $this->tenantsByPhone();
         /** @var array<string, int> $postedByReference */
         $postedByReference = [];
 
@@ -114,7 +114,7 @@ final class PropertyStatementAutoAssignService
             return 'linked';
         }
 
-        $receipt = $this->findPostedReceipt((int) $line->agent_user_id, $candidates);
+        $receipt = $this->findPostedReceipt($candidates);
         if ($receipt) {
             $line->update([
                 'match_status' => PmBankStatementLine::MATCH_MATCHED,
@@ -123,6 +123,17 @@ final class PropertyStatementAutoAssignService
                 'pm_ezen_receipt_register_id' => (int) $receipt->id,
                 'unassigned_payment_id' => null,
             ]);
+
+            return 'linked';
+        }
+
+        // Some older imports have a matched legacy payment row with a direct
+        // link to the tenant-owned pm_payment. Reuse that allocation instead
+        // of treating the same bank credit as a fresh receipt.
+        $postedLedgerPayment = $this->findPostedLedgerPayment($candidates);
+        if ($postedLedgerPayment && (int) ($postedLedgerPayment->pm_payment_id ?? 0) > 0) {
+            $this->linkPayment($line, (int) $postedLedgerPayment->pm_payment_id);
+            $this->rememberReference($postedByReference, $candidates, (int) $postedLedgerPayment->pm_payment_id);
 
             return 'linked';
         }
@@ -276,14 +287,13 @@ final class PropertyStatementAutoAssignService
     /**
      * @param  list<string>  $candidates
      */
-    private function findPostedReceipt(int $agentUserId, array $candidates): ?PmEzenReceiptRegister
+    private function findPostedReceipt(array $candidates): ?PmEzenReceiptRegister
     {
-        if (! Schema::hasTable('pm_ezen_receipt_register') || $agentUserId <= 0) {
+        if (! Schema::hasTable('pm_ezen_receipt_register')) {
             return null;
         }
 
         return PmEzenReceiptRegister::query()
-            ->where('agent_user_id', $agentUserId)
             ->where(function ($query): void {
                 $query->where('pm_tenant_id', '>', 0)
                     ->orWhere(function ($name): void {
@@ -313,6 +323,24 @@ final class PropertyStatementAutoAssignService
                 }
             })
             ->exists();
+    }
+
+    /** @param list<string> $candidates */
+    private function findPostedLedgerPayment(array $candidates): ?Payment
+    {
+        return Payment::query()
+            ->where('status', '!=', 'unmatched')
+            ->where('tenant_id', '>', 0)
+            ->where(function ($query) use ($candidates): void {
+                foreach ($candidates as $candidate) {
+                    $query->orWhereRaw('UPPER(TRIM(transaction_id)) = ?', [$candidate]);
+                    if (Schema::hasColumn('payments', 'external_transaction_reference')) {
+                        $query->orWhereRaw('UPPER(TRIM(external_transaction_reference)) = ?', [$candidate]);
+                    }
+                }
+            })
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**
@@ -419,7 +447,7 @@ final class PropertyStatementAutoAssignService
     /**
      * @return array<string, list<PmTenant>>
      */
-    private function tenantsByPhone(int $agentUserId): array
+    private function tenantsByPhone(): array
     {
         $columns = ['id', 'name', 'phone'];
         if (Schema::hasColumn('pm_tenants', 'other_names')) {
@@ -427,9 +455,6 @@ final class PropertyStatementAutoAssignService
         }
 
         $query = PmTenant::query();
-        if ($agentUserId > 0 && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-            $query->where('agent_user_id', $agentUserId);
-        }
 
         $index = [];
         foreach ($query->get($columns) as $tenant) {

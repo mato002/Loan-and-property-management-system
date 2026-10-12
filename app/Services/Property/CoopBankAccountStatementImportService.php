@@ -6,6 +6,7 @@ use App\Models\PmBankStatement;
 use App\Models\PmBankStatementLine;
 use App\Models\PmEzenReceiptRegister;
 use App\Models\PmPayment;
+use App\Models\Payment;
 use App\Models\UnassignedPayment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -316,7 +317,7 @@ final class CoopBankAccountStatementImportService
         }
 
         if (Schema::hasTable('pm_ezen_receipt_register')) {
-            $receipt = $this->findReceiptByReference($agentUserId, $reference);
+            $receipt = $this->findReceiptByReference($reference);
             if ($receipt) {
                 return [
                     'match_status' => PmBankStatementLine::MATCH_MATCHED,
@@ -329,7 +330,7 @@ final class CoopBankAccountStatementImportService
         }
 
         if (Schema::hasTable('pm_payments')) {
-            $payment = $this->findPaymentByReference($agentUserId, $reference);
+            $payment = $this->findPaymentByReference($reference);
             if ($payment) {
                 return [
                     'match_status' => PmBankStatementLine::MATCH_MATCHED,
@@ -339,6 +340,19 @@ final class CoopBankAccountStatementImportService
                     'unassigned_payment_id' => null,
                 ];
             }
+        }
+
+        // Older payment rows may already point at a tenant-owned pm_payment
+        // even when the canonical external_ref lookup did not find it.
+        $postedPayment = $this->findPostedLedgerPayment($reference);
+        if ($postedPayment && (int) ($postedPayment->pm_payment_id ?? 0) > 0) {
+            return [
+                'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                'matched_type' => 'payment',
+                'pm_payment_id' => (int) $postedPayment->pm_payment_id,
+                'pm_ezen_receipt_register_id' => null,
+                'unassigned_payment_id' => null,
+            ];
         }
 
         if (Schema::hasTable('unassigned_payments')) {
@@ -406,22 +420,41 @@ final class CoopBankAccountStatementImportService
         }
     }
 
-    private function findReceiptByReference(int $agentUserId, string $reference): ?PmEzenReceiptRegister
+    private function findReceiptByReference(string $reference): ?PmEzenReceiptRegister
     {
-        $query = PmEzenReceiptRegister::query()->where('agent_user_id', $agentUserId);
+        // Model workspace scopes keep this within the active agent's access;
+        // super admins can detect a duplicate receipt anywhere in the system.
+        $query = PmEzenReceiptRegister::query();
         $this->applyReferenceMatch($query, 'ref_no', $reference);
+
+        return $query
+            ->orderByRaw('CASE WHEN pm_tenant_id > 0 OR (register_tenant_name IS NOT NULL AND register_tenant_name != ?) THEN 0 ELSE 1 END', [''])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function findPaymentByReference(string $reference): ?PmPayment
+    {
+        $query = PmPayment::query()->where('pm_tenant_id', '>', 0);
+        $this->applyReferenceMatch($query, 'external_ref', $reference);
 
         return $query->orderByDesc('id')->first();
     }
 
-    private function findPaymentByReference(int $agentUserId, string $reference): ?PmPayment
+    private function findPostedLedgerPayment(string $reference): ?Payment
     {
-        $query = PmPayment::query()
-            ->when(
-                Schema::hasColumn('pm_payments', 'agent_user_id'),
-                fn ($q) => $q->where('agent_user_id', $agentUserId),
-            );
-        $this->applyReferenceMatch($query, 'external_ref', $reference);
+        $candidates = $this->referenceCandidates($reference);
+        $query = Payment::query()
+            ->where('status', '!=', 'unmatched')
+            ->where('tenant_id', '>', 0)
+            ->where(function ($matches) use ($candidates): void {
+                foreach ($candidates as $candidate) {
+                    $matches->orWhereRaw('UPPER(TRIM(transaction_id)) = ?', [$candidate]);
+                    if (Schema::hasColumn('payments', 'external_transaction_reference')) {
+                        $matches->orWhereRaw('UPPER(TRIM(external_transaction_reference)) = ?', [$candidate]);
+                    }
+                }
+            });
 
         return $query->orderByDesc('id')->first();
     }
