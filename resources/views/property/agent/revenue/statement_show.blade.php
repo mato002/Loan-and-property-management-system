@@ -134,7 +134,7 @@
                         </td>
                         <td data-col="status" class="px-3 py-2">
                             @php $shownStatus = $line->displayMatchStatus(); @endphp
-                            <span class="text-xs font-semibold {{ $shownStatus === 'Matched' || $shownStatus === 'Landlord' ? 'text-emerald-700' : ($shownStatus === 'Unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
+                            <span class="text-xs font-semibold {{ in_array($shownStatus, ['Matched', 'Landlord', 'Employee', 'Vendor'], true) ? 'text-emerald-700' : ($shownStatus === 'Unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
                                 {{ $shownStatus }}
                             </span>
                         </td>
@@ -165,12 +165,16 @@
                                         @csrf
                                         <select name="paid_to_kind" data-payee-kind class="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs">
                                             <option value="landlord" @selected(($line->paid_to_kind ?: 'landlord') === 'landlord')>Landlord</option>
+                                            <option value="employee" @selected($line->paid_to_kind === 'employee')>Employee</option>
+                                            <option value="vendor" @selected($line->paid_to_kind === 'vendor')>Vendor</option>
                                             <option value="bank_charge" @selected($line->paid_to_kind === 'bank_charge')>Bank charge</option>
                                             <option value="other" @selected($line->paid_to_kind === 'other')>Other</option>
                                         </select>
                                         <input type="hidden" name="landlord_id" value="{{ $line->paid_to_landlord_id }}">
+                                        <input type="hidden" name="employee_id" value="{{ $line->paid_to_employee_id }}">
+                                        <input type="hidden" name="vendor_id" value="{{ $line->paid_to_vendor_id }}">
                                         <div class="relative flex items-center">
-                                            <input type="text" data-landlord-query autocomplete="off" placeholder="Landlord" value="{{ $line->paid_to_kind === 'landlord' ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600">
+                                            <input type="text" data-payee-query autocomplete="off" placeholder="Choose payee" value="{{ in_array($line->paid_to_kind, ['landlord', 'employee', 'vendor'], true) ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600">
                                             <span data-search-spinner class="pointer-events-none absolute right-1.5 hidden text-slate-400">
                                                 <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
                                             </span>
@@ -201,6 +205,8 @@
     (function () {
         const tenants = @json($assignTenants ?? []);
         const landlords = @json($assignLandlords ?? []);
+        const employees = @json($assignEmployees ?? []);
+        const vendors = @json($assignVendors ?? []);
         let menu = null;
 
         function closeMenu() {
@@ -286,10 +292,11 @@
 
             function payeeFields(form) {
                 const kind = form.querySelector('[data-payee-kind]')?.value || 'landlord';
-                const landlord = form.querySelector('[data-landlord-query]');
+                const query = form.querySelector('[data-payee-query]');
                 const other = form.querySelector('[name="paid_to_name"]');
-                if (landlord) {
-                    landlord.hidden = kind !== 'landlord';
+                if (query) {
+                    query.hidden = !['landlord', 'employee', 'vendor'].includes(kind);
+                    query.placeholder = kind === 'employee' ? 'Choose employee' : kind === 'vendor' ? 'Choose vendor' : 'Choose landlord';
                 }
                 if (other) {
                     other.hidden = kind !== 'other';
@@ -297,24 +304,29 @@
             }
 
             document.querySelectorAll('[data-statement-payee]').forEach((form) => {
-                const query = form.querySelector('[data-landlord-query]');
-                const hidden = form.querySelector('[name="landlord_id"]');
+                const query = form.querySelector('[data-payee-query]');
+                const hiddenByKind = {
+                    landlord: form.querySelector('[name="landlord_id"]'),
+                    employee: form.querySelector('[name="employee_id"]'),
+                    vendor: form.querySelector('[name="vendor_id"]'),
+                };
                 const kind = form.querySelector('[data-payee-kind]');
                 payeeFields(form);
                 kind?.addEventListener('change', () => {
-                    if (hidden && kind.value !== 'landlord') {
-                        hidden.value = '';
-                    }
+                    Object.entries(hiddenByKind).forEach(([payeeKind, input]) => { if (input && payeeKind !== kind.value) input.value = ''; });
+                    if (query) query.value = '';
                     payeeFields(form);
                 });
-                if (!query || !hidden) {
+                if (!query) {
                     return;
                 }
                 query.addEventListener('input', () => {
-                    hidden.value = '';
+                    const selectedHidden = hiddenByKind[kind.value];
+                    if (selectedHidden) selectedHidden.value = '';
                     closeMenu();
                     const needle = query.value.trim().toLowerCase();
-                    const items = needle === '' ? [] : landlords.filter((row) => (row.label || '').toLowerCase().includes(needle)).slice(0, 12);
+                    const source = kind.value === 'employee' ? employees : kind.value === 'vendor' ? vendors : landlords;
+                    const items = needle === '' ? [] : source.filter((row) => (row.label || '').toLowerCase().includes(needle)).slice(0, 12);
                     if (items.length === 0) {
                         return;
                     }
@@ -324,15 +336,15 @@
                     const rect = query.getBoundingClientRect();
                     box.style.top = (rect.bottom + 4) + 'px';
                     box.style.left = Math.max(8, rect.right - 288) + 'px';
-                    items.forEach((landlord) => {
+                    items.forEach((payee) => {
                         const button = document.createElement('button');
                         button.type = 'button';
                         button.className = 'block w-full px-3 py-1.5 text-left text-xs text-slate-800 hover:bg-emerald-50';
-                        button.textContent = landlord.label;
+                        button.textContent = payee.label;
                         button.addEventListener('mousedown', (event) => {
                             event.preventDefault();
-                            hidden.value = String(landlord.id);
-                            query.value = landlord.label;
+                            if (selectedHidden) selectedHidden.value = String(payee.id);
+                            query.value = payee.label;
                             query.setCustomValidity('');
                             closeMenu();
                         });
@@ -352,17 +364,19 @@
                     }
                 });
                 form.addEventListener('submit', (event) => {
+                    const source = kind.value === 'employee' ? employees : kind.value === 'vendor' ? vendors : landlords;
+                    const hidden = hiddenByKind[kind.value];
                     const typed = (query.value || '').trim().toLowerCase();
-                    const match = landlords.find((row) => (row.label || '').toLowerCase() === typed)
-                        || (hidden.value ? landlords.find((row) => String(row.id) === hidden.value) : null);
-                    if (kind.value === 'landlord' && !match) {
+                    const match = source.find((row) => (row.label || '').toLowerCase() === typed)
+                        || (hidden?.value ? source.find((row) => String(row.id) === hidden.value) : null);
+                    if (['landlord', 'employee', 'vendor'].includes(kind.value) && !match) {
                         event.preventDefault();
-                        query.setCustomValidity('Choose a landlord from the list.');
+                        query.setCustomValidity('Choose a payee from the list.');
                         query.reportValidity();
                         return;
                     }
                     query.setCustomValidity('');
-                    if (kind.value === 'landlord') {
+                    if (hidden) {
                         hidden.value = String(match?.id ?? '');
                     }
                 });
@@ -370,7 +384,7 @@
         }
 
         document.addEventListener('click', (event) => {
-            if (!event.target.closest('[data-tenant-menu]') && !event.target.closest('[data-tenant-query]') && !event.target.closest('[data-landlord-query]')) {
+            if (!event.target.closest('[data-tenant-menu]') && !event.target.closest('[data-tenant-query]') && !event.target.closest('[data-payee-query]')) {
                 closeMenu();
             }
         });

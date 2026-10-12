@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
+use App\Models\Employee;
 use App\Models\PmBankStatement;
 use App\Models\PmBankStatementLine;
 use App\Models\PmTenant;
+use App\Models\PmVendor;
 use App\Models\UnassignedPayment;
 use App\Models\User;
 use App\Repositories\Equity\EquityPaymentRepository;
@@ -15,6 +17,7 @@ use App\Services\Property\CoopBankAccountStatementImportService;
 use App\Services\Property\PropertyStatementAutoAssignService;
 use App\Services\Property\PropertyStatementMissingPaymentRecoveryService;
 use App\Services\Property\PropertyStatementUploadService;
+use App\Services\Property\PropertyHrEmployeeService;
 use App\Support\ListPageSize;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -240,6 +243,24 @@ class PropertyStatementImportController extends Controller
                 ->map(fn (User $landlord) => [
                     'id' => (int) $landlord->id,
                     'label' => trim($landlord->name.($landlord->phone ? ' · '.$landlord->phone : '')),
+                ])
+                ->values()
+                ->all(),
+            'assignEmployees' => app(PropertyHrEmployeeService::class)->queryForActor($request->user())
+                ->orderBy('first_name')
+                ->get(['id', 'first_name', 'last_name', 'employee_number', 'phone'])
+                ->map(fn (Employee $employee) => [
+                    'id' => (int) $employee->id,
+                    'label' => trim($employee->full_name.($employee->employee_number ? ' · '.$employee->employee_number : '').($employee->phone ? ' · '.$employee->phone : '')),
+                ])
+                ->values()
+                ->all(),
+            'assignVendors' => PmVendor::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone', 'category'])
+                ->map(fn (PmVendor $vendor) => [
+                    'id' => (int) $vendor->id,
+                    'label' => trim($vendor->name.($vendor->category ? ' · '.$vendor->category : '').($vendor->phone ? ' · '.$vendor->phone : '')),
                 ])
                 ->values()
                 ->all(),
@@ -543,13 +564,17 @@ class PropertyStatementImportController extends Controller
         }
 
         $data = $request->validate([
-            'paid_to_kind' => ['required', 'in:landlord,bank_charge,other'],
+            'paid_to_kind' => ['required', 'in:landlord,employee,vendor,bank_charge,other'],
             'landlord_id' => ['nullable', 'integer'],
+            'employee_id' => ['nullable', 'integer'],
+            'vendor_id' => ['nullable', 'integer'],
             'paid_to_name' => ['nullable', 'string', 'max:191'],
             'paid_to_note' => ['nullable', 'string', 'max:255'],
         ]);
 
         $landlordId = null;
+        $employeeId = null;
+        $vendorId = null;
         $name = '';
         $matchedType = 'other_payee';
 
@@ -565,6 +590,24 @@ class PropertyStatementImportController extends Controller
             $landlordId = (int) $landlord->id;
             $name = (string) $landlord->name;
             $matchedType = 'landlord_payout';
+        } elseif ($data['paid_to_kind'] === 'employee') {
+            $employee = app(PropertyHrEmployeeService::class)->queryForActor($request->user())
+                ->whereKey((int) ($data['employee_id'] ?? 0))
+                ->first();
+            if (! $employee) {
+                return back()->withErrors(['employee_id' => 'Choose an employee from this workspace.'])->withInput();
+            }
+            $employeeId = (int) $employee->id;
+            $name = $employee->full_name;
+            $matchedType = 'employee_payment';
+        } elseif ($data['paid_to_kind'] === 'vendor') {
+            $vendor = PmVendor::query()->whereKey((int) ($data['vendor_id'] ?? 0))->first();
+            if (! $vendor) {
+                return back()->withErrors(['vendor_id' => 'Choose a vendor from this workspace.'])->withInput();
+            }
+            $vendorId = (int) $vendor->id;
+            $name = (string) $vendor->name;
+            $matchedType = 'vendor_payment';
         } elseif ($data['paid_to_kind'] === 'bank_charge') {
             $name = 'Bank charge';
             $matchedType = 'bank_charge';
@@ -578,6 +621,8 @@ class PropertyStatementImportController extends Controller
         $line->update([
             'paid_to_kind' => $data['paid_to_kind'],
             'paid_to_landlord_id' => $landlordId,
+            'paid_to_employee_id' => $employeeId,
+            'paid_to_vendor_id' => $vendorId,
             'paid_to_name' => $name,
             'paid_to_note' => trim((string) ($data['paid_to_note'] ?? '')) ?: null,
             'matched_type' => $matchedType,

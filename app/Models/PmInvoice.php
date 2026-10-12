@@ -779,6 +779,9 @@ class PmInvoice extends Model
             $this->amount_paid = min($this->allocatedAmount(), round((float) $this->amount, 2));
             $this->syncDerivedBalanceDue();
             $this->applyComputedStatusFromAmounts();
+            if ($this->exists && $this->isDirty(['amount_paid', 'balance_due', 'status', 'is_past_due'])) {
+                $this->save();
+            }
         } finally {
             static::$allowDirectAmountPaidWrite = false;
             FinanceFirebreakService::$skipAmountPaidAudit = false;

@@ -48,6 +48,7 @@ class PmInvoiceController extends Controller
 
     public function show(PmInvoice $invoice): View
     {
+        $invoice->syncAmountPaidFromAllocations();
         $invoice->loadMissing([
             'tenant:id,name,phone,email',
             'unit:id,label,property_id',
@@ -612,6 +613,9 @@ class PmInvoiceController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = (clone $baseQuery)->limit(5000)->get();
+            foreach ($items as $invoice) {
+                $invoice->syncAmountPaidFromAllocations();
+            }
             $this->applyStoredCreditToListedInvoices($items);
 
             return TabularExport::stream(
@@ -647,6 +651,9 @@ class PmInvoiceController extends Controller
         }
 
         $invoices = (clone $baseQuery)->paginate($perPage)->withQueryString();
+        foreach ($invoices->getCollection() as $invoice) {
+            $invoice->syncAmountPaidFromAllocations();
+        }
         $this->applyStoredCreditToListedInvoices($invoices->getCollection());
 
         $summaryQuery = $this->applyInvoiceListFilters(

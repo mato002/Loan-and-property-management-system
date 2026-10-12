@@ -37,6 +37,8 @@ class PmBankStatementLine extends Model
         'unassigned_payment_id',
         'paid_to_kind',
         'paid_to_landlord_id',
+        'paid_to_employee_id',
+        'paid_to_vendor_id',
         'paid_to_name',
         'paid_to_note',
     ];
@@ -79,6 +81,16 @@ class PmBankStatementLine extends Model
     public function paidToLandlord(): BelongsTo
     {
         return $this->belongsTo(User::class, 'paid_to_landlord_id');
+    }
+
+    public function paidToEmployee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'paid_to_employee_id');
+    }
+
+    public function paidToVendor(): BelongsTo
+    {
+        return $this->belongsTo(PmVendor::class, 'paid_to_vendor_id');
     }
 
     /**
@@ -150,6 +162,8 @@ class PmBankStatementLine extends Model
         if ((string) $this->match_status === self::MATCH_BANK_ONLY) {
             return match ((string) $this->paid_to_kind) {
                 'landlord' => 'Landlord',
+                'employee' => 'Employee',
+                'vendor' => 'Vendor',
                 'bank_charge' => 'Bank charge',
                 'other' => 'Other payee',
                 default => 'Bank only',
@@ -222,14 +236,28 @@ class PmBankStatementLine extends Model
 
     public function matchReason(): string
     {
-        if ((string) $this->match_status === self::MATCH_BANK_ONLY && trim((string) $this->paid_to_name) !== '') {
+        if ((string) $this->match_status === self::MATCH_BANK_ONLY) {
             $note = trim((string) $this->paid_to_note);
-            $who = trim((string) $this->paid_to_name);
+            $who = match ((string) $this->paid_to_kind) {
+                'landlord' => trim((string) ($this->paidToLandlord?->name ?? $this->paid_to_name)),
+                'employee' => trim((string) ($this->paidToEmployee?->full_name ?? $this->paid_to_name)),
+                'vendor' => trim((string) ($this->paidToVendor?->name ?? $this->paid_to_name)),
+                default => trim((string) $this->paid_to_name),
+            };
+
+            if ($who !== '') {
+                return match ((string) $this->paid_to_kind) {
+                    'landlord' => 'Paid to landlord '.$who.($note !== '' ? ' · '.$note : ''),
+                    'employee' => 'Paid to employee '.$who.($note !== '' ? ' · '.$note : ''),
+                    'vendor' => 'Paid to vendor '.$who.($note !== '' ? ' · '.$note : ''),
+                    'bank_charge' => 'Bank charge'.($note !== '' ? ' · '.$note : ''),
+                    default => 'Paid to '.$who.($note !== '' ? ' · '.$note : ''),
+                };
+            }
 
             return match ((string) $this->paid_to_kind) {
-                'landlord' => 'Paid to landlord '.$who.($note !== '' ? ' · '.$note : ''),
                 'bank_charge' => 'Bank charge'.($note !== '' ? ' · '.$note : ''),
-                default => 'Paid to '.$who.($note !== '' ? ' · '.$note : ''),
+                default => 'Not a tenant receipt — record who was paid',
             };
         }
 
