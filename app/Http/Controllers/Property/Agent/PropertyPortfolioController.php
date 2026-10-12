@@ -268,13 +268,13 @@ class PropertyPortfolioController extends Controller
                     '</div>'
                 );
             $actionHtml =
-                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
-                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>';
+                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
+                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>';
             if ($mgmtStatus === Property::MANAGEMENT_ACTIVE && $this->userCanAccessOffboarding()) {
-                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Start offboarding</a>';
+                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Start offboarding</a>';
             }
             if (in_array($mgmtStatus, [Property::MANAGEMENT_OFFBOARDING, Property::MANAGEMENT_ARCHIVED, Property::MANAGEMENT_ENDED], true) && $this->userCanAccessOffboarding()) {
-                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View offboarding</a>';
+                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View offboarding</a>';
             }
             if (! $p->isManagementReadOnly() && auth()->user()?->hasPmPermission('properties.manage')) {
                 $actionHtml .= '<form method="POST" action="'.route('property.properties.destroy', $p).'" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
@@ -289,8 +289,8 @@ class PropertyPortfolioController extends Controller
                 'Actions <span class="text-slate-400">▼</span>'.
                 '</summary>'.
                 '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                '<a href="'.route('property.properties.show', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
-                '<a href="'.route('property.properties.edit', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<a href="'.route('property.properties.show', $p).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
+                '<a href="'.route('property.properties.edit', $p).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
                 $actionHtml.
                 '</div>'.
                 '</details>'.
@@ -300,7 +300,7 @@ class PropertyPortfolioController extends Controller
             $showUrl = route('property.properties.show', $p, false);
             $nameCodeCell = new HtmlString(
                 '<div class="space-y-0.5">'.
-                '<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 hover:text-indigo-700">'.e((string) $p->name).'</a>'.
+                '<a href="'.e($showUrl).'" data-turbo-frame="property-main" data-turbo-prefetch="true" class="font-medium text-slate-900 hover:text-indigo-700">'.e((string) $p->name).'</a>'.
                 '<div class="text-xs text-slate-500">'.e((string) ($p->code ?? '—')).'</div>'.
                 '</div>'
             );

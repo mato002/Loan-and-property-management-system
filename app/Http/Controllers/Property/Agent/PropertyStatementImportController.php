@@ -124,7 +124,7 @@ class PropertyStatementImportController extends Controller
         $auto = $result['auto'] ?? null;
         if (is_array($auto) && ((int) ($auto['posted'] ?? 0) > 0 || (int) ($auto['linked'] ?? 0) > 0)) {
             $msg .= sprintf(
-                ' Auto-posted %d receipts where the phone and name matched one tenant and the M-Pesa code was not already a receipt. Linked %d lines that already had a receipt.',
+                ' Auto-posted %d receipts where the phone identified one tenant (or the payer name disambiguated a shared phone). Linked %d lines that already had a receipt.',
                 (int) ($auto['posted'] ?? 0),
                 (int) ($auto['linked'] ?? 0),
             );
@@ -595,7 +595,7 @@ class PropertyStatementImportController extends Controller
 
         $result = $autoAssign->assignStatement($statement, (int) $request->user()->id);
         $msg = sprintf(
-            'Auto-posted %d receipts where the phone and name matched one tenant and the M-Pesa code was not already a receipt. Linked %d lines that already had a receipt. %d lines stayed unmatched.',
+            'Auto-posted %d receipts where the phone identified one tenant (or the payer name disambiguated a shared phone). Linked %d lines that already had a receipt. %d lines stayed unmatched.',
             $result['posted'],
             $result['linked'],
             $result['skipped'],

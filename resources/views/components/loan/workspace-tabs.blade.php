@@ -47,6 +47,7 @@
                         <a
                             href="{{ \App\Support\LoanWorkspaceTabs::tabUrl($tab) }}"
                             data-turbo-frame="loan-main"
+                            data-turbo-prefetch="true"
                             data-loan-nav="{{ implode('|', $tab['active'] ?? [$route]) }}"
                             data-loan-workspace-tab="{{ $key }}"
                             @if ($active) aria-current="page" @endif

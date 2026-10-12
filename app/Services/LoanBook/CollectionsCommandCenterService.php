@@ -47,11 +47,34 @@ class CollectionsCommandCenterService
         $today = $now->copy()->startOfDay();
         $yesterday = $today->copy()->subDay();
 
-        $dailyTargetToday = $this->dailyProratedTarget($branchKeys, $today);
-        $collectedToday = $this->sumCollectionEntriesOn($loanIdsQ, $today);
-        $collectedYesterday = $this->sumCollectionEntriesOn($loanIdsQ, $yesterday);
+        // The command center needs daily totals for today, yesterday, the prior
+        // day, and a 13-day trend. Fetch them once instead of issuing the same
+        // SUM query repeatedly while building each sparkline row.
+        $collectionTotalsByDay = $this->collectionTotalsByDay(
+            $loanIdsQ,
+            $today->copy()->subDays(12),
+            $today
+        );
+        $collectionTotalOn = static fn (Carbon $day): float => (float) ($collectionTotalsByDay[$day->toDateString()] ?? 0.0);
 
-        $dailyTargetYesterday = $this->dailyProratedTarget($branchKeys, $yesterday);
+        // Target rows are month-based. Cache each month while assembling daily
+        // rates so a month with seven trend points only needs one target query.
+        $monthlyTargets = [];
+        $dailyTargetOn = function (Carbon $day) use ($branchKeys, &$monthlyTargets): float {
+            $month = $day->copy()->startOfMonth();
+            $key = $month->format('Y-m');
+            if (! array_key_exists($key, $monthlyTargets)) {
+                $monthlyTargets[$key] = $this->monthlyCollectionTargetForMonth($branchKeys, $month);
+            }
+
+            return $monthlyTargets[$key] / max(1, (int) $month->format('t'));
+        };
+
+        $dailyTargetToday = $dailyTargetOn($today);
+        $collectedToday = $collectionTotalOn($today);
+        $collectedYesterday = $collectionTotalOn($yesterday);
+
+        $dailyTargetYesterday = $dailyTargetOn($yesterday);
 
         $totalExpected = $dailyTargetToday;
         $totalCollected = $collectedToday;
@@ -63,8 +86,8 @@ class CollectionsCommandCenterService
             : null;
 
         $currentYield = $collectedYesterday;
-        $currentYieldPrior = $this->sumCollectionEntriesOn($loanIdsQ, $yesterday->copy()->subDay());
-        $dailyTargetDayBeforeYesterday = $this->dailyProratedTarget($branchKeys, $yesterday->copy()->subDay());
+        $currentYieldPrior = $collectionTotalOn($yesterday->copy()->subDay());
+        $dailyTargetDayBeforeYesterday = $dailyTargetOn($yesterday->copy()->subDay());
         $effPriorDay = $dailyTargetDayBeforeYesterday > 0
             ? ($currentYieldPrior / $dailyTargetDayBeforeYesterday) * 100
             : null;
@@ -81,12 +104,12 @@ class CollectionsCommandCenterService
         $expected14 = $dailyTargetToday * 14;
         $expected30 = $dailyTargetToday * 30;
 
-        $trailing = $this->trailingCollectionEfficiency($loanIdsQ, $branchKeys, $today, 7);
+        $trailing = $this->trailingCollectionEfficiency($collectionTotalOn, $dailyTargetOn, $today, 7);
         $forecastWindows = $this->buildForecastWindows($expected7, $expected14, $expected30, $trailing);
 
         [$mixRows, $mixTotal] = $this->collectionMixByDpd($loanIdsQ, $today);
 
-        $dailyCollectionRates = $this->buildDailyRows($loanIdsQ, $branchKeys, $today, 6);
+        $dailyCollectionRates = $this->buildDailyRows($collectionTotalOn, $dailyTargetOn, $today, 6);
         $efficiencySparkline = $this->sparklineFromDailyRows($dailyCollectionRates);
 
         $agentSummary = $this->agentPerformanceSummary($loanIdsQ, $today);
@@ -184,25 +207,21 @@ class CollectionsCommandCenterService
             ->sum('target_amount');
     }
 
-    private function dailyProratedTarget(array $branchKeys, Carbon $day): float
-    {
-        $monthStart = $day->copy()->startOfMonth();
-        $monthly = $this->monthlyCollectionTargetForMonth($branchKeys, $monthStart);
-        $dim = max(1, (int) $monthStart->format('t'));
-
-        return $monthly / $dim;
-    }
-
-    private function sumCollectionEntriesOn(Builder $loanIdsQ, Carbon $day): float
+    /** @return array<string, float> */
+    private function collectionTotalsByDay(Builder $loanIdsQ, Carbon $from, Carbon $to): array
     {
         if (! Schema::hasTable('loan_book_collection_entries')) {
-            return 0.0;
+            return [];
         }
 
-        return (float) LoanBookCollectionEntry::query()
+        return DB::table('loan_book_collection_entries')
             ->whereIn('loan_book_loan_id', $loanIdsQ)
-            ->whereDate('collected_on', $day->toDateString())
-            ->sum('amount');
+            ->whereBetween('collected_on', [$from->toDateString(), $to->toDateString()])
+            ->selectRaw('DATE(collected_on) as collection_day, SUM(amount) as total')
+            ->groupByRaw('DATE(collected_on)')
+            ->pluck('total', 'collection_day')
+            ->map(fn ($total) => (float) $total)
+            ->all();
     }
 
     private function sumCollectionEntriesOnForDpdRange(Builder $loanIdsQ, Carbon $day, int $minDpd, ?int $maxDpd): float
@@ -290,15 +309,15 @@ class CollectionsCommandCenterService
         return [$withPct, $total];
     }
 
-    private function trailingCollectionEfficiency(Builder $loanIdsQ, array $branchKeys, Carbon $today, int $days): float
+    private function trailingCollectionEfficiency(callable $collectionTotalOn, callable $dailyTargetOn, Carbon $today, int $days): float
     {
         $end = $today->copy()->subDay();
         $start = $end->copy()->subDays(max(0, $days - 1));
         $sumCollected = 0.0;
         $sumExpected = 0.0;
         for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
-            $sumCollected += $this->sumCollectionEntriesOn($loanIdsQ, $d);
-            $sumExpected += $this->dailyProratedTarget($branchKeys, $d);
+            $sumCollected += $collectionTotalOn($d);
+            $sumExpected += $dailyTargetOn($d);
         }
         if ($sumExpected <= 0.0) {
             return 0.85;
@@ -333,13 +352,13 @@ class CollectionsCommandCenterService
     /**
      * @return Collection<int, array<string, float|string|array<int, float>>>
      */
-    private function buildDailyRows(Builder $loanIdsQ, array $branchKeys, Carbon $today, int $lookbackDays): Collection
+    private function buildDailyRows(callable $collectionTotalOn, callable $dailyTargetOn, Carbon $today, int $lookbackDays): Collection
     {
         $rows = collect();
         for ($i = 0; $i <= $lookbackDays; $i++) {
             $d = $today->copy()->subDays($i);
-            $collected = $this->sumCollectionEntriesOn($loanIdsQ, $d);
-            $expected = $this->dailyProratedTarget($branchKeys, $d);
+            $collected = $collectionTotalOn($d);
+            $expected = $dailyTargetOn($d);
             $rate = $expected > 0 ? ($collected / $expected) * 100 : ($collected > 0 ? 100.0 : 0.0);
             $gap = max(0.0, $expected - $collected);
 
@@ -352,8 +371,8 @@ class CollectionsCommandCenterService
             $trend = [];
             for ($j = 6; $j >= 0; $j--) {
                 $dd = $d->copy()->subDays($j);
-                $c = $this->sumCollectionEntriesOn($loanIdsQ, $dd);
-                $e = $this->dailyProratedTarget($branchKeys, $dd);
+                $c = $collectionTotalOn($dd);
+                $e = $dailyTargetOn($dd);
                 $trend[] = $e > 0
                     ? max(0.0, min(100.0, ($c / $e) * 100))
                     : ($c > 0 ? 100.0 : 0.0);

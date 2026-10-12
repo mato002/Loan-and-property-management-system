@@ -55,27 +55,28 @@
         @endif
 
         <div x-show="tab === 'inbox'" x-cloak class="space-y-3">
-            <form method="get" action="{{ route('property.revenue.mpesa_inbox') }}" class="flex flex-wrap items-center gap-2">
+            <form method="get" action="{{ route('property.revenue.mpesa_inbox') }}" class="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
                 <input type="hidden" name="tab" value="inbox">
-                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, phone, account, receipt" class="min-w-[14rem] rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <select name="channel" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, phone, account, receipt" class="w-[18rem] shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="channel" class="w-[14rem] shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <option value="">Channel: All M-Pesa</option>
                     @foreach (['mpesa_stk' => 'STK Push', 'mpesa_sms_ingest' => 'SMS ingest', 'mpesa_c2b' => 'C2B Paybill', 'mpesa' => 'Manual M-Pesa'] as $v => $lab)
                         <option value="{{ $v }}" @selected(($filters['channel'] ?? '') === $v)>{{ $lab }}</option>
                     @endforeach
                 </select>
-                <select name="status" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="status" class="w-[10rem] shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <option value="">Status: All</option>
                     @foreach (['pending', 'completed', 'failed'] as $st)
                         <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
                     @endforeach
                 </select>
-                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label="From">
-                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label="To">
-                <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium">Apply</button>
+                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="w-[11rem] shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label="From">
+                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="w-[11rem] shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label="To">
+                <button type="submit" class="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium">Apply</button>
                 @include('property.agent.partials.export_dropdown', [
                     'route' => 'property.revenue.mpesa_inbox',
                     'query' => request()->except(['export', 'page']),
+                    'class' => 'w-36 max-w-none shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50',
                 ])
             </form>
 

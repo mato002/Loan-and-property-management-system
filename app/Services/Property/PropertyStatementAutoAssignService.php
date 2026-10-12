@@ -14,8 +14,9 @@ use App\Repositories\Equity\PaymentAuditLogRepository;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Posts a statement credit only when one tenant matches both the payer phone
- * and the payer name, and that M-Pesa code is not already a receipt.
+ * Posts a statement credit when the payer phone identifies one tenant, using
+ * the payer name to disambiguate shared phone numbers, unless the M-Pesa code
+ * is already a receipt.
  */
 final class PropertyStatementAutoAssignService
 {
@@ -130,10 +131,12 @@ final class PropertyStatementAutoAssignService
             return 'skipped';
         }
 
-        $tenant = $this->uniqueTenant($line, $tenantsByPhone);
-        if (! $tenant) {
+        $tenantMatch = $this->uniqueTenant($line, $tenantsByPhone);
+        if (! $tenantMatch) {
             return 'skipped';
         }
+        $tenant = $tenantMatch['tenant'];
+        $matchedBy = $tenantMatch['matched_by'];
 
         $unassigned = $this->findUnassigned($candidates);
         if ($unassigned === false) {
@@ -145,9 +148,9 @@ final class PropertyStatementAutoAssignService
                 return 'skipped';
             }
 
-            $payment = $this->postUnassigned($line, $unassigned, $tenant, $actorUserId);
+            $payment = $this->postUnassigned($line, $unassigned, $tenant, $matchedBy, $actorUserId);
         } else {
-            $payment = $this->postFresh($line, $reference, $tenant, $actorUserId);
+            $payment = $this->postFresh($line, $reference, $tenant, $matchedBy, $actorUserId);
         }
 
         $pmPaymentId = (int) ($payment->pm_payment_id ?? 0);
@@ -166,7 +169,7 @@ final class PropertyStatementAutoAssignService
             'payment_id' => (int) $payment->id,
             'pm_payment_id' => $pmPaymentId,
             'pm_bank_statement_line_id' => (int) $line->id,
-            'matched_by' => 'phone_and_name',
+            'matched_by' => $matchedBy,
         ], 'statement_auto_assign');
 
         return 'posted';
@@ -176,6 +179,7 @@ final class PropertyStatementAutoAssignService
         PmBankStatementLine $line,
         UnassignedPayment $unassigned,
         PmTenant $tenant,
+        string $matchedBy,
         int $actorUserId,
     ): Payment {
         Payment::query()
@@ -192,17 +196,17 @@ final class PropertyStatementAutoAssignService
             'transaction_date' => $line->txn_date ?? $unassigned->created_at ?? now(),
             'raw_payload' => [
                 'auto_assigned' => true,
-                'matched_by' => 'phone_and_name',
+                'matched_by' => $matchedBy,
                 'unassigned_payment_id' => (int) $unassigned->id,
                 'pm_bank_statement_line_id' => (int) $line->id,
                 'counterparty' => (string) $line->counterparty,
             ],
-        ], (int) $tenant->id, 'phone_and_name', [
+        ], (int) $tenant->id, $matchedBy, [
             'payment_method' => (string) ($unassigned->payment_method ?: 'statement_import'),
             'channel' => 'bank_statement',
             'source' => 'statement_import',
             'provider' => 'mpesa',
-            'message' => 'Auto-posted from the bank statement. Phone and name matched one tenant, and this M-Pesa code had no receipt.',
+            'message' => 'Auto-posted from the bank statement. The payer phone identified one tenant, and this M-Pesa code had no receipt.',
             'agent_user_id' => $actorUserId,
             'skip_notification' => true,
         ]);
@@ -212,7 +216,7 @@ final class PropertyStatementAutoAssignService
         return $payment;
     }
 
-    private function postFresh(PmBankStatementLine $line, string $reference, PmTenant $tenant, int $actorUserId): Payment
+    private function postFresh(PmBankStatementLine $line, string $reference, PmTenant $tenant, string $matchedBy, int $actorUserId): Payment
     {
         Payment::query()
             ->where('transaction_id', $reference)
@@ -228,16 +232,16 @@ final class PropertyStatementAutoAssignService
             'transaction_date' => $line->txn_date ?? now(),
             'raw_payload' => [
                 'auto_assigned' => true,
-                'matched_by' => 'phone_and_name',
+                'matched_by' => $matchedBy,
                 'pm_bank_statement_line_id' => (int) $line->id,
                 'counterparty' => (string) $line->counterparty,
             ],
-        ], (int) $tenant->id, 'phone_and_name', [
+        ], (int) $tenant->id, $matchedBy, [
             'payment_method' => 'statement_import',
             'channel' => 'bank_statement',
             'source' => 'statement_import',
             'provider' => 'mpesa',
-            'message' => 'Auto-posted from the bank statement. Phone and name matched one tenant, and this M-Pesa code had no receipt.',
+            'message' => 'Auto-posted from the bank statement. The payer phone identified one tenant, and this M-Pesa code had no receipt.',
             'agent_user_id' => $actorUserId,
             'skip_notification' => true,
         ]);
@@ -340,8 +344,9 @@ final class PropertyStatementAutoAssignService
 
     /**
      * @param  array<string, list<PmTenant>>  $tenantsByPhone
+     * @return array{tenant:PmTenant,matched_by:string}|null
      */
-    private function uniqueTenant(PmBankStatementLine $line, array $tenantsByPhone): ?PmTenant
+    private function uniqueTenant(PmBankStatementLine $line, array $tenantsByPhone): ?array
     {
         $phones = $this->phoneCandidates($this->normalizePhone((string) $line->phone));
         $phones = array_values(array_filter($phones, static fn (string $phone): bool => strlen($phone) >= 10));
@@ -356,6 +361,10 @@ final class PropertyStatementAutoAssignService
             }
         }
 
+        if (count($matches) === 1) {
+            return ['tenant' => array_values($matches)[0], 'matched_by' => 'phone'];
+        }
+
         $named = [];
         foreach ($matches as $tenant) {
             if ($this->namesAgree((string) $line->counterparty, $tenant)) {
@@ -367,7 +376,7 @@ final class PropertyStatementAutoAssignService
             return null;
         }
 
-        return array_values($named)[0];
+        return ['tenant' => array_values($named)[0], 'matched_by' => 'phone_and_name'];
     }
 
     private function namesAgree(string $bankName, PmTenant $tenant): bool
