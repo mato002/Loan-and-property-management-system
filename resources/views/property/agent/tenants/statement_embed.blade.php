@@ -8,6 +8,14 @@
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div class="p-4 md:p-6 space-y-4">
+        @if (session('success'))
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{{ session('success') }}</div>
+        @endif
+        @if ($errors->any())
+            <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+                {{ $errors->first() }}
+            </div>
+        @endif
         <div class="rounded-xl border border-slate-200 bg-white p-4">
             <h1 class="text-lg font-semibold">Tenant Statement - {{ $tenant->name }}</h1>
             <p class="text-sm text-slate-600 mt-1">

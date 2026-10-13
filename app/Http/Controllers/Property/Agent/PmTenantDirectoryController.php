@@ -1505,6 +1505,7 @@ class PmTenantDirectoryController extends Controller
 
         $rows = [];
         $exportRows = [];
+        $canReverseStatementPayments = (bool) auth()->user()?->hasPmPermission('payments.settle');
         if ($fromDate) {
             $rows[] = [
                 $fromDate->toDateString(),
@@ -1538,11 +1539,24 @@ class PmTenantDirectoryController extends Controller
 
             $actions = '—';
             if ($e['payment_id']) {
-                $actions = new HtmlString(
+                $actionHtml =
                     '<a href="'.route('property.payments.receipt.show', ['payment' => $e['payment_id']], false).'" data-turbo="false" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-700 font-medium">Receipt</a> '.
                     '<span class="text-slate-300">|</span> '.
-                    '<a href="'.route('property.payments.receipt.download', ['payment' => $e['payment_id']], false).'" data-turbo="false" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-700 font-medium">Download</a>'
-                );
+                    '<a href="'.route('property.payments.receipt.download', ['payment' => $e['payment_id']], false).'" data-turbo="false" target="_blank" rel="noopener" class="text-indigo-600 hover:text-indigo-700 font-medium">Download</a>';
+                $statementPayment = $payments->firstWhere('id', (int) $e['payment_id']);
+                if ($canReverseStatementPayments
+                    && $statementPayment
+                    && strtolower(trim((string) $statementPayment->channel)) === 'bank_statement'
+                    && $statementPayment->status === PmPayment::STATUS_COMPLETED
+                    && $statementPayment->reversal_status !== PmPayment::REVERSAL_STATUS_REVERSED
+                    && $statementPayment->reversal_status !== PmPayment::REVERSAL_STATUS_PENDING) {
+                    $actionHtml .= ' <span class="text-slate-300">|</span> '
+                        .'<form method="post" action="'.route('property.payments.bank_statement.reverse_match', ['payment' => $e['payment_id']], false).'" class="inline" data-turbo="false" onsubmit="return confirm(\'Reverse this bank-statement payment, release its invoice allocations, and return its statement line to Unmatched? No bank refund will be initiated.\')">'
+                        .csrf_field()
+                        .'<button type="submit" class="font-medium text-rose-700 hover:text-rose-800">Reverse</button>'
+                        .'</form>';
+                }
+                $actions = new HtmlString($actionHtml);
             }
 
             $rows[] = [
