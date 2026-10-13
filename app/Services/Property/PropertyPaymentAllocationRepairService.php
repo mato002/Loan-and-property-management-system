@@ -57,6 +57,13 @@ class PropertyPaymentAllocationRepairService
             $payments = PmPayment::query()
                 ->where('pm_tenant_id', $tenantId)
                 ->where('status', PmPayment::STATUS_COMPLETED)
+                // A tenant_credit payment has a paired credit_applied ledger row
+                // naming its destination invoice. Rebuilding it oldest-first can
+                // silently move that application to another invoice while leaving
+                // the credit ledger pointed at the original invoice.
+                ->where(function ($query): void {
+                    $query->whereNull('channel')->orWhere('channel', '!=', 'tenant_credit');
+                })
                 ->orderBy('paid_at')
                 ->orderBy('id')
                 ->lockForUpdate()

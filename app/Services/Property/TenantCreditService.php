@@ -1024,6 +1024,11 @@ class TenantCreditService
                 ->lockForUpdate()
                 ->get();
 
+            $creditApplications = PmTenantCreditTransaction::query()
+                ->where('pm_payment_id', (int) $payment->id)
+                ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
+                ->get();
+
             $invoiceIds = [];
             foreach ($allocations as $allocation) {
                 $allocation->is_reversed = true;
@@ -1045,6 +1050,30 @@ class TenantCreditService
             }
 
             $this->reverseCreditApplicationPayment($payment, null, $reason);
+
+            foreach ($creditApplications as $application) {
+                $reversalReference = 'CREDIT-APP-REV-'.(int) $payment->id.'-'.(int) $application->id;
+                $alreadyRecorded = PmTenantCreditTransaction::query()
+                    ->where('pm_tenant_id', (int) $payment->pm_tenant_id)
+                    ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+                    ->where('reference', $reversalReference)
+                    ->exists();
+                if ($alreadyRecorded) {
+                    continue;
+                }
+
+                PmTenantCreditTransaction::query()->create([
+                    'pm_tenant_id' => (int) $payment->pm_tenant_id,
+                    'pm_payment_id' => (int) $payment->id,
+                    'pm_invoice_id' => $application->pm_invoice_id,
+                    'type' => PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+                    'amount' => round((float) $application->amount, 2),
+                    'reference' => $reversalReference,
+                    'notes' => 'Reversed unsupported credit application from '.$payment->external_ref.'. '.$reason,
+                    'application_mode' => $application->application_mode ?: PmTenantCreditTransaction::MODE_AUTO,
+                    'created_by' => null,
+                ]);
+            }
 
             $meta = is_array($payment->meta) ? $payment->meta : [];
             $meta['reversal'] = [
