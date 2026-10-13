@@ -27,15 +27,13 @@
             @endphp
             @forelse(($recentPayments ?? []) as $payment)
                 @php
-                    $statementLines = collect($statementApplications[(int) $payment->id] ?? [])
-                        ->filter(fn ($line) => (float) ($line['amount'] ?? 0) > 0.009)
-                        ->values();
                     $appliedRows = collect($payment->allocations ?? [])
-                        ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false) && (float) $allocation->amount > 0.009);
-                    $usesStatement = $statementLines->isNotEmpty();
-                    $appliedSum = $usesStatement
-                        ? round((float) $statementLines->sum('amount'), 2)
-                        : round((float) $appliedRows->sum('amount'), 2);
+                        ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false)
+                            && $allocation->invoice !== null
+                            && (float) $allocation->amount > 0.009
+                            && (string) $payment->status === \App\Models\PmPayment::STATUS_COMPLETED)
+                        ->values();
+                    $appliedSum = round((float) $appliedRows->sum('amount'), 2);
                     $leftover = round(max(0, (float) $payment->amount - $appliedSum), 2);
                     $heldAsCredit = round(min($leftover, (float) ($creditHeldByPayment[(int) $payment->id] ?? 0)), 2);
                 @endphp
@@ -45,17 +43,7 @@
                     <td class="px-4 py-3 uppercase">{{ $payment->channel ?? '—' }}</td>
                     <td class="px-4 py-3 font-mono text-xs">{{ $payment->external_ref ?? '—' }}</td>
                     <td class="px-4 py-3 text-xs">
-                        @if($usesStatement)
-                            <ul class="space-y-0.5">
-                                @foreach($statementLines as $line)
-                                    <li>
-                                        <span class="font-medium text-slate-800">{{ $line['invoice_no'] }}</span>
-                                        <span class="text-slate-500"> · {{ $line['label'] }}</span>
-                                        <span class="tabular-nums text-slate-700"> · {{ \App\Services\Property\PropertyMoney::kes((float) $line['amount']) }}</span>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @elseif($appliedRows->isEmpty())
+                        @if($appliedRows->isEmpty())
                             <span class="font-medium text-slate-800">Not applied to an invoice line</span>
                         @else
                             <ul class="space-y-0.5">

@@ -5,6 +5,7 @@ namespace App\Services\Property;
 use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use Illuminate\Database\Eloquent\Builder;
@@ -253,7 +254,7 @@ class FinanceFirebreakService
             ->withSum(['allocations as allocated_sum' => function (Builder $q) {
                 $q->where(function (Builder $inner) {
                     $inner->where('is_reversed', false)->orWhereNull('is_reversed');
-                });
+                })->whereHas('payment', fn (Builder $payment) => $payment->where('status', PmPayment::STATUS_COMPLETED));
             }], 'amount');
 
         if ($tenantId !== null && $tenantId > 0) {

@@ -742,6 +742,7 @@ class PmInvoice extends Model
             ->where(function (Builder $q) {
                 $q->where('is_reversed', false)->orWhereNull('is_reversed');
             })
+            ->whereHas('payment', fn (Builder $q) => $q->where('status', PmPayment::STATUS_COMPLETED))
             ->sum('amount'), 2);
 
         if ($id > 0) {

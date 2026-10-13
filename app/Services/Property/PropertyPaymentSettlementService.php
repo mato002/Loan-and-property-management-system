@@ -35,6 +35,8 @@ class PropertyPaymentSettlementService
                 'meta' => $meta,
             ]);
 
+            $this->reversePaymentAllocations($payment, null, 'Payment marked failed by '.$source.'.');
+
             return $payment->fresh();
         });
     }
@@ -468,11 +470,33 @@ class PropertyPaymentSettlementService
     {
         $payment = $this->lockPayment($payment);
         $invoice = PmInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+
+        if ((string) $payment->status !== PmPayment::STATUS_COMPLETED) {
+            throw new RuntimeException('Only completed payments can be allocated to an invoice.');
+        }
+        if ((int) $payment->pm_tenant_id !== (int) $invoice->pm_tenant_id) {
+            throw new RuntimeException('Payment and invoice must belong to the same tenant.');
+        }
+        if ((string) $invoice->status === PmInvoice::STATUS_CANCELLED) {
+            throw new RuntimeException('Cancelled invoices cannot receive payment allocations.');
+        }
+
         $invoice->syncAmountPaidFromAllocations();
 
-        $amount = round(min($amount, $invoice->balanceFloat()), 2);
+        $amount = round(min(max(0.0, $amount), $invoice->balanceFloat()), 2);
         if ($amount <= 0.0001) {
             throw new RuntimeException('Invoice has no open balance for allocation.');
+        }
+
+        $alreadyAllocated = round((float) PmPaymentAllocation::query()
+            ->where('pm_payment_id', $payment->id)
+            ->where(function ($query): void {
+                $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+            })
+            ->sum('amount'), 2);
+        $paymentRemainder = round((float) $payment->amount - $alreadyAllocated, 2);
+        if ($amount - $paymentRemainder > 0.009) {
+            throw new RuntimeException('Invoice allocations cannot exceed the completed payment amount.');
         }
 
         $allocation = PmPaymentAllocation::query()->create([

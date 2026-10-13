@@ -1361,7 +1361,6 @@ class PmTenantDirectoryController extends Controller
 
         $statementLedger = app(TenantStatementLedgerService::class);
         $recentLedger = $statementLedger->build($tenant, null, null);
-        $statementApplications = $statementLedger->applicationsByPayment($recentLedger['entries']);
         $recentInvoices = $recentLedger['invoices']
             ->sortByDesc(fn ($invoice) => $invoice->issue_date?->timestamp ?? 0)
             ->take(25)
@@ -1435,7 +1434,6 @@ class PmTenantDirectoryController extends Controller
             'lastPaymentAmount' => $lastPaymentAmount,
             'recentInvoices' => $recentInvoices,
             'recentPayments' => $recentPayments,
-            'statementApplications' => $statementApplications,
             'recentRegisterReceipts' => $recentRegisterReceipts,
             'recentNotices' => $recentNotices,
             'utilityReadings' => $utilityReadings,
