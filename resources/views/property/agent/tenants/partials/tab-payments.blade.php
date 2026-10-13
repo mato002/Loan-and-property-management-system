@@ -28,15 +28,31 @@
             @endphp
             @forelse(($recentPayments ?? []) as $payment)
                 @php
-                    $appliedRows = collect($payment->allocations ?? [])
+                    $isReversed = $payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_REVERSED;
+                    $isInactive = $isReversed
+                        || (string) $payment->status !== \App\Models\PmPayment::STATUS_COMPLETED
+                        || $payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING;
+                    $statementAppliedRows = collect(($recentPaymentApplications ?? [])[(int) $payment->id] ?? [])
+                        ->filter(fn ($row) => (float) ($row['amount'] ?? 0) > 0.009)
+                        ->values();
+                    $allocationRows = collect($payment->allocations ?? [])
                         ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false)
                             && $allocation->invoice !== null
-                            && (float) $allocation->amount > 0.009
-                            && (string) $payment->status === \App\Models\PmPayment::STATUS_COMPLETED)
+                            && (float) $allocation->amount > 0.009)
+                        ->map(fn ($allocation) => [
+                            'invoice_no' => $allocation->invoice->invoice_no ?: '#'.$allocation->invoice->id,
+                            'label' => $allocation->invoice->chargeCategoryLabel() ?? 'Invoice',
+                            'amount' => (float) $allocation->amount,
+                        ])
                         ->values();
-                    $appliedSum = round((float) $appliedRows->sum('amount'), 2);
+                    // The tenant statement ledger includes credit consumed against
+                    // invoices even when that receipt has no direct allocation row.
+                    $appliedRows = $statementAppliedRows->isNotEmpty() ? $statementAppliedRows : $allocationRows;
+                    $appliedSum = $isInactive ? 0.0 : round((float) $appliedRows->sum('amount'), 2);
                     $leftover = round(max(0, (float) $payment->amount - $appliedSum), 2);
-                    $heldAsCredit = round(min($leftover, (float) ($creditHeldByPayment[(int) $payment->id] ?? 0)), 2);
+                    $heldAsCredit = $isInactive
+                        ? 0.0
+                        : round(min($leftover, (float) ($creditHeldByPayment[(int) $payment->id] ?? 0)), 2);
                 @endphp
                 <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                     <td class="px-4 py-3">{{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}</td>
@@ -44,20 +60,23 @@
                     <td class="px-4 py-3 uppercase">{{ $payment->channel ?? '—' }}</td>
                     <td class="px-4 py-3 font-mono text-xs">{{ $payment->external_ref ?? '—' }}</td>
                     <td class="px-4 py-3 text-xs">
-                        @if($appliedRows->isEmpty())
+                        @if($isReversed)
+                            <span class="font-medium text-slate-500">Reversed — excluded from payments</span>
+                        @elseif($isInactive)
+                            <span class="font-medium text-slate-500">Payment not completed</span>
+                        @elseif($appliedRows->isEmpty())
                             <span class="font-medium text-slate-800">Not applied to an invoice line</span>
                         @else
                             <ul class="space-y-0.5">
                                 @foreach($appliedRows as $allocation)
                                     @php
-                                        $invoice = $allocation->invoice;
-                                        $typeLabel = $invoice?->chargeCategoryLabel() ?? 'Invoice';
-                                        $invoiceNo = $invoice?->invoice_no ?: ($invoice ? '#'.$invoice->id : 'Missing invoice');
+                                        $typeLabel = $allocation['label'] ?? 'Invoice';
+                                        $invoiceNo = $allocation['invoice_no'] ?? 'Invoice';
                                     @endphp
                                     <li>
                                         <span class="font-medium text-slate-800">{{ $invoiceNo }}</span>
                                         <span class="text-slate-500"> · {{ $typeLabel }}</span>
-                                        <span class="tabular-nums text-slate-700"> · {{ \App\Services\Property\PropertyMoney::kes((float) $allocation->amount) }}</span>
+                                        <span class="tabular-nums text-slate-700"> · {{ \App\Services\Property\PropertyMoney::kes((float) $allocation['amount']) }}</span>
                                     </li>
                                 @endforeach
                             </ul>
