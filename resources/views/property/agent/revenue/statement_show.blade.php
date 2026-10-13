@@ -33,7 +33,7 @@
         <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{{ $errors->first() }}</div>
     @endif
 
-    <form id="statement-bulk-reversal" method="POST" action="{{ route('property.payments.bank_statement.bulk_reverse_matches') }}" data-turbo="false" data-swal-title="Reverse the selected bank-statement matches?" data-swal-confirm="This reverses each selected imported payment, releases active invoice allocations and related credits, and returns its linked statement lines to Unmatched. No bank refunds will be initiated." data-swal-confirm-text="Reverse selected">
+    <form id="statement-bulk-reversal" method="POST" action="{{ route('property.payments.bank_statement.bulk_reverse_matches') }}" data-turbo-frame="property-main" data-swal-title="Reverse the selected bank-statement matches?" data-swal-confirm="This reverses each selected imported payment, releases active invoice allocations and related credits, and returns its linked statement lines to Unmatched. No bank refunds will be initiated." data-swal-confirm-text="Reverse selected">
         @csrf
         <input type="hidden" name="statement_id" value="{{ $statement->id }}">
     </form>

@@ -838,21 +838,29 @@ class PmPaymentController extends Controller
             PmBankStatement::query()->findOrFail($statementId);
         }
 
+        $paymentIds = array_map('intval', $data['payment_ids']);
+        $payments = PmPayment::query()->whereIn('id', $paymentIds)->get()->keyBy('id');
+        $statementPaymentIds = $statementId > 0
+            ? PmBankStatementLine::query()
+                ->where('pm_bank_statement_id', $statementId)
+                ->whereIn('pm_payment_id', $paymentIds)
+                ->where('match_status', PmBankStatementLine::MATCH_MATCHED)
+                ->pluck('pm_payment_id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
+            : [];
+
         $reversed = 0;
         $errors = [];
 
-        foreach ($data['payment_ids'] as $paymentId) {
-            $payment = PmPayment::query()->find((int) $paymentId);
+        foreach ($paymentIds as $paymentId) {
+            $payment = $payments->get($paymentId);
             if (! $payment) {
                 $errors[] = 'Payment #'.$paymentId.' is no longer available in this workspace.';
                 continue;
             }
 
-            if ($statementId > 0 && ! PmBankStatementLine::query()
-                ->where('pm_bank_statement_id', $statementId)
-                ->where('pm_payment_id', $payment->id)
-                ->where('match_status', PmBankStatementLine::MATCH_MATCHED)
-                ->exists()) {
+            if ($statementId > 0 && ! in_array($payment->id, $statementPaymentIds, true)) {
                 $errors[] = 'Payment #'.$payment->id.' is not matched on the selected statement.';
                 continue;
             }
@@ -866,10 +874,11 @@ class PmPaymentController extends Controller
         }
 
         if ($reversed === 0) {
-            return back()->withErrors(['bulk_reverse' => $errors[0] ?? 'No eligible payments were reversed.']);
+            return back()->withErrors(['bulk_reverse' => 'None of the '.count($paymentIds).' selected payments was reversed. '.implode(' ', array_slice($errors, 0, 5))]);
         }
 
-        $response = back()->with('success', "Reversed {$reversed} bank-statement payment(s). Active allocations were released and linked statement lines returned to Unmatched. No bank refunds were initiated.");
+        $selectedCount = count($paymentIds);
+        $response = back()->with('success', "Reversed {$reversed} of {$selectedCount} selected bank-statement payment(s). Active allocations were released and linked statement lines returned to Unmatched. No bank refunds were initiated.");
         if ($errors !== []) {
             $response->withErrors(['bulk_reverse' => implode(' ', array_slice($errors, 0, 5))]);
         }
