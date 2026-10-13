@@ -521,6 +521,12 @@ class User extends Authenticatable
             return false;
         }
 
+        // The company agent account owns the workspace. RBAC roles narrow staff
+        // access, but must never accidentally lock the owner out of a module.
+        if ((string) ($this->property_portal_role ?? '') === 'agent' && ! $this->isScopedStaffLogin()) {
+            return true;
+        }
+
         if (! self::pmPermissionTablesReady()) {
             return true; // Legacy-safe until RBAC tables are migrated.
         }

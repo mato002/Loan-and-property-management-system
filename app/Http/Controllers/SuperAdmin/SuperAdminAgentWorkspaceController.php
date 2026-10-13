@@ -145,6 +145,16 @@ class SuperAdminAgentWorkspaceController extends Controller
             ? SubscriptionPackage::query()->ordered()->pluck('name', 'id')
             : collect();
 
+        $propertyPermissions = Schema::hasTable('pm_permissions')
+            ? \App\Models\PmPermission::query()->orderBy('group')->orderBy('name')->get(['key', 'name', 'group'])
+                ->map(fn ($permission) => [
+                    'key' => (string) $permission->key,
+                    'name' => (string) ($permission->name ?: $permission->key),
+                    'group' => (string) ($permission->group ?: 'Other'),
+                    'granted' => $agent->hasPmPermission((string) $permission->key),
+                ])
+            : collect();
+
         return view('superadmin.console.agent_workspaces_show', [
             'agent' => $agent,
             'properties' => $properties,
@@ -154,6 +164,7 @@ class SuperAdminAgentWorkspaceController extends Controller
             'subscription' => $subscription,
             'otherAgents' => $otherAgents,
             'packages' => $packages,
+            'propertyPermissions' => $propertyPermissions,
         ]);
     }
 

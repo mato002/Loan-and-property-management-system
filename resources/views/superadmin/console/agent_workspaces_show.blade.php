@@ -42,6 +42,35 @@
     </div>
 
     <div class="grid gap-6 lg:grid-cols-2">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">Property module permissions</h2>
+                    <p class="mt-1 text-sm text-slate-600">The workspace owner account has full property access. Scoped staff access is managed separately through Roles &amp; permissions.</p>
+                </div>
+                <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">{{ $agent->isScopedStaffLogin() ? 'Staff permissions' : 'Workspace owner · full access' }}</span>
+            </div>
+            @if (($propertyPermissions ?? collect())->isNotEmpty())
+                <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    @foreach ($propertyPermissions->groupBy('group') as $group => $permissions)
+                        <section class="rounded-xl border border-slate-200 p-4">
+                            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ $group }}</h3>
+                            <ul class="mt-3 space-y-2">
+                                @foreach ($permissions as $permission)
+                                    <li class="flex items-start justify-between gap-3 text-sm">
+                                        <span class="text-slate-700" title="{{ $permission['key'] }}">{{ $permission['name'] }}</span>
+                                        <span class="shrink-0 font-semibold {{ $permission['granted'] ? 'text-emerald-700' : 'text-slate-400' }}">{{ $permission['granted'] ? 'Granted' : 'Not granted' }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </section>
+                    @endforeach
+                </div>
+            @else
+                <p class="mt-4 text-sm text-slate-500">Permission catalog is unavailable until property RBAC is installed.</p>
+            @endif
+        </div>
+
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 class="text-lg font-bold text-slate-900">Quick actions</h2>
             <div class="mt-4 space-y-3">
