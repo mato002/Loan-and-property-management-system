@@ -152,6 +152,8 @@ class SuperAdminAgentWorkspaceController extends Controller
                     'name' => (string) ($permission->name ?: $permission->key),
                     'group' => (string) ($permission->group ?: 'Other'),
                     'granted' => $agent->hasPmPermission((string) $permission->key),
+                    'direct_effect' => $agent->directPmPermissionEffect((string) $permission->key) ?? 'inherit',
+                    'id' => (int) $permission->id,
                 ])
             : collect();
 
@@ -166,6 +168,37 @@ class SuperAdminAgentWorkspaceController extends Controller
             'packages' => $packages,
             'propertyPermissions' => $propertyPermissions,
         ]);
+    }
+
+    public function updatePermissions(Request $request, User $agent): RedirectResponse
+    {
+        abort_unless((string) ($agent->property_portal_role ?? '') === 'agent', 404);
+        abort_unless(Schema::hasTable('pm_permissions') && Schema::hasTable('pm_user_permission'), 503, 'Property permissions are not installed.');
+
+        $data = $request->validate([
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['required', 'in:inherit,allow,deny'],
+        ]);
+        $effects = $data['permissions'] ?? [];
+        $permissionIds = \App\Models\PmPermission::query()->whereIn('id', array_keys($effects))->pluck('id')->all();
+        if (count($permissionIds) !== count($effects)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['permissions' => 'One or more permissions are invalid.']);
+        }
+
+        if (! Schema::hasColumn('pm_user_permission', 'effect')) {
+            abort(503, 'Run the property permission migration before setting allow/deny overrides.');
+        }
+
+        $sync = [];
+        foreach ($effects as $permissionId => $effect) {
+            if ($effect !== 'inherit') {
+                $sync[(int) $permissionId] = ['effect' => $effect];
+            }
+        }
+        $agent->pmPermissions()->sync($sync);
+        $agent->unsetRelation('pmPermissions');
+
+        return redirect()->route('superadmin.agent_workspaces.show', $agent)->with('success', 'Property permissions updated.');
     }
 
     public function brandingIndex(Request $request): View|RedirectResponse
