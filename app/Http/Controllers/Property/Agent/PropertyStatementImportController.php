@@ -85,6 +85,7 @@ class PropertyStatementImportController extends Controller
             'providers' => [
                 PropertyStatementUploadService::PROVIDER_AUTO => 'Auto-detect',
                 PropertyStatementUploadService::PROVIDER_COOP => 'Co-operative Bank statement',
+                PropertyStatementUploadService::PROVIDER_EQUITY => 'Equity Bank statement',
                 PropertyStatementUploadService::PROVIDER_SAFARICOM_C2B => 'Safaricom C2B CSV',
             ],
         ]);
@@ -93,7 +94,7 @@ class PropertyStatementImportController extends Controller
     public function store(Request $request, PropertyStatementUploadService $uploader): RedirectResponse
     {
         $data = $request->validate([
-            'provider' => ['nullable', 'string', 'in:auto,coop_bank,safaricom_c2b'],
+            'provider' => ['nullable', 'string', 'in:auto,coop_bank,equity_bank,safaricom_c2b'],
             'statement_file' => ['required', 'file', 'mimes:csv,txt,pdf,xls,xlsx', 'max:10240'],
             'recover_missing' => ['nullable', 'boolean'],
         ]);

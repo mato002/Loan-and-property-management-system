@@ -10,12 +10,15 @@ final class PropertyStatementUploadService
 {
     public const PROVIDER_COOP = 'coop_bank';
 
+    public const PROVIDER_EQUITY = 'equity_bank';
+
     public const PROVIDER_SAFARICOM_C2B = 'safaricom_c2b';
 
     public const PROVIDER_AUTO = 'auto';
 
     public function __construct(
         private readonly CoopBankAccountStatementImportService $coopImport,
+        private readonly EquityBankStatementParser $equityParser,
         private readonly SafaricomC2bCsvStatementParser $safaricomParser,
         private readonly PropertyStatementMissingPaymentRecoveryService $recovery,
         private readonly PropertyStatementAutoAssignService $autoAssign,
@@ -52,6 +55,7 @@ final class PropertyStatementUploadService
                 $agentUserId,
             ),
             self::PROVIDER_COOP => $this->coopImport->importFromPath($absolute, $agentUserId),
+            self::PROVIDER_EQUITY => $this->coopImport->importParsed($this->equityParser->parsePath($absolute), $agentUserId),
             default => throw new RuntimeException('Unsupported statement provider: '.$detected),
         };
 
@@ -82,6 +86,10 @@ final class PropertyStatementUploadService
         $ext = strtolower((string) $file->getClientOriginalExtension());
         $name = strtolower((string) $file->getClientOriginalName());
 
+        if (str_contains($name, 'equity')) {
+            return self::PROVIDER_EQUITY;
+        }
+
         if (in_array($ext, ['csv', 'txt'], true)
             && (str_contains($name, 'mpesa') || str_contains($name, 'c2b') || str_contains($name, 'safaricom'))) {
             return self::PROVIDER_SAFARICOM_C2B;
@@ -92,6 +100,18 @@ final class PropertyStatementUploadService
             $lower = strtolower($sample);
             if (str_contains($lower, 'receipt no') || str_contains($lower, 'paid in')) {
                 return self::PROVIDER_SAFARICOM_C2B;
+            }
+        }
+
+        if (str_contains($ext, 'pdf') || in_array($ext, ['txt', 'text'], true)) {
+            try {
+                foreach (app(PassionLegacyRegisterPdfTextExtractor::class)->extractCandidates($absolute) as $text) {
+                    if (stripos($text, 'Equity') !== false && stripos($text, 'Account Number') !== false) {
+                        return self::PROVIDER_EQUITY;
+                    }
+                }
+            } catch (\Throwable) {
+                // The selected provider below gives the normal parser error.
             }
         }
 

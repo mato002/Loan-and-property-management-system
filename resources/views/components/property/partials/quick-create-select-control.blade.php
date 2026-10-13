@@ -9,7 +9,10 @@
 @endphp
 
 @if ($useSearch)
-    <div class="relative min-w-0 flex-1" @click.outside="closePicker()">
+    {{-- The picker is teleported to <body>; its own outside-click handler below
+         must own dismissal. An outside handler on this source wrapper sees every
+         tap in the teleported search field as outside and closes it on mobile. --}}
+    <div class="relative min-w-0 flex-1">
         <button
             type="button"
             x-ref="pickerTrigger"
