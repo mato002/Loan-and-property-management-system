@@ -167,17 +167,37 @@ class TenantCreditService
             return;
         }
 
-        $alreadyReversedAmount = round((float) PmTenantCreditTransaction::query()
+        $tenantId = (int) $created->pm_tenant_id;
+        $alreadyReversedAmount = (float) PmTenantCreditTransaction::query()
             ->where('pm_tenant_id', (int) $created->pm_tenant_id)
             ->where('pm_payment_id', (int) $payment->id)
             ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
-            ->sum('amount'), 2);
+            ->sum('amount');
+        // Older reconciliation cleanups recorded wallet reductions against a
+        // tenant-level CREDIT-ALIGN reference. Attribute those rows to their
+        // nearest matching source credit so they are not reversed twice.
+        $alignedReversals = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', (int) $created->pm_tenant_id)
+            ->whereNull('pm_payment_id')
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->where(function ($query): void {
+                $query->where('reference', 'like', 'CREDIT-ALIGN-%')
+                    ->orWhere('notes', 'like', 'Cleared credit already used on invoices%');
+            })
+            ->where('id', '>', (int) $created->id)
+            ->orderBy('id')
+            ->get();
+        foreach ($alignedReversals as $alignedReversal) {
+            if ($this->sourcePaymentIdForClearedCredit($tenantId, $alignedReversal) === (int) $payment->id) {
+                $alreadyReversedAmount += (float) $alignedReversal->amount;
+            }
+        }
+        $alreadyReversedAmount = round($alreadyReversedAmount, 2);
         $creditAmount = round(max(0.0, (float) $created->amount - $alreadyReversedAmount), 2);
         if ($creditAmount <= 0) {
             return;
         }
 
-        $tenantId = (int) $created->pm_tenant_id;
         // Credit created by a receipt can be consumed later through synthetic
         // tenant_credit payments. Unwind those applications (and reopen their
         // invoices) before removing the source receipt credit. The transaction
