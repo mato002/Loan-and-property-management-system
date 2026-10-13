@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tenant Statement - {{ $tenant->name }}</title>
     @vite(['resources/css/app.css'])
+    @vite(['resources/js/statement-reversal-confirm.js'])
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div class="p-4 md:p-6 space-y-4">

@@ -1551,7 +1551,7 @@ class PmTenantDirectoryController extends Controller
                     && $statementPayment->reversal_status !== PmPayment::REVERSAL_STATUS_REVERSED
                     && $statementPayment->reversal_status !== PmPayment::REVERSAL_STATUS_PENDING) {
                     $actionHtml .= ' <span class="text-slate-300">|</span> '
-                        .'<form method="post" action="'.route('property.payments.bank_statement.reverse_match', ['payment' => $e['payment_id']], false).'" class="inline" data-turbo="false" onsubmit="return confirm(\'Reverse this bank-statement payment, release its invoice allocations, and return its statement line to Unmatched? No bank refund will be initiated.\')">'
+                        .'<form method="post" action="'.route('property.payments.bank_statement.reverse_match', ['payment' => $e['payment_id']], false).'" class="inline" data-turbo="false" data-swal-confirm="Reverse this bank-statement payment, release its invoice allocations, and return its statement line to Unmatched? No bank refund will be initiated." data-swal-title="Reverse bank-statement payment?" data-swal-confirm-text="Reverse payment" data-swal-cancel-text="Keep payment">'
                         .csrf_field()
                         .'<button type="submit" class="font-medium text-rose-700 hover:text-rose-800">Reverse</button>'
                         .'</form>';

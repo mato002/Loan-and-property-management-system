@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
                     'resources/js/public-site.js',
                     'resources/js/guest-minimal.js',
                     'resources/js/guest-portal.js',
+                    'resources/js/statement-reversal-confirm.js',
                 ],
                 refresh: true,
             }),
