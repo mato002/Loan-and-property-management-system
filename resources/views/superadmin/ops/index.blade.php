@@ -5,7 +5,7 @@
     <div class="mb-6">
         <h1 class="text-2xl font-black tracking-tight text-slate-900">{{ $tab === 'maintenance' ? 'System maintenance' : 'Operations console' }}</h1>
         <p class="mt-1 text-sm text-slate-600 max-w-3xl">
-            {{ $tab === 'maintenance' ? 'Central reference for the artisan commands used to repair, reconcile, deploy, and monitor the system.' : 'Super-admin only tools for server operations: landlord/agent visibility, command reference, and quick repairs.' }}
+            {{ $tab === 'maintenance' ? 'Copy a command and run it from the application server.' : 'Super-admin only tools for server operations: landlord/agent visibility, command reference, and quick repairs.' }}
         </p>
     </div>
 
@@ -32,38 +32,59 @@
 
     @if (in_array($tab, ['commands', 'maintenance'], true))
         @if ($tab === 'maintenance')
-            <div class="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <section class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-sm">
-                    <p class="text-xs font-black uppercase tracking-wide text-emerald-800">Common repair · payment allocations</p>
-                    <h2 class="mt-1 text-lg font-black text-slate-900">Rebuild tenant receipt allocations</h2>
-                    <p class="mt-2 text-sm text-slate-700">Reassign completed tenant payments to open invoices oldest-due-first, then sync invoice paid totals. This can move existing allocations, so confirm the database backup and run it from the production app directory.</p>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <code class="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">php artisan payments:repair-allocations --limit=10000</code>
-                        <button type="button" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800" data-copy-command="php artisan payments:repair-allocations --limit=10000">Copy command</button>
-                    </div>
-                    <p class="mt-2 text-xs text-slate-600">The limit is the maximum number of tenants processed. Raise it if your portfolio has more.</p>
-                </section>
-                <section class="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
-                    <p class="text-xs font-black uppercase tracking-wide text-sky-800">Invoice totals · allocation drift</p>
-                    <h2 class="mt-1 text-lg font-black text-slate-900">Recalculate paid/status fields</h2>
-                    <p class="mt-2 text-sm text-slate-700">Use this when payment allocation rows are already correct but stored invoice totals or statuses do not match them. It does not rebuild or move receipts between invoices.</p>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <code class="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">php artisan finance:detect-allocation-drift --fix</code>
-                        <button type="button" class="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white hover:bg-sky-800" data-copy-command="php artisan finance:detect-allocation-drift --fix">Copy command</button>
-                    </div>
-                </section>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                <span>Commands run on the app server. Review repair or backfill commands before running.</span>
+                <span class="font-semibold text-slate-500">Select Copy to place a command on your clipboard.</span>
+            </div>
+
+            <div class="space-y-4">
+                @forelse ($maintenanceCommandGroups as $group)
+                    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <h2 class="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800">{{ $group['name'] }}</h2>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                                    <tr>
+                                        <th class="px-4 py-2">Command</th>
+                                        <th class="px-4 py-2">Purpose</th>
+                                        <th class="px-4 py-2 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @foreach ($group['commands'] as $command)
+                                        <tr>
+                                            <td class="whitespace-nowrap px-4 py-2.5"><code class="text-xs font-semibold text-slate-900">{{ $command['command'] }}</code></td>
+                                            <td class="min-w-[16rem] px-4 py-2.5 text-slate-600">{{ $command['purpose'] }}</td>
+                                            <td class="whitespace-nowrap px-4 py-2.5 text-right">
+                                                <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" data-copy-command="{{ $command['command'] }}">Copy</button>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                @empty
+                    <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Command reference is not available.</p>
+                @endforelse
             </div>
         @endif
-        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm prose prose-slate max-w-none">
-            {!! $commandReferenceHtml !!}
-        </div>
+        @if ($tab === 'commands')
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm prose prose-slate max-w-none">
+                {!! $commandReferenceHtml !!}
+            </div>
+        @endif
         @if ($tab === 'maintenance')
             <script>
                 document.querySelectorAll('[data-copy-command]').forEach((button) => {
                     button.addEventListener('click', async () => {
-                        await navigator.clipboard.writeText(button.dataset.copyCommand || '');
                         const original = button.textContent;
-                        button.textContent = 'Copied';
+                        try {
+                            await navigator.clipboard.writeText(button.dataset.copyCommand || '');
+                            button.textContent = 'Copied';
+                        } catch (error) {
+                            button.textContent = 'Copy failed';
+                        }
                         window.setTimeout(() => { button.textContent = original; }, 1400);
                     });
                 });

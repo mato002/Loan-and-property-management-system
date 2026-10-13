@@ -36,7 +36,8 @@ class SuperAdminOpsConsoleController extends Controller
             }
         }
 
-        $commandReferenceHtml = $this->loadCommandReferenceHtml();
+        $commandReferenceHtml = $tab === 'commands' ? $this->loadCommandReferenceHtml() : '';
+        $maintenanceCommandGroups = $tab === 'maintenance' ? $this->loadMaintenanceCommandGroups() : [];
 
         return view('superadmin.ops.index', [
             'tab' => $tab,
@@ -48,6 +49,7 @@ class SuperAdminOpsConsoleController extends Controller
             'inspectLandlord' => $inspectLandlord,
             'inspectReasons' => $inspectReasons,
             'commandReferenceHtml' => $commandReferenceHtml,
+            'maintenanceCommandGroups' => $maintenanceCommandGroups,
             'landlordScope' => $landlordScope,
         ]);
     }
@@ -112,6 +114,103 @@ class SuperAdminOpsConsoleController extends Controller
         $markdown = (string) file_get_contents($path);
 
         return $this->markdownToBasicHtml($markdown);
+    }
+
+    /** @return list<array{name: string, commands: list<array{command: string, purpose: string}>}> */
+    private function loadMaintenanceCommandGroups(): array
+    {
+        $path = base_path('docs/OPS-COMMAND-REFERENCE.md');
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $lines = preg_split("/\r\n|\n|\r/", (string) file_get_contents($path)) ?: [];
+        $allowedSections = [
+            'Property billing & utilities',
+            'Finance integrity & reconciliation',
+            'Tenants, leases, payments (property)',
+            'SMS & communications',
+            'Loan module',
+            'Infrastructure & ops',
+        ];
+        $groups = [];
+        $section = '';
+        $quickIndex = false;
+        $insideQuickIndexCode = false;
+        $seen = [];
+        $extraPurposes = [
+            'property:backfill-landlord-agent-scope' => 'Repair landlord visibility links between agents and properties.',
+            'mpesa:oauth-test' => 'Check M-Pesa API credentials and OAuth access.',
+            'mpesa:stk-test' => 'Send a test M-Pesa STK push.',
+        ];
+
+        foreach ($lines as $line) {
+            if (preg_match('/^##\s+(.+)$/', trim($line), $match) === 1) {
+                $section = trim($match[1]);
+                $quickIndex = $section === 'Quick index (all custom commands)';
+                $insideQuickIndexCode = false;
+
+                continue;
+            }
+
+            if ($quickIndex && str_starts_with(trim($line), '```')) {
+                $insideQuickIndexCode = ! $insideQuickIndexCode;
+
+                continue;
+            }
+
+            if ($quickIndex && $insideQuickIndexCode) {
+                $name = trim($line);
+                if ($name !== '' && preg_match('/^[a-z][a-z0-9:-]+$/i', $name) === 1 && ! isset($seen[$name])) {
+                    $groups['Other system commands']['commands'][] = [
+                        'command' => 'php artisan '.$name,
+                        'purpose' => $extraPurposes[$name] ?? 'Additional maintenance command.',
+                    ];
+                    $seen[$name] = true;
+                }
+
+                continue;
+            }
+
+            if (! in_array($section, $allowedSections, true) || ! str_starts_with(trim($line), '|') || str_contains($line, '---')) {
+                continue;
+            }
+
+            $cells = array_map('trim', explode('|', trim(trim($line), '|')));
+            if (count($cells) < 2 || stripos($cells[0], 'php artisan') === false) {
+                continue;
+            }
+
+            $command = trim(str_replace('`', '', $cells[0]));
+            $purpose = trim(str_replace('`', '', $cells[1]));
+            if (preg_match('/^php artisan\s+([a-z0-9:-]+)/i', $command, $match) !== 1) {
+                continue;
+            }
+
+            $name = strtolower($match[1]);
+            if ($name === 'payments:repair-allocations') {
+                $command = 'php artisan payments:repair-allocations --limit=10000';
+                $purpose = 'Rebuild receipt allocations oldest-due-first; may move existing allocations.';
+            } elseif ($name === 'finance:detect-allocation-drift') {
+                $command = 'php artisan finance:detect-allocation-drift --fix';
+                $purpose = 'Sync invoice paid totals and status from allocations; does not move receipts.';
+            }
+            $groups[$section]['commands'][] = ['command' => $command, 'purpose' => $purpose];
+            $seen[$name] = true;
+        }
+
+        // Useful framework operations that are not project-specific commands.
+        $groups['Laravel operations']['commands'] = [
+            ['command' => 'php artisan queue:failed', 'purpose' => 'List failed queued jobs.'],
+            ['command' => 'php artisan schedule:list', 'purpose' => 'List scheduled tasks.'],
+            ['command' => 'php artisan optimize:clear', 'purpose' => 'Clear cached config, routes, views, and application data.'],
+        ];
+
+        return collect($groups)
+            ->map(fn (array $group, string $name) => ['name' => $name, 'commands' => $group['commands'] ?? []])
+            ->filter(fn (array $group) => $group['commands'] !== [])
+            ->values()
+            ->all();
     }
 
     private function markdownToBasicHtml(string $markdown): string
