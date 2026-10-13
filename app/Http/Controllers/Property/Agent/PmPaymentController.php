@@ -813,61 +813,8 @@ class PmPaymentController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        if (strtolower(trim((string) $payment->channel)) !== 'bank_statement') {
-            return back()->withErrors(['payment' => 'Only bank-statement payments can use this reversal action.']);
-        }
-
         try {
-            DB::transaction(function () use ($request, $payment, $data): void {
-                $lockedPayment = PmPayment::query()->lockForUpdate()->findOrFail($payment->id);
-
-                if (strtolower(trim((string) $lockedPayment->channel)) !== 'bank_statement') {
-                    throw new RuntimeException('Only bank-statement payments can use this reversal action.');
-                }
-                if ($lockedPayment->status !== PmPayment::STATUS_COMPLETED) {
-                    throw new RuntimeException('Only completed bank-statement payments can be reversed.');
-                }
-                if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_PENDING) {
-                    throw new RuntimeException('This payment already has a reversal awaiting approval.');
-                }
-                if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_REVERSED) {
-                    throw new RuntimeException('This payment has already been reversed.');
-                }
-
-                $actorId = (int) $request->user()->id;
-                $reason = trim((string) ($data['reason'] ?? ''));
-                if ($reason === '') {
-                    $reason = 'Reversed bank-statement payment match by '.$request->user()->name.'.';
-                }
-
-                app(PropertyTransactionReversalService::class)->reversePayment(
-                    $lockedPayment,
-                    $actorId,
-                    $reason,
-                    (int) ($lockedPayment->meta['utility_override_request_id'] ?? 0) ?: null,
-                );
-
-                $reversedAt = now();
-                $lockedPayment->refresh();
-                $lockedPayment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
-                $lockedPayment->reversal_reason = $reason;
-                $lockedPayment->reversal_requested_by = $actorId;
-                $lockedPayment->reversal_requested_at = $reversedAt;
-                $lockedPayment->reversal_approved_by = $actorId;
-                $lockedPayment->reversal_approved_at = $reversedAt;
-                $lockedPayment->save();
-
-                if (Schema::hasTable('pm_bank_statement_lines')) {
-                    PmBankStatementLine::query()
-                        ->where('pm_payment_id', $lockedPayment->id)
-                        ->update([
-                            'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
-                            'matched_type' => null,
-                            'pm_payment_id' => null,
-                            'unassigned_payment_id' => null,
-                        ]);
-                }
-            });
+            $this->performBankStatementMatchReversal($request, $payment, (string) ($data['reason'] ?? ''));
         } catch (RuntimeException $e) {
             return back()->withErrors(['payment' => $e->getMessage()]);
         } catch (\App\Exceptions\Property\UtilityPeriodClosedException $e) {
@@ -875,6 +822,97 @@ class PmPaymentController extends Controller
         }
 
         return back()->with('success', 'Bank-statement payment reversed. Its active invoice allocations were released and linked statement lines returned to Unmatched. No bank refund was initiated.');
+    }
+
+    public function bulkReverseBankStatementMatches(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'payment_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'payment_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+        ]);
+
+        $reversed = 0;
+        $errors = [];
+
+        foreach ($data['payment_ids'] as $paymentId) {
+            $payment = PmPayment::query()->find((int) $paymentId);
+            if (! $payment) {
+                $errors[] = 'Payment #'.$paymentId.' is no longer available in this workspace.';
+                continue;
+            }
+
+            try {
+                $this->performBankStatementMatchReversal($request, $payment, '');
+                $reversed++;
+            } catch (RuntimeException|\App\Exceptions\Property\UtilityPeriodClosedException $e) {
+                $errors[] = 'Payment #'.$payment->id.': '.$e->getMessage();
+            }
+        }
+
+        if ($reversed === 0) {
+            return back()->withErrors(['bulk_reverse' => $errors[0] ?? 'No eligible payments were reversed.']);
+        }
+
+        $response = back()->with('success', "Reversed {$reversed} bank-statement payment(s). Active allocations were released and linked statement lines returned to Unmatched. No bank refunds were initiated.");
+        if ($errors !== []) {
+            $response->withErrors(['bulk_reverse' => implode(' ', array_slice($errors, 0, 5))]);
+        }
+
+        return $response;
+    }
+
+    private function performBankStatementMatchReversal(Request $request, PmPayment $payment, string $reason): void
+    {
+        DB::transaction(function () use ($request, $payment, $reason): void {
+            $lockedPayment = PmPayment::query()->lockForUpdate()->findOrFail($payment->id);
+
+            if (strtolower(trim((string) $lockedPayment->channel)) !== 'bank_statement') {
+                throw new RuntimeException('Only bank-statement payments can use this reversal action.');
+            }
+            if ($lockedPayment->status !== PmPayment::STATUS_COMPLETED) {
+                throw new RuntimeException('Only completed bank-statement payments can be reversed.');
+            }
+            if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_PENDING) {
+                throw new RuntimeException('This payment already has a reversal awaiting approval.');
+            }
+            if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_REVERSED) {
+                throw new RuntimeException('This payment has already been reversed.');
+            }
+
+            $actorId = (int) $request->user()->id;
+            $reason = trim($reason);
+            if ($reason === '') {
+                $reason = 'Reversed bank-statement payment match by '.$request->user()->name.'.';
+            }
+
+            app(PropertyTransactionReversalService::class)->reversePayment(
+                $lockedPayment,
+                $actorId,
+                $reason,
+                (int) ($lockedPayment->meta['utility_override_request_id'] ?? 0) ?: null,
+            );
+
+            $reversedAt = now();
+            $lockedPayment->refresh();
+            $lockedPayment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
+            $lockedPayment->reversal_reason = $reason;
+            $lockedPayment->reversal_requested_by = $actorId;
+            $lockedPayment->reversal_requested_at = $reversedAt;
+            $lockedPayment->reversal_approved_by = $actorId;
+            $lockedPayment->reversal_approved_at = $reversedAt;
+            $lockedPayment->save();
+
+            if (Schema::hasTable('pm_bank_statement_lines')) {
+                PmBankStatementLine::query()
+                    ->where('pm_payment_id', $lockedPayment->id)
+                    ->update([
+                        'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
+                        'matched_type' => null,
+                        'pm_payment_id' => null,
+                        'unassigned_payment_id' => null,
+                    ]);
+            }
+        });
     }
 
     public function showReceipt(Request $request, PmPayment $payment): View

@@ -368,7 +368,7 @@ class PropertyPaymentSettlementService
             }
 
             $invoiceRemaining = $invoice->balanceFloat();
-            if ($invoiceRemaining <= 0.0001 || $this->receiptMissesInvoicePeriod($payment, $invoice)) {
+            if ($invoiceRemaining <= 0.0001) {
                 continue;
             }
 
@@ -426,10 +426,6 @@ class PropertyPaymentSettlementService
         foreach ($openInvoices as $invoice) {
             if ($remaining <= 0.0001) {
                 break;
-            }
-
-            if ($this->receiptMissesInvoicePeriod($payment, $invoice)) {
-                continue;
             }
 
             $allocation = round(min($remaining, $invoice->balanceFloat()), 2);

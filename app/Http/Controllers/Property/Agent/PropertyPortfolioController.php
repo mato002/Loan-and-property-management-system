@@ -34,6 +34,7 @@ use App\Support\Property\WorkspaceRowAlert;
 use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\InvoiceStateIntegrityService;
 use App\Services\Property\LandlordPortalOnboardingService;
 use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\PropertyHrEmployeeService;
@@ -518,6 +519,22 @@ class PropertyPortfolioController extends Controller
         $availableCollectionChannels = [];
 
         if ($unitIds !== []) {
+            // Keep the property unit arrears view in sync with tenant ledgers.
+            // The ledger is allocation-based, while the reporting formulas read
+            // invoice balance_due; repair any drift before calculating either.
+            $tenantIds = PmInvoice::query()
+                ->withoutGlobalScopes()
+                ->liveBalances()
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereNotNull('pm_tenant_id')
+                ->distinct()
+                ->pluck('pm_tenant_id');
+
+            $integrity = app(InvoiceStateIntegrityService::class);
+            foreach ($tenantIds as $tenantId) {
+                $integrity->repairAllocationDriftForTenant((int) $tenantId, 500);
+            }
+
             $formulas = app(FinancialReportingFormulaService::class);
             $invoiced = $formulas->billedForPeriod($periodStart, $periodEnd, null, $unitIds);
 

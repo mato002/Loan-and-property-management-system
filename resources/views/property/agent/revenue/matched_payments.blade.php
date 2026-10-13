@@ -91,10 +91,19 @@
         </div>
     </form>
 
+    <form id="bank-statement-bulk-reversal" method="post" action="{{ route('property.payments.bank_statement.bulk_reverse_matches') }}" data-swal-title="Reverse the selected bank-statement matches?" data-swal-confirm="Each selected imported payment will be reversed separately. Active invoice allocations and related credits will be released, and linked statement lines will return to Unmatched. Items that cannot be reversed will be reported. No bank refunds will be initiated." data-swal-confirm-text="Reverse selected"></form>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50/70 px-4 py-3">
+        <p class="text-sm text-slate-700">Select up to 100 eligible bank-statement payments on this page. <span id="bank-statement-selection-count" class="font-semibold">0 selected</span></p>
+        <button type="submit" form="bank-statement-bulk-reversal" id="bank-statement-bulk-reverse-button" disabled class="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50">Reverse selected matches</button>
+    </div>
+
     <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
+                    <th class="px-3 py-2 text-center">
+                        <input type="checkbox" id="bank-statement-select-page" class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select eligible bank-statement payments on this page">
+                    </th>
                     <th class="px-3 py-2">Date</th>
                     <th class="px-3 py-2">Reference</th>
                     <th class="px-3 py-2">Method</th>
@@ -109,6 +118,11 @@
             <tbody class="divide-y divide-slate-100">
                 @forelse ($items as $payment)
                     <tr>
+                        <td class="px-3 py-2 text-center">
+                            @if ($payment->status === \App\Models\PmPayment::STATUS_COMPLETED && strtolower(trim((string) $payment->channel)) === 'bank_statement' && ! in_array($payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true))
+                                <input type="checkbox" form="bank-statement-bulk-reversal" name="payment_ids[]" value="{{ $payment->id }}" data-bank-statement-reversal-checkbox class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select bank-statement payment {{ \App\Support\Property\PmPaymentPresentation::transactionRef($payment) }}">
+                            @endif
+                        </td>
                         <td class="px-3 py-2 whitespace-nowrap">{{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}</td>
                         <td class="px-3 py-2 font-mono text-xs font-semibold">{{ \App\Support\Property\PmPaymentPresentation::transactionRef($payment) }}</td>
                         <td class="px-3 py-2">{{ \App\Support\Property\PmPaymentPresentation::paymentMethod($payment, \App\Support\Property\PmPaymentPresentation::methodGroupFromChannel($payment->channel)) }}</td>
@@ -152,11 +166,39 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="px-3 py-8 text-center text-slate-500">No matched tenant payments in this filter.</td>
+                        <td colspan="10" class="px-3 py-8 text-center text-slate-500">No matched tenant payments in this filter.</td>
                     </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
     <div class="mt-4">{{ $items->links() }}</div>
+    <script>
+        (() => {
+            const master = document.getElementById('bank-statement-select-page');
+            const checkboxes = Array.from(document.querySelectorAll('[data-bank-statement-reversal-checkbox]'));
+            const button = document.getElementById('bank-statement-bulk-reverse-button');
+            const count = document.getElementById('bank-statement-selection-count');
+            if (!master || !button || !count) return;
+            const maxSelected = 100;
+
+            const updateSelection = () => {
+                const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+                button.disabled = selected === 0;
+                count.textContent = selected >= maxSelected ? `${selected} selected (maximum)` : `${selected} selected`;
+                checkboxes.forEach((checkbox) => {
+                    checkbox.disabled = !checkbox.checked && selected >= maxSelected;
+                });
+                master.checked = checkboxes.length > 0 && selected === checkboxes.length;
+                master.indeterminate = selected > 0 && selected < checkboxes.length;
+            };
+
+            master.addEventListener('change', () => {
+                checkboxes.forEach((checkbox, index) => { checkbox.checked = master.checked && index < maxSelected; });
+                updateSelection();
+            });
+            checkboxes.forEach((checkbox) => checkbox.addEventListener('change', updateSelection));
+            updateSelection();
+        })();
+    </script>
 </x-property.workspace>
