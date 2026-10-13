@@ -137,8 +137,9 @@ class TenantCreditService
     }
 
     /**
-     * Reverse tenant advance credit created from an overpayment when the
-     * source payment is reversed. Throws if credit has already been applied.
+     * Reverse the remaining tenant advance credit created from an overpayment
+     * when its source payment is reversed. Automatic payment-allocation syncs
+     * may already have cleared part of this credit from the wallet.
      */
     public function reverseCreditFromPayment(PmPayment $payment, ?User $actor = null, ?string $reason = null): void
     {
@@ -166,22 +167,51 @@ class TenantCreditService
             return;
         }
 
-        $creditAmount = round((float) $created->amount, 2);
+        $alreadyReversedAmount = round((float) PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', (int) $created->pm_tenant_id)
+            ->where('pm_payment_id', (int) $payment->id)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->sum('amount'), 2);
+        $creditAmount = round(max(0.0, (float) $created->amount - $alreadyReversedAmount), 2);
         if ($creditAmount <= 0) {
             return;
         }
 
         $tenantId = (int) $created->pm_tenant_id;
-        $appliedAfter = round((float) PmTenantCreditTransaction::query()
-            ->where('pm_tenant_id', $tenantId)
-            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
-            ->where('id', '>', (int) $created->id)
-            ->sum('amount'), 2);
+        // Credit created by a receipt can be consumed later through synthetic
+        // tenant_credit payments. Unwind those applications (and reopen their
+        // invoices) before removing the source receipt credit. The transaction
+        // order gives us the applications created after this source credit.
+        if ($this->storedBalance($tenantId) + 0.01 < $creditAmount) {
+            $applications = PmTenantCreditTransaction::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
+                ->where('id', '>', (int) $created->id)
+                ->orderByDesc('id')
+                ->get();
 
-        if ($appliedAfter > 0.01) {
-            throw new RuntimeException(
-                'Cannot reverse payment #'.$payment->id.': tenant credit from overpayment has been applied to invoices.'
-            );
+            foreach ($applications as $application) {
+                $creditPayment = PmPayment::query()
+                    ->whereKey((int) $application->pm_payment_id)
+                    ->where('pm_tenant_id', $tenantId)
+                    ->where('channel', 'tenant_credit')
+                    ->where('status', PmPayment::STATUS_COMPLETED)
+                    ->first();
+                if (! $creditPayment) {
+                    continue;
+                }
+
+                $this->undoWalletApplication(
+                    $creditPayment,
+                    $reason ?: ('Unwound downstream credit from bank-statement payment #'.$payment->id),
+                    $actor,
+                    true,
+                );
+
+                if ($this->storedBalance($tenantId) + 0.01 >= $creditAmount) {
+                    break;
+                }
+            }
         }
 
         DB::transaction(function () use ($payment, $actor, $reason, $tenantId, $creditAmount, $reference) {
@@ -1064,12 +1094,16 @@ class TenantCreditService
         });
     }
 
-    private function undoWalletApplication(PmPayment $payment, string $reason): void
+    private function undoWalletApplication(PmPayment $payment, string $reason, ?User $actor = null, bool $restoreCredit = false): void
     {
-        DB::transaction(function () use ($payment, $reason): void {
+        DB::transaction(function () use ($payment, $reason, $actor, $restoreCredit): void {
             $payment = PmPayment::query()->lockForUpdate()->find($payment->id);
             if (! $payment || $payment->status !== PmPayment::STATUS_COMPLETED || (string) $payment->channel !== 'tenant_credit') {
                 return;
+            }
+
+            if ($restoreCredit) {
+                app(UtilityPeriodGuardService::class)->assertPaymentReversalMutable($payment, $actor);
             }
 
             $allocations = PmPaymentAllocation::query()
@@ -1105,8 +1139,9 @@ class TenantCreditService
                 $invoice->refreshComputedStatus();
             }
 
-            $this->reverseCreditApplicationPayment($payment, null, $reason);
+            $this->reverseCreditApplicationPayment($payment, $actor, $reason);
 
+            $restoredAmount = 0.0;
             foreach ($creditApplications as $application) {
                 $reversalReference = 'CREDIT-APP-REV-'.(int) $payment->id.'-'.(int) $application->id;
                 $alreadyRecorded = PmTenantCreditTransaction::query()
@@ -1122,13 +1157,24 @@ class TenantCreditService
                     'pm_tenant_id' => (int) $payment->pm_tenant_id,
                     'pm_payment_id' => (int) $payment->id,
                     'pm_invoice_id' => $application->pm_invoice_id,
-                    'type' => PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+                    'type' => $restoreCredit
+                        ? PmTenantCreditTransaction::TYPE_CREDIT_CREATED
+                        : PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
                     'amount' => round((float) $application->amount, 2),
                     'reference' => $reversalReference,
-                    'notes' => 'Reversed unsupported credit application from '.$payment->external_ref.'. '.$reason,
+                    'notes' => ($restoreCredit ? 'Restored credit while unwinding source receipt application from ' : 'Reversed unsupported credit application from ').$payment->external_ref.'. '.$reason,
                     'application_mode' => $application->application_mode ?: PmTenantCreditTransaction::MODE_AUTO,
-                    'created_by' => null,
+                    'created_by' => $actor?->id,
                 ]);
+                if ($restoreCredit) {
+                    $restoredAmount += round((float) $application->amount, 2);
+                }
+            }
+
+            if ($restoredAmount > 0.009) {
+                $balance = $this->lockBalanceRow((int) $payment->pm_tenant_id);
+                $balance->balance = round((float) $balance->balance + $restoredAmount, 2);
+                $balance->save();
             }
 
             $meta = is_array($payment->meta) ? $payment->meta : [];
@@ -1143,6 +1189,26 @@ class TenantCreditService
                 $payment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
             }
             $payment->save();
+
+            if ($restoreCredit) {
+                \App\Models\PmFinanceAuditLog::record(
+                    \App\Models\PmFinanceAuditLog::ACTION_PAYMENT_REVERSAL,
+                    'pm_payment',
+                    (int) $payment->id,
+                    [
+                        'pm_tenant_id' => (int) ($payment->pm_tenant_id ?? 0),
+                        'actor_user_id' => $actor?->id,
+                        'summary' => 'Tenant credit application payment #'.$payment->id.' reversed while unwinding a source statement receipt',
+                        'payload' => [
+                            'payment_id' => (int) $payment->id,
+                            'amount' => round((float) $payment->amount, 2),
+                            'reason' => $reason,
+                            'allocation_count' => $allocations->count(),
+                            'source_receipt_unwind' => true,
+                        ],
+                    ]
+                );
+            }
         });
     }
 

@@ -2,12 +2,10 @@
 
 namespace App\Services\Property;
 
-use App\Models\AccountingJournalBatch;
 use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 class PropertyTransactionReversalService
 {
@@ -18,17 +16,10 @@ class PropertyTransactionReversalService
             $actor = $actorId ? \App\Models\User::query()->find($actorId) : null;
             app(UtilityPeriodGuardService::class)->assertPaymentReversalMutable($payment, $actor, $utilityOverrideRequestId);
 
-            $hasPostedBatch = AccountingJournalBatch::query()
-                ->where('source_type', 'pm_payment')
-                ->where('source_id', (int) $payment->id)
-                ->whereIn('event_type', ['payment_received', 'payment_unmatched_suspense'])
-                ->where('status', AccountingJournalBatch::STATUS_POSTED)
-                ->exists();
-
-            if (! $hasPostedBatch) {
-                throw new RuntimeException('No posted payment journal batch found for reversal.');
-            }
-
+            // Some imported statement payments were never posted to the GL.
+            // They still need their operational allocations and receipt status
+            // reversed; the accounting service safely no-ops when there is no
+            // posted batch to reverse.
             app(PropertyAccountingFinalizeService::class)->reversePayment($payment, $actorId, $reason);
             app(PropertyPaymentSettlementService::class)->reversePaymentAllocations($payment, $actorId, $reason);
 
