@@ -212,6 +212,24 @@ class TenantCreditService
                 $alreadyReversedAmount += (float) $alignedReversal->amount;
             }
         }
+        // Reconciliation also records consumed receipt credit against the
+        // payment whose later invoice allocation cleared it (PAY-ALLOC-*).
+        // These rows carry the later payment id, not the original receipt id,
+        // so include them when calculating how much of this source credit is
+        // still available to reverse. Otherwise a fully-cleared credit is
+        // incorrectly debited again and reversal fails on a zero wallet.
+        $clearedAllocations = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->where('reference', 'like', 'PAY-ALLOC-%')
+            ->where('id', '>', (int) $created->id)
+            ->orderBy('id')
+            ->get();
+        foreach ($clearedAllocations as $clearedAllocation) {
+            if ($this->sourcePaymentIdForClearedCredit($tenantId, $clearedAllocation) === (int) $payment->id) {
+                $alreadyReversedAmount += (float) $clearedAllocation->amount;
+            }
+        }
         $alreadyReversedAmount = round($alreadyReversedAmount, 2);
         $creditAmount = round(max(0.0, (float) $created->amount - $alreadyReversedAmount), 2);
         if ($creditAmount <= 0) {
