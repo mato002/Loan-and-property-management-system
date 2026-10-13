@@ -275,11 +275,14 @@ class TenantCreditService
         DB::transaction(function () use ($payment, $actor, $reason, $tenantId, $creditAmount, $reference) {
             $balance = $this->lockBalanceRow($tenantId);
             $available = round((float) $balance->balance, 2);
-            if ($available + 0.01 < $creditAmount) {
-                throw new RuntimeException(
-                    'Cannot reverse payment #'.$payment->id.': tenant credit balance is insufficient.'
-                );
-            }
+
+            // The wallet is fungible: reconciliation may already have consumed
+            // this receipt's credit against invoices or cleared it when another
+            // receipt funded those invoices. Reversal must still close the
+            // source credit record, but may only debit what remains in the
+            // wallet. Requiring the full historical amount here strands valid
+            // statement reversals with an “insufficient credit” error.
+            $walletDebit = round(min($available, $creditAmount), 2);
 
             PmTenantCreditTransaction::query()->create([
                 'pm_tenant_id' => $tenantId,
@@ -293,7 +296,7 @@ class TenantCreditService
                 'created_by' => $actor?->id,
             ]);
 
-            $balance->balance = round(max(0.0, $available - $creditAmount), 2);
+            $balance->balance = round(max(0.0, $available - $walletDebit), 2);
             $balance->save();
         });
     }
