@@ -841,6 +841,71 @@ document.addEventListener('turbo:submit-end', (event) => {
 });
 
 /**
+ * The statement detail content is replaced by Turbo Frames, so its controls
+ * need delegated handlers from this persistent app bundle (not page inline JS).
+ */
+function syncStatementBulkReversalSelection() {
+    const form = document.getElementById('statement-bulk-reversal');
+    const master = document.getElementById('statement-select-page');
+    const button = document.getElementById('statement-bulk-reverse-button');
+    const count = document.getElementById('statement-reversal-count');
+    if (!(form instanceof HTMLFormElement) || !(master instanceof HTMLInputElement)
+        || !(button instanceof HTMLButtonElement) || !(count instanceof HTMLElement)) {
+        return;
+    }
+
+    const checkboxes = Array.from(document.querySelectorAll('[data-statement-reversal-checkbox]'));
+    let selected = checkboxes.filter((checkbox) => checkbox.checked);
+    if (selected.length > 100) {
+        selected.slice(100).forEach((checkbox) => { checkbox.checked = false; });
+        selected = selected.slice(0, 100);
+    }
+
+    form.querySelectorAll('[data-statement-bulk-payment-id]').forEach((input) => input.remove());
+    selected.forEach((checkbox) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'payment_ids[]';
+        input.value = checkbox.value;
+        input.dataset.statementBulkPaymentId = '1';
+        form.appendChild(input);
+    });
+
+    button.disabled = selected.length === 0;
+    count.textContent = `${selected.length} selected`;
+    checkboxes.forEach((checkbox) => { checkbox.disabled = !checkbox.checked && selected.length >= 100; });
+    master.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+    master.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+}
+
+document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+        return;
+    }
+
+    if (target.id === 'statement-select-page') {
+        const checkboxes = Array.from(document.querySelectorAll('[data-statement-reversal-checkbox]'));
+        checkboxes.forEach((checkbox, index) => { checkbox.checked = target.checked && index < 100; });
+        syncStatementBulkReversalSelection();
+        return;
+    }
+
+    if (target.matches('[data-statement-reversal-checkbox]')) {
+        syncStatementBulkReversalSelection();
+    }
+});
+
+document.addEventListener('turbo:frame-load', (event) => {
+    if (event.target instanceof HTMLElement && event.target.id === PROPERTY_MAIN_FRAME_ID) {
+        syncStatementBulkReversalSelection();
+    }
+});
+document.addEventListener('turbo:load', syncStatementBulkReversalSelection);
+document.addEventListener('DOMContentLoaded', syncStatementBulkReversalSelection);
+syncStatementBulkReversalSelection();
+
+/**
  * Keep every in-shell property navigation inside the persistent main frame.
  * This capture-phase guard also covers links added by older/legacy workspace
  * pages before Turbo's Drive handler can replace the whole document.

@@ -102,7 +102,7 @@
                     <tr data-line-row="{{ $line->id }}">
                         <td class="px-3 py-2 text-center">
                             @if ($canReverseBankPayment)
-                                <input type="checkbox" form="statement-bulk-reversal" name="payment_ids[]" value="{{ $paymentId }}" data-statement-reversal-checkbox class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select bank-statement payment {{ $line->reference ?: $paymentId }}">
+                                <input type="checkbox" value="{{ $paymentId }}" data-statement-reversal-checkbox class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select bank-statement payment {{ $line->reference ?: $paymentId }}">
                             @endif
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
@@ -231,37 +231,6 @@
 </x-property.workspace>
 
 <script>
-    (() => {
-        const bindStatementBulkReversal = () => {
-            const master = document.getElementById('statement-select-page');
-            const checkboxes = Array.from(document.querySelectorAll('[data-statement-reversal-checkbox]'));
-            const button = document.getElementById('statement-bulk-reverse-button');
-            const count = document.getElementById('statement-reversal-count');
-            if (!master || !button || !count || master.dataset.bound === '1') return;
-            master.dataset.bound = '1';
-
-            const updateSelection = () => {
-                const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
-                button.disabled = selected === 0 || selected > 100;
-                count.textContent = selected > 100 ? `${selected} selected (maximum 100)` : `${selected} selected`;
-                checkboxes.forEach((checkbox) => { checkbox.disabled = !checkbox.checked && selected >= 100; });
-                master.checked = checkboxes.length > 0 && selected === checkboxes.length;
-                master.indeterminate = selected > 0 && selected < checkboxes.length;
-            };
-
-            master.addEventListener('change', () => {
-                checkboxes.forEach((checkbox, index) => { checkbox.checked = master.checked && index < 100; });
-                updateSelection();
-            });
-            checkboxes.forEach((checkbox) => checkbox.addEventListener('change', updateSelection));
-            updateSelection();
-        };
-
-        bindStatementBulkReversal();
-        document.addEventListener('turbo:load', bindStatementBulkReversal);
-        document.addEventListener('turbo:frame-load', bindStatementBulkReversal);
-    })();
-
     (function () {
         const tenants = @json($assignTenants ?? []);
         const landlords = @json($assignLandlords ?? []);
