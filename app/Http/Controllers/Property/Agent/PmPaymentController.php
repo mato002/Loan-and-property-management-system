@@ -7,6 +7,7 @@ use App\Models\AccountingChartAccount;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
+use App\Models\PmBankStatement;
 use App\Models\PmBankStatementLine;
 use App\Models\PmTenant;
 use App\Support\Property\PropertyFilterCascadeCatalog;
@@ -829,7 +830,13 @@ class PmPaymentController extends Controller
         $data = $request->validate([
             'payment_ids' => ['required', 'array', 'min:1', 'max:100'],
             'payment_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'statement_id' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        $statementId = (int) ($data['statement_id'] ?? 0);
+        if ($statementId > 0) {
+            PmBankStatement::query()->findOrFail($statementId);
+        }
 
         $reversed = 0;
         $errors = [];
@@ -838,6 +845,15 @@ class PmPaymentController extends Controller
             $payment = PmPayment::query()->find((int) $paymentId);
             if (! $payment) {
                 $errors[] = 'Payment #'.$paymentId.' is no longer available in this workspace.';
+                continue;
+            }
+
+            if ($statementId > 0 && ! PmBankStatementLine::query()
+                ->where('pm_bank_statement_id', $statementId)
+                ->where('pm_payment_id', $payment->id)
+                ->where('match_status', PmBankStatementLine::MATCH_MATCHED)
+                ->exists()) {
+                $errors[] = 'Payment #'.$payment->id.' is not matched on the selected statement.';
                 continue;
             }
 

@@ -840,6 +840,56 @@ document.addEventListener('turbo:submit-end', (event) => {
     }
 });
 
+/**
+ * Keep every in-shell property navigation inside the persistent main frame.
+ * This capture-phase guard also covers links added by older/legacy workspace
+ * pages before Turbo's Drive handler can replace the whole document.
+ */
+document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+    }
+
+    const target = event.target;
+    const link = target instanceof Element ? target.closest('a[href]') : null;
+    if (!(link instanceof HTMLAnchorElement)
+        || isBypassTurboLink(link)
+        || ! shouldUseMainFrame(link)
+        || link.target === '_blank'
+        || link.hasAttribute('download')
+        || isPropertyFormModalLink(link)) {
+        return;
+    }
+
+    const frameTarget = link.getAttribute('data-turbo-frame');
+    if (frameTarget && frameTarget !== PROPERTY_MAIN_FRAME_ID) {
+        return;
+    }
+
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) {
+        return;
+    }
+
+    let url;
+    try {
+        url = new URL(link.href, window.location.href);
+    } catch {
+        return;
+    }
+    if (!isPropertyShellUrl(url)) {
+        return;
+    }
+
+    if (link.classList.contains('property-workspace-tab') || link.classList.contains('property-workspace-subtab')) {
+        notePendingWorkspaceNavigation(url.toString());
+    }
+    event.preventDefault();
+    closeAllPropertyDropdowns();
+    showWorkspaceLoading();
+    visitPropertyMainFrame(resolvePropertyNavUrl(url.toString()));
+}, true);
+
 document.addEventListener('turbo:fetch-request-error', (event) => {
     const formSubmission = event.detail?.formSubmission;
     const form = formSubmission?.formElement;
@@ -931,11 +981,10 @@ document.addEventListener('turbo:frame-missing', (event) => {
 
         return;
     }
-    if (responseUrl) {
-        visitPropertyMainFrame(responseUrl);
-        return;
-    }
-    showWorkspaceError('The server response did not include workspace content.', window.location.href);
+    // Retrying the same response as another frame visit can loop forever when
+    // the server returned a full page or an error page without #property-main.
+    // Keep the shell visible and let the user retry explicitly instead.
+    showWorkspaceError('The server response did not include workspace content.', responseUrl || window.location.href);
 });
 
 document.addEventListener('turbo:frame-load', (event) => {

@@ -33,6 +33,15 @@
         <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{{ $errors->first() }}</div>
     @endif
 
+    <form id="statement-bulk-reversal" method="POST" action="{{ route('property.payments.bank_statement.bulk_reverse_matches') }}" data-turbo="false" data-swal-title="Reverse the selected bank-statement matches?" data-swal-confirm="This reverses each selected imported payment, releases active invoice allocations and related credits, and returns its linked statement lines to Unmatched. No bank refunds will be initiated." data-swal-confirm-text="Reverse selected">
+        @csrf
+        <input type="hidden" name="statement_id" value="{{ $statement->id }}">
+    </form>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50/70 px-4 py-3">
+        <p class="text-sm text-slate-700">Select bank-statement matches to reverse. <span id="statement-reversal-count" class="font-semibold">0 selected</span></p>
+        <button type="submit" form="statement-bulk-reversal" id="statement-bulk-reverse-button" disabled class="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50">Reverse selected matches</button>
+    </div>
+
     <div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
         @php
             $pageSize = (string) ($filters['per_page'] ?? 100);
@@ -65,6 +74,7 @@
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
+                    <th class="px-3 py-2 text-center"><input type="checkbox" id="statement-select-page" class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select eligible bank-statement matches on this page"></th>
                     <th class="px-3 py-2">Date</th>
                     <th class="px-3 py-2">Reference</th>
                     <th class="px-3 py-2">Phone</th>
@@ -84,8 +94,17 @@
                         $tenantName = $line->matchedTenantName();
                         $phone = $line->displayPhone();
                         $paymentId = (int) ($line->pm_payment_id ?? 0);
+                        $canReverseBankPayment = $line->payment
+                            && strtolower(trim((string) $line->payment->channel)) === 'bank_statement'
+                            && $line->payment->status === \App\Models\PmPayment::STATUS_COMPLETED
+                            && ! in_array($line->payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true);
                     @endphp
                     <tr data-line-row="{{ $line->id }}">
+                        <td class="px-3 py-2 text-center">
+                            @if ($canReverseBankPayment)
+                                <input type="checkbox" form="statement-bulk-reversal" name="payment_ids[]" value="{{ $paymentId }}" data-statement-reversal-checkbox class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select bank-statement payment {{ $line->reference ?: $paymentId }}">
+                            @endif
+                        </td>
                         <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-3 py-2">
                             <div class="font-mono text-xs font-semibold text-slate-900">{{ $line->reference ?: '—' }}</div>
@@ -201,7 +220,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-3 py-8 text-center text-slate-500">No lines in this group.</td>
+                        <td colspan="9" class="px-3 py-8 text-center text-slate-500">No lines in this group.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -212,6 +231,37 @@
 </x-property.workspace>
 
 <script>
+    (() => {
+        const bindStatementBulkReversal = () => {
+            const master = document.getElementById('statement-select-page');
+            const checkboxes = Array.from(document.querySelectorAll('[data-statement-reversal-checkbox]'));
+            const button = document.getElementById('statement-bulk-reverse-button');
+            const count = document.getElementById('statement-reversal-count');
+            if (!master || !button || !count || master.dataset.bound === '1') return;
+            master.dataset.bound = '1';
+
+            const updateSelection = () => {
+                const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+                button.disabled = selected === 0 || selected > 100;
+                count.textContent = selected > 100 ? `${selected} selected (maximum 100)` : `${selected} selected`;
+                checkboxes.forEach((checkbox) => { checkbox.disabled = !checkbox.checked && selected >= 100; });
+                master.checked = checkboxes.length > 0 && selected === checkboxes.length;
+                master.indeterminate = selected > 0 && selected < checkboxes.length;
+            };
+
+            master.addEventListener('change', () => {
+                checkboxes.forEach((checkbox, index) => { checkbox.checked = master.checked && index < 100; });
+                updateSelection();
+            });
+            checkboxes.forEach((checkbox) => checkbox.addEventListener('change', updateSelection));
+            updateSelection();
+        };
+
+        bindStatementBulkReversal();
+        document.addEventListener('turbo:load', bindStatementBulkReversal);
+        document.addEventListener('turbo:frame-load', bindStatementBulkReversal);
+    })();
+
     (function () {
         const tenants = @json($assignTenants ?? []);
         const landlords = @json($assignLandlords ?? []);
