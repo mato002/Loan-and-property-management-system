@@ -173,6 +173,26 @@ class TenantCreditService
             ->where('pm_payment_id', (int) $payment->id)
             ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
             ->sum('amount');
+        $laterApplications = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
+            ->where('id', '>', (int) $created->id)
+            ->get(['id', 'pm_payment_id']);
+        $applicationReversalReferences = $laterApplications
+            ->filter(fn (PmTenantCreditTransaction $application): bool => (int) $application->pm_payment_id > 0)
+            ->map(fn (PmTenantCreditTransaction $application): string => 'CREDIT-APP-REV-'.(int) $application->pm_payment_id.'-'.(int) $application->id)
+            ->all();
+        if ($applicationReversalReferences !== []) {
+            // Older cleanup may already have reversed the synthetic credit
+            // payment and its invoice allocation. Count that reversal against
+            // this source credit so we do not try to debit it from the wallet a
+            // second time when the source receipt is reversed.
+            $alreadyReversedAmount += (float) PmTenantCreditTransaction::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+                ->whereIn('reference', $applicationReversalReferences)
+                ->sum('amount');
+        }
         // Older reconciliation cleanups recorded wallet reductions against a
         // tenant-level CREDIT-ALIGN reference. Attribute those rows to their
         // nearest matching source credit so they are not reversed twice.
