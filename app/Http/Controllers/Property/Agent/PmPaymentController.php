@@ -7,6 +7,7 @@ use App\Models\AccountingChartAccount;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
+use App\Models\PmBankStatementLine;
 use App\Models\PmTenant;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\PmPaymentPresentation;
@@ -16,6 +17,7 @@ use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentReversalApprovalService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Property\PropertyTransactionReversalService;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
@@ -803,6 +805,76 @@ class PmPaymentController extends Controller
         }
 
         return back()->with('success', 'Payment reversal approved and posted.');
+    }
+
+    public function reverseBankStatementMatch(Request $request, PmPayment $payment): RedirectResponse
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if (strtolower(trim((string) $payment->channel)) !== 'bank_statement') {
+            return back()->withErrors(['payment' => 'Only bank-statement payments can use this reversal action.']);
+        }
+
+        try {
+            DB::transaction(function () use ($request, $payment, $data): void {
+                $lockedPayment = PmPayment::query()->lockForUpdate()->findOrFail($payment->id);
+
+                if (strtolower(trim((string) $lockedPayment->channel)) !== 'bank_statement') {
+                    throw new RuntimeException('Only bank-statement payments can use this reversal action.');
+                }
+                if ($lockedPayment->status !== PmPayment::STATUS_COMPLETED) {
+                    throw new RuntimeException('Only completed bank-statement payments can be reversed.');
+                }
+                if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_PENDING) {
+                    throw new RuntimeException('This payment already has a reversal awaiting approval.');
+                }
+                if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_REVERSED) {
+                    throw new RuntimeException('This payment has already been reversed.');
+                }
+
+                $actorId = (int) $request->user()->id;
+                $reason = trim((string) ($data['reason'] ?? ''));
+                if ($reason === '') {
+                    $reason = 'Reversed bank-statement payment match by '.$request->user()->name.'.';
+                }
+
+                app(PropertyTransactionReversalService::class)->reversePayment(
+                    $lockedPayment,
+                    $actorId,
+                    $reason,
+                    (int) ($lockedPayment->meta['utility_override_request_id'] ?? 0) ?: null,
+                );
+
+                $reversedAt = now();
+                $lockedPayment->refresh();
+                $lockedPayment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
+                $lockedPayment->reversal_reason = $reason;
+                $lockedPayment->reversal_requested_by = $actorId;
+                $lockedPayment->reversal_requested_at = $reversedAt;
+                $lockedPayment->reversal_approved_by = $actorId;
+                $lockedPayment->reversal_approved_at = $reversedAt;
+                $lockedPayment->save();
+
+                if (Schema::hasTable('pm_bank_statement_lines')) {
+                    PmBankStatementLine::query()
+                        ->where('pm_payment_id', $lockedPayment->id)
+                        ->update([
+                            'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
+                            'matched_type' => null,
+                            'pm_payment_id' => null,
+                            'unassigned_payment_id' => null,
+                        ]);
+                }
+            });
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        } catch (\App\Exceptions\Property\UtilityPeriodClosedException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Bank-statement payment reversed. Its active invoice allocations were released and linked statement lines returned to Unmatched. No bank refund was initiated.');
     }
 
     public function showReceipt(Request $request, PmPayment $payment): View

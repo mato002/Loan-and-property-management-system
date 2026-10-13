@@ -17,6 +17,7 @@
                 <th class="px-4 py-3">Reference</th>
                 <th class="px-4 py-3">Applied to</th>
                 <th class="px-4 py-3">Receipt</th>
+                <th class="px-4 py-3">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -68,10 +69,24 @@
                     <td class="px-4 py-3">
                         <a href="{{ route('property.payments.receipt.show', $payment, false) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>
                     </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        @if (strtolower(trim((string) $payment->channel)) === 'bank_statement' && $payment->status === \App\Models\PmPayment::STATUS_COMPLETED && ! in_array($payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true))
+                            <form method="post" action="{{ route('property.payments.bank_statement.reverse_match', $payment, false) }}" data-swal-title="Reverse this bank-statement match?" data-swal-confirm="This reverses the imported payment, releases its active invoice allocations and tenant credit, and returns linked statement lines to Unmatched. It does not initiate a bank refund.">
+                                @csrf
+                                <button type="submit" class="text-xs font-semibold text-rose-700 hover:underline">Reverse match</button>
+                            </form>
+                        @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
+                            <span class="text-xs text-amber-700">Reversal pending</span>
+                        @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_REVERSED)
+                            <span class="text-xs text-slate-400">Reversed</span>
+                        @else
+                            <span class="text-xs text-slate-400">—</span>
+                        @endif
+                    </td>
                 </tr>
             @empty
                 @unless(($recentRegisterReceipts ?? collect())->isNotEmpty())
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No payments recorded yet.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No payments recorded yet.</td></tr>
                 @endunless
             @endforelse
             @foreach (($recentRegisterReceipts ?? []) as $receipt)
@@ -85,6 +100,7 @@
                         <div class="mt-0.5 text-[11px] text-amber-700">Does not count on rent collected until allocated</div>
                     </td>
                     <td class="px-4 py-3 text-xs text-slate-500">Imported receipt</td>
+                    <td class="px-4 py-3 text-xs text-slate-400">—</td>
                 </tr>
             @endforeach
         </tbody>

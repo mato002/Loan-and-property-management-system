@@ -156,6 +156,16 @@
                                     <a href="{{ route('property.payments.receipt.show', $paymentId) }}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                                         View receipt
                                     </a>
+                                    @if ($line->payment && strtolower(trim((string) $line->payment->channel)) === 'bank_statement' && $line->payment->status === \App\Models\PmPayment::STATUS_COMPLETED && ! in_array($line->payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true))
+                                        <form method="POST" action="{{ route('property.payments.bank_statement.reverse_match', $line->payment) }}" data-swal-title="Reverse this bank-statement match?" data-swal-confirm="This reverses the imported payment, releases its active invoice allocations and tenant credit, and returns linked statement lines to Unmatched. It does not initiate a bank refund." data-swal-confirm-text="Reverse match" class="inline">
+                                            @csrf
+                                            <button type="submit" class="rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">Reverse match</button>
+                                        </form>
+                                    @elseif ($line->payment?->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
+                                        <span class="text-xs text-amber-700">Reversal pending</span>
+                                    @elseif ($line->payment?->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_REVERSED)
+                                        <span class="text-xs text-slate-400">Reversed</span>
+                                    @endif
                                 @elseif ($tenantId)
                                     <a href="{{ route('property.tenants.show', $tenantId) }}" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                         Open tenant

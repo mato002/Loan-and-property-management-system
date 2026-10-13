@@ -126,6 +126,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
     Route::post('/revenue/payments/{payment}/reversal/request', [PmPaymentController::class, 'requestReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.request');
     Route::post('/revenue/payments/{payment}/reversal/approve', [PmPaymentController::class, 'approveReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.approve');
+    Route::post('/revenue/payments/{payment}/reverse-bank-statement-match', [PmPaymentController::class, 'reverseBankStatementMatch'])->middleware('property.permission:payments.settle')->name('payments.bank_statement.reverse_match');
     Route::get('/revenue/payments/{payment}/receipt', [PmPaymentController::class, 'showReceipt'])->name('payments.receipt.show');
     Route::get('/revenue/payments/{payment}/receipt/download', [PmPaymentController::class, 'downloadReceipt'])->name('payments.receipt.download');
     Route::get('/revenue/tenant-credits', [PmTenantCreditController::class, 'report'])->name('revenue.tenant_credits');

@@ -134,6 +134,16 @@
                                 @if ($payment->status === \App\Models\PmPayment::STATUS_COMPLETED)
                                     <a href="{{ route('property.payments.receipt.show', $payment) }}" class="text-blue-700 hover:underline">Receipt</a>
                                     <a href="{{ route('property.payments.receipt.download', $payment) }}" data-turbo="false" class="text-slate-600 hover:text-slate-900 hover:underline">Download</a>
+                                    @if (strtolower(trim((string) $payment->channel)) === 'bank_statement' && ! in_array($payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true))
+                                        <form method="post" action="{{ route('property.payments.bank_statement.reverse_match', $payment) }}" class="inline" data-swal-title="Reverse this bank-statement match?" data-swal-confirm="This reverses the imported payment, releases its active invoice allocations and tenant credit, and returns linked statement lines to Unmatched. It does not initiate a bank refund." data-swal-confirm-text="Reverse match">
+                                            @csrf
+                                            <button type="submit" class="text-rose-700 hover:underline">Reverse match</button>
+                                        </form>
+                                    @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
+                                        <span class="font-normal text-amber-700">Reversal pending</span>
+                                    @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_REVERSED)
+                                        <span class="font-normal text-slate-400">Reversed</span>
+                                    @endif
                                 @else
                                     <span class="font-normal text-slate-400">{{ ucfirst((string) $payment->status) }}</span>
                                 @endif
