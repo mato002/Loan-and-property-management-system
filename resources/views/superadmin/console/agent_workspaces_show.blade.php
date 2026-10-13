@@ -43,43 +43,23 @@
 
     <div class="grid gap-6 lg:grid-cols-2">
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-            <form method="post" action="{{ route('superadmin.agent_workspaces.permissions', $agent) }}">
-                @csrf
-                <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 class="text-lg font-bold text-slate-900">Property module permissions</h2>
-                    <p class="mt-1 text-sm text-slate-600">The owner inherits full access. Set a permission to Grant or Deny to create a direct override; Inherit follows the account’s normal access.</p>
+                    <p class="mt-1 text-sm text-slate-600">The workspace owner account has full property access. Scoped staff access is managed separately through Roles &amp; permissions.</p>
                 </div>
                 <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">{{ $agent->isScopedStaffLogin() ? 'Staff permissions' : 'Workspace owner · full access' }}</span>
-                </div>
-                @if (session('success'))
-                    <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{{ session('success') }}</p>
-                @endif
+            </div>
             @if (($propertyPermissions ?? collect())->isNotEmpty())
-                <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-xs text-slate-500">Showing {{ $propertyPermissions->count() }} permissions from the full property catalog.</p>
-                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">Show
-                        <select class="rounded-md border border-slate-300 px-2 py-1" onchange="document.querySelectorAll('[data-agent-permission]').forEach((row) => { row.hidden = this.value !== 'all' && row.dataset.agentPermission !== this.value; })">
-                            <option value="all">All</option>
-                            <option value="granted">Granted</option>
-                            <option value="not-granted">Not granted</option>
-                        </select>
-                    </label>
-                </div>
                 <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     @foreach ($propertyPermissions->groupBy('group') as $group => $permissions)
                         <section class="rounded-xl border border-slate-200 p-4">
                             <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ $group }}</h3>
                             <ul class="mt-3 space-y-2">
                                 @foreach ($permissions as $permission)
-                                    <li data-agent-permission="{{ $permission['granted'] ? 'granted' : 'not-granted' }}" class="flex flex-wrap items-center justify-between gap-2 text-sm">
-                                        <label class="min-w-0 flex-1 text-slate-700" title="{{ $permission['key'] }}" for="pm-permission-{{ $permission['id'] }}">{{ $permission['name'] }}</label>
-                                        <span class="shrink-0 font-semibold {{ $permission['granted'] ? 'text-emerald-700' : 'text-rose-700' }}">{{ $permission['granted'] ? 'Granted' : 'Not granted' }}</span>
-                                        <select id="pm-permission-{{ $permission['id'] }}" name="permissions[{{ $permission['id'] }}]" class="rounded-md border border-slate-300 px-2 py-1 text-xs">
-                                            @foreach (['inherit' => 'Inherit', 'allow' => 'Grant', 'deny' => 'Deny'] as $effect => $effectLabel)
-                                                <option value="{{ $effect }}" @selected($permission['direct_effect'] === $effect)>{{ $effectLabel }}</option>
-                                            @endforeach
-                                        </select>
+                                    <li class="flex items-start justify-between gap-3 text-sm">
+                                        <span class="text-slate-700" title="{{ $permission['key'] }}">{{ $permission['name'] }}</span>
+                                        <span class="shrink-0 font-semibold {{ $permission['granted'] ? 'text-emerald-700' : 'text-slate-400' }}">{{ $permission['granted'] ? 'Granted' : 'Not granted' }}</span>
                                     </li>
                                 @endforeach
                             </ul>
@@ -89,10 +69,6 @@
             @else
                 <p class="mt-4 text-sm text-slate-500">Permission catalog is unavailable until property RBAC is installed.</p>
             @endif
-                @if (($propertyPermissions ?? collect())->isNotEmpty())
-                    <div class="mt-5 flex justify-end"><button type="submit" class="rounded-xl bg-[#2f4f4f] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#264040]">Save permission changes</button></div>
-                @endif
-            </form>
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

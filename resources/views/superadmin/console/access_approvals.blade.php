@@ -20,8 +20,11 @@
                     class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 lg:col-span-2"
                 />
                 <select name="module" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">All modules</option>
-                    <option value="property" @selected(($module ?? '') === 'property')>Property</option>
+                    <option value="">All modules and portals</option>
+                    <option value="property" @selected(($module ?? '') === 'property')>Property — all access</option>
+                    <option value="property_agent" @selected(($module ?? '') === 'property_agent')>Property — agent workspace</option>
+                    <option value="property_landlord" @selected(($module ?? '') === 'property_landlord')>Property — landlord portal</option>
+                    <option value="property_tenant" @selected(($module ?? '') === 'property_tenant')>Property — tenant portal</option>
                     <option value="loan" @selected(($module ?? '') === 'loan')>Loan</option>
                 </select>
                 <select name="status" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
@@ -77,7 +80,7 @@
                     </form>
                 </div>
             </div>
-            <p class="text-xs text-slate-500">“All pending (filtered)” affects every <span class="font-semibold text-slate-700">pending</span> row matching search/module (not status filter). Use checkboxes for actions on <span class="font-semibold text-slate-700">this page only</span>.</p>
+            <p class="text-xs text-slate-500">“All pending (filtered)” affects every <span class="font-semibold text-slate-700">pending</span> row matching search/module or portal (not status filter). Use checkboxes for actions on <span class="font-semibold text-slate-700">this page only</span>.</p>
         </div>
 
         <form id="access-approvals-selected-bulk" method="post" action="{{ route('superadmin.access_approvals.bulk') }}" class="hidden" aria-hidden="true">
@@ -123,7 +126,7 @@
                             <input type="checkbox" id="access-approvals-select-page" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" title="Select all on this page" aria-label="Select all rows on this page">
                         </th>
                         <th class="px-5 py-3 text-left font-bold">User</th>
-                        <th class="px-5 py-3 text-left font-bold">Module</th>
+                        <th class="px-5 py-3 text-left font-bold">Module / portal</th>
                         <th class="px-5 py-3 text-left font-bold">Status</th>
                         <th class="px-5 py-3 text-left font-bold">Requested</th>
                         <th class="px-5 py-3 text-right font-bold">Actions</th>
@@ -139,7 +142,24 @@
                                 <div class="font-semibold text-slate-900">{{ $item->user?->name ?? '—' }}</div>
                                 <div class="text-slate-500">{{ $item->user?->email ?? '—' }}</div>
                             </td>
-                            <td class="px-5 py-4">{{ strtoupper((string) $item->module) }}</td>
+                            <td class="px-5 py-4">
+                                @if ($item->module === 'property')
+                                    @php($portalRole = strtolower((string) ($item->user?->property_portal_role ?? '')))
+                                    <div class="font-semibold text-slate-800">Property</div>
+                                    <div class="text-xs text-slate-500">
+                                        {{ match ($portalRole) {
+                                            'landlord' => 'Landlord portal',
+                                            'tenant' => 'Tenant portal',
+                                            'agent' => 'Agent workspace',
+                                            default => 'Workspace role not set',
+                                        } }}
+                                    </div>
+                                @elseif ($item->module === 'loan')
+                                    Loan module
+                                @else
+                                    {{ strtoupper((string) $item->module) }}
+                                @endif
+                            </td>
                             <td class="px-5 py-4">
                                 @if ($item->normalized_status === 'pending')
                                     <span class="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">Pending</span>

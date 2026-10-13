@@ -20,10 +20,19 @@
             <p class="text-amber-700">The agent subscriptions database tables have not been created yet. Please run the database migrations first.</p>
         </div>
     @else
-        {{-- Add Subscription Form --}}
-        <div class="rounded-2xl bg-white p-6 shadow-sm mb-8">
-            <h2 class="text-lg font-bold tracking-tight text-slate-900 mb-4">Add New Subscription</h2>
-            <form action="{{ route('superadmin.console.subscriptions.store') }}" method="POST" class="space-y-4">
+        <div x-data="{ subscriptionModalOpen: false }" @keydown.escape.window="subscriptionModalOpen = false" class="mb-6 flex justify-end">
+            <button type="button" @click="subscriptionModalOpen = true" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">Add subscription</button>
+            <div x-show="subscriptionModalOpen" x-cloak class="fixed inset-0 z-[7000] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="subscription-modal-title">
+                <button type="button" class="absolute inset-0 bg-slate-950/60" aria-label="Close dialog" @click="subscriptionModalOpen = false"></button>
+                <div class="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                    <div class="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                            <h2 id="subscription-modal-title" class="text-lg font-bold tracking-tight text-slate-900">Add new subscription</h2>
+                            <p class="mt-1 text-sm text-slate-500">Assign a package and record the subscription period and payment.</p>
+                        </div>
+                        <button type="button" @click="subscriptionModalOpen = false" class="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Close">✕</button>
+                    </div>
+                    <form action="{{ route('superadmin.console.subscriptions.store') }}" method="POST" class="space-y-4">
                 @csrf
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
@@ -82,6 +91,8 @@
                     Add Subscription
                 </button>
             </form>
+                </div>
+            </div>
         </div>
 
         {{-- Filters --}}

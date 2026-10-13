@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use App\Support\TabularExport;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SuperAdminConsoleController extends Controller
@@ -138,7 +139,7 @@ class SuperAdminConsoleController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $module = strtolower(trim((string) $request->query('module', '')));
-        if (! in_array($module, ['', 'property', 'loan'], true)) {
+        if (! in_array($module, ['', 'property', 'property_agent', 'property_landlord', 'property_tenant', 'loan'], true)) {
             $module = '';
         }
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 25);
@@ -148,9 +149,9 @@ class SuperAdminConsoleController extends Controller
         }
         $query = Schema::hasTable('user_module_accesses')
             ? UserModuleAccess::query()
-                ->with('user:id,name,email')
+                ->with('user:id,name,email,property_portal_role')
                 ->when($status !== '', fn ($builder) => $builder->where('status', $status))
-                ->when($module !== '', fn ($builder) => $builder->where('module', $module))
+                ->when($module !== '', fn (EloquentBuilder $builder) => $this->filterAccessModule($builder, $module))
                 ->when($q !== '', function ($builder) use ($q) {
                     $builder->whereHas('user', function ($userQuery) use ($q) {
                         $userQuery->where('name', 'like', '%'.$q.'%')
@@ -168,13 +169,25 @@ class SuperAdminConsoleController extends Controller
 
             return TabularExport::stream(
                 'superadmin-access-approvals-'.now()->format('Ymd_His'),
-                ['User', 'Email', 'Module', 'Status', 'Requested at', 'Approved at'],
+                ['User', 'Email', 'Module / portal', 'Status', 'Requested at', 'Approved at'],
                 function () use ($rows) {
                     foreach ($rows as $item) {
+                        $portalRole = strtolower((string) ($item->user?->property_portal_role ?? ''));
+                        $moduleLabel = match ((string) $item->module) {
+                            'property' => 'Property — '.match ($portalRole) {
+                                'landlord' => 'Landlord portal',
+                                'tenant' => 'Tenant portal',
+                                'agent' => 'Agent workspace',
+                                default => 'Workspace role not set',
+                            },
+                            'loan' => 'Loan module',
+                            default => strtoupper((string) $item->module),
+                        };
+
                         yield [
                             (string) ($item->user?->name ?? '—'),
                             (string) ($item->user?->email ?? '—'),
-                            strtoupper((string) $item->module),
+                            $moduleLabel,
                             ucfirst((string) $item->status),
                             optional($item->created_at)->format('Y-m-d H:i:s') ?? '',
                             optional($item->approved_at)->format('Y-m-d H:i:s') ?? '',
@@ -252,14 +265,14 @@ class SuperAdminConsoleController extends Controller
             ? UserModuleAccess::STATUS_APPROVED
             : UserModuleAccess::STATUS_REVOKED;
         $q = trim((string) ($data['q'] ?? ''));
-        $module = trim((string) ($data['module'] ?? ''));
-        if (! in_array($module, ['', 'property', 'loan'], true)) {
+        $module = strtolower(trim((string) ($data['module'] ?? '')));
+        if (! in_array($module, ['', 'property', 'property_agent', 'property_landlord', 'property_tenant', 'loan'], true)) {
             $module = '';
         }
 
         $query = UserModuleAccess::query()
             ->where('status', UserModuleAccess::STATUS_PENDING)
-            ->when($module !== '', fn ($builder) => $builder->where('module', $module))
+            ->when($module !== '', fn (EloquentBuilder $builder) => $this->filterAccessModule($builder, $module))
             ->when($q !== '', function ($builder) use ($q) {
                 $builder->whereHas('user', function ($userQuery) use ($q) {
                     $userQuery->where('name', 'like', '%'.$q.'%')
@@ -281,6 +294,33 @@ class SuperAdminConsoleController extends Controller
         UserModuleAccess::query()->whereIn('id', $ids)->update($payload);
 
         return back()->with('success', 'Updated '.count($ids).' access request(s).');
+    }
+
+    /** Apply a module or Property portal-specific filter to access records. */
+    private function filterAccessModule(EloquentBuilder $query, string $module): EloquentBuilder
+    {
+        if ($module === 'loan') {
+            return $query->where('module', 'loan');
+        }
+
+        if (! str_starts_with($module, 'property')) {
+            return $query;
+        }
+
+        $query->where('module', 'property');
+
+        $portalRole = match ($module) {
+            'property_agent' => 'agent',
+            'property_landlord' => 'landlord',
+            'property_tenant' => 'tenant',
+            default => null,
+        };
+
+        if ($portalRole !== null) {
+            $query->whereHas('user', fn (EloquentBuilder $userQuery) => $userQuery->where('property_portal_role', $portalRole));
+        }
+
+        return $query;
     }
 
     /**

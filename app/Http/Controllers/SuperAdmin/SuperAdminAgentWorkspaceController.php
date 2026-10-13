@@ -146,7 +146,7 @@ class SuperAdminAgentWorkspaceController extends Controller
             : collect();
 
         $propertyPermissions = Schema::hasTable('pm_permissions')
-            ? \App\Models\PmPermission::query()->orderBy('group')->orderBy('name')->get(['key', 'name', 'group'])
+            ? \App\Models\PmPermission::query()->orderBy('group')->orderBy('name')->get(['id', 'key', 'name', 'group'])
                 ->map(fn ($permission) => [
                     'key' => (string) $permission->key,
                     'name' => (string) ($permission->name ?: $permission->key),

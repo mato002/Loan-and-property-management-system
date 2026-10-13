@@ -49,6 +49,19 @@ final class PropertyStatementAutoAssignService
             }
 
             try {
+                // Equity's statement reference can differ from the M-Pesa
+                // receipt code in the narration. If SMS already recorded that
+                // receipt, link the bank row to it instead of posting another
+                // tenant payment under the bank-side reference.
+                $smsPayment = $this->findSmsPaymentInNarration($line);
+                if ($smsPayment) {
+                    $this->clearUnassignedStatementCopy($line);
+                    $this->linkPayment($line, (int) $smsPayment->id);
+                    $summary['linked']++;
+
+                    continue;
+                }
+
                 $outcome = $this->assignLine($line, $actorUserId, $tenantsByPhone, $postedByReference);
             } catch (\Throwable $e) {
                 $summary['errors'][] = trim((string) $line->reference).': '.$e->getMessage();
@@ -68,6 +81,58 @@ final class PropertyStatementAutoAssignService
         $summary['errors'] = array_slice($summary['errors'], 0, 8);
 
         return $summary;
+    }
+
+    private function findSmsPaymentInNarration(PmBankStatementLine $line): ?PmPayment
+    {
+        if (! $line->txn_date || trim((string) $line->narration) === '') {
+            return null;
+        }
+
+        preg_match_all('/\b[A-Z0-9]{8,16}\b/i', (string) $line->narration, $matches);
+        $references = array_values(array_unique(array_map(
+            static fn (string $value): string => strtoupper($value),
+            $matches[0] ?? []
+        )));
+        if ($references === []) {
+            return null;
+        }
+
+        $payments = PmPayment::query()
+            ->where('channel', 'mpesa_sms_ingest')
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where('pm_tenant_id', '>', 0)
+            ->whereRaw('ROUND(amount, 2) = ?', [round((float) $line->amount, 2)])
+            ->whereDate('paid_at', $line->txn_date->toDateString())
+            ->where(function ($query) use ($references): void {
+                foreach ($references as $reference) {
+                    $query->orWhereRaw('UPPER(TRIM(external_ref)) = ?', [$reference]);
+                }
+            })
+            ->limit(2)
+            ->get();
+
+        return $payments->count() === 1 ? $payments->first() : null;
+    }
+
+    private function clearUnassignedStatementCopy(PmBankStatementLine $line): void
+    {
+        if ((int) ($line->unassigned_payment_id ?? 0) > 0) {
+            UnassignedPayment::query()->whereKey((int) $line->unassigned_payment_id)->delete();
+        }
+
+        $reference = strtoupper(trim((string) $line->reference));
+        if ($reference === '') {
+            return;
+        }
+
+        UnassignedPayment::query()
+            ->whereRaw('UPPER(TRIM(transaction_id)) = ?', [$reference])
+            ->delete();
+        Payment::query()
+            ->whereRaw('UPPER(TRIM(transaction_id)) = ?', [$reference])
+            ->where('status', 'unmatched')
+            ->delete();
     }
 
     /**

@@ -155,7 +155,7 @@
 
             {{-- Sidebar --}}
             <aside
-                class="superadmin-sidebar hidden lg:flex flex-col border-r border-[#264040] bg-[#2f4f4f] text-[#d4e4e3] sticky top-0 h-screen overflow-y-auto transition-all duration-300 shadow-xl shadow-black/15"
+                class="superadmin-sidebar hidden lg:flex flex-col border-r border-[#264040] bg-[#2f4f4f] text-[#d4e4e3] sticky top-0 h-screen min-h-0 overflow-hidden transition-all duration-300 shadow-xl shadow-black/15"
                 :class="saSidebarDesktopOpen ? 'w-[18rem] min-w-[18rem] max-w-[18rem] opacity-100' : 'w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] opacity-100'"
                 :style="window.matchMedia('(min-width: 1024px)').matches
                     ? (saSidebarDesktopOpen
@@ -189,7 +189,7 @@
                     </button>
                 </div>
 
-                <nav class="flex-1 px-4 py-5 space-y-2">
+                <nav class="flex-1 min-h-0 px-4 py-5 space-y-2 overflow-y-auto overscroll-contain">
                     <a
                         href="{{ route('superadmin.dashboard') }}"
                         class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center
@@ -368,7 +368,7 @@
                 @include('layouts.partials.open-tasks', ['openTasksScope' => 'superadmin', 'openTasksFrame' => ''])
 
                 {{-- Content --}}
-                <main class="flex-1 min-w-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
+                <main class="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
                     @yield('content')
                 </main>
 
