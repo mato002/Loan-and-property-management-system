@@ -9,7 +9,6 @@ use App\Models\Payment;
 use App\Services\Property\PropertyAccountingFinalizeService;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyTransactionReversalService;
-use App\Services\Property\CoopBankAccountStatementParser;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,9 +18,10 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
 {
     protected $signature = 'property:cleanup-mpesa-bank-statement-duplicates
                             {--agent-user-id= : Limit to one agent portfolio (recommended)}
+                            {--tenant-id= : Limit to one tenant (best for a specific duplicate)}
                             {--from= : First statement transaction date (YYYY-MM-DD)}
                             {--to= : Last statement transaction date (YYYY-MM-DD)}
-                            {--limit=500 : Maximum statement payments to inspect}
+                            {--limit=500 : Maximum completed payments to inspect}
                             {--apply : Reverse confirmed duplicates (default is preview only)}';
 
     protected $description = 'Find and optionally reverse bank-statement payments that duplicate an SMS-recorded M-Pesa receipt';
@@ -36,39 +36,45 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
 
         $agentOption = $this->option('agent-user-id');
         $agentId = is_numeric($agentOption) ? (int) $agentOption : null;
+        $tenantOption = $this->option('tenant-id');
+        $tenantId = is_numeric($tenantOption) ? (int) $tenantOption : null;
         $limit = max(1, (int) $this->option('limit'));
         $apply = (bool) $this->option('apply');
         $summary = ['scanned' => 0, 'duplicates' => 0, 'reversed' => 0, 'skipped' => 0, 'errors' => []];
 
-        // Start from imported bank lines, not a specific pm_payments channel or
-        // agent attribution. Older statement imports used different channel
-        // values and sometimes stamped the actor instead of the portfolio owner.
-        $query = PmBankStatementLine::withoutGlobalScopes()
-            ->where('direction', 'credit')
-            ->where('line_type', CoopBankAccountStatementParser::TYPE_MPESA)
-            ->whereNotNull('pm_payment_id')
-            ->orderBy('txn_date')
+        // The tenant ledger is rendered from pm_payments. Do not depend on a
+        // statement-line link or payment agent_user_id: older imports can lack
+        // those links or record the uploader instead of the portfolio owner.
+        $query = PmPayment::withoutGlobalScopes()
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->where('pm_tenant_id', '>', 0)
+            ->orderBy('paid_at')
             ->orderBy('id');
-        if ($agentId !== null) {
-            $query->where('agent_user_id', $agentId);
+        if ($tenantId !== null) {
+            $query->where('pm_tenant_id', $tenantId);
+        } elseif ($agentId !== null && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $query->whereExists(function ($sub) use ($agentId): void {
+                $sub->selectRaw('1')
+                    ->from('pm_tenants as t')
+                    ->whereColumn('t.id', 'pm_payments.pm_tenant_id')
+                    ->where('t.agent_user_id', $agentId);
+            });
         }
         if ($from = $this->option('from')) {
-            $query->whereDate('txn_date', '>=', $from);
+            $query->whereDate('paid_at', '>=', $from);
         }
         if ($to = $this->option('to')) {
-            $query->whereDate('txn_date', '<=', $to);
+            $query->whereDate('paid_at', '<=', $to);
         }
 
-        foreach ($query->limit($limit)->get() as $line) {
+        foreach ($query->limit($limit)->get() as $bankPayment) {
             $summary['scanned']++;
-            $bankPayment = PmPayment::withoutGlobalScopes()->find((int) $line->pm_payment_id);
-            if (! $bankPayment || $bankPayment->status !== PmPayment::STATUS_COMPLETED
-                || (int) $bankPayment->pm_tenant_id <= 0
-                || ! $this->isStatementPayment($bankPayment, $line)) {
+            if (! $this->isStatementPayment($bankPayment)) {
                 $summary['skipped']++;
                 continue;
             }
 
+            $line = $this->statementLineFor($bankPayment);
             $smsPayment = $this->matchingSmsPayment($bankPayment, $line);
             if (! $smsPayment || (int) $smsPayment->id === (int) $bankPayment->id) {
                 $summary['skipped']++;
@@ -84,7 +90,7 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
                 $smsPayment->external_ref,
                 $bankPayment->pm_tenant_id,
                 number_format((float) $bankPayment->amount, 2),
-                $line->id,
+                $line?->id ?? 'not linked',
             );
             $this->line(($apply ? 'Duplicate: ' : 'Would clear: ').$label);
 
@@ -127,13 +133,15 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
                     $bankPayment->reversal_reason = $reason;
                     $bankPayment->save();
 
-                    $line->update([
-                        'match_status' => PmBankStatementLine::MATCH_MATCHED,
-                        'matched_type' => 'payment',
-                        'pm_payment_id' => (int) $smsPayment->id,
-                        'pm_ezen_receipt_register_id' => null,
-                        'unassigned_payment_id' => null,
-                    ]);
+                    if ($line) {
+                        $line->update([
+                            'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                            'matched_type' => 'payment',
+                            'pm_payment_id' => (int) $smsPayment->id,
+                            'pm_ezen_receipt_register_id' => null,
+                            'unassigned_payment_id' => null,
+                        ]);
+                    }
                 });
                 $summary['reversed']++;
             } catch (Throwable $e) {
@@ -154,27 +162,25 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
         return $summary['errors'] === [] ? self::SUCCESS : self::FAILURE;
     }
 
-    private function matchingSmsPayment(PmPayment $bankPayment, PmBankStatementLine $line): ?PmPayment
+    private function matchingSmsPayment(PmPayment $bankPayment, ?PmBankStatementLine $line): ?PmPayment
     {
         if (! $bankPayment->paid_at) {
             return null;
         }
 
-        preg_match_all('/\b[A-Z0-9]{8,16}\b/i', (string) $line->narration, $matches);
-        $references = array_values(array_unique(array_map(
+        $references = [];
+        preg_match_all('/\b[A-Z0-9]{8,16}\b/i', (string) ($line?->narration ?? ''), $matches);
+        $references = array_map(
             static fn (string $value): string => strtoupper($value),
             $matches[0] ?? []
-        )));
-        foreach ([$line->reference, $bankPayment->external_ref] as $reference) {
+        );
+        foreach ([$line?->reference, $bankPayment->external_ref] as $reference) {
             $reference = strtoupper(trim((string) $reference));
             if ($reference !== '' && preg_match('/^[A-Z0-9]{8,16}$/', $reference)) {
                 $references[] = $reference;
             }
         }
         $references = array_values(array_unique($references));
-        if ($references === []) {
-            return null;
-        }
 
         $matches = PmPayment::withoutGlobalScopes()
             ->where('channel', 'mpesa_sms_ingest')
@@ -182,22 +188,28 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
             ->where('pm_tenant_id', (int) $bankPayment->pm_tenant_id)
             ->whereRaw('ROUND(amount, 2) = ?', [round((float) $bankPayment->amount, 2)])
             ->where('paid_at', $bankPayment->paid_at->format('Y-m-d H:i:s'))
-            ->where(function ($query) use ($references): void {
-                foreach ($references as $reference) {
-                    $query->orWhereRaw('UPPER(TRIM(external_ref)) = ?', [$reference]);
-                }
-            })
             ->limit(2)
             ->get();
 
-        return $matches->count() === 1 ? $matches->first() : null;
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+        if ($matches->count() < 2 || $references === []) {
+            return null;
+        }
+
+        $referenceMatches = $matches->filter(
+            fn (PmPayment $payment): bool => in_array(strtoupper(trim((string) $payment->external_ref)), $references, true)
+        );
+
+        return $referenceMatches->count() === 1 ? $referenceMatches->first() : null;
     }
 
-    private function isStatementPayment(PmPayment $payment, PmBankStatementLine $line): bool
+    private function isStatementPayment(PmPayment $payment): bool
     {
         $meta = is_array($payment->meta) ? $payment->meta : [];
         $payload = is_array($meta['raw_payload'] ?? null) ? $meta['raw_payload'] : [];
-        if ((int) ($payload['pm_bank_statement_line_id'] ?? 0) === (int) $line->id) {
+        if ((int) ($payload['pm_bank_statement_line_id'] ?? 0) > 0) {
             return true;
         }
 
@@ -218,5 +230,20 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
                 }
             })
             ->exists();
+    }
+
+    private function statementLineFor(PmPayment $payment): ?PmBankStatementLine
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $payload = is_array($meta['raw_payload'] ?? null) ? $meta['raw_payload'] : [];
+        $lineId = (int) ($payload['pm_bank_statement_line_id'] ?? 0);
+        if ($lineId > 0) {
+            return PmBankStatementLine::withoutGlobalScopes()->find($lineId);
+        }
+
+        return PmBankStatementLine::withoutGlobalScopes()
+            ->where('pm_payment_id', (int) $payment->id)
+            ->orderByDesc('id')
+            ->first();
     }
 }
