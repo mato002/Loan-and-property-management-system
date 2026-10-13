@@ -1369,7 +1369,6 @@ class PmTenantDirectoryController extends Controller
             ->sortByDesc(fn ($payment) => $payment->paid_at?->timestamp ?? 0)
             ->take(25)
             ->values();
-        $recentPaymentApplications = $statementLedger->applicationsByPayment(collect($recentLedger['entries'])) ?? [];
         $recentRegisterReceipts = $recentLedger['registerReceipts']
             ->sortByDesc(fn ($receipt) => optional($receipt->txn_date ?? $receipt->banking_date)->timestamp ?? 0)
             ->take(25)
@@ -1435,7 +1434,6 @@ class PmTenantDirectoryController extends Controller
             'lastPaymentAmount' => $lastPaymentAmount,
             'recentInvoices' => $recentInvoices,
             'recentPayments' => $recentPayments,
-            'recentPaymentApplications' => $recentPaymentApplications,
             'recentRegisterReceipts' => $recentRegisterReceipts,
             'recentNotices' => $recentNotices,
             'utilityReadings' => $utilityReadings,
@@ -1719,13 +1717,8 @@ class PmTenantDirectoryController extends Controller
             default => 'Allocations already correct — no changes made.',
         };
 
-        $query = array_filter([
-            'from' => $request->input('from', $request->query('from')),
-            'to' => $request->input('to', $request->query('to')),
-        ], static fn ($v) => $v !== null && $v !== '');
-
         return redirect()
-            ->route('property.tenants.statement', ['tenant' => $tenant->id] + $query)
+            ->route('property.tenants.show', ['tenant' => $tenant->id, 'tab' => 'invoices'])
             ->with('success', $message);
     }
 

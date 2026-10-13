@@ -2,6 +2,12 @@
     <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-900">Payments</h3>
         <div class="flex flex-wrap gap-2">
+            @if(auth()->user()?->hasPmPermission('payments.settle'))
+                <form method="post" action="{{ route('property.tenants.repair_allocations', $tenant, false) }}" data-turbo-frame="property-main" data-swal-title="Rebuild this tenant’s allocations?" data-swal-confirm="This rebuilds completed payment allocations for this tenant against open invoices, oldest due first. Existing active allocations may move between invoices. No payments or refunds are created.">
+                    @csrf
+                    <button type="submit" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">Repair allocations</button>
+                </form>
+            @endif
             <button type="button" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700" data-property-modal-open="showHubPaymentForm" @click="showHubPaymentForm = true">Record payment</button>
             <button type="button" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-property-modal-open="showHubAdvanceForm" @click="showHubAdvanceForm = true">Record advance</button>
             <a href="{{ route('property.revenue.payments', ['q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-600 hover:underline self-center">Payment register</a>
@@ -32,9 +38,6 @@
                     $isInactive = $isReversed
                         || (string) $payment->status !== \App\Models\PmPayment::STATUS_COMPLETED
                         || $payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING;
-                    $statementAppliedRows = collect(($recentPaymentApplications ?? [])[(int) $payment->id] ?? [])
-                        ->filter(fn ($row) => (float) ($row['amount'] ?? 0) > 0.009)
-                        ->values();
                     $allocationRows = collect($payment->allocations ?? [])
                         ->filter(fn ($allocation) => ! ($allocation->is_reversed ?? false)
                             && $allocation->invoice !== null
@@ -45,9 +48,10 @@
                             'amount' => (float) $allocation->amount,
                         ])
                         ->values();
-                    // The tenant statement ledger includes credit consumed against
-                    // invoices even when that receipt has no direct allocation row.
-                    $appliedRows = $statementAppliedRows->isNotEmpty() ? $statementAppliedRows : $allocationRows;
+                    // Only persisted, active allocation rows count as applied here.
+                    // Statement FIFO presentation is a projection and can differ
+                    // from saved allocations, which drive invoice balances.
+                    $appliedRows = $allocationRows;
                     $appliedSum = $isInactive ? 0.0 : round((float) $appliedRows->sum('amount'), 2);
                     $leftover = round(max(0, (float) $payment->amount - $appliedSum), 2);
                     $heldAsCredit = $isInactive
