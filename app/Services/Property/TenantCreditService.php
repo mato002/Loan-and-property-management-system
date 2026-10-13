@@ -355,7 +355,11 @@ class TenantCreditService
             return $empty;
         }
 
-        $allowed = $this->allowedCredit($tenantId);
+        // Only the still-unallocated part of the receipt that created an
+        // overpayment can support that credit. Comparing credit with the
+        // tenant's lifetime receipt surplus incorrectly removes valid credit
+        // applications as soon as later invoices are issued.
+        $allowed = $this->supportedCreditFromUnallocatedReceipts($tenantId);
         $wallet = $this->storedBalance($tenantId);
         $applications = PmPayment::query()
             ->where('pm_tenant_id', $tenantId)
@@ -394,7 +398,7 @@ class TenantCreditService
             ];
         }
 
-        $reason = 'Cleared credit that is not on the statement. Receipts do not exceed invoices.';
+        $reason = 'Reversed credit application no longer backed by unallocated source receipts.';
         foreach ($toUndo as $payment) {
             $this->undoWalletApplication($payment, $reason);
         }
@@ -408,6 +412,58 @@ class TenantCreditService
             'applications_undone' => $applicationsUndone,
             'payments_undone' => count($toUndo),
         ];
+    }
+
+    /**
+     * Credit is supported only while its source receipt still has enough
+     * unallocated value. This catches receipts that were later allocated to
+     * invoices while their old overpayment credit remained in the wallet or
+     * had already been applied through a tenant_credit payment.
+     */
+    private function supportedCreditFromUnallocatedReceipts(int $tenantId): float
+    {
+        $createdRows = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_CREATED)
+            ->whereNotNull('pm_payment_id')
+            ->get(['pm_payment_id', 'amount']);
+
+        if ($createdRows->isEmpty()) {
+            return 0.0;
+        }
+
+        $createdByPayment = $createdRows->groupBy('pm_payment_id');
+        $supported = 0.0;
+        foreach ($createdByPayment as $paymentId => $rows) {
+            $payment = PmPayment::query()
+                ->withoutGlobalScopes()
+                ->whereKey((int) $paymentId)
+                ->where('pm_tenant_id', $tenantId)
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->first();
+            if (! $payment || (string) $payment->channel === 'tenant_credit') {
+                continue;
+            }
+
+            $created = round((float) $rows->sum('amount'), 2);
+            $reversed = round((float) PmTenantCreditTransaction::query()
+                ->where('pm_tenant_id', $tenantId)
+                ->where('pm_payment_id', (int) $paymentId)
+                ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+                ->sum('amount'), 2);
+            $allocated = round((float) PmPaymentAllocation::query()
+                ->where('pm_payment_id', (int) $paymentId)
+                ->where(function ($query): void {
+                    $query->whereNull('is_reversed')->orWhere('is_reversed', false);
+                })
+                ->sum('amount'), 2);
+
+            $remainingCredit = max(0.0, $created - $reversed);
+            $unallocatedReceipt = max(0.0, (float) $payment->amount - $allocated);
+            $supported += min($remainingCredit, $unallocatedReceipt);
+        }
+
+        return round($supported, 2);
     }
 
     /**
