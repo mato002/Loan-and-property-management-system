@@ -71,6 +71,12 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
             $summary['scanned']++;
             if (! $this->isStatementPayment($bankPayment)) {
                 $summary['skipped']++;
+                $this->line(sprintf(
+                    'Skipped payment #%d: source is not identified as a bank-statement import (channel=%s, ref=%s).',
+                    $bankPayment->id,
+                    (string) $bankPayment->channel,
+                    (string) $bankPayment->external_ref,
+                ));
                 continue;
             }
 
@@ -78,12 +84,20 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
             $smsPayment = $this->matchingSmsPayment($bankPayment, $line);
             if (! $smsPayment || (int) $smsPayment->id === (int) $bankPayment->id) {
                 $summary['skipped']++;
+                $this->line(sprintf(
+                    'Skipped bank payment #%d: no unique SMS payment has the same tenant, amount, and transaction date (channel=%s, ref=%s, amount=%s, paid_at=%s).',
+                    $bankPayment->id,
+                    (string) $bankPayment->channel,
+                    (string) $bankPayment->external_ref,
+                    number_format((float) $bankPayment->amount, 2),
+                    $bankPayment->paid_at?->format('Y-m-d H:i:s') ?? '—',
+                ));
                 continue;
             }
 
             $summary['duplicates']++;
             $label = sprintf(
-                'bank payment #%d (%s) duplicates SMS payment #%d (%s), tenant #%d, KES %s, line #%d',
+                'bank payment #%d (%s) duplicates SMS payment #%d (%s), tenant #%d, KES %s, line #%s',
                 $bankPayment->id,
                 $bankPayment->external_ref,
                 $smsPayment->id,
@@ -187,7 +201,10 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
             ->where('status', PmPayment::STATUS_COMPLETED)
             ->where('pm_tenant_id', (int) $bankPayment->pm_tenant_id)
             ->whereRaw('ROUND(amount, 2) = ?', [round((float) $bankPayment->amount, 2)])
-            ->where('paid_at', $bankPayment->paid_at->format('Y-m-d H:i:s'))
+            // Statement rows have a calendar date but no transaction time, so
+            // the imported payment can be stored at midnight while the SMS
+            // payment preserves its actual time.
+            ->whereDate('paid_at', $bankPayment->paid_at->toDateString())
             ->limit(2)
             ->get();
 
@@ -244,6 +261,11 @@ class CleanupMpesaBankStatementDuplicatesCommand extends Command
         return PmBankStatementLine::withoutGlobalScopes()
             ->where('pm_payment_id', (int) $payment->id)
             ->orderByDesc('id')
-            ->first();
+            ->first() ?? PmBankStatementLine::withoutGlobalScopes()
+                ->whereRaw('UPPER(TRIM(reference)) = ?', [strtoupper(trim((string) $payment->external_ref))])
+                ->whereRaw('ROUND(amount, 2) = ?', [round((float) $payment->amount, 2)])
+                ->whereDate('txn_date', $payment->paid_at?->toDateString())
+                ->orderByDesc('id')
+                ->first();
     }
 }
