@@ -20,17 +20,21 @@ class PropertyPaymentAllocationRepairService
      *
      * @return array{invoices_synced: int, allocations_moved: int, tenants: int}
      */
-    public function repair(?int $tenantId = null, int $limit = 500): array
+    public function repair(?int $tenantId = null, ?int $limit = 500): array
     {
         $invoicesSynced = 0;
         $allocationsMoved = 0;
         $tenantsTouched = 0;
 
-        $tenantIds = PmTenant::query()
+        $tenantQuery = PmTenant::query()
             ->when($tenantId, fn ($q) => $q->whereKey($tenantId))
-            ->orderBy('id')
-            ->limit($limit)
-            ->pluck('id');
+            ->orderBy('id');
+
+        if ($limit !== null) {
+            $tenantQuery->limit($limit);
+        }
+
+        $tenantIds = $tenantQuery->pluck('id');
 
         foreach ($tenantIds as $tid) {
             $result = $this->repairTenant((int) $tid);

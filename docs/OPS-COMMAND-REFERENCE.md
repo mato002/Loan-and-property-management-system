@@ -138,13 +138,13 @@ php artisan property:backfill-landlord-agent-scope
 | `php artisan finance:reconcile` | Full finance drift scan (`--tenant=`, `--scope=`, `--audit`, `--alert`) |
 | `php artisan finance:reconcile-carry-forward` | Carry-forward lifecycle + auto-apply tenant credit (`--tenant=`, `--lease=`, `--backfill-gl`) |
 | `php artisan finance:backfill-carry-forward-gl` | Backfill missing carry-forward GL (`--tenant=`, `--lease=`) |
-| `php artisan finance:detect-allocation-drift` | Payment allocation vs invoice drift (`--tenant=`, `--audit`) |
+| `php artisan finance:detect-allocation-drift` | Read-only payment allocation vs invoice drift check (`--tenant=`, `--audit`; add `--fix` to sync invoice totals/status) |
 | `php artisan finance:detect-accounting-drift` | GL / journal drift |
 | `php artisan finance:detect-reversal-drift` | Reversal integrity (`--tenant=`, `--audit`) |
 | `php artisan finance:reconcile-landlord-subledger` | Landlord payable GL vs subledger (`--property=`) |
 | `php artisan finance:backfill-landlord-subledger` | Backfill landlord subledger from payments (`--tenant=`, `--dry-run`) |
 | `php artisan property:backfill-landlord-ledger` | Backfill landlord ledger from payments (`--from=`, `--to=`) |
-| `php artisan payments:repair-allocations` | Repair tenant payment allocations (`--tenant=`, `--limit=`) |
+| `php artisan payments:repair-allocations` | Repair tenant payment allocations (`--tenant=`, `--limit=`; use `--all` for every tenant) |
 
 **Example — fix tenant credit not applied to carry-forward invoice:**
 

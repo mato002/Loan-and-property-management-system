@@ -189,18 +189,27 @@ class SuperAdminOpsConsoleController extends Controller
 
             $name = strtolower($match[1]);
             if ($name === 'payments:repair-allocations') {
-                $command = 'php artisan payments:repair-allocations --limit=10000';
-                $purpose = 'Rebuild receipt allocations oldest-due-first; may move existing allocations.';
+                $command = 'php artisan payments:repair-allocations --all';
+                $purpose = 'Rebuild completed payment allocations for every tenant oldest-due-first; may move existing allocations between invoices.';
             } elseif ($name === 'finance:detect-allocation-drift') {
-                $command = 'php artisan finance:detect-allocation-drift --fix';
-                $purpose = 'Sync invoice paid totals and status from allocations; does not move receipts.';
+                $command = 'php artisan finance:detect-allocation-drift';
+                $purpose = 'Read-only check for invoices whose paid totals differ from active allocations.';
             }
             $groups[$section]['commands'][] = ['command' => $command, 'purpose' => $purpose];
+            if ($name === 'finance:detect-allocation-drift') {
+                $groups[$section]['commands'][] = [
+                    'command' => 'php artisan finance:detect-allocation-drift --fix',
+                    'purpose' => 'Sync invoice paid totals and status from active allocations; does not move receipts.',
+                ];
+            }
             $seen[$name] = true;
         }
 
         // Useful framework operations that are not project-specific commands.
         $groups['Laravel operations']['commands'] = [
+            ['command' => 'php artisan about', 'purpose' => 'Show application, PHP, environment, and framework configuration summary.'],
+            ['command' => 'php artisan migrate:status', 'purpose' => 'Check which database migrations have run.'],
+            ['command' => 'php artisan route:list', 'purpose' => 'Inspect registered routes when a page or endpoint is unavailable.'],
             ['command' => 'php artisan queue:failed', 'purpose' => 'List failed queued jobs.'],
             ['command' => 'php artisan schedule:list', 'purpose' => 'List scheduled tasks.'],
             ['command' => 'php artisan optimize:clear', 'purpose' => 'Clear cached config, routes, views, and application data.'],
