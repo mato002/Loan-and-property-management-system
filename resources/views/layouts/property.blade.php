@@ -239,18 +239,53 @@
             #property-workspace-loading {
                 position: absolute;
                 inset: 0;
-                z-index: 25;
+                z-index: 45;
                 display: none;
-                padding: 0.75rem;
-                background: rgb(232 236 241 / 0.72);
-                backdrop-filter: blur(1px);
+                align-items: center;
+                justify-content: center;
+                padding: 1rem;
+                pointer-events: none;
             }
             #property-workspace-loading[data-active] {
-                display: block;
-                pointer-events: none;
+                display: flex;
             }
-            #property-workspace-loading .property-workspace-loading {
-                pointer-events: none;
+            .property-workspace-loading {
+                display: flex;
+                align-items: center;
+                gap: 0.875rem;
+                max-width: min(100%, 22rem);
+                padding: 0.875rem 1.125rem;
+                border: 1px solid rgb(203 213 225 / 0.9);
+                border-radius: 0.875rem;
+                background: rgb(255 255 255 / 0.97);
+                color: #0f172a;
+                box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
+            }
+            .property-workspace-loading__spinner {
+                width: 1.5rem;
+                height: 1.5rem;
+                flex: 0 0 1.5rem;
+                border: 3px solid #d1fae5;
+                border-top-color: #059669;
+                border-radius: 50%;
+                animation: property-workspace-spin 0.8s linear infinite;
+            }
+            .property-workspace-loading__copy {
+                display: grid;
+                gap: 0.125rem;
+                text-align: left;
+            }
+            .property-workspace-loading__copy strong {
+                font-size: 0.9rem;
+                line-height: 1.25rem;
+            }
+            .property-workspace-loading__copy > span {
+                color: #64748b;
+                font-size: 0.75rem;
+                line-height: 1rem;
+            }
+            @keyframes property-workspace-spin {
+                to { transform: rotate(360deg); }
             }
             #property-workspace-error {
                 display: none;
@@ -372,7 +407,7 @@
                     :class="{ 'overflow-hidden': sidebarOpen && window.innerWidth < 1024 }"
                 >
                     <div id="property-global-nav-progress" aria-hidden="true"><span></span></div>
-                    <div id="property-workspace-loading" aria-hidden="true">
+                    <div id="property-workspace-loading">
                         <x-property.workspace-loading />
                     </div>
                     <div id="property-workspace-error" class="absolute inset-0 z-50 pointer-events-none p-4 sm:p-6" aria-live="polite"></div>

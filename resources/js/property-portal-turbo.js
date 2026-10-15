@@ -145,11 +145,11 @@ function schedulePropertyFrameLoading(frame) {
     frame.removeAttribute('data-property-loading');
     frameLoadingTimer = window.setTimeout(() => {
         frame.setAttribute('data-property-loading', '');
-        showPropertyFrameSkeleton(frame);
     }, FRAME_LOADING_DELAY_MS);
 }
 
 function showWorkspaceLoading() {
+    getWorkspaceLoadingEl()?.setAttribute('data-active', '');
     getGlobalProgressEl()?.setAttribute('data-active', '');
     window.clearTimeout(workspaceLoadingFailsafeTimer);
     workspaceLoadingFailsafeTimer = window.setTimeout(() => {
@@ -742,7 +742,6 @@ document.addEventListener('turbo:frame-request-finished', (event) => {
     const frame = event.target;
     if (frame instanceof HTMLElement && frame.id === PROPERTY_MAIN_FRAME_ID) {
         clearPropertyFrameLoading();
-        hideWorkspaceLoading();
         const fetchResponse = event.detail?.fetchResponse;
         const status = fetchResponse?.response?.status;
         if (!fetchResponse || (typeof status === 'number' && status >= 200 && status < 400)) {
@@ -756,7 +755,6 @@ document.addEventListener('turbo:before-frame-render', (event) => {
         return;
     }
     hideWorkspaceError();
-    hideWorkspaceLoading();
     clearPropertyFrameLoading();
     bumpPropertyHydrationGeneration(event.target);
 });
