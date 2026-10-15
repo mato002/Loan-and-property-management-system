@@ -295,7 +295,7 @@ final class ResponsiveTableColumns
     public static function payments(): array
     {
         return self::build(
-            ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
+            ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
             [
                 0 => ['is_bulk_select' => true],
                 1 => ['priority' => 8, 'hide_on_mobile' => true],
@@ -305,7 +305,7 @@ final class ResponsiveTableColumns
                 5 => ['priority' => 5, 'mobile_label' => 'Payment method'],
                 6 => ['is_amount' => true, 'priority' => 3],
                 7 => ['priority' => 6, 'mobile_label' => 'Received'],
-                8 => ['priority' => 10, 'hide_on_mobile' => true],
+                8 => ['priority' => 3, 'mobile_label' => 'Tenant'],
                 9 => ['priority' => 7, 'mobile_label' => 'Invoice'],
                 10 => ['is_status' => true, 'priority' => 9],
                 11 => ['is_action' => true],

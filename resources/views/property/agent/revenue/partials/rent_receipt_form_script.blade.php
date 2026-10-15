@@ -107,6 +107,17 @@
                 const sum = this.rows.reduce((total, row) => total + (Number(row.payment) || 0), 0);
                 this.amount = sum > 0 ? sum.toFixed(2) : '';
             },
+            onAmountInput(value) {
+                this.amount = value;
+                this.amountTouched = true;
+                let remainingCents = Math.max(0, Math.round((Number(value) || 0) * 100));
+                this.rows.forEach((row) => {
+                    const dueCents = Math.max(0, Math.round((Number(row.due) || 0) * 100));
+                    const paymentCents = Math.min(dueCents, remainingCents);
+                    row.payment = paymentCents > 0 ? (paymentCents / 100).toFixed(2) : '';
+                    remainingCents -= paymentCents;
+                });
+            },
             rowBalance(row) {
                 return Math.max(0, Number(row.due || 0) - (Number(row.payment) || 0));
             },

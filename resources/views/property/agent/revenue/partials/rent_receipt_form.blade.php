@@ -135,7 +135,7 @@
         </div>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount received</label>
-            <input type="number" name="amount" x-model="amount" @input="amountTouched = true" step="0.01" min="0.01" required class="{{ $field }} font-semibold" />
+            <input type="number" name="amount" x-model="amount" @input="onAmountInput($event.target.value)" step="0.01" min="0.01" required class="{{ $field }} font-semibold" />
             @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
     </div>
@@ -352,6 +352,17 @@
                 }
                 const sum = this.rows.reduce((total, row) => total + (Number(row.payment) || 0), 0);
                 this.amount = sum > 0 ? sum.toFixed(2) : '';
+            },
+            onAmountInput(value) {
+                this.amount = value;
+                this.amountTouched = true;
+                let remainingCents = Math.max(0, Math.round((Number(value) || 0) * 100));
+                this.rows.forEach((row) => {
+                    const dueCents = Math.max(0, Math.round((Number(row.due) || 0) * 100));
+                    const paymentCents = Math.min(dueCents, remainingCents);
+                    row.payment = paymentCents > 0 ? (paymentCents / 100).toFixed(2) : '';
+                    remainingCents -= paymentCents;
+                });
             },
             rowBalance(row) {
                 return Math.max(0, Number(row.due || 0) - (Number(row.payment) || 0));

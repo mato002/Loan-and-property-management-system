@@ -218,7 +218,7 @@ class PmPaymentController extends Controller
 
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
-                ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status'],
+                ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status'],
                 function () use ($lines) {
                     foreach ($lines as $line) {
                         yield $line;
@@ -334,7 +334,7 @@ class PmPaymentController extends Controller
                 $allocatedTo = $p->tenant->name;
             }
 
-            $source = $this->sourceBadge($p);
+            $tenantName = (string) ($p->tenant?->name ?? '—');
             $actions = new HtmlString(view('property.agent.partials.payment_row_actions', [
                 'payment' => $p,
                 'canSettle' => $canSettle,
@@ -351,7 +351,7 @@ class PmPaymentController extends Controller
                 PmPaymentPresentation::paymentMethod($p),
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
-                $source,
+                $tenantName,
                 $allocatedTo !== '' ? $allocatedTo : '—',
                 $statusLabel,
                 $actions,
@@ -369,7 +369,7 @@ class PmPaymentController extends Controller
             'statsPrimary' => $statsPrimary,
             'statsTable' => $statsTable,
             'receivedRangeLabel' => $receivedRangeLabel,
-            'columns' => ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
             'columnConfig' => ResponsiveTableColumns::payments(),
             'tableMinWidth' => '1280px',
             'tableRows' => $rows,
@@ -467,14 +467,6 @@ class PmPaymentController extends Controller
         if ($allocatedTo === '' && $payment->tenant) {
             $allocatedTo = (string) $payment->tenant->name;
         }
-        $source = (string) data_get($payment->meta, 'source', 'manual');
-        $provider = (string) data_get($payment->meta, 'provider', '');
-        $sourceLabel = match ($source) {
-            'equity_api' => 'Equity API',
-            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
-            default => 'Manual / Legacy',
-        };
-
         return [
             'PAY-'.$payment->id,
             trim(html_entity_decode(strip_tags((string) PmPaymentPresentation::propertyUnit($payment, '')), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
@@ -483,7 +475,7 @@ class PmPaymentController extends Controller
             PmPaymentPresentation::paymentMethod($payment, ''),
             number_format((float) $payment->amount, 2, '.', ''),
             $payment->paid_at?->format('Y-m-d H:i:s') ?? '',
-            $sourceLabel,
+            (string) ($payment->tenant?->name ?? ''),
             $allocatedTo,
             ucfirst((string) $payment->status),
         ];
@@ -532,18 +524,6 @@ class PmPaymentController extends Controller
         }
 
         return new HtmlString($html.'</span>');
-    }
-
-    private function sourceBadge(PmPayment $payment): HtmlString
-    {
-        $source = (string) data_get($payment->meta, 'source', 'manual');
-        $provider = (string) data_get($payment->meta, 'provider', '');
-
-        return match ($source) {
-            'equity_api' => new HtmlString('<span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">Equity API</span>'),
-            'sms_ingest' => new HtmlString('<span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">SMS Forwarder'.($provider !== '' ? ' ('.e(strtoupper($provider)).')' : '').'</span>'),
-            default => new HtmlString('<span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Manual / Legacy</span>'),
-        };
     }
 
     public function store(Request $request): RedirectResponse
