@@ -10,7 +10,7 @@
 >
     <x-slot name="actions">
         <a href="{{ route('property.vendors.edit', $vendor, false) }}" class="inline-flex items-center rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit vendor</a>
-        <a href="{{ route('property.accounting.payables.expense_requisitions', ['vendor_id' => $vendor->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
+        <a href="{{ route('property.vendors.expense_requisitions', ['vendor_id' => $vendor->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
         <form method="post" action="{{ route('property.vendors.pay_outstanding', $vendor, false) }}" class="inline-flex items-center gap-1" data-swal-title="Settle all outstanding payments?" data-swal-confirm="This will mark all eligible allocated jobs for this vendor as paid." data-swal-confirm-text="Yes, settle all">
             @csrf
             <input type="date" name="paid_date" value="{{ now()->toDateString() }}" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
@@ -38,7 +38,6 @@
                 <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$vendor->phone" /></p>
                 <p><span class="text-slate-500">Email:</span> {{ $vendor->email ?: '—' }}</p>
                 <p><span class="text-slate-500">ID / Reg. no.:</span> {{ $vendor->registration_no ?: '—' }}</p>
-                <p><span class="text-slate-500">Default property:</span> {{ $vendor->defaultProperty?->name ?? '—' }}</p>
                 <p><span class="text-slate-500">Bank:</span> {{ $vendor->bank_name ?: '—' }}{{ $vendor->bank_branch_code ? ' · '.$vendor->bank_branch_code : '' }}</p>
                 <p><span class="text-slate-500">Account:</span> {{ $vendor->bank_account_name ?: '—' }}{{ $vendor->bank_account_number ? ' · '.$vendor->bank_account_number : '' }}</p>
                 <p><span class="text-slate-500">Creditor account:</span> {{ $vendor->creditor_account ?: '—' }}</p>
@@ -51,7 +50,7 @@
                     <p class="text-sm font-semibold text-slate-900">Recurring service agreements</p>
                     <p class="mt-1 text-xs text-slate-500">Set a fixed monthly provider cost for a property, then generate one payable bill per month.</p>
                 </div>
-                <a href="{{ route('property.accounting.payables.accounts_payable', ['vendor' => $vendor->name], false) }}" data-turbo-frame="property-main" class="text-sm font-medium text-indigo-700 hover:underline">Open bills</a>
+                <a href="{{ route('property.vendors.bills', ['vendor' => $vendor->name], false) }}" data-turbo-frame="property-main" class="text-sm font-medium text-indigo-700 hover:underline">Open bills</a>
             </div>
 
             <form method="post" action="{{ route('property.vendors.service_agreements.store', $vendor, false) }}" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">

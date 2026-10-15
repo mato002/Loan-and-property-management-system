@@ -534,6 +534,7 @@ class PmVendorWebController extends Controller
             'service_starts_on' => ['nullable', 'required_with:service_property_ids', 'date'],
             'service_billing_day' => ['nullable', 'required_with:service_property_ids', 'integer', 'between:1,28'],
         ]);
+        $data['default_property_id'] = $data['service_property_ids'][0] ?? null;
         $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
         foreach ($data['service_property_ids'] ?? [] as $propertyId) {
             $this->assertDefaultPropertyInWorkspace((int) $propertyId);

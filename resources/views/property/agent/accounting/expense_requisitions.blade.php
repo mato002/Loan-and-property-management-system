@@ -1,7 +1,12 @@
+@php
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.expense_requisitions');
+    $requisitionsRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions' : 'property.accounting.payables.expense_requisitions';
+    $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
+@endphp
 <x-property.crud-shell
     title="Expense requisitions"
     subtitle="Request approval for a property expense before it becomes a payable bill. Payments then update the bill and the landlord’s property balance."
-    back-route="property.accounting.payables.accounts_payable"
+    :back-route="$billsRoute"
     :stats="[
         ['label' => 'Pending', 'value' => (string) $requisitions->where('status', 'pending')->count(), 'hint' => 'Awaiting review'],
         ['label' => 'Approved', 'value' => (string) $requisitions->where('status', 'approved')->count(), 'hint' => 'Payable created'],
@@ -11,12 +16,12 @@
     :table-rows="[]"
 >
     <x-slot name="actions">
-        <a href="{{ route('property.accounting.payables.accounts_payable', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">Bills and payables</a>
+        <a href="{{ route($billsRoute, absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">Bills listing</a>
         <a href="{{ route('property.vendors.directory', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">Service providers</a>
     </x-slot>
 
     <x-slot name="above">
-        <form method="post" enctype="multipart/form-data" action="{{ route('property.accounting.payables.expense_requisitions.store', absolute: false) }}" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form method="post" enctype="multipart/form-data" action="{{ route($vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.store' : 'property.accounting.payables.expense_requisitions.store', absolute: false) }}" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             @csrf
             <h2 class="text-sm font-semibold text-slate-900">New expense requisition</h2>
             <p class="mt-1 text-xs text-slate-500">An approval creates an unpaid vendor bill. Record the actual payment from that bill to post its expense once.</p>
@@ -61,7 +66,7 @@
             <button class="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Submit for approval</button>
         </form>
 
-        <form method="get" action="{{ route('property.accounting.payables.expense_requisitions', absolute: false) }}" class="mt-4 flex flex-wrap items-end gap-2">
+        <form method="get" action="{{ route($requisitionsRoute, absolute: false) }}" class="mt-4 flex flex-wrap items-end gap-2">
             <label class="text-xs font-medium text-slate-600">Status
                 <select name="status" class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All</option>@foreach (['pending', 'approved', 'rejected'] as $option)<option value="{{ $option }}" @selected($statusFilter === $option)>{{ ucfirst($option) }}</option>@endforeach</select>
             </label>

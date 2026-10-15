@@ -289,6 +289,8 @@ final class PropertyWorkspaceTabs
             'vendors' => [
                 ['key' => 'hub', 'label' => 'Hub', 'route' => 'property.vendors.index', 'active' => ['property.vendors.index']],
                 ['key' => 'directory', 'label' => 'Directory', 'route' => 'property.vendors.directory', 'active' => ['property.vendors.directory', 'property.vendors.store', 'property.vendors.show', 'property.vendors.edit', 'property.vendors.update', 'property.vendors.destroy']],
+                ['key' => 'bills', 'label' => 'Bills listing', 'route' => 'property.vendors.bills', 'active' => ['property.vendors.bills']],
+                ['key' => 'expense_requisitions', 'label' => 'Expense requisitions', 'route' => 'property.vendors.expense_requisitions', 'active' => ['property.vendors.expense_requisitions']],
                 ['key' => 'bidding', 'label' => 'RFQ & bidding', 'route' => 'property.vendors.bidding', 'active' => ['property.vendors.bidding', 'property.vendors.bidding.*']],
                 ['key' => 'quotes', 'label' => 'Quotes', 'route' => 'property.vendors.quotes', 'active' => ['property.vendors.quotes']],
                 ['key' => 'work_records', 'label' => 'Work records', 'route' => 'property.vendors.work_records', 'active' => ['property.vendors.work_records']],

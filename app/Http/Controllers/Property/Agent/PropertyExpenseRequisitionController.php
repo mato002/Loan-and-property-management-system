@@ -23,6 +23,7 @@ class PropertyExpenseRequisitionController extends Controller
         $requisitions = PmPropertyExpenseRequisition::query()
             ->with(['vendor', 'property', 'requester', 'reviewer', 'bill'])
             ->when(in_array($status, ['pending', 'approved', 'rejected'], true), fn ($query) => $query->where('status', $status))
+            ->when($vendorFilter > 0, fn ($query) => $query->where('pm_vendor_id', $vendorFilter))
             ->orderByDesc('requested_date')->orderByDesc('id')->limit(500)->get();
 
         return property_view('property.agent.accounting.expense_requisitions', [

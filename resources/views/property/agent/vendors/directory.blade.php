@@ -24,15 +24,13 @@
             <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
             <span>Add vendor</span>
         </button>
-        <a href="{{ route('property.accounting.payables.accounts_payable') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Bills listing</a>
-        <a href="{{ route('property.accounting.payables.expense_requisitions', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
+        <a href="{{ route('property.vendors.bills', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Bills listing</a>
+        <a href="{{ route('property.vendors.expense_requisitions', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
     </x-slot>
 
     <x-slot name="secondary">
         <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 max-w-3xl">
-            A service provider is managed as a vendor here. Register their bank details and recurring property agreements on the provider profile. Supplier bills live under
-            <a href="{{ route('property.accounting.payables.accounts_payable') }}" class="font-semibold underline">Accounting → Payables → Bills listing</a>.
-            Importing bills also adds those supplier names here so you can assign them to jobs.
+            Manage service providers, supplier bills, and expense requisitions from the Vendors workspace. Importing bills also adds supplier names here so you can assign them to jobs.
         </div>
     </x-slot>
 
@@ -85,18 +83,9 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">ID / Registration no.</label>
                     <input type="text" name="registration_no" value="{{ old('registration_no') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default property</label>
-                    <select name="default_property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Choose later</option>
-                        @foreach ($properties ?? [] as $property)
-                            <option value="{{ $property->id }}" @selected((string) old('default_property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
                 <div class="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
-                    <h4 class="text-sm font-semibold text-slate-800">Services and properties served</h4>
-                    <p class="mt-1 text-xs text-slate-600">For a recurring service such as garbage collection, select every property this vendor serves. The system creates one recurring agreement per property, which can be used to generate that property’s monthly bill.</p>
+                    <h4 class="text-sm font-semibold text-slate-800">Assign properties and service</h4>
+                    <p class="mt-1 text-xs text-slate-600">Choose every property this vendor serves. For recurring work such as garbage collection, the system creates a separate monthly agreement for each selected property.</p>
                     <div class="mt-3 grid gap-3 sm:grid-cols-2">
                         <div>
                             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Service provided</label>
@@ -104,13 +93,21 @@
                             @error('service_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Properties served</label>
-                            <select name="service_property_ids[]" multiple size="4" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                                @foreach ($properties ?? [] as $property)
-                                    <option value="{{ $property->id }}" @selected(in_array((string) $property->id, array_map('strval', old('service_property_ids', [])), true))>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
-                                @endforeach
-                            </select>
-                            <span class="mt-1 block text-xs text-slate-500">Use Ctrl (Windows) or Cmd (Mac) to select more than one.</span>
+                            <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Properties assigned</span>
+                            <div class="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                                @php
+                                    $selectedServicePropertyIds = array_map('strval', old('service_property_ids', []));
+                                @endphp
+                                @forelse ($properties ?? [] as $property)
+                                    <label class="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-indigo-50">
+                                        <input type="checkbox" name="service_property_ids[]" value="{{ $property->id }}" @checked(in_array((string) $property->id, $selectedServicePropertyIds, true)) class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                        <span>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</span>
+                                    </label>
+                                @empty
+                                    <p class="px-2 py-1 text-xs text-slate-500">No properties are available to assign.</p>
+                                @endforelse
+                            </div>
+                            <span class="mt-1 block text-xs text-slate-500">Tick all properties this vendor serves. You can select more than one.</span>
                             @error('service_property_ids')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             @error('service_property_ids.*')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>

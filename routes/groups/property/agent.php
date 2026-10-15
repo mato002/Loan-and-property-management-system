@@ -430,6 +430,9 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/vendors/quotes/{job}/award', [PmVendorWebController::class, 'awardQuote'])->middleware('property.permission:vendors.manage')->name('vendors.quotes.award');
     Route::get('/vendors/performance', [PmVendorWebController::class, 'performance'])->name('vendors.performance');
     Route::get('/vendors/work-records', [PmVendorWebController::class, 'workRecords'])->name('vendors.work_records');
+    Route::get('/vendors/bills', [PropertyAccountingController::class, 'accountsPayable'])->name('vendors.bills');
+    Route::get('/vendors/expense-requisitions', [\App\Http\Controllers\Property\Agent\PropertyExpenseRequisitionController::class, 'index'])->name('vendors.expense_requisitions');
+    Route::post('/vendors/expense-requisitions', [\App\Http\Controllers\Property\Agent\PropertyExpenseRequisitionController::class, 'store'])->middleware('property.permission:vendors.manage')->name('vendors.expense_requisitions.store');
     Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
     Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
     Route::post('/vendors/{vendor}/pay-outstanding-mpesa', [PmVendorWebController::class, 'payOutstandingViaMpesa'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding_mpesa');

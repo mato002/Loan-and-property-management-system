@@ -50,15 +50,6 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">ID / Registration no.</label>
                 <input type="text" name="registration_no" value="{{ old('registration_no', $vendor->registration_no) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
             </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default property</label>
-                <select name="default_property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">None</option>
-                    @foreach ($properties as $property)
-                        <option value="{{ $property->id }}" @selected((string) old('default_property_id', $vendor->default_property_id) === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
-                    @endforeach
-                </select>
-            </div>
             @foreach ([
                 'bank_name' => 'Bank',
                 'bank_branch_code' => 'Bank branch code',
