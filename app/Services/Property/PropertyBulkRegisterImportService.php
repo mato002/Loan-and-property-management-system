@@ -50,8 +50,8 @@ final class PropertyBulkRegisterImportService
             ],
             self::TYPE_RENT_RECEIPTS => [
                 'label' => 'Rent receipt listing',
-                'description' => 'Import tenant receipt listings into '.$app.' (allocate to open invoices or store in the receipt register).',
-                'accept' => '.csv,.txt,.pdf',
+                'description' => 'Import tenant receipt listings into '.$app.' (allocate to open invoices or store in the receipt register). Supports CSV, text, PDF, and EZEN Excel XML (.xls) listings.',
+                'accept' => '.csv,.txt,.pdf,.xls',
             ],
             self::TYPE_PAYMENT_VOUCHERS => [
                 'label' => 'Payment vouchers (outgoing)',
@@ -70,8 +70,8 @@ final class PropertyBulkRegisterImportService
             ],
             self::TYPE_LATE_PENALTY_INVOICES => [
                 'label' => 'Late penalty invoices',
-                'description' => 'Import late-payment penalty invoices from the prepared CSV using property code, unit, tenant account, source invoice number, period, and amount. The source Paid column is retained for review and never posted as a payment.',
-                'accept' => '.csv',
+                'description' => 'Import late-payment penalty invoices from CSV or the EZEN Excel XML (.xls) register. The report Paid column is retained for review and never posted as a payment.',
+                'accept' => '.csv,.xls',
             ],
             self::TYPE_DEPOSITS => [
                 'label' => 'Rent & utility deposits',

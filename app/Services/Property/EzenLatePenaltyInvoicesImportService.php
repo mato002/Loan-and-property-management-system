@@ -51,9 +51,11 @@ final class EzenLatePenaltyInvoicesImportService
             'errors' => [],
         ];
 
-        $handle = @fopen($path, 'rb');
+        $handle = strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'xls'
+            ? $this->spreadsheetMlCsvHandle($path)
+            : @fopen($path, 'rb');
         if ($handle === false) {
-            throw new RuntimeException('Could not open late penalty CSV.');
+            throw new RuntimeException('Could not open late penalty CSV or EZEN Excel XML (.xls) file.');
         }
 
         try {
@@ -130,8 +132,95 @@ final class EzenLatePenaltyInvoicesImportService
             $summary['warnings'][] = 'The source Paid column totals KES '.number_format($summary['source_paid_total'], 2)
                 .' across '.$summary['source_paid_rows'].' rows. These values are stored for reference only; no payments were created.';
         }
+        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'xls') {
+            $summary['warnings'][] = 'The EZEN report has no invoice issue-date column; the report Printed date was used as the issue date for imported invoices.';
+        }
 
         return $summary;
+    }
+
+    /** @return resource|false */
+    private function spreadsheetMlCsvHandle(string $path)
+    {
+        $sourceRows = app(EzenSpreadsheetMlReader::class)->readRows($path);
+        $headerIndex = null;
+        $columns = [];
+        foreach ($sourceRows as $index => $sourceRow) {
+            $labels = array_map(static fn ($value): string => strtolower(trim((string) $value)), $sourceRow);
+            if (in_array('property', $labels, true) && in_array('unit no.', $labels, true) && in_array('inv no', $labels, true)) {
+                $headerIndex = $index;
+                foreach ($labels as $column => $label) {
+                    if ($label !== '') {
+                        $columns[$label] = $column;
+                    }
+                }
+                break;
+            }
+        }
+        if ($headerIndex === null) {
+            throw new RuntimeException('Could not find the EZEN rent penalties invoice header in the Excel XML file.');
+        }
+
+        $required = ['property', 'unit no.', 'tenant', 'details', 'inv no', 'invoice amt', 'paid'];
+        $missing = array_values(array_diff($required, array_keys($columns)));
+        if ($missing !== []) {
+            throw new RuntimeException('Missing penalty register columns: '.implode(', ', $missing).'.');
+        }
+
+        $issueDate = null;
+        foreach (array_slice($sourceRows, 0, $headerIndex) as $sourceRow) {
+            foreach ($sourceRow as $value) {
+                if (preg_match('/Printed:\s*(\d{2}\/\d{2}\/\d{4})/i', (string) $value, $match) === 1) {
+                    $date = Carbon::createFromFormat('!d/m/Y', $match[1]);
+                    $issueDate = $date?->format('Y-m-d');
+                    break 2;
+                }
+            }
+        }
+        if ($issueDate === null) {
+            throw new RuntimeException('The penalty report has no Printed date; an issue date is required to create invoices.');
+        }
+
+        $output = fopen('php://temp', 'w+b');
+        if ($output === false) {
+            return false;
+        }
+        fputcsv($output, self::REQUIRED_HEADERS);
+        foreach (array_slice($sourceRows, $headerIndex + 1) as $sourceRow) {
+            $value = static fn (string $label): string => trim((string) ($sourceRow[$columns[$label]] ?? ''));
+            $property = $value('property');
+            $tenant = $value('tenant');
+            $details = $value('details');
+            if ($property === '' && $tenant === '' && $details === '') {
+                continue;
+            }
+            $propertyCode = preg_match('/\[([A-Z0-9-]+)\]/i', $property, $propertyMatch) === 1
+                ? strtoupper($propertyMatch[1])
+                : '';
+            $tenantAccount = preg_match('/\[(TNT\d+)\]/i', $tenant, $tenantMatch) === 1
+                ? strtoupper($tenantMatch[1])
+                : '';
+            $tenantName = $tenantAccount !== ''
+                ? trim((string) preg_replace('/^.*?\[TNT\d+\]\s*/i', '', $tenant))
+                : '';
+            $period = preg_match('/\b([A-Za-z]{3})\/(\d{4})\b/', $details, $periodMatch) === 1
+                ? date('Y-m', strtotime($periodMatch[1].' 1 '.$periodMatch[2]))
+                : '';
+            fputcsv($output, [
+                $propertyCode,
+                $value('unit no.'),
+                $tenantAccount,
+                $tenantName,
+                $period,
+                strtoupper($value('inv no')),
+                $issueDate,
+                $value('invoice amt'),
+                $value('paid'),
+            ]);
+        }
+        rewind($output);
+
+        return $output;
     }
 
     /** @param array<string, string> $row */

@@ -449,6 +449,13 @@ php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_recei
 
 **Important:** If you already imported invoice **PAID** amounts in Phase 7, leave the default behaviour (skip tenants with no open balance) to avoid **double-counting** receipts. Use `--include-already-paid` only when invoices were imported without payments.
 
+The importer also accepts the EZEN Excel XML `.xls` export. The normal command and matching/payment safeguards are unchanged:
+
+```bash
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.xls --dry-run --agent-user-id=2
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.xls --agent-user-id=2
+```
+
 **Snapshot B/F vs receipts (mutually exclusive):** When a tenant still has active `opening_arrears_amount` (Phase 5 / 6c take-on), that balance already nets historical EZEN receipts. Passion will **not** credit those receipts again on the statement, and Phase 8 will keep them **register-only** (no payment posted). After a mistaken post-against-B/F import — or after B/F was retired by an incomplete Phase 7 invoice import — clean up with:
 
 ```bash
@@ -478,6 +485,19 @@ Phase 7 only retires snapshot B/F when EZEN invoice history is substantial (≥6
 Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
 
 ---
+
+## Phase 8b — EZEN rent penalty invoices
+
+Source: EZEN **Rent Penalties - Invoices** Excel XML `.xls` export, or the prepared CSV format (`property_code,unit_no,tenant_account,tenant_name,period,source_invoice_no,issue_date,invoice_amount,source_paid_amount`). The `.xls` report has no per-row issue date, so its `Printed` date is used as the invoice issue date. Rows match by property code, unit, tenant account/name, and lease; source invoice numbers make re-runs idempotent.
+
+Copy the file to `storage/passion-legacy/rent_penalty_invoice.xls` on the application server, then run:
+
+```bash
+php artisan property:import-ezen-late-penalty-invoices storage/passion-legacy/rent_penalty_invoice.xls --dry-run --agent-user-id=2
+php artisan property:import-ezen-late-penalty-invoices storage/passion-legacy/rent_penalty_invoice.xls --agent-user-id=2
+```
+
+The source `Paid` column is stored for reconciliation only; it does not create payment records. `--post-gl` is optional and off by default. Review unmatched rows and the source paid total before treating the import as reconciled.
 
 ## Phase 9 — EZEN payment voucher listing (outgoing payments)
 

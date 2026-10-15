@@ -40,7 +40,66 @@ final class EzenRentReceiptListingParser
      */
     public function parsePath(string $path): array
     {
+        if (Str::lower(pathinfo($path, PATHINFO_EXTENSION)) === 'xls') {
+            return $this->parseSpreadsheetMl($path);
+        }
+
         return $this->parseText($this->readText($path));
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function parseSpreadsheetMl(string $path): array
+    {
+        $rows = app(EzenSpreadsheetMlReader::class)->readRows($path);
+        $headerIndex = null;
+        $columns = [];
+        foreach ($rows as $index => $row) {
+            $normalized = array_map(static fn ($value): string => strtoupper(trim((string) $value)), $row);
+            if (in_array('RECEIPT #', $normalized, true) && in_array('A/C NO', $normalized, true)) {
+                $headerIndex = $index;
+                foreach ($normalized as $column => $label) {
+                    if ($label !== '') {
+                        $columns[$label] = $column;
+                    }
+                }
+                break;
+            }
+        }
+        if ($headerIndex === null) {
+            throw new RuntimeException('Could not find the EZEN rent receipt listing header in the Excel XML file.');
+        }
+
+        $required = ['RECEIPT #', 'TXN DATE', 'BANKING DATE', 'REF #', 'UNIT #', 'A/C NO', 'TENANT', 'PHONE NO', 'PARTICULARS', 'AMOUNT', 'RECEIPTED TO', 'DONE BY'];
+        $missing = array_values(array_diff($required, array_keys($columns)));
+        if ($missing !== []) {
+            throw new RuntimeException('Missing receipt listing columns: '.implode(', ', $missing).'.');
+        }
+
+        $read = static fn (array $row, string $label): string => trim((string) ($row[$columns[$label]] ?? ''));
+        $parsed = [];
+        foreach (array_slice($rows, $headerIndex + 1) as $row) {
+            $receiptNo = strtoupper($read($row, 'RECEIPT #'));
+            if ($receiptNo === '') {
+                continue;
+            }
+            $parsed[] = [
+                'ezen_receipt_no' => $receiptNo,
+                'property_code' => '',
+                'txn_date' => $this->parseDate($read($row, 'TXN DATE')),
+                'banking_date' => $this->parseDate($read($row, 'BANKING DATE')),
+                'ref_no' => strtoupper($read($row, 'REF #')),
+                'unit_label' => $read($row, 'UNIT #'),
+                'tnt_account' => $this->normalizeTntAccount($read($row, 'A/C NO')),
+                'tenant_name' => $read($row, 'TENANT'),
+                'phone' => $read($row, 'PHONE NO'),
+                'particulars' => $read($row, 'PARTICULARS'),
+                'amount' => $this->money($read($row, 'AMOUNT')),
+                'receipted_to' => $read($row, 'RECEIPTED TO'),
+                'done_by' => $read($row, 'DONE BY'),
+            ];
+        }
+
+        return $parsed;
     }
 
     /**

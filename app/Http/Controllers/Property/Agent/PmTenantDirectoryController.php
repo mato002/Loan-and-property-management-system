@@ -900,7 +900,7 @@ class PmTenantDirectoryController extends Controller
 
     private function directoryPerPage(Request $request): int
     {
-        return \App\Support\ListPageSize::resolve($request->input('per_page'), 100);
+        return \App\Support\ListPageSize::resolve($request->input('per_page'), 30);
     }
 
     private function buildTenantDirectoryQuery(Request $request): Builder

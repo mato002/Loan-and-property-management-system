@@ -29,7 +29,38 @@ class PropertyBulkRegisterImportController extends Controller
 
         $data = $request->validate([
             'import_type' => ['required', 'string', Rule::in($types)],
-            'register_file' => ['required', 'file', 'mimes:csv,txt,pdf,xls,xlsx', 'max:15360'],
+            'register_file' => [
+                'required', 'file', 'max:15360',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $value instanceof \Illuminate\Http\UploadedFile) {
+                        return;
+                    }
+
+                    $extension = strtolower($value->getClientOriginalExtension());
+                    $guessedExtension = strtolower((string) $value->guessExtension());
+                    if ($extension !== 'xls'
+                        && in_array($extension, ['csv', 'txt', 'pdf', 'xlsx'], true)
+                        && in_array($guessedExtension, ['csv', 'txt', 'pdf', 'xls', 'xlsx'], true)) {
+                        return;
+                    }
+
+                    $type = (string) $request->input('import_type');
+                    $supportsSpreadsheetMl = in_array($type, [
+                        PropertyBulkRegisterImportService::TYPE_RENT_RECEIPTS,
+                        PropertyBulkRegisterImportService::TYPE_LATE_PENALTY_INVOICES,
+                    ], true);
+                    if ($extension === 'xls' && $supportsSpreadsheetMl) {
+                        try {
+                            app(\App\Services\Property\EzenSpreadsheetMlReader::class)->readRows($value->getRealPath());
+                            return;
+                        } catch (\Throwable) {
+                            // Fall through to the standard validation message.
+                        }
+                    }
+
+                    $fail('The register file must be a CSV, TXT, PDF, XLS, or XLSX file supported by the selected import type.');
+                },
+            ],
             'secondary_file' => ['nullable', 'file', 'mimes:csv,txt,xls,xlsx', 'max:15360'],
             'dry_run' => ['nullable', 'boolean'],
             'property' => ['nullable', 'string', 'max:40'],

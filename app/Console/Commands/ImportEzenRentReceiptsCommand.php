@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 class ImportEzenRentReceiptsCommand extends Command
 {
     protected $signature = 'property:import-ezen-rent-receipts
-        {file? : EZEN rent receipt listing PDF or extracted .txt/.csv (not required with --sync-from-register)}
+        {file? : EZEN rent receipt listing PDF, .txt/.csv, or Excel XML .xls (not required with --sync-from-register)}
         {--agent-user-id= : Agent that owns the portfolio}
         {--property= : Optional property code filter}
         {--limit= : Import only the first N parsed rows}
