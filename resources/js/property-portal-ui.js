@@ -315,9 +315,54 @@ function initPropertyBareTableScroll(root = document) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => initPropertyBareTableScroll(document));
-document.addEventListener('turbo:load', () => initPropertyBareTableScroll(document));
-document.addEventListener('turbo:frame-load', (e) => initPropertyBareTableScroll(e.target));
+function initPropertyTableTopScroll(root = document) {
+    const scope = root.querySelector?.('#property-main') ?? root;
+    if (!scope || typeof scope.querySelectorAll !== 'function') return;
+
+    scope.querySelectorAll('.property-table-scroll').forEach((wrapper) => {
+        const table = wrapper.querySelector('table');
+        if (!table || wrapper.dataset.topScrollReady === '1') return;
+        wrapper.dataset.topScrollReady = '1';
+        wrapper.classList.add('property-table-scroll-desktop-fit');
+
+        const top = document.createElement('div');
+        top.className = 'property-table-scroll-top';
+        top.setAttribute('aria-label', 'Scroll table horizontally');
+        top.tabIndex = 0;
+        const spacer = document.createElement('div');
+        top.appendChild(spacer);
+        wrapper.parentNode.insertBefore(top, wrapper);
+
+        let syncing = false;
+        const syncWidth = () => {
+            spacer.style.width = `${Math.max(table.scrollWidth, wrapper.scrollWidth)}px`;
+        };
+        top.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            wrapper.scrollLeft = top.scrollLeft;
+            syncing = false;
+        }, { passive: true });
+        wrapper.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            top.scrollLeft = wrapper.scrollLeft;
+            syncing = false;
+        }, { passive: true });
+        if ('ResizeObserver' in window) {
+            new ResizeObserver(syncWidth).observe(table);
+        }
+        syncWidth();
+    });
+}
+
+const initPropertyTables = (root = document) => {
+    initPropertyBareTableScroll(root);
+    initPropertyTableTopScroll(root);
+};
+document.addEventListener('DOMContentLoaded', () => initPropertyTables(document));
+document.addEventListener('turbo:load', () => initPropertyTables(document));
+document.addEventListener('turbo:frame-load', (e) => initPropertyTables(e.target));
 
 document.addEventListener('alpine:init', () => {
     const Alpine = window.Alpine;

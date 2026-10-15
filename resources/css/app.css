@@ -113,6 +113,40 @@
     position: relative;
   }
 
+  /* Keep wide data tables readable while making the desktop horizontal
+     scrollbar available before the first row, where users can see it. */
+  .property-table-scroll-top {
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    .property-table-scroll-top {
+      display: block;
+      height: 14px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      margin-bottom: 2px;
+      scrollbar-gutter: stable;
+      overscroll-behavior-x: contain;
+    }
+
+    .property-table-scroll-top > div {
+      height: 1px;
+    }
+
+    .property-table-scroll.property-table-scroll-desktop-fit table {
+      width: 100%;
+      table-layout: fixed;
+      font-size: 0.75rem;
+    }
+
+    .property-table-scroll.property-table-scroll-desktop-fit th,
+    .property-table-scroll.property-table-scroll-desktop-fit td {
+      padding: 0.45rem 0.5rem;
+      overflow-wrap: anywhere;
+    }
+  }
+
   .property-table-scroll::after {
     content: '';
     position: sticky;
