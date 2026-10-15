@@ -43,6 +43,13 @@ class EquityPaymentRepository
             $source = (string) ($options['source'] ?? 'equity_api');
             $provider = (string) ($options['provider'] ?? 'equity');
             $agentUserId = $this->resolveAgentUserId($options, $tenantId);
+            // Split shares have unique transaction IDs but intentionally retain the
+            // original bank reference for matching. pm_payments.external_ref is unique,
+            // so store each share's unique transaction ID there and keep the original
+            // receipt reference in meta/reference fields.
+            $settlementExternalRef = ! empty($tx['split_payment'])
+                ? (string) $tx['transaction_id']
+                : (string) ($tx['external_transaction_reference'] ?? $tx['transaction_id']);
 
             $paymentAttrs = [
                 'tenant_id' => $tenantId,
@@ -126,7 +133,7 @@ class EquityPaymentRepository
                 'pm_tenant_id' => $tenantId,
                 'channel' => $channel,
                 'amount' => (float) $tx['amount'],
-                'external_ref' => (string) ($tx['external_transaction_reference'] ?? $tx['transaction_id']),
+                'external_ref' => $settlementExternalRef,
                 'paid_at' => $tx['transaction_date'] ?? now(),
                 'status' => PmPayment::STATUS_PENDING,
                 'meta' => $meta,
@@ -134,7 +141,7 @@ class EquityPaymentRepository
 
             app(PropertyPaymentSettlementService::class)->complete(
                 $pmPayment,
-                (string) ($tx['external_transaction_reference'] ?? $tx['transaction_id']),
+                $settlementExternalRef,
                 $tx['transaction_date'] ?? now(),
                 (string) ($options['message'] ?? 'Automatically settled from Equity API sync.'),
                 $source,
