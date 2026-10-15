@@ -57,8 +57,12 @@ class PmTenantDirectoryController extends Controller
 {
     use RespondsWithPropertyFormModal;
 
-    public function directory(): View
+    public function directory(Request $request): View
     {
+        if (! $request->query->has('status')) {
+            $request->query->set('status', TenantProfileStatus::ACTIVE);
+        }
+
         return property_view('property.agent.tenants.directory', $this->tenantListPayload(
             pageTitle: 'Tenant list',
             pageSubtitle: 'Operational directory — add tenants here, then leases and billing.',

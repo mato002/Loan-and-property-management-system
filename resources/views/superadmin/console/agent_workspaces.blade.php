@@ -150,21 +150,43 @@
                                 <td class="px-5 py-4 text-right tabular-nums">{{ (int) ($propertyCounts[$agent->id] ?? 0) }}</td>
                                 <td class="px-5 py-4 text-right tabular-nums">{{ (int) ($unitCounts[$agent->id] ?? 0) }}</td>
                                 <td class="px-5 py-4 text-right" data-row-ignore-click>
-                                    <div class="relative inline-block text-left" x-data="{ open: false }">
+                                    <div class="relative inline-block text-left" x-data="{
+                                        open: false,
+                                        menuTop: 0,
+                                        menuLeft: 0,
+                                        toggleMenu(event) {
+                                            if (this.open) {
+                                                this.open = false;
+                                                return;
+                                            }
+
+                                            const button = event.currentTarget.getBoundingClientRect();
+                                            const menuWidth = 224;
+                                            const menuHeight = 260;
+                                            this.menuLeft = Math.max(8, Math.min(button.right - menuWidth, window.innerWidth - menuWidth - 8));
+                                            this.menuTop = button.bottom + menuHeight <= window.innerHeight - 8
+                                                ? button.bottom + 4
+                                                : Math.max(8, button.top - menuHeight - 4);
+                                            this.open = true;
+                                        },
+                                    }">
                                         <button
                                             type="button"
-                                            @click.stop="open = !open"
+                                            @click.stop="toggleMenu($event)"
                                             class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                                         >
                                             Actions
                                             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                                         </button>
-                                        <div
-                                            x-show="open"
-                                            @click.outside="open = false"
-                                            x-cloak
-                                            class="absolute right-0 z-20 mt-1 w-56 origin-top-right rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-                                        >
+                                        <template x-teleport="body">
+                                            <div
+                                                x-show="open"
+                                                @click.outside="open = false"
+                                                @keydown.escape.window="open = false"
+                                                x-cloak
+                                                :style="`left: ${menuLeft}px; top: ${menuTop}px`"
+                                                class="fixed z-[10000] max-h-[calc(100vh-1rem)] w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl ring-1 ring-black/10"
+                                            >
                                             <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}" data-turbo="false">
                                                 @csrf
                                                 <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">View / impersonate dashboard</button>
@@ -186,7 +208,8 @@
                                                     <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50">Suspend workspace</button>
                                                 </form>
                                             @endif
-                                        </div>
+                                            </div>
+                                        </template>
                                     </div>
                                 </td>
                             </tr>
