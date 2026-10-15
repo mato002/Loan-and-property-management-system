@@ -1,16 +1,15 @@
 @php
     $appName = config('app.name', 'Property ERP');
-    $vendorWorkspaceRoute = request()->routeIs('property.vendors.payment_vouchers');
-    $vouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
-    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
-    $assignExportRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.assign_export' : 'property.accounting.payables.payment_vouchers.assign_export';
+    $vouchersRoute = 'property.accounting.payables.payment_vouchers';
+    $createVoucherRoute = 'property.accounting.payables.payment_vouchers.create';
+    $assignExportRoute = 'property.accounting.payables.payment_vouchers.assign_export';
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
     title="Payment vouchers"
     subtitle="Outgoing payments — record a voucher here, or import an EZEN listing. Remittances become landlord payouts; other rows become expenses."
-    :back-route="$vendorWorkspaceRoute ? 'property.vendors.directory' : 'property.accounting.index'"
+    :back-route="'property.accounting.index'"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
@@ -19,13 +18,11 @@
     empty-hint="Record a voucher, or upload an EZEN listing under Settings → Register imports."
 >
     <x-slot name="secondary">
-        @unless ($vendorWorkspaceRoute)
-            <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
-                <p class="text-lg font-semibold text-slate-900">Outgoing payments register</p>
-                <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and tax rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
-                <a href="{{ route('property.settings.register_imports') }}" class="mt-3 inline-flex text-sm font-semibold text-teal-800 hover:underline">Open register imports →</a>
-            </div>
-        @endunless
+        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Outgoing payments register</p>
+            <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and tax rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
+            <a href="{{ route('property.settings.register_imports') }}" class="mt-3 inline-flex text-sm font-semibold text-teal-800 hover:underline">Open register imports →</a>
+        </div>
         <form method="post" action="{{ route($assignExportRoute, absolute: false) }}" enctype="multipart/form-data" data-turbo="false" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-w-3xl space-y-3">
             @csrf
             <p class="text-sm font-semibold text-slate-900">Property export</p>
@@ -55,14 +52,8 @@
             'route' => $vouchersRoute,
             'query' => request()->except(['export', 'format', 'page']),
         ])
-        @if ($vendorWorkspaceRoute)
-            <a href="{{ route('property.vendors.bills', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Bills listing</a>
-            <a href="{{ route('property.vendors.expense_requisitions', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
-        @endif
-        @unless ($vendorWorkspaceRoute)
-            <a href="{{ route('property.accounting.payables.landlord_payouts') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Landlord payouts</a>
-            <a href="{{ route('property.accounting.entries') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Journal entries</a>
-        @endunless
+        <a href="{{ route('property.accounting.payables.landlord_payouts') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Landlord payouts</a>
+        <a href="{{ route('property.accounting.entries') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Journal entries</a>
     </x-slot>
 
     <x-slot name="toolbar">

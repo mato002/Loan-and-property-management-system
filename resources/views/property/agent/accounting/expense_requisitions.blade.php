@@ -2,7 +2,7 @@
     $vendorWorkspaceRoute = request()->routeIs('property.vendors.expense_requisitions');
     $requisitionsRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions' : 'property.accounting.payables.expense_requisitions';
     $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
-    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
+    $createVoucherRoute = 'property.accounting.payables.payment_vouchers.create';
     $approveRequisitionRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.approve' : 'property.accounting.payables.expense_requisitions.approve';
     $rejectRequisitionRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.reject' : 'property.accounting.payables.expense_requisitions.reject';
     $attachmentRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.attachment' : 'property.accounting.payables.expense_requisitions.attachment';
@@ -104,7 +104,7 @@
                                     <button class="rounded border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700">Reject</button>
                                 </form>
                             @elseif ($requisition->bill && (float) $requisition->bill->amount_due > 0.009)
-                                <a href="{{ route($createVoucherRoute, ['bill_id' => $requisition->bill->id], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Record payment</a>
+                                <a href="{{ route($createVoucherRoute, ['bill_id' => $requisition->bill->id, 'return_to' => $vendorWorkspaceRoute ? 'vendors' : null], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Record payment</a>
                             @elseif ($requisition->review_note)
                                 <span class="text-xs text-slate-500">{{ $requisition->review_note }}</span>
                             @else

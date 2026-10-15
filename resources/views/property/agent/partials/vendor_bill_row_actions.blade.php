@@ -5,15 +5,15 @@
     $isPaid = strtolower((string) ($bill->payment_status ?? '')) === \App\Models\PmEzenBill::STATUS_PAID;
     $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills');
     $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
-    $voucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
-    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
+    $voucherRoute = 'property.accounting.payables.payment_vouchers';
+    $createVoucherRoute = 'property.accounting.payables.payment_vouchers.create';
 @endphp
 <x-property.action-menu width="w-52">
     @if ($vendorName !== '')
         <a href="{{ route('property.vendors.directory', ['q' => $vendorName], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Find vendor</a>
     @endif
     @if (! $isPaid && $due > 0.009)
-        <a href="{{ route($createVoucherRoute, ['bill_id' => $bill->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-700/50">Record payment voucher</a>
+        <a href="{{ route($createVoucherRoute, ['bill_id' => $bill->id, 'return_to' => $vendorWorkspaceRoute ? 'vendors' : null], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-700/50">Record payment voucher</a>
         @if (auth()->user()?->hasPmPermission('accounting.entries.manage'))
             <a href="{{ route($vendorWorkspaceRoute ? 'property.vendors.bills.link_voucher_form' : 'property.accounting.payables.accounts_payable.link_voucher_form', $bill, false) }}" data-property-form-modal data-property-form-modal-title="Link existing payment voucher" class="block px-3 py-2 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-slate-700/50">Link existing voucher</a>
         @endif

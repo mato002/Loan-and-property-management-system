@@ -1,18 +1,19 @@
 @php
-    $vendorWorkspaceRoute = request()->routeIs('property.vendors.payment_vouchers.create');
-    $vouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
-    $storeVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.store' : 'property.accounting.payables.payment_vouchers.store';
+    $returnToVendors = request()->query('return_to') === 'vendors';
+    $vouchersRoute = 'property.accounting.payables.payment_vouchers';
+    $storeVoucherRoute = 'property.accounting.payables.payment_vouchers.store';
 @endphp
 <x-property.crud-shell
     :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Record payment voucher"
     subtitle="Outgoing payment. The voucher number is assigned when you save. Line totals must equal the control amount."
-    :back-route="$vouchersRoute"
+    :back-route="$returnToVendors ? 'property.vendors.bills' : $vouchersRoute"
     :stats="[]"
     :columns="[]"
 >
     <form method="post" action="{{ route($storeVoucherRoute, absolute: false) }}" class="property-compact-panel max-w-5xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-4">
         @csrf
+        @if ($returnToVendors)<input type="hidden" name="return_to" value="vendors" />@endif
         <input type="hidden" name="pm_ezen_bill_id" value="{{ old('pm_ezen_bill_id', ($preselectedBill ?? null)?->id) }}" data-linked-bill-id />
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="sm:col-span-2">

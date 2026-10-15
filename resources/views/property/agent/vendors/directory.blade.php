@@ -1,5 +1,6 @@
 @php
-    $showVendorFormByDefault = $errors->hasAny(['name', 'category', 'status', 'phone', 'email', 'rating', 'service_property_ids', 'service_name', 'service_monthly_amount', 'service_starts_on', 'service_billing_day']);
+    $showVendorFormByDefault = $errors->hasAny(['name', 'category', 'status', 'phone', 'email', 'rating', 'service_property_ids', 'service_name', 'service_amount_mode', 'service_monthly_amount', 'service_monthly_amounts', 'service_starts_on', 'service_billing_day'])
+        || collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'service_monthly_amounts.'));
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
@@ -83,7 +84,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">ID / Registration no.</label>
                     <input type="text" name="registration_no" value="{{ old('registration_no') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
-                <div class="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+                <div class="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3" x-data="{ pricingMode: @js(old('service_amount_mode', 'shared')), selectedPropertyIds: @js(array_map('strval', old('service_property_ids', []))) }">
                     <h4 class="text-sm font-semibold text-slate-800">Assign properties and service</h4>
                     <p class="mt-1 text-xs text-slate-600">Choose every property this vendor serves. For recurring work such as garbage collection, the system creates a separate monthly agreement for each selected property.</p>
                     <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -95,14 +96,18 @@
                         <div>
                             <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Properties assigned</span>
                             <div class="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-                                @php
-                                    $selectedServicePropertyIds = array_map('strval', old('service_property_ids', []));
-                                @endphp
                                 @forelse ($properties ?? [] as $property)
-                                    <label class="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-indigo-50">
-                                        <input type="checkbox" name="service_property_ids[]" value="{{ $property->id }}" @checked(in_array((string) $property->id, $selectedServicePropertyIds, true)) class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                                        <span>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</span>
-                                    </label>
+                                    <div class="rounded-md px-2 py-1.5 hover:bg-indigo-50">
+                                        <div class="flex items-start gap-2 text-sm text-slate-700">
+                                            <input type="checkbox" name="service_property_ids[]" value="{{ $property->id }}" x-model="selectedPropertyIds" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                            <span>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</span>
+                                        </div>
+                                        <div x-cloak x-show="pricingMode === 'per_property' && selectedPropertyIds.includes('{{ (string) $property->id }}')" class="ml-6 mt-2">
+                                            <label class="block text-[11px] font-medium text-slate-500">Monthly amount for this property (KES)</label>
+                                            <input type="number" name="service_monthly_amounts[{{ $property->id }}]" min="0.01" step="0.01" value="{{ old('service_monthly_amounts.'.$property->id) }}" :required="pricingMode === 'per_property' && selectedPropertyIds.includes('{{ (string) $property->id }}')" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                                            @error('service_monthly_amounts.'.$property->id)<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                        </div>
+                                    </div>
                                 @empty
                                     <p class="px-2 py-1 text-xs text-slate-500">No properties are available to assign.</p>
                                 @endforelse
@@ -112,10 +117,19 @@
                             @error('service_property_ids.*')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly amount per property (KES)</label>
-                            <input type="number" name="service_monthly_amount" min="0.01" step="0.01" value="{{ old('service_monthly_amount') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreed pricing</label>
+                            <select name="service_amount_mode" x-model="pricingMode" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                <option value="shared">Same amount for every selected property</option>
+                                <option value="per_property">Different amount per property</option>
+                            </select>
+                            @error('service_amount_mode')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <div x-cloak x-show="pricingMode === 'shared'">
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly amount (KES)</label>
+                            <input type="number" name="service_monthly_amount" min="0.01" step="0.01" value="{{ old('service_monthly_amount') }}" :required="pricingMode === 'shared' && selectedPropertyIds.length > 0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                             @error('service_monthly_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>
+                        <p class="text-xs text-slate-600 sm:col-span-2" x-text="pricingMode === 'shared' ? 'The same monthly amount will be saved for each selected property.' : 'Enter a separate monthly amount beside each selected property.'"></p>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreement starts</label>
                             <input type="date" name="service_starts_on" value="{{ old('service_starts_on', now()->toDateString()) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
@@ -128,7 +142,6 @@
                         </div>
                     </div>
                     @error('service_property_ids.*')<p class="mt-2 text-xs text-red-600">{{ $message }}</p>@enderror
-                    <p class="mt-2 text-xs text-amber-800">The same monthly amount is applied to each selected property. Add separate agreements from the vendor profile if costs differ by property.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank</label>

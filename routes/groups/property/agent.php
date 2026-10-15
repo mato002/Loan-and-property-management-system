@@ -440,12 +440,6 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/vendors/expense-requisitions/{requisition}/approve', [\App\Http\Controllers\Property\Agent\PropertyExpenseRequisitionController::class, 'approve'])->middleware('property.permission:accounting.entries.manage')->name('vendors.expense_requisitions.approve');
     Route::post('/vendors/expense-requisitions/{requisition}/reject', [\App\Http\Controllers\Property\Agent\PropertyExpenseRequisitionController::class, 'reject'])->middleware('property.permission:accounting.entries.manage')->name('vendors.expense_requisitions.reject');
     Route::get('/vendors/expense-requisitions/{requisition}/attachment', [\App\Http\Controllers\Property\Agent\PropertyExpenseRequisitionController::class, 'downloadAttachment'])->name('vendors.expense_requisitions.attachment');
-    Route::get('/vendors/payment-vouchers', [PropertyAccountingController::class, 'paymentVouchers'])->name('vendors.payment_vouchers');
-    Route::get('/vendors/payment-vouchers/create', [PropertyAccountingController::class, 'createPaymentVoucher'])->name('vendors.payment_vouchers.create');
-    Route::post('/vendors/payment-vouchers', [PropertyAccountingController::class, 'storePaymentVoucher'])->name('vendors.payment_vouchers.store');
-    Route::post('/vendors/payment-vouchers/assign-export', [PropertyAccountingController::class, 'assignPaymentVoucherExport'])->name('vendors.payment_vouchers.assign_export');
-    Route::post('/vendors/payment-vouchers/{voucher}/assign', [PropertyAccountingController::class, 'assignPaymentVoucherProperty'])->name('vendors.payment_vouchers.assign');
-    Route::get('/vendors/payment-vouchers/{voucher}', [PropertyAccountingController::class, 'showPaymentVoucher'])->whereNumber('voucher')->name('vendors.payment_vouchers.show');
     Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
     Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
     Route::post('/vendors/{vendor}/pay-outstanding-mpesa', [PmVendorWebController::class, 'payOutstandingViaMpesa'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding_mpesa');

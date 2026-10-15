@@ -3,7 +3,7 @@
     $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills');
     $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
     $expenseRequisitionsRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions' : 'property.accounting.payables.expense_requisitions';
-    $paymentVouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
+    $paymentVouchersRoute = 'property.accounting.payables.payment_vouchers';
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
@@ -36,7 +36,6 @@
         ])
         @if ($vendorWorkspaceRoute)
             <a href="{{ route($expenseRequisitionsRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
-            <a href="{{ route($paymentVouchersRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Payment vouchers</a>
         @else
             <a href="{{ route($paymentVouchersRoute) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Payment vouchers</a>
         @endif

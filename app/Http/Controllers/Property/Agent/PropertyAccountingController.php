@@ -3139,10 +3139,7 @@ class PropertyAccountingController extends Controller
                 $posted = $voucher->ezen_voucher_no;
             }
 
-            $showRoute = $request->routeIs('property.vendors.payment_vouchers')
-                ? 'property.vendors.payment_vouchers.show'
-                : 'property.accounting.payables.payment_vouchers.show';
-            $showUrl = route($showRoute, $voucher, false);
+            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
             $linkedProperty = $this->voucherProperty($voucher, $propertyByCode);
             $actions = new HtmlString(view('property.agent.partials.payment_voucher_row_actions', [
                 'voucher' => $voucher,
@@ -3252,12 +3249,7 @@ class PropertyAccountingController extends Controller
         $summary = $vouchers->assignPropertyExport($path, $property, $agentUserId);
 
         return redirect()
-            ->route(
-                $request->routeIs('property.vendors.payment_vouchers.assign_export')
-                    ? 'property.vendors.payment_vouchers'
-                    : 'property.accounting.payables.payment_vouchers',
-                ['property_id' => $property->id],
-            )
+            ->route('property.accounting.payables.payment_vouchers', ['property_id' => $property->id])
             ->with('status', $property->name.': '.$summary['updated'].' vouchers linked'
                 .($summary['created'] > 0 ? ', '.$summary['created'].' added' : '')
                 .', '.$summary['units'].' tied to a unit.');
@@ -3355,6 +3347,7 @@ class PropertyAccountingController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'control_amount' => ['required', 'numeric', 'gt:0'],
             'pm_ezen_bill_id' => ['nullable', 'integer'],
+            'return_to' => ['nullable', 'in:vendors'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'lines.*.expense_group' => ['nullable', 'string', 'max:80'],
@@ -3377,13 +3370,12 @@ class PropertyAccountingController extends Controller
             ]);
         }
 
+        if (($data['return_to'] ?? null) === 'vendors') {
+            return redirect()->route('property.vendors.bills')->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded and linked to its vendor bill.');
+        }
+
         return redirect()
-            ->route(
-                $request->routeIs('property.vendors.payment_vouchers.store')
-                    ? 'property.vendors.payment_vouchers.show'
-                    : 'property.accounting.payables.payment_vouchers.show',
-                $voucher,
-            )
+            ->route('property.accounting.payables.payment_vouchers.show', $voucher)
             ->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded.');
     }
 

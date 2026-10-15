@@ -530,10 +530,32 @@ class PmVendorWebController extends Controller
             'service_property_ids' => ['nullable', 'array'],
             'service_property_ids.*' => ['integer', 'distinct', 'exists:properties,id'],
             'service_name' => ['nullable', 'required_with:service_property_ids', 'string', 'max:191'],
-            'service_monthly_amount' => ['nullable', 'required_with:service_property_ids', 'numeric', 'gt:0'],
+            'service_amount_mode' => ['nullable', 'required_with:service_property_ids', 'in:shared,per_property'],
+            'service_monthly_amount' => ['nullable', 'numeric', 'gt:0'],
+            'service_monthly_amounts' => ['nullable', 'array'],
+            'service_monthly_amounts.*' => ['nullable', 'numeric', 'gt:0'],
             'service_starts_on' => ['nullable', 'required_with:service_property_ids', 'date'],
             'service_billing_day' => ['nullable', 'required_with:service_property_ids', 'integer', 'between:1,28'],
         ]);
+        $servicePropertyIds = array_map('intval', $data['service_property_ids'] ?? []);
+        if ($servicePropertyIds !== []) {
+            $amountErrors = [];
+            if (($data['service_amount_mode'] ?? 'shared') === 'shared') {
+                if (! isset($data['service_monthly_amount']) || (float) $data['service_monthly_amount'] <= 0) {
+                    $amountErrors['service_monthly_amount'] = 'Enter the monthly amount shared by the selected properties.';
+                }
+            } else {
+                foreach ($servicePropertyIds as $propertyId) {
+                    $amount = $data['service_monthly_amounts'][$propertyId] ?? null;
+                    if (! is_numeric($amount) || (float) $amount <= 0) {
+                        $amountErrors['service_monthly_amounts.'.$propertyId] = 'Enter the agreed monthly amount for this property.';
+                    }
+                }
+            }
+            if ($amountErrors !== []) {
+                throw \Illuminate\Validation\ValidationException::withMessages($amountErrors);
+            }
+        }
         $data['default_property_id'] = $data['service_property_ids'][0] ?? null;
         $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
         foreach ($data['service_property_ids'] ?? [] as $propertyId) {
@@ -542,7 +564,7 @@ class PmVendorWebController extends Controller
 
         $vendor = DB::transaction(function () use ($data, $request): PmVendor {
             $vendorData = collect($data)->except([
-                'service_property_ids', 'service_name', 'service_monthly_amount',
+                'service_property_ids', 'service_name', 'service_amount_mode', 'service_monthly_amount', 'service_monthly_amounts',
                 'service_starts_on', 'service_billing_day',
             ])->all();
             $vendor = PmVendor::query()->create([
@@ -551,11 +573,15 @@ class PmVendorWebController extends Controller
             ]);
 
             foreach ($data['service_property_ids'] ?? [] as $propertyId) {
+                $propertyId = (int) $propertyId;
+                $monthlyAmount = ($data['service_amount_mode'] ?? 'shared') === 'per_property'
+                    ? (float) $data['service_monthly_amounts'][$propertyId]
+                    : (float) $data['service_monthly_amount'];
                 $vendor->serviceAgreements()->create([
                     'agent_user_id' => \App\Models\Concerns\AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) $request->user()->id,
-                    'property_id' => (int) $propertyId,
+                    'property_id' => $propertyId,
                     'service_name' => $data['service_name'],
-                    'monthly_amount' => $data['service_monthly_amount'],
+                    'monthly_amount' => $monthlyAmount,
                     'starts_on' => $data['service_starts_on'],
                     'billing_day' => $data['service_billing_day'],
                     'status' => 'active',

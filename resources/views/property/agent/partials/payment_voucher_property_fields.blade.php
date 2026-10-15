@@ -3,9 +3,7 @@
     $selectedPropertyId = (int) ($selectedPropertyId ?? $voucher->property_id ?? 0);
     $selectedUnitId = (int) ($voucher->property_unit_id ?? 0);
     $units = $units ?? collect();
-    $assignRoute = request()->routeIs('property.vendors.payment_vouchers')
-        ? 'property.vendors.payment_vouchers.assign'
-        : 'property.accounting.payables.payment_vouchers.assign';
+    $assignRoute = 'property.accounting.payables.payment_vouchers.assign';
 @endphp
 <form method="post" action="{{ route($assignRoute, $voucher, false) }}" class="flex min-w-[14rem] flex-col gap-1" data-turbo-frame="property-main">
     @csrf
