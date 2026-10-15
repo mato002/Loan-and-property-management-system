@@ -122,8 +122,8 @@ final class TenantProfileStatus
             ],
             self::FORMER => [
                 'key' => self::FORMER,
-                'label' => 'Former',
-                'hint' => 'Moved out',
+                'label' => 'Past tenant',
+                'hint' => 'Lease ended',
                 'tone' => WorkspaceRowAlert::TONE_VACANT,
             ],
             self::DRAFT => [
@@ -242,7 +242,7 @@ final class TenantProfileStatus
         return [
             ['value' => self::ACTIVE, 'label' => 'Active'],
             ['value' => self::EXPIRED, 'label' => 'Expired'],
-            ['value' => self::FORMER, 'label' => 'Former'],
+            ['value' => self::FORMER, 'label' => 'Past tenant'],
             ['value' => self::DRAFT, 'label' => 'Draft'],
             ['value' => self::INACTIVE, 'label' => 'Inactive'],
         ];

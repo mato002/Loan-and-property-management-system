@@ -258,6 +258,14 @@ SQL;
                 'COALESCE(SUM(CASE WHEN pm_leases.status = ? THEN 1 ELSE 0 END), 0) as draft_count',
                 [PmLease::STATUS_DRAFT]
             )
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN pm_leases.status = ? THEN 1 ELSE 0 END), 0) as expired_count',
+                [PmLease::STATUS_EXPIRED]
+            )
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN pm_leases.status = ? THEN 1 ELSE 0 END), 0) as terminated_count',
+                [PmLease::STATUS_TERMINATED]
+            )
             ->first();
 
         return [
@@ -265,6 +273,8 @@ SQL;
             ['label' => 'Active', 'value' => (string) (int) ($aggregates->active_count ?? 0), 'hint' => ''],
             ['label' => 'Ending ≤60d', 'value' => (string) (int) ($aggregates->ending_soon_count ?? 0), 'hint' => ''],
             ['label' => 'Draft', 'value' => (string) (int) ($aggregates->draft_count ?? 0), 'hint' => ''],
+            ['label' => 'Expired', 'value' => (string) (int) ($aggregates->expired_count ?? 0), 'hint' => ''],
+            ['label' => 'Terminated', 'value' => (string) (int) ($aggregates->terminated_count ?? 0), 'hint' => ''],
         ];
     }
 

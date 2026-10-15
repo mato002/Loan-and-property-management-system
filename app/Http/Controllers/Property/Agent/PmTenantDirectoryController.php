@@ -937,7 +937,7 @@ class PmTenantDirectoryController extends Controller
         return [
             ['label' => 'Tenants', 'value' => (string) $totalTenants, 'hint' => 'Filtered records'],
             ['label' => 'Active', 'value' => (string) $activeTenants, 'hint' => 'Occupying a unit'],
-            ['label' => 'Not active', 'value' => (string) max(0, $totalTenants - $activeTenants), 'hint' => 'Expired, former, draft, or no lease'],
+            ['label' => 'Not active', 'value' => (string) max(0, $totalTenants - $activeTenants), 'hint' => 'Expired, past tenant, draft, or no lease'],
             ['label' => 'High risk flagged', 'value' => (string) (int) ($aggregates->high_risk_count ?? 0), 'hint' => 'Manual'],
         ];
     }
