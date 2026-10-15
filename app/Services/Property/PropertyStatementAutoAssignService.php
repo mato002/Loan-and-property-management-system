@@ -83,6 +83,86 @@ final class PropertyStatementAutoAssignService
         return $summary;
     }
 
+    /**
+     * Link older unmatched statement credits after their receipt register is imported.
+     * A match needs an exact M-Pesa reference candidate, the same amount, and one
+     * uniquely identified tenant on the register row; this never posts a payment.
+     *
+     * @param  list<string>  $references
+     */
+    public function linkExistingReceiptMatches(int $agentUserId, array $references): int
+    {
+        if (! Schema::hasTable('pm_ezen_receipt_register') || ! Schema::hasTable('pm_bank_statement_lines')) {
+            return 0;
+        }
+
+        $candidates = [];
+        foreach ($references as $reference) {
+            $reference = strtoupper(trim($reference));
+            if ($reference !== '') {
+                array_push($candidates, ...$this->referenceCandidates($reference));
+            }
+        }
+        $candidates = array_values(array_unique($candidates));
+        if ($candidates === []) {
+            return 0;
+        }
+
+        $receipts = PmEzenReceiptRegister::query()
+            ->where('agent_user_id', $agentUserId)
+            ->where('pm_tenant_id', '>', 0)
+            ->where(function ($query) use ($candidates): void {
+                foreach ($candidates as $candidate) {
+                    $query->orWhereRaw('UPPER(TRIM(ref_no)) = ?', [$candidate]);
+                }
+            })
+            ->with('tenant')
+            ->get();
+
+        $lines = PmBankStatementLine::query()
+            ->where('agent_user_id', $agentUserId)
+            ->where('direction', 'credit')
+            ->where('line_type', CoopBankAccountStatementParser::TYPE_MPESA)
+            ->where('match_status', PmBankStatementLine::MATCH_UNMATCHED)
+            ->where(function ($query) use ($candidates): void {
+                foreach ($candidates as $candidate) {
+                    $query->orWhereRaw('UPPER(TRIM(reference)) = ?', [$candidate]);
+                }
+            })
+            ->get();
+
+        $linked = 0;
+        foreach ($lines as $line) {
+            $lineCandidates = $this->referenceCandidates((string) $line->reference);
+            $matches = $receipts->filter(function (PmEzenReceiptRegister $receipt) use ($lineCandidates, $line): bool {
+                $receiptReference = strtoupper(trim((string) $receipt->ref_no));
+                $tenantId = (int) ($receipt->pm_tenant_id ?? 0);
+                return in_array($receiptReference, $lineCandidates, true)
+                    && $tenantId > 0
+                    && $receipt->tenant !== null
+                    && abs(round((float) $receipt->amount, 2) - round((float) $line->amount, 2)) < 0.01;
+            });
+
+            $tenantIds = $matches->pluck('pm_tenant_id')->map(fn ($id): int => (int) $id)->unique();
+            if ($matches->isEmpty() || $tenantIds->count() !== 1) {
+                continue;
+            }
+
+            $receipt = $matches->sortByDesc('id')->first();
+            $this->clearUnassignedStatementCopy($line);
+            $line->update([
+                'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                'matched_type' => 'ezen_receipt',
+                'pm_payment_id' => $receipt->pm_payment_id ? (int) $receipt->pm_payment_id : null,
+                'pm_ezen_receipt_register_id' => (int) $receipt->id,
+                'unassigned_payment_id' => null,
+            ]);
+            $linked++;
+        }
+
+        return $linked;
+    }
+
     private function findSmsPaymentInNarration(PmBankStatementLine $line): ?PmPayment
     {
         if (! $line->txn_date || trim((string) $line->narration) === '') {

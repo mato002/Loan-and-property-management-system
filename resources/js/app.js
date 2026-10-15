@@ -5,6 +5,7 @@ import './property-auto-filter';
 import './property-filter-cascade';
 import './property-flash-lifecycle';
 import './property-portal-ui';
+import './property-statement-tenant-search';
 import './property-page-modals';
 import './property-modal-manager';
 import './property-form-modal';

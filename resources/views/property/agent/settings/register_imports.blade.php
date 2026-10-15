@@ -18,6 +18,7 @@
         'units_linked' => 'Units linked',
         'imported' => 'Imported',
         'register_upserted' => 'Register upserted',
+        'statement_lines_linked' => 'Existing statement lines matched',
         'matched' => 'Matched',
         'unmatched' => 'Unmatched',
         'source_paid_rows' => 'Rows with source Paid values',

@@ -18,6 +18,7 @@ final class EzenRentReceiptsImportService
     public function __construct(
         private readonly EzenRentReceiptListingParser $parser,
         private readonly PropertyPaymentSettlementService $payments,
+        private readonly PropertyStatementAutoAssignService $statementAutoAssign,
     ) {}
 
     /**
@@ -31,6 +32,7 @@ final class EzenRentReceiptsImportService
      *     enriched_existing:int,
      *     skipped_no_match:int,
      *     register_upserted:int,
+     *     statement_lines_linked:int,
      *     allocated:float,
      *     unallocated:float,
      *     warnings:list<string>,
@@ -71,6 +73,7 @@ final class EzenRentReceiptsImportService
             'enriched_existing' => 0,
             'skipped_no_match' => 0,
             'register_upserted' => 0,
+            'statement_lines_linked' => 0,
             'relinked' => 0,
             'allocated' => 0.0,
             'unallocated' => 0.0,
@@ -103,6 +106,16 @@ final class EzenRentReceiptsImportService
                 }
                 $summary['errors'][] = 'Row '.$rowNum.' '.($row['ezen_receipt_no'] ?? '?').': '.$e->getMessage();
             }
+        }
+
+        if (! $dryRun && $summary['register_upserted'] > 0) {
+            $summary['statement_lines_linked'] = $this->statementAutoAssign->linkExistingReceiptMatches(
+                $agentUserId,
+                array_values(array_filter(array_map(
+                    static fn (array $row): string => (string) ($row['ref_no'] ?? ''),
+                    $rows,
+                ))),
+            );
         }
 
         $summary['allocated'] = round($summary['allocated'], 2);

@@ -265,15 +265,6 @@ class PropertyStatementImportController extends Controller
                 ])
                 ->values()
                 ->all(),
-            'assignTenants' => PmTenant::query()
-                ->orderBy('name')
-                ->get(['id', 'name', 'phone', 'account_number'])
-                ->map(fn (PmTenant $tenant) => [
-                    'id' => (int) $tenant->id,
-                    'label' => trim($tenant->name.($tenant->account_number ? ' · '.$tenant->account_number : '').($tenant->phone ? ' · '.$tenant->phone : '')),
-                ])
-                ->values()
-                ->all(),
             'filters' => ['q' => $q, 'status' => $status, 'per_page' => $perPageValue],
             'perPageOptions' => ListPageSize::options($lineTotal, $perPage),
         ]);
