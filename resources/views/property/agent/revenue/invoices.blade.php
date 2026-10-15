@@ -186,23 +186,6 @@
         </x-property.modal>
     </x-slot>
 
-    <x-slot name="secondary">
-        <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
-            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 2 of 3): Create rent bill</p>
-            <p class="mt-1 text-sm text-slate-600">Create an invoice for the tenant + unit. Payments will be allocated to invoices and the status updates automatically (Sent → Partial → Paid / Overdue).</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-                    Back: Lease (allocate unit)
-                </a>
-                <a href="{{ route('property.revenue.payments', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                    Next: Collect payment
-                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </a>
-            </div>
-        </div>
-    </x-slot>
-
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.invoices', get_defined_vars())
         @if (trim((string) ($filters['q'] ?? '')) !== '' || (int) ($filters['tenant_id'] ?? 0) > 0)

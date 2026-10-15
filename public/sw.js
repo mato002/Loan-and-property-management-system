@@ -18,7 +18,13 @@ const SHELL_URLS = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(SHELL_CACHE)
-            .then((cache) => cache.addAll(SHELL_URLS))
+            .then((cache) => Promise.all(SHELL_URLS.map(async (path) => {
+                try {
+                    await cache.add(new URL(path, self.registration.scope).toString());
+                } catch {
+                    // A missing optional shell asset must not fail the worker install.
+                }
+            })))
             .then(() => self.skipWaiting())
     );
 });

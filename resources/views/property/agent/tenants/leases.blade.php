@@ -112,9 +112,6 @@
             </x-property.modal>
         </x-slot>
 
-        <x-slot name="secondary">
-            @include('property.agent.tenants.partials.leases_workspace_onboarding')
-        </x-slot>
     @endif
 
     <x-slot name="toolbar">

@@ -4,6 +4,10 @@
             if (!leaseForm) {
                 return;
             }
+            const leaseFormModal = leaseForm.closest('[data-property-modal]');
+            if (leaseFormModal && window.getComputedStyle(leaseFormModal).display === 'none') {
+                return;
+            }
 
             const bindLeaseFormLogic = () => {
                 if (leaseForm.dataset.leaseJsBound === '1') {

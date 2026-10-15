@@ -529,43 +529,6 @@ SQL;
         $tenantEmail = $tenant?->email ?? '—';
         $tenantBalance = WorkspaceRowAlert::followUpAmount((float) ($tenant?->opening_arrears_amount ?? 0));
         $variationType = $l->lease_variation_type ?? '—';
-        $utilityExpenses = collect($l->utility_expenses ?? [])
-            ->filter(fn ($row) => is_array($row))
-            ->values();
-        if ($utilityExpenses->isNotEmpty()) {
-            $expenseLines = $utilityExpenses
-                ->filter(fn ($row) => trim((string) ($row['type'] ?? '')) !== '' && (float) ($row['amount'] ?? 0) > 0)
-                ->map(function ($row): string {
-                    $type = $this->utilityExpenseTypeLabel((string) ($row['type'] ?? ''));
-                    if ($type === '') {
-                        $type = ucfirst(str_replace('_', ' ', (string) ($row['type'] ?? 'Other')));
-                    }
-
-                    return $type.': '.PropertyMoney::kes((float) ($row['amount'] ?? 0));
-                })
-                ->values()
-                ->all();
-            $expenseLabel = $expenseLines !== []
-                ? new HtmlString(implode('<br>', array_map(static fn ($line) => e($line), $expenseLines)))
-                : '—';
-        } else {
-            $expenseType = $this->utilityExpenseTypeLabel($l->utility_expense_type);
-            $expenseAmount = (float) ($l->utility_expense_amount ?? 0);
-            $expenseLabel = ($expenseType !== '' && $expenseAmount > 0)
-                ? new HtmlString(e($expenseType.': '.PropertyMoney::kes($expenseAmount)))
-                : '—';
-        }
-
-        $additionalDeposits = collect($l->additional_deposits ?? [])
-            ->filter(fn ($row) => is_array($row) && trim((string) ($row['label'] ?? '')) !== '' && (float) ($row['amount'] ?? 0) > 0)
-            ->values();
-        $depositLines = [
-            'Rent deposit: '.PropertyMoney::kes((float) $l->deposit_amount),
-        ];
-        foreach ($additionalDeposits as $row) {
-            $depositLines[] = trim((string) ($row['label'] ?? 'Deposit')).': '.PropertyMoney::kes((float) ($row['amount'] ?? 0));
-        }
-        $depositBreakdown = new HtmlString(implode('<br>', array_map(static fn ($line) => e($line), $depositLines)));
 
         $actions = new HtmlString(view('property.agent.partials.lease_row_actions', [
             'lease' => $l,
@@ -603,45 +566,6 @@ SQL;
         }
 
         return $row;
-    }
-
-    /**
-     * @return array<int, array{value: string, label: string}>
-     */
-    private function leaseFilterPropertyOptions(): array
-    {
-        return Property::query()
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (Property $property): array => [
-                'value' => (string) $property->id,
-                'label' => (string) $property->name,
-            ])
-            ->all();
-    }
-
-    /**
-     * @return array<int, array{value: string, label: string}>
-     */
-    private function leaseFilterTenantOptions(): array
-    {
-        return $this->selectableTenants()
-            ->map(fn (PmTenant $tenant): array => [
-                'value' => (string) $tenant->id,
-                'label' => (string) $tenant->name,
-            ])
-            ->all();
-    }
-
-    /**
-     * @return array{tenants: array<int, array{value: string, label: string}>, properties: array<int, array{value: string, label: string}>}
-     */
-    private function leaseListFilterOptions(): array
-    {
-        return [
-            'tenants' => $this->leaseFilterTenantOptions(),
-            'properties' => $this->leaseFilterPropertyOptions(),
-        ];
     }
 
     /**
@@ -1568,7 +1492,6 @@ SQL;
     {
         $activeTab = $request->string('tab')->toString() === 'expiry' ? 'expiry' : 'leases';
         $filters = $this->leaseListFiltersFromRequest($request);
-        $filterOptions = $this->leaseListFilterOptions();
         $cascade = app(PropertyFilterCascadeCatalog::class);
         $propertyId = (int) $filters['property_id'];
         $unitId = (int) $filters['unit_id'];
@@ -1577,7 +1500,6 @@ SQL;
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromLeases(),
         ];
 
         $export = strtolower((string) $request->query('export', ''));
@@ -1595,11 +1517,14 @@ SQL;
                 'tableRows' => $expiryPayload['tableRows'],
                 'expiryFilterTexts' => $expiryPayload['expiryFilterTexts'],
                 'filters' => $filters,
-                'filterOptions' => $filterOptions,
             ], $cascadeViewData));
         }
 
-        $leaseQuery = PmLease::query()->with(['pmTenant', 'units.property']);
+        $leaseQuery = PmLease::query()->with([
+            'pmTenant:id,name,phone,email,account_number,opening_arrears_amount',
+            'units:id,label,property_id',
+            'units.property:id,name',
+        ]);
         $this->applyLeaseListFilters($leaseQuery, $filters, applyStatus: true, filterEndDate: false);
 
         $statsFilters = $filters;
@@ -1631,6 +1556,15 @@ SQL;
         unset($stat);
 
         $this->applyLeaseListSort($leaseQuery, $filters);
+        $leaseQuery->select([
+            'pm_leases.id',
+            'pm_leases.pm_tenant_id',
+            'pm_leases.start_date',
+            'pm_leases.end_date',
+            'pm_leases.monthly_rent',
+            'pm_leases.status',
+            'pm_leases.lease_variation_type',
+        ]);
         $leasePager = $this->paginateLeaseList($leaseQuery, $filters);
         $rows = $leasePager->getCollection()
             ->map(fn (PmLease $l) => $this->mapLeaseListRow($l, true))
@@ -1643,7 +1577,6 @@ SQL;
             'tableRows' => $rows,
             'expiryFilterTexts' => [],
             'filters' => $filters,
-            'filterOptions' => $filterOptions,
             'leasePager' => $leasePager,
             'openLeaseCreateModal' => $request->boolean('open_create'),
         ], $cascadeViewData, $this->leaseFormPageContext($request)));

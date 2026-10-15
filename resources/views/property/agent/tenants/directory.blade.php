@@ -16,13 +16,6 @@
             'showImportForm' => (bool) ($openImportModal ?? false) || ! empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0),
         ]) !!}"
     ></x-slot>
-    <x-slot name="banner">
-        <x-property.getting-started-banner
-            :workflow-url="route('property.tenants.leases', absolute: false)"
-            storage-key="property.tenants.getting_started.dismissed"
-        />
-    </x-slot>
-
     <x-slot name="actions">
         <button
             type="button"

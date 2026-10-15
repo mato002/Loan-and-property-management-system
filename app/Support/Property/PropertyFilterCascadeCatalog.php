@@ -282,7 +282,11 @@ final class PropertyFilterCascadeCatalog
      */
     public function unitsForProperty(int $propertyId = 0): Collection
     {
-        $query = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label');
+        $query = PropertyUnit::query()
+            ->select(['id', 'label', 'property_id'])
+            ->with('property:id,name')
+            ->orderBy('property_id')
+            ->orderBy('label');
         if ($propertyId > 0) {
             $query->where('property_id', $propertyId);
         }

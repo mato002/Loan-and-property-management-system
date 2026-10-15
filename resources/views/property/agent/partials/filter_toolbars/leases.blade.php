@@ -27,10 +27,6 @@
     :action="$leasesUrl"
     :reset-url="$leasesUrl"
     :drawer-label="$drawerLabel"
-    data-filter-cascade="property-unit-tenant"
-    data-filter-cascade-tenant-field="pm_tenant_id"
-    data-filter-cascade-catalog="{!! \Illuminate\Support\Js::from($filterCascadeCatalog ?? ['units' => [], 'tenants' => []]) !!}"
-    data-filter-cascade-auto-apply="true"
     :chip-labels="$chipLabels"
 >
     <x-slot name="primary">
