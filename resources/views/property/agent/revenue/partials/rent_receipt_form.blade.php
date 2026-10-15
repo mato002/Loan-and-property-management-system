@@ -16,6 +16,7 @@
     method="post"
     action="{{ route('property.payments.store') }}"
     class="space-y-3"
+    @submit="confirmOnAccount($event)"
     x-data="rentReceiptForm({{ \Illuminate\Support\Js::from($receiptConfig) }})"
     x-init="init()"
 >
@@ -229,6 +230,7 @@
             amount: config.old?.amount || '',
             amountTouched: Boolean(config.old?.amount),
             oldAllocations: config.old?.allocations || {},
+            creditConfirmed: false,
             init() {
                 const byTenant = {};
                 this.invoices.forEach((invoice) => {
@@ -363,6 +365,45 @@
                     row.payment = paymentCents > 0 ? (paymentCents / 100).toFixed(2) : '';
                     remainingCents -= paymentCents;
                 });
+            },
+            async confirmOnAccount(event) {
+                if (this.creditConfirmed) {
+                    this.creditConfirmed = false;
+                    return;
+                }
+
+                const credit = this.onAccount;
+                if (credit < 0.01) {
+                    return;
+                }
+
+                event.preventDefault();
+                const form = event.currentTarget;
+                const submitter = event.submitter;
+                const amountText = `KES ${this.money(credit)}`;
+                const result = window.Swal?.fire
+                    ? await window.Swal.fire({
+                        icon: 'warning',
+                        title: 'Record extra amount as tenant credit?',
+                        text: `${amountText} will be held on the tenant account for future invoices. Continue?`,
+                        showCancelButton: true,
+                        confirmButtonText: 'Save as credit',
+                        cancelButtonText: 'Review amount',
+                        confirmButtonColor: '#2563eb',
+                        cancelButtonColor: '#64748b',
+                    })
+                    : { isConfirmed: window.confirm(`${amountText} will be held on the tenant account as credit. Continue?`) };
+
+                if (!result.isConfirmed) {
+                    return;
+                }
+
+                this.creditConfirmed = true;
+                if (typeof form.requestSubmit === 'function') {
+                    submitter ? form.requestSubmit(submitter) : form.requestSubmit();
+                } else {
+                    form.submit();
+                }
             },
             rowBalance(row) {
                 return Math.max(0, Number(row.due || 0) - (Number(row.payment) || 0));
