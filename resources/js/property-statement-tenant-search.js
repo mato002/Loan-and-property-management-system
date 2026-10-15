@@ -23,12 +23,14 @@ function renderSuggestions(input, state, items) {
         option.textContent = tenant.label || tenant.name || '';
         option.addEventListener('mousedown', (event) => {
             event.preventDefault();
-            const form = input.closest('[data-statement-assign]');
-            const hidden = form?.querySelector('[name="tenant_id"]');
+            const row = input.closest('[data-statement-split-row]');
+            const form = input.closest('[data-statement-assign], [data-statement-split]');
+            const hidden = row?.querySelector('[data-split-tenant-id]') || form?.querySelector('[name="tenant_id"]');
             if (!hidden) return;
             hidden.value = String(tenant.id);
             input.value = option.textContent;
             input.setCustomValidity('');
+            input.dispatchEvent(new CustomEvent('tenant:selected', { bubbles: true, detail: { id: tenant.id } }));
             closeSuggestions(state);
         });
         menu.appendChild(option);
@@ -48,7 +50,7 @@ async function search(input, state) {
     state.controller?.abort();
     state.controller = new AbortController();
     const requestController = state.controller;
-    const spinner = input.closest('[data-statement-assign]')?.querySelector('[data-search-spinner]');
+    const spinner = input.closest('[data-statement-assign], [data-statement-split-row]')?.querySelector('[data-search-spinner]');
     spinner?.classList.remove('hidden');
 
     try {
@@ -73,11 +75,12 @@ async function search(input, state) {
 }
 
 document.addEventListener('input', (event) => {
-    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query]');
+    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query], [data-statement-split-row] [data-tenant-query]');
     if (!input) return;
 
+    const row = input.closest('[data-statement-split-row]');
     const form = input.closest('[data-statement-assign]');
-    const hidden = form?.querySelector('[name="tenant_id"]');
+    const hidden = row?.querySelector('[data-split-tenant-id]') || form?.querySelector('[name="tenant_id"]');
     if (!hidden) return;
     hidden.value = '';
     input.setCustomValidity('');
@@ -89,14 +92,14 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('focusin', (event) => {
-    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query]');
+    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query], [data-statement-split-row] [data-tenant-query]');
     if (input && input.value.trim().length >= 2) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
     }
 });
 
 document.addEventListener('keydown', (event) => {
-    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query]');
+    const input = event.target.closest?.('[data-statement-assign] [data-tenant-query], [data-statement-split-row] [data-tenant-query]');
     if (!input) return;
     const state = states.get(input);
     if (event.key === 'Escape' && state) closeSuggestions(state);
@@ -116,7 +119,7 @@ document.addEventListener('submit', (event) => {
 
 document.addEventListener('click', (event) => {
     if (event.target.closest?.('[data-tenant-menu]')) return;
-    document.querySelectorAll('[data-statement-assign] [data-tenant-query]').forEach((input) => {
+    document.querySelectorAll('[data-statement-assign] [data-tenant-query], [data-statement-split-row] [data-tenant-query]').forEach((input) => {
         const state = states.get(input);
         if (state) closeSuggestions(state);
     });

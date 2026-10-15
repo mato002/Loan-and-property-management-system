@@ -24,8 +24,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -428,6 +430,10 @@ class PropertyStatementImportController extends Controller
             abort(404);
         }
 
+        if ($request->boolean('split')) {
+            return $this->splitLineAcrossTenants($request, $statement, $line, $recovery, $payments, $auditLogs);
+        }
+
         $data = $request->validate([
             'tenant_id' => ['required', 'integer', 'exists:pm_tenants,id'],
         ]);
@@ -542,6 +548,158 @@ class PropertyStatementImportController extends Controller
         }
 
         return back()->with('status', 'Assigned to '.$tenant->name.' and posted.');
+    }
+
+    private function splitLineAcrossTenants(
+        Request $request,
+        PmBankStatement $statement,
+        PmBankStatementLine $line,
+        PropertyStatementMissingPaymentRecoveryService $recovery,
+        EquityPaymentRepository $payments,
+        PaymentAuditLogRepository $auditLogs,
+    ): RedirectResponse {
+        if ((string) $line->direction !== 'credit' || $line->isAllocatedToTenant()) {
+            return back()->withErrors(['allocations' => 'Only an unmatched credit can be split across tenants.']);
+        }
+
+        $data = $request->validate([
+            'allocations' => ['required', 'array', 'min:2', 'max:20'],
+            'allocations.*.tenant_id' => ['required', 'integer', 'distinct', 'exists:pm_tenants,id'],
+            'allocations.*.amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
+        ]);
+
+        $tenantIds = array_map('intval', array_column($data['allocations'], 'tenant_id'));
+        $tenants = PmTenant::query()->whereIn('id', $tenantIds)->get()->keyBy('id');
+        if ($tenants->count() !== count($tenantIds)) {
+            return back()->withErrors(['allocations' => 'One or more tenants are outside your workspace.'])->withInput();
+        }
+
+        $allocationCents = array_sum(array_map(
+            static fn (array $allocation): int => (int) round((float) $allocation['amount'] * 100),
+            $data['allocations'],
+        ));
+        $lineCents = (int) round((float) $line->amount * 100);
+        if ($allocationCents !== $lineCents) {
+            return back()->withErrors(['allocations' => 'Split amounts must add up to exactly '.number_format((float) $line->amount, 2).'.'])->withInput();
+        }
+
+        $unassignedId = (int) ($line->unassigned_payment_id ?? 0);
+        if ($unassignedId <= 0) {
+            $prepared = $recovery->recoverLine($line, (int) $request->user()->id);
+            $unassignedId = (int) ($prepared['unassigned_payment_id'] ?? 0);
+            if ($unassignedId <= 0) {
+                return back()->withErrors(['allocations' => $prepared['errors'][0] ?? 'This statement line could not be prepared for assignment.']);
+            }
+            $line->refresh();
+        }
+
+        $unassigned = UnassignedPayment::query()->lockForUpdate()->find($unassignedId);
+        if (! $unassigned) {
+            return back()->withErrors(['allocations' => 'The unmatched payment is no longer available.']);
+        }
+        if ((int) round((float) $unassigned->amount * 100) !== $lineCents) {
+            return back()->withErrors(['allocations' => 'The unmatched payment amount changed. Reload the statement and try again.']);
+        }
+
+        $originalTransactionId = (string) $unassigned->transaction_id;
+        $splitGroupId = 'bank-line-'.$line->id.'-'.substr(hash('sha256', $originalTransactionId), 0, 12);
+        $recipients = [];
+        foreach ($data['allocations'] as $allocation) {
+            $tenant = $tenants->get((int) $allocation['tenant_id']);
+            $recipients[] = [
+                'tenant_id' => (int) $tenant->id,
+                'name' => (string) $tenant->name,
+                'account_number' => (string) ($tenant->account_number ?? ''),
+                'amount' => round((float) $allocation['amount'], 2),
+            ];
+        }
+
+        $method = (string) ($unassigned->payment_method ?: 'statement_import');
+        $options = [
+            'payment_method' => $method,
+            'channel' => 'bank_statement',
+            'source' => 'statement_import',
+            'provider' => 'mpesa',
+            'message' => 'Split bank-statement receipt assigned to tenants.',
+            'agent_user_id' => (int) $request->user()->id,
+        ];
+
+        $created = [];
+        DB::transaction(function () use (
+            $data, $line, $unassigned, $request, $payments, $auditLogs, $tenants,
+            $originalTransactionId, $splitGroupId, $recipients, $options, &$created
+        ): void {
+            Payment::query()
+                ->where('transaction_id', $originalTransactionId)
+                ->where('status', 'unmatched')
+                ->delete();
+
+            $count = count($data['allocations']);
+            foreach (array_values($data['allocations']) as $index => $allocation) {
+                $tenant = $tenants->get((int) $allocation['tenant_id']);
+                $partNumber = $index + 1;
+                $suffix = ':SPLIT:'.substr(hash('sha256', $originalTransactionId), 0, 12).':'.str_pad((string) $partNumber, 2, '0', STR_PAD_LEFT);
+                $partTransactionId = substr($originalTransactionId, 0, 255 - strlen($suffix)).$suffix;
+                $amount = round((float) $allocation['amount'], 2);
+                $tx = [
+                    'transaction_id' => $partTransactionId,
+                    'external_transaction_reference' => $originalTransactionId,
+                    'amount' => $amount,
+                    'account_number' => (string) ($tenant->account_number ?? ''),
+                    'tenant_account_number' => (string) ($tenant->account_number ?? ''),
+                    'phone' => (string) ($unassigned->phone ?? ''),
+                    'payer_name' => (string) ($line->counterparty ?? ''),
+                    'reference' => (string) ($line->reference ?? ''),
+                    'transaction_date' => $line->txn_date ?? $unassigned->created_at ?? now(),
+                    'split_group_id' => $splitGroupId,
+                    'split_payment' => true,
+                    'split_index' => $partNumber,
+                    'split_count' => $count,
+                    'split_recipients' => $recipients,
+                    'raw_payload' => [
+                        'manual_assigned' => true,
+                        'split_payment' => true,
+                        'split_group_id' => $splitGroupId,
+                        'original_transaction_id' => $originalTransactionId,
+                        'unassigned_payment_id' => (int) $unassigned->id,
+                        'pm_bank_statement_line_id' => (int) $line->id,
+                        'split_index' => $partNumber,
+                        'split_count' => $count,
+                        'split_recipients' => $recipients,
+                    ],
+                ];
+                $payment = $payments->storeMatched($tx, (int) $tenant->id, 'manual_split', $options);
+                $created[] = [
+                    'tenant_id' => (int) $tenant->id,
+                    'tenant_name' => (string) $tenant->name,
+                    'amount' => $amount,
+                    'payment_id' => (int) $payment->id,
+                    'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
+                ];
+            }
+
+            $firstPaymentId = (int) ($created[0]['pm_payment_id'] ?? 0);
+            $line->update([
+                'match_status' => PmBankStatementLine::MATCH_MATCHED,
+                'matched_type' => 'payment_split',
+                'pm_payment_id' => $firstPaymentId > 0 ? $firstPaymentId : null,
+                'unassigned_payment_id' => null,
+            ]);
+            $unassigned->delete();
+
+            $auditLogs->decision('success', [
+                'stage' => 'manual_split_assign',
+                'decision' => 'split_assigned',
+                'unassigned_payment_id' => (int) $unassigned->id,
+                'transaction_id' => $originalTransactionId,
+                'split_group_id' => $splitGroupId,
+                'pm_bank_statement_line_id' => (int) $line->id,
+                'allocations' => $created,
+            ], 'manual_split_assign_decision');
+
+        });
+
+        return back()->with('status', 'Receipt split across '.count($created).' tenants and posted. Each tenant payment keeps the same bank receipt reference.');
     }
 
     public function classifyPayee(Request $request, PmBankStatement $statement, PmBankStatementLine $line): RedirectResponse

@@ -124,7 +124,15 @@
                         </td>
                         <td class="px-3 py-2">{{ $line->counterparty ?: '—' }}</td>
                         <td data-col="tenant" class="px-3 py-2">
-                            @if ($tenantAccount !== '' || $tenantName !== '')
+                            @if (data_get($line->payment?->meta, 'split_payment'))
+                                @php $splitRecipients = (array) data_get($line->payment?->meta, 'split_recipients', []); @endphp
+                                <div class="text-xs font-semibold text-emerald-800">Split across {{ count($splitRecipients) }} tenants</div>
+                                @foreach ($splitRecipients as $recipient)
+                                    <div class="text-xs text-slate-700">
+                                        {{ $recipient['name'] ?? 'Tenant' }} · {{ \App\Services\Property\PropertyMoney::kes((float) ($recipient['amount'] ?? 0)) }}
+                                    </div>
+                                @endforeach
+                            @elseif ($tenantAccount !== '' || $tenantName !== '')
                                 @if ($tenantAccount !== '')
                                     <div class="font-mono text-xs font-semibold text-slate-900">{{ $tenantAccount }}</div>
                                 @endif
@@ -170,6 +178,14 @@
                                             </span>
                                         </div>
                                         <button type="submit" class="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800 transition-colors whitespace-nowrap">Assign</button>
+                                        <button
+                                            type="button"
+                                            data-open-statement-split
+                                            data-split-url="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}"
+                                            data-split-amount="{{ number_format((float) $line->amount, 2, '.', '') }}"
+                                            data-split-reference="{{ $line->reference }}"
+                                            class="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 whitespace-nowrap"
+                                        >Split</button>
                                     </form>
                                 @elseif ($paymentId > 0)
                                     <a href="{{ route('property.payments.receipt.show', $paymentId) }}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
@@ -228,6 +244,33 @@
     </div>
 
     <div class="mt-4">{{ $lines->links() }}</div>
+
+    <div data-statement-split-modal class="fixed inset-0 z-[7000] hidden items-center justify-center bg-slate-950/50 p-4" aria-hidden="true">
+        <section role="dialog" aria-modal="true" aria-labelledby="statement-split-title" class="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 id="statement-split-title" class="text-lg font-bold text-slate-900">Split bank receipt</h2>
+                    <p class="mt-1 text-sm text-slate-600">Assign this one receipt across tenants. The amounts must add up to the full transaction.</p>
+                </div>
+                <button type="button" data-close-statement-split class="rounded-lg px-3 py-1 text-xl text-slate-500 hover:bg-slate-100" aria-label="Close">×</button>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm">
+                <div>Receipt <span data-split-reference-label class="font-mono font-semibold"></span></div>
+                <div>Total <span data-split-total-label class="font-bold tabular-nums"></span></div>
+            </div>
+            <form method="POST" data-statement-split data-search-url="{{ route('property.revenue.statements.search.tenants', [], false) }}" class="mt-4 space-y-3">
+                @csrf
+                <input type="hidden" name="split" value="1">
+                <div data-split-rows class="max-h-[50vh] space-y-2 overflow-y-auto pr-1"></div>
+                <button type="button" data-add-split-recipient class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add tenant</button>
+                <p data-split-total-status class="text-sm font-medium text-amber-700" aria-live="polite"></p>
+                <div class="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                    <button type="button" data-close-statement-split class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+                    <button type="submit" data-submit-statement-split disabled class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Split &amp; post receipts</button>
+                </div>
+            </form>
+        </section>
+    </div>
 </x-property.workspace>
 
 <script>

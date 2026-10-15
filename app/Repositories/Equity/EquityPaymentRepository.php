@@ -113,6 +113,11 @@ class EquityPaymentRepository
                 'skip_notification' => (bool) ($options['skip_notification'] ?? true),
                 'match_mode' => $options['match_mode'] ?? null,
             ];
+            foreach (['split_payment', 'split_group_id', 'split_index', 'split_count', 'split_recipients'] as $splitKey) {
+                if (array_key_exists($splitKey, $tx)) {
+                    $meta[$splitKey] = $tx[$splitKey];
+                }
+            }
             if (! empty($tx['invoice_id'])) {
                 $meta['invoice_id'] = (int) $tx['invoice_id'];
             }

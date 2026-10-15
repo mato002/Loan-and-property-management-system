@@ -890,46 +890,59 @@ class PmPaymentController extends Controller
     {
         DB::transaction(function () use ($request, $payment, $reason): void {
             $lockedPayment = PmPayment::query()->lockForUpdate()->findOrFail($payment->id);
-
-            if (strtolower(trim((string) $lockedPayment->channel)) !== 'bank_statement') {
-                throw new RuntimeException('Only bank-statement payments can use this reversal action.');
-            }
-            if ($lockedPayment->status !== PmPayment::STATUS_COMPLETED) {
-                throw new RuntimeException('Only completed bank-statement payments can be reversed.');
-            }
-            if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_PENDING) {
-                throw new RuntimeException('This payment already has a reversal awaiting approval.');
-            }
-            if ($lockedPayment->reversal_status === PmPayment::REVERSAL_STATUS_REVERSED) {
-                throw new RuntimeException('This payment has already been reversed.');
-            }
-
             $actorId = (int) $request->user()->id;
             $reason = trim($reason);
             if ($reason === '') {
                 $reason = 'Reversed bank-statement payment match by '.$request->user()->name.'.';
             }
 
-            app(PropertyTransactionReversalService::class)->reversePayment(
-                $lockedPayment,
-                $actorId,
-                $reason,
-                (int) ($lockedPayment->meta['utility_override_request_id'] ?? 0) ?: null,
-            );
+            $splitGroupId = (string) data_get($lockedPayment->meta, 'split_group_id', '');
+            $groupQuery = PmPayment::query();
+            if ($splitGroupId !== '') {
+                $groupQuery->where('meta->split_group_id', $splitGroupId);
+            } else {
+                $groupQuery->whereKey($lockedPayment->id);
+            }
+            $group = $groupQuery->lockForUpdate()->get();
+            if ($group->isEmpty()) {
+                throw new RuntimeException('Payment split group could not be found.');
+            }
 
-            $reversedAt = now();
-            $lockedPayment->refresh();
-            $lockedPayment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
-            $lockedPayment->reversal_reason = $reason;
-            $lockedPayment->reversal_requested_by = $actorId;
-            $lockedPayment->reversal_requested_at = $reversedAt;
-            $lockedPayment->reversal_approved_by = $actorId;
-            $lockedPayment->reversal_approved_at = $reversedAt;
-            $lockedPayment->save();
+            foreach ($group as $groupPayment) {
+                if (strtolower(trim((string) $groupPayment->channel)) !== 'bank_statement') {
+                    throw new RuntimeException('Only bank-statement payments can use this reversal action.');
+                }
+                if ($groupPayment->status !== PmPayment::STATUS_COMPLETED) {
+                    throw new RuntimeException('Every part of a split must be completed before the receipt can be reversed.');
+                }
+                if ($groupPayment->reversal_status === PmPayment::REVERSAL_STATUS_PENDING) {
+                    throw new RuntimeException('A part of this receipt already has a reversal awaiting approval.');
+                }
+                if ($groupPayment->reversal_status === PmPayment::REVERSAL_STATUS_REVERSED) {
+                    throw new RuntimeException('This receipt or one of its split parts has already been reversed.');
+                }
+
+                app(PropertyTransactionReversalService::class)->reversePayment(
+                    $groupPayment,
+                    $actorId,
+                    $reason,
+                    (int) ($groupPayment->meta['utility_override_request_id'] ?? 0) ?: null,
+                );
+
+                $reversedAt = now();
+                $groupPayment->refresh();
+                $groupPayment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;
+                $groupPayment->reversal_reason = $reason;
+                $groupPayment->reversal_requested_by = $actorId;
+                $groupPayment->reversal_requested_at = $reversedAt;
+                $groupPayment->reversal_approved_by = $actorId;
+                $groupPayment->reversal_approved_at = $reversedAt;
+                $groupPayment->save();
+            }
 
             if (Schema::hasTable('pm_bank_statement_lines')) {
                 PmBankStatementLine::query()
-                    ->where('pm_payment_id', $lockedPayment->id)
+                    ->whereIn('pm_payment_id', $group->pluck('id'))
                     ->update([
                         'match_status' => PmBankStatementLine::MATCH_UNMATCHED,
                         'matched_type' => null,
