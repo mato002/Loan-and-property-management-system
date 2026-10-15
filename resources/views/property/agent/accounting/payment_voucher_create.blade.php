@@ -8,13 +8,29 @@
 >
     <form method="post" action="{{ route('property.accounting.payables.payment_vouchers.store', absolute: false) }}" class="property-compact-panel max-w-5xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-4">
         @csrf
-        @if ($preselectedBill ?? false)
-            <input type="hidden" name="pm_ezen_bill_id" value="{{ $preselectedBill->id }}" />
-            <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
-                Paying bill <strong>{{ $preselectedBill->ezen_bill_no }}</strong> for {{ $preselectedBill->vendor_name }}. Remaining due: <strong>{{ number_format((float) $preselectedBill->amount_due, 2) }}</strong>. The voucher will update the bill and post the property expense.
+        <input type="hidden" name="pm_ezen_bill_id" value="{{ old('pm_ezen_bill_id', ($preselectedBill ?? null)?->id) }}" data-linked-bill-id />
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor bill (optional)</label>
+                <select data-linked-bill-select class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <option value="">General payment — no bill</option>
+                    @foreach ($openBills as $billOption)
+                        @php($propertyLabel = $properties->firstWhere('id', $billOption->property_id)?->name ?? '')
+                        <option value="{{ $billOption->id }}"
+                            data-vendor="{{ $billOption->vendor_name }}"
+                            data-reference="{{ $billOption->vendor_invoice_no ?: $billOption->ezen_bill_no }}"
+                            data-due="{{ $billOption->amount_due }}"
+                            data-property="{{ $billOption->property_id }}"
+                            data-memo="{{ $billOption->memo }}"
+                            @selected((string) old('pm_ezen_bill_id', ($preselectedBill ?? null)?->id) === (string) $billOption->id)>
+                            {{ $billOption->vendor_name }} — {{ $billOption->ezen_bill_no }}{{ $propertyLabel ? ' · '.$propertyLabel : '' }} · Due {{ number_format((float) $billOption->amount_due, 2) }}
+                        </option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-slate-500" data-bill-link-hint>Select the vendor bill being paid. Saving the voucher will apply the payment to its balance automatically.</p>
+                @error('pm_ezen_bill_id')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
-            @error('pm_ezen_bill_id')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
-        @endif
+        </div>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Voucher date</label>
@@ -23,7 +39,7 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Payee</label>
-                <input type="text" name="payee" required value="{{ old('payee', ($preselectedBill ?? null)?->vendor_name) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="payee" required value="{{ old('payee', ($preselectedBill ?? null)?->vendor_name) }}" data-voucher-payee class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('payee')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -48,12 +64,12 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference no.</label>
-                <input type="text" name="ref_no" required value="{{ old('ref_no', ($preselectedBill ?? null)?->vendor_invoice_no ?: ($preselectedBill->ezen_bill_no ?? '')) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="ref_no" required value="{{ old('ref_no', ($preselectedBill ?? null)?->vendor_invoice_no ?: ($preselectedBill->ezen_bill_no ?? '')) }}" data-voucher-reference class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('ref_no')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Control amount</label>
-                <input type="number" name="control_amount" required min="0.01" step="0.01" value="{{ old('control_amount', ($preselectedBill ?? null)?->amount_due) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="number" name="control_amount" required min="0.01" step="0.01" value="{{ old('control_amount', ($preselectedBill ?? null)?->amount_due) }}" data-voucher-control-amount class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('control_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -111,7 +127,7 @@
                         @for ($i = 0; $i < 6; $i++)
                             <tr data-voucher-line class="border-t border-slate-100 dark:border-slate-800">
                                 <td class="px-1 py-1">
-                                    <select name="lines[{{ $i }}][property_id]" class="w-40 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
+                                    <select name="lines[{{ $i }}][property_id]" @if ($i === 0) data-voucher-property @endif class="w-40 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
                                         <option value="">—</option>
                                         @foreach ($properties as $property)
                                         <option value="{{ $property->id }}" @selected((string) old('lines.'.$i.'.property_id', ($i === 0 ? ($preselectedBill->property_id ?? null) : null)) === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
@@ -135,10 +151,10 @@
                                     </select>
                                 </td>
                                 <td class="px-1 py-1">
-                                    <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description', $i === 0 ? ($preselectedBill->memo ?? '') : '') }}" class="w-36 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                    <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description', $i === 0 ? ($preselectedBill->memo ?? '') : '') }}" @if ($i === 0) data-voucher-description @endif class="w-36 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
                                 </td>
                                 <td class="px-1 py-1">
-                                    <input type="number" data-amount name="lines[{{ $i }}][amount]" min="0" step="0.01" value="{{ old('lines.'.$i.'.amount', $i === 0 ? ($preselectedBill->amount_due ?? '') : '') }}" class="w-24 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                    <input type="number" data-amount name="lines[{{ $i }}][amount]" @if ($i === 0) data-voucher-first-amount @endif min="0" step="0.01" value="{{ old('lines.'.$i.'.amount', $i === 0 ? ($preselectedBill->amount_due ?? '') : '') }}" class="w-24 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
                                 </td>
                                 <td class="px-1 py-1">
                                     <input type="number" data-rate name="lines[{{ $i }}][tax_rate]" min="0" max="100" step="0.01" value="{{ old('lines.'.$i.'.tax_rate') }}" class="w-16 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
@@ -205,6 +221,27 @@
             };
             root.addEventListener('input', recalc);
             control.addEventListener('input', recalc);
+            const billSelect = document.querySelector('[data-linked-bill-select]');
+            const billId = document.querySelector('[data-linked-bill-id]');
+            billSelect?.addEventListener('change', () => {
+                const option = billSelect.selectedOptions[0];
+                if (!option?.value) {
+                    billId.value = '';
+                    return;
+                }
+                billId.value = option.value;
+                const setValue = (selector, value) => {
+                    const field = document.querySelector(selector);
+                    if (field && value !== null && value !== undefined) field.value = value;
+                };
+                setValue('[data-voucher-payee]', option.dataset.vendor || '');
+                setValue('[data-voucher-reference]', option.dataset.reference || '');
+                setValue('[data-voucher-control-amount]', option.dataset.due || '');
+                setValue('[data-voucher-first-amount]', option.dataset.due || '');
+                setValue('[data-voucher-property]', option.dataset.property || '');
+                setValue('[data-voucher-description]', option.dataset.memo || '');
+                recalc();
+            });
             recalc();
         })();
     </script>

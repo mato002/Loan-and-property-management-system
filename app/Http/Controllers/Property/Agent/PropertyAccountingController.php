@@ -3316,10 +3316,18 @@ class PropertyAccountingController extends Controller
     {
         $billId = (int) $request->query('bill_id', 0);
         $bill = $billId > 0 ? PmEzenBill::query()->find($billId) : null;
+        $openBills = PmEzenBill::query()
+            ->where('amount_due', '>', 0)
+            ->where('listing_status', 'open')
+            ->orderBy('vendor_name')
+            ->orderByDesc('bill_date')
+            ->limit(500)
+            ->get(['id', 'ezen_bill_no', 'vendor_invoice_no', 'vendor_name', 'memo', 'amount_due', 'property_id', 'bill_date']);
 
         return property_view('property.agent.accounting.payment_voucher_create', [
             ...$this->paymentVoucherFormData($request),
             'preselectedBill' => $bill,
+            'openBills' => $openBills,
         ]);
     }
 

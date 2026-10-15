@@ -1,5 +1,5 @@
 @php
-    $showVendorFormByDefault = $errors->hasAny(['name', 'category', 'status', 'phone', 'email', 'rating']);
+    $showVendorFormByDefault = $errors->hasAny(['name', 'category', 'status', 'phone', 'email', 'rating', 'service_property_ids', 'service_name', 'service_monthly_amount', 'service_starts_on', 'service_billing_day']);
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
@@ -93,6 +93,45 @@
                             <option value="{{ $property->id }}" @selected((string) old('default_property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
                         @endforeach
                     </select>
+                </div>
+                <div class="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+                    <h4 class="text-sm font-semibold text-slate-800">Services and properties served</h4>
+                    <p class="mt-1 text-xs text-slate-600">For a recurring service such as garbage collection, select every property this vendor serves. The system creates one recurring agreement per property, which can be used to generate that property’s monthly bill.</p>
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Service provided</label>
+                            <input type="text" name="service_name" value="{{ old('service_name', old('category')) }}" placeholder="e.g. Garbage collection" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            @error('service_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Properties served</label>
+                            <select name="service_property_ids[]" multiple size="4" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                @foreach ($properties ?? [] as $property)
+                                    <option value="{{ $property->id }}" @selected(in_array((string) $property->id, array_map('strval', old('service_property_ids', [])), true))>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                                @endforeach
+                            </select>
+                            <span class="mt-1 block text-xs text-slate-500">Use Ctrl (Windows) or Cmd (Mac) to select more than one.</span>
+                            @error('service_property_ids')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                            @error('service_property_ids.*')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly amount per property (KES)</label>
+                            <input type="number" name="service_monthly_amount" min="0.01" step="0.01" value="{{ old('service_monthly_amount') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            @error('service_monthly_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreement starts</label>
+                            <input type="date" name="service_starts_on" value="{{ old('service_starts_on', now()->toDateString()) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            @error('service_starts_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly billing day</label>
+                            <input type="number" name="service_billing_day" min="1" max="28" value="{{ old('service_billing_day', 1) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            @error('service_billing_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                    @error('service_property_ids.*')<p class="mt-2 text-xs text-red-600">{{ $message }}</p>@enderror
+                    <p class="mt-2 text-xs text-amber-800">The same monthly amount is applied to each selected property. Add separate agreements from the vendor profile if costs differ by property.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank</label>

@@ -527,17 +527,46 @@ class PmVendorWebController extends Controller
             'bank_account_number' => ['nullable', 'string', 'max:100'],
             'creditor_account' => ['nullable', 'string', 'max:120'],
             'default_property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'service_property_ids' => ['nullable', 'array'],
+            'service_property_ids.*' => ['integer', 'distinct', 'exists:properties,id'],
+            'service_name' => ['nullable', 'required_with:service_property_ids', 'string', 'max:191'],
+            'service_monthly_amount' => ['nullable', 'required_with:service_property_ids', 'numeric', 'gt:0'],
+            'service_starts_on' => ['nullable', 'required_with:service_property_ids', 'date'],
+            'service_billing_day' => ['nullable', 'required_with:service_property_ids', 'integer', 'between:1,28'],
         ]);
         $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
+        foreach ($data['service_property_ids'] ?? [] as $propertyId) {
+            $this->assertDefaultPropertyInWorkspace((int) $propertyId);
+        }
 
-        $vendor = PmVendor::query()->create([
-            ...$data,
-            'agent_user_id' => (int) $request->user()->id,
-        ]);
+        $vendor = DB::transaction(function () use ($data, $request): PmVendor {
+            $vendorData = collect($data)->except([
+                'service_property_ids', 'service_name', 'service_monthly_amount',
+                'service_starts_on', 'service_billing_day',
+            ])->all();
+            $vendor = PmVendor::query()->create([
+                ...$vendorData,
+                'agent_user_id' => (int) $request->user()->id,
+            ]);
+
+            foreach ($data['service_property_ids'] ?? [] as $propertyId) {
+                $vendor->serviceAgreements()->create([
+                    'agent_user_id' => \App\Models\Concerns\AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) $request->user()->id,
+                    'property_id' => (int) $propertyId,
+                    'service_name' => $data['service_name'],
+                    'monthly_amount' => $data['service_monthly_amount'],
+                    'starts_on' => $data['service_starts_on'],
+                    'billing_day' => $data['service_billing_day'],
+                    'status' => 'active',
+                ]);
+            }
+
+            return $vendor;
+        });
 
         $nextSteps = [
             'title' => 'Vendor saved',
-            'message' => 'Next, assign this vendor to maintenance jobs or include them when preparing RFQs.',
+            'message' => 'The vendor is ready to use. Review service agreements and property assignments on the vendor profile, or assign them to a maintenance job or RFQ.',
             'vendor' => [
                 'id' => $vendor->id,
                 'name' => $vendor->name,
@@ -546,6 +575,13 @@ class PmVendorWebController extends Controller
                 'email' => $vendor->email,
             ],
             'actions' => [
+                [
+                    'label' => 'Open vendor profile',
+                    'href' => route('property.vendors.show', $vendor, absolute: false),
+                    'kind' => 'primary',
+                    'icon' => 'fa-solid fa-building-user',
+                    'turbo_frame' => 'property-main',
+                ],
                 [
                     'label' => 'Create RFQ draft',
                     'href' => route('property.vendors.bidding_create', absolute: false),

@@ -10,6 +10,9 @@
     @endif
     @if (! $isPaid && $due > 0.009)
         <a href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-700/50">Record payment voucher</a>
+        @if (auth()->user()?->hasPmPermission('accounting.entries.manage'))
+            <a href="{{ route('property.accounting.payables.accounts_payable.link_voucher_form', $bill, false) }}" data-property-form-modal data-property-form-modal-title="Link existing payment voucher" class="block px-3 py-2 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-slate-700/50">Link existing voucher</a>
+        @endif
         <a href="{{ route('property.accounting.payables.payment_vouchers', ['q' => $bill->ezen_bill_no], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50 dark:text-teal-200 dark:hover:bg-slate-700/50">Related vouchers</a>
         <a href="{{ route('property.settings.register_imports') }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-slate-700/50">Import payment voucher</a>
     @endif
