@@ -125,7 +125,7 @@
                 x-show="open"
                 x-cloak
                 x-transition.opacity.duration.150ms
-                class="absolute right-0 z-40 mt-2 w-[min(100vw-2rem,22rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                class="absolute left-0 right-auto z-[120] mt-2 w-[min(100vw-2rem,22rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
                 style="top: 100%;"
                 role="dialog"
                 aria-label="Statement export options"

@@ -50,21 +50,6 @@
     :empty-title="$s ? 'No units on this property' : 'Choose filters to preview settlement'"
     :empty-hint="$s ? 'Add units to the property to build the statement matrix.' : 'Property + landlord + month.'"
 >
-    <x-slot name="actions">
-        @if ($s)
-            @php
-                $exportQuery = array_filter([
-                    'property_id' => $filters['property_id'] ?? null,
-                    'landlord_id' => $filters['landlord_id'] ?? null,
-                    'month' => $filters['month'] ?? null,
-                ]);
-            @endphp
-            <a href="{{ route('property.accounting.payables.landlord_settlements', array_merge($exportQuery, ['export' => 'pdf'])) }}" data-turbo="false" target="_blank" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">Export PDF</a>
-            <a href="{{ route('property.accounting.payables.landlord_settlements', array_merge($exportQuery, ['export' => 'csv'])) }}" data-turbo="false" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Export CSV</a>
-            <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Print</button>
-        @endif
-    </x-slot>
-
     <x-slot name="toolbar">
         <div class="w-full flex flex-wrap items-end justify-between gap-3">
             <form method="get" action="{{ route('property.accounting.payables.landlord_settlements') }}" class="flex flex-wrap items-end gap-2">

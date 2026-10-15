@@ -160,6 +160,13 @@ function showFormModalSuccess(message) {
     }
 }
 
+function showFormModalError(message, title = 'Could not save lease') {
+    const text = (message || 'The lease could not be saved. Please try again.').trim();
+    if (typeof window.Swal?.fire === 'function') {
+        void window.Swal.fire({ icon: 'error', title, text, confirmButtonColor: '#dc2626' });
+    }
+}
+
 function extractSuccessMessage(root) {
     const el = root instanceof Element
         ? root.querySelector('[data-property-form-modal-success]')
@@ -431,12 +438,28 @@ function registerPropertyFormModalAlpine() {
                     }
 
                     this.renderSource(source);
+                    if (form.hasAttribute('data-property-form-modal-alerts')) {
+                        const validationErrors = [...this.$refs.frameHost.querySelectorAll('.text-red-600, .text-rose-600')]
+                            .map((node) => (node.textContent || '').trim())
+                            .filter(Boolean);
+                        if (!response.ok || validationErrors.length > 0) {
+                            showFormModalError(
+                                validationErrors.length > 0
+                                    ? [...new Set(validationErrors)].join('\n')
+                                    : `The lease could not be saved (server response ${response.status}).`,
+                                validationErrors.length > 0 ? 'Check the lease details' : 'Lease save failed',
+                            );
+                        }
+                    }
                     if (typeof window.__runSwalFlash === 'function') {
                         void window.__runSwalFlash(this.$refs.frameHost);
                     }
                 } catch (error) {
                     console.error('[PropertyFormModal] submit failed', error);
                     this.error = error instanceof Error ? error.message : 'Could not save.';
+                    if (form.hasAttribute('data-property-form-modal-alerts')) {
+                        showFormModalError(this.error, 'Lease save failed');
+                    }
                 } finally {
                     delete form.dataset.propertyModalSubmitting;
                     this.loading = false;

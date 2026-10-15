@@ -11,6 +11,7 @@
     <form
         method="post"
         action="{{ route('property.leases.update', $lease) }}"
+        data-property-form-modal-alerts="1"
         x-data="{
             showOpeningArrearsSection: @js($errors->hasAny(['opening_arrears_items','opening_arrears_items.*.type','opening_arrears_items.*.label','opening_arrears_items.*.period','opening_arrears_items.*.amount','opening_arrears_amount','opening_arrears_as_of','opening_arrears_notes']) || count((array) old('opening_arrears_items', (array) ($lease->pmTenant->opening_arrears_items ?? []))) > 0 || (float) old('opening_arrears_amount', $lease->pmTenant->opening_arrears_amount ?? 0) > 0 || trim((string) old('opening_arrears_notes', $lease->pmTenant->opening_arrears_notes ?? '')) !== ''),
             arrearsItems: @js(array_values((array) old('opening_arrears_items', (array) ($lease->pmTenant->opening_arrears_items ?? [])))),

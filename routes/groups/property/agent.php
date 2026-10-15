@@ -18,6 +18,7 @@ use App\Http\Controllers\Property\Agent\PmPaymentController;
 use App\Http\Controllers\Property\Agent\PmTenantCreditController;
 use App\Http\Controllers\Property\Agent\PmTenantDirectoryController;
 use App\Http\Controllers\Property\Agent\PmVendorWebController;
+use App\Http\Controllers\Property\Agent\PmVendorBillController;
 use App\Http\Controllers\Property\Agent\PropertyAdvisorWebController;
 use App\Http\Controllers\Property\Agent\PropertyAccountingController;
 use App\Http\Controllers\Property\Agent\PropertyAmenityController;
@@ -474,6 +475,8 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/accounting/payables/payment-vouchers/{voucher}/assign', [PropertyAccountingController::class, 'assignPaymentVoucherProperty'])->name('accounting.payables.payment_vouchers.assign');
     Route::post('/accounting/payables/payment-vouchers/assign-export', [PropertyAccountingController::class, 'assignPaymentVoucherExport'])->name('accounting.payables.payment_vouchers.assign_export');
     Route::post('/accounting/payables/accounts-payable/{bill}/mark-paid', [PropertyAccountingController::class, 'markVendorBillPaid'])->name('accounting.payables.accounts_payable.mark_paid');
+    Route::get('/accounting/payables/accounts-payable/create', [PmVendorBillController::class, 'create'])->middleware('property.permission:accounting.entries.manage')->name('accounting.payables.accounts_payable.create');
+    Route::post('/accounting/payables/accounts-payable', [PmVendorBillController::class, 'store'])->middleware('property.permission:accounting.entries.manage')->name('accounting.payables.accounts_payable.store');
     Route::put('/accounting/payables/property-takeon-balances/{takeon}', [PropertyAccountingController::class, 'updatePropertyTakeonBalance'])->whereNumber('takeon')->name('accounting.payables.property_takeon_balances.update');
     Route::get('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'landlordAdvances'])->name('accounting.payables.landlord_advances');
     Route::post('/accounting/payables/landlord-advances', [PropertyAccountingController::class, 'storeLandlordAdvance'])->name('accounting.payables.landlord_advances.store');

@@ -21,6 +21,9 @@
     </x-slot>
 
     <x-slot name="actions">
+        @if (auth()->user()?->hasPmPermission('accounting.entries.manage'))
+            <a href="{{ route('property.accounting.payables.accounts_payable.create', absolute: false) }}" data-property-form-modal data-property-form-modal-title="Create vendor bill" class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Create bill</a>
+        @endif
         @include('property.agent.partials.export_dropdown', [
             'route' => 'property.accounting.payables.accounts_payable',
             'query' => request()->except(['export', 'format', 'page']),

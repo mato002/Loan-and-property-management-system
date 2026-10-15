@@ -591,7 +591,7 @@ SQL;
             array_unshift(
                 $row,
                 new HtmlString(
-                    '<a href="'.route('property.leases.edit', $l, false).'" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">#'.$l->id.'</a>'
+                    '<a href="'.route('property.leases.show', $l, false).'" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">#'.$l->id.'</a>'
                 ),
                 new HtmlString(
                     '<label class="inline-flex items-center" data-row-ignore-click>'.
