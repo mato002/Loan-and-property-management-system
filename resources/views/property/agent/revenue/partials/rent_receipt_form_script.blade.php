@@ -7,6 +7,7 @@
             tenantId: config.old?.tenant_id || '',
             tenantQuery: '',
             pickerOpen: false,
+            tenantMenuStyle: 'position:fixed;z-index:12000;',
             phone: '',
             rows: [],
             amount: config.old?.amount || '',
@@ -34,6 +35,36 @@
                         this.selectTenant(selected, false);
                     }
                 }
+                this._placeTenantMenu = () => {
+                    if (this.pickerOpen) {
+                        this.placeTenantMenu();
+                    }
+                };
+                window.addEventListener('scroll', this._placeTenantMenu, true);
+                window.addEventListener('resize', this._placeTenantMenu);
+            },
+            destroy() {
+                window.removeEventListener('scroll', this._placeTenantMenu, true);
+                window.removeEventListener('resize', this._placeTenantMenu);
+            },
+            openTenantPicker() {
+                this.pickerOpen = true;
+                this.$nextTick(() => this.placeTenantMenu());
+            },
+            placeTenantMenu() {
+                const input = this.$refs.tenantInput;
+                if (!input) {
+                    return;
+                }
+                const rect = input.getBoundingClientRect();
+                if (rect.width < 1) {
+                    this.pickerOpen = false;
+                    return;
+                }
+                const width = Math.max(rect.width, 220);
+                const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+                const z = window.PropertyModalManager?.dropdownZIndex?.() ?? 12000;
+                this.tenantMenuStyle = `position:fixed;z-index:${z};top:${Math.round(rect.bottom + 4)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
             },
             get filteredTenants() {
                 const query = this.tenantQuery.trim().toLowerCase();
