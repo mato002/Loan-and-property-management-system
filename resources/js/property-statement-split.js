@@ -41,11 +41,11 @@
         parts.status.textContent = matches
             ? `Fully allocated: ${money(assignedCents)}`
             : remaining > 0
-                ? `${money(remaining)} remaining to allocate`
-                : `${money(Math.abs(remaining))} over the receipt amount`;
+                ? `${money(assignedCents)} allocated · ${money(remaining)} will remain unmatched`
+                : `${money(Math.abs(remaining))} over the available amount`;
         parts.status.classList.toggle('text-emerald-700', matches);
         parts.status.classList.toggle('text-amber-700', !matches);
-        parts.submit.disabled = recipientRows.length < 2 || !allTenantsSelected || !distinctTenants || !allPositive || !matches;
+        parts.submit.disabled = recipientRows.length < 2 || !allTenantsSelected || !distinctTenants || !allPositive || assignedCents <= 0 || remaining < 0;
     };
 
     const addRecipient = (parts) => {
@@ -79,6 +79,7 @@
             if (!parts?.form || !parts.rows) return;
             transactionCents = Math.round(Number(openButton.dataset.splitAmount || 0) * 100);
             parts.form.action = openButton.dataset.splitUrl;
+            parts.form.dataset.hasExistingSplit = openButton.dataset.splitExisting || '0';
             parts.referenceLabel.textContent = openButton.dataset.splitReference || 'Bank transaction';
             parts.totalLabel.textContent = money(transactionCents);
             parts.rows.replaceChildren();
@@ -105,7 +106,8 @@
             return;
         }
         const remove = target.closest('[data-remove-split-recipient]');
-        if (remove && parts.rows.querySelectorAll('[data-statement-split-row]').length > 2) {
+        const minRows = parts.form?.dataset.hasExistingSplit === '1' ? 1 : 2;
+        if (remove && parts.rows.querySelectorAll('[data-statement-split-row]').length > minRows) {
             remove.closest('[data-statement-split-row]')?.remove();
             validateTotals(parts);
         }

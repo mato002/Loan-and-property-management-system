@@ -160,7 +160,11 @@
                             @endif
                         </td>
                         <td class="px-2 py-2 whitespace-nowrap tabular-nums text-xs {{ $line->direction === 'debit' ? 'text-rose-700' : 'text-emerald-800' }}">
-                            {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}
+                            @php($displayAmount = $line->match_status === \App\Models\PmBankStatementLine::MATCH_UNMATCHED && $line->matched_type === 'payment_split_partial' ? (float) ($line->unassignedPayment?->amount ?? $line->amount) : (float) $line->amount)
+                            {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes($displayAmount) }}
+                            @if ($line->matched_type === 'payment_split_partial')
+                                <div class="mt-1 text-[10px] text-slate-500">remaining of {{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}</div>
+                            @endif
                         </td>
                         <td data-col="status" class="px-2 py-2 break-words">
                             @php $shownStatus = $line->displayMatchStatus(); @endphp
@@ -185,8 +189,9 @@
                                             type="button"
                                             data-open-statement-split
                                             data-split-url="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}"
-                                            data-split-amount="{{ number_format((float) $line->amount, 2, '.', '') }}"
+                                            data-split-amount="{{ number_format((float) ($line->unassignedPayment?->amount ?? $line->amount), 2, '.', '') }}"
                                             data-split-reference="{{ $line->reference }}"
+                                            data-split-existing="{{ $line->matched_type === 'payment_split_partial' ? '1' : '0' }}"
                                             class="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 whitespace-nowrap"
                                         >Split</button>
                                     </form>
@@ -253,13 +258,13 @@
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h2 id="statement-split-title" class="text-lg font-bold text-slate-900">Split bank receipt</h2>
-                    <p class="mt-1 text-sm text-slate-600">Assign this one receipt across tenants. The amounts must add up to the full transaction.</p>
+                    <p class="mt-1 text-sm text-slate-600">Allocate the remaining receipt across tenants. Any unallocated balance stays in Unmatched.</p>
                 </div>
                 <button type="button" data-close-statement-split class="rounded-lg px-3 py-1 text-xl text-slate-500 hover:bg-slate-100" aria-label="Close">×</button>
             </div>
             <div class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm">
                 <div>Receipt <span data-split-reference-label class="font-mono font-semibold"></span></div>
-                <div>Total <span data-split-total-label class="font-bold tabular-nums"></span></div>
+                <div>Available <span data-split-total-label class="font-bold tabular-nums"></span></div>
             </div>
             <form method="POST" data-statement-split data-search-url="{{ route('property.revenue.statements.search.tenants', [], false) }}" class="mt-4 space-y-3">
                 @csrf
@@ -269,7 +274,7 @@
                 <p data-split-total-status class="text-sm font-medium text-amber-700" aria-live="polite"></p>
                 <div class="flex justify-end gap-2 border-t border-slate-100 pt-3">
                     <button type="button" data-close-statement-split class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-                    <button type="submit" data-submit-statement-split disabled class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Split &amp; post receipts</button>
+                    <button type="submit" data-submit-statement-split disabled class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Allocate &amp; post receipts</button>
                 </div>
             </form>
         </section>

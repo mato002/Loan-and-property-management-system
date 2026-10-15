@@ -73,6 +73,11 @@ class PmBankStatementLine extends Model
         return $this->belongsTo(PmPayment::class, 'pm_payment_id');
     }
 
+    public function unassignedPayment(): BelongsTo
+    {
+        return $this->belongsTo(UnassignedPayment::class, 'unassigned_payment_id');
+    }
+
     public function ezenReceipt(): BelongsTo
     {
         return $this->belongsTo(PmEzenReceiptRegister::class, 'pm_ezen_receipt_register_id');
