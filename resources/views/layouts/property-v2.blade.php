@@ -213,9 +213,9 @@
                 animation: property-frame-progress 0.9s ease-in-out infinite;
             }
             #property-workspace-loading {
-                position: fixed;
+                position: absolute;
                 inset: 0;
-                z-index: 10000;
+                z-index: 45;
                 display: none;
                 align-items: center;
                 justify-content: center;

@@ -150,14 +150,7 @@ function schedulePropertyFrameLoading(frame) {
 
 function showWorkspaceLoading() {
     const loadingEl = getWorkspaceLoadingEl();
-    if (loadingEl) {
-        // Keep the fixed overlay outside the workspace stacking context so it can
-        // cover the full viewport, including the persistent header and sidebar.
-        if (loadingEl.parentElement !== document.body) {
-            document.body.appendChild(loadingEl);
-        }
-        loadingEl.setAttribute('data-active', '');
-    }
+    loadingEl?.setAttribute('data-active', '');
     getGlobalProgressEl()?.setAttribute('data-active', '');
     window.clearTimeout(workspaceLoadingFailsafeTimer);
     workspaceLoadingFailsafeTimer = window.setTimeout(() => {
