@@ -79,7 +79,7 @@ class PropertyStatementImportController extends Controller
         }
 
         $statements = Schema::hasTable('pm_bank_statements')
-            ? $query->paginate(30)->withQueryString()
+            ? $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString()
             : collect();
 
         return property_view('property.agent.revenue.statement_upload', [

@@ -71,7 +71,6 @@ final class ReportScope
                 ->where('property_portal_role', 'landlord')
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'filterCascadeCatalog' => $cascade->fromLeases(),
         ];
     }
 

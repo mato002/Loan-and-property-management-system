@@ -50,7 +50,7 @@ class PropertyAmenityController extends Controller
             ->orderBy('name');
 
         $amenities = (clone $query)->get();
-        $amenitiesPage = (clone $query)->paginate(50)->withQueryString();
+        $amenitiesPage = (clone $query)->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return TabularExport::stream(

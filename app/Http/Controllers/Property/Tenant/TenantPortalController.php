@@ -270,7 +270,7 @@ class TenantPortalController extends Controller
         if (in_array($status, ['draft', 'sent', 'partial', 'paid', 'overdue', 'cancelled'], true)) {
             $base->where('status', $status);
         }
-        $invoices = $base->orderByDesc('issue_date')->orderByDesc('id')->paginate(30)->withQueryString();
+        $invoices = $base->orderByDesc('issue_date')->orderByDesc('id')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         return property_view('property.tenant.invoices.index', [
             'invoices' => $invoices,
@@ -407,9 +407,9 @@ class TenantPortalController extends Controller
         $payments = $tenant
             ? $this->buildPaymentHistoryQuery($tenant->id, $filters)
                 ->with(['allocations.invoice'])
-                ->paginate(15)
+                ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
                 ->withQueryString()
-            : PmPayment::query()->whereRaw('1 = 0')->paginate(25);
+            : PmPayment::query()->whereRaw('1 = 0')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         $rows = $payments->getCollection()->map(fn (PmPayment $p) => [
             ($p->paid_at ?? $p->created_at)?->format('Y-m-d H:i') ?? '—',

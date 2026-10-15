@@ -14,7 +14,7 @@ class LoanAssetFinancingController extends Controller
 {
     public function unitsIndex(): View
     {
-        $units = LoanAssetMeasurementUnit::query()->orderBy('name')->paginate(20);
+        $units = LoanAssetMeasurementUnit::query()->orderBy('name')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.assets.units.index', [
             'title' => 'Measurement units',
@@ -79,7 +79,7 @@ class LoanAssetFinancingController extends Controller
 
     public function categoriesIndex(): View
     {
-        $categories = LoanAssetCategory::query()->orderBy('name')->paginate(20);
+        $categories = LoanAssetCategory::query()->orderBy('name')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.assets.categories.index', [
             'title' => 'Asset categories',
@@ -145,7 +145,7 @@ class LoanAssetFinancingController extends Controller
         $items = LoanAssetStockItem::query()
             ->with(['category', 'measurementUnit'])
             ->orderByDesc('updated_at')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.assets.items.index', [
             'title' => 'Asset list / stock',

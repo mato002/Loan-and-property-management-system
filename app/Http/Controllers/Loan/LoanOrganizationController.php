@@ -23,7 +23,7 @@ class LoanOrganizationController extends Controller
         $regions = LoanRegion::query()
             ->withCount('branches')
             ->orderBy('name')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.organization.regions.index', [
             'title' => 'Regions',
@@ -106,7 +106,7 @@ class LoanOrganizationController extends Controller
             ->with('region')
             ->withCount('loans')
             ->orderBy('name')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.organization.branches.index', [
             'title' => 'Branches',
@@ -289,7 +289,7 @@ class LoanOrganizationController extends Controller
             ->with(['branch', 'fromRegion', 'toRegion'])
             ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
             ->orderByDesc('created_at')
-            ->paginate(30);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.organization.branches.changes', [
             'title' => 'Structure change requests',

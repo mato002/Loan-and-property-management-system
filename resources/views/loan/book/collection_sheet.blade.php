@@ -24,7 +24,7 @@
                 <input type="date" name="to" value="{{ $filterTo }}" class="rounded-lg border-slate-200 text-sm" />
                 <input type="hidden" name="q" value="{{ $q ?? '' }}">
                 <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
-                <input type="hidden" name="per_page" value="{{ $perPage ?? 25 }}">
+                <input type="hidden" name="per_page" value="{{ $perPage ?? 100 }}">
                 <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Go</button>
             </form>
             <a href="{{ route('loan.book.collection_mtd') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">MTD</a>
@@ -55,7 +55,7 @@
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
                     <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         @foreach ([10, 25, 50, 100, 200] as $size)
-                            <option value="{{ $size }}" @selected((int) ($perPage ?? 25) === $size)>{{ $size }}</option>
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 100) === $size)>{{ $size }}</option>
                         @endforeach
                     </select>
                 </div>

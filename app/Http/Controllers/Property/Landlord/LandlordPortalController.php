@@ -1151,7 +1151,7 @@ class LandlordPortalController extends Controller
             });
         }
 
-        $actions = $actionsQuery->paginate(25)->withQueryString();
+        $actions = $actionsQuery->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $actionKeys = PmPortalAction::query()
             ->where('user_id', $user->id)
             ->where('portal_role', 'landlord')

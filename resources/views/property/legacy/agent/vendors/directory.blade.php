@@ -86,7 +86,7 @@
             />
             <select name="per_page" class="w-full sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 @foreach ([10, 20, 50, 100] as $pageSize)
-                    <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
+                    <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 100) === $pageSize)>{{ $pageSize }} / page</option>
                 @endforeach
             </select>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>

@@ -32,7 +32,7 @@ class LoanFinancialController extends Controller
 {
     public function mpesaPlatform(): View
     {
-        $transactions = MpesaPlatformTransaction::query()->latest()->paginate(15);
+        $transactions = MpesaPlatformTransaction::query()->latest()->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         $stkTodaySum = MpesaPlatformTransaction::query()
             ->where('channel', 'stk_push')
@@ -115,7 +115,7 @@ class LoanFinancialController extends Controller
         $payouts = MpesaPlatformTransaction::query()
             ->where('channel', 'b2c')
             ->latest()
-            ->paginate(15);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.mpesa_payouts', [
             'title' => 'M-Pesa payouts',
@@ -194,7 +194,7 @@ class LoanFinancialController extends Controller
         $transactions = MpesaPlatformTransaction::query()
             ->where('channel', 'c2b')
             ->latest()
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.mpesa_c2b', [
             'title' => 'C2B inbox',
@@ -236,7 +236,7 @@ class LoanFinancialController extends Controller
             ->where('method', 'mpesa')
             ->where('payout_status', 'awaiting_approval')
             ->latest()
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.mpesa_b2c_approvals', [
             'title' => 'B2C approvals',
@@ -361,7 +361,7 @@ class LoanFinancialController extends Controller
             $walletsQuery->whereDate('updated_at', '<=', $to);
         }
 
-        $wallets = $walletsQuery->orderByDesc('balance')->paginate(25)->withQueryString();
+        $wallets = $walletsQuery->orderByDesc('balance')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $lastTxDates = [];
         if ($wallets->isNotEmpty()) {
@@ -399,7 +399,7 @@ class LoanFinancialController extends Controller
 
     public function controlAccounts(): View
     {
-        $accounts = FinancialAccount::query()->orderBy('name')->paginate(15);
+        $accounts = FinancialAccount::query()->orderBy('name')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         $journalBalances = collect();
         $mode = 'financial_accounts';
@@ -453,7 +453,7 @@ class LoanFinancialController extends Controller
             ->with(['loanClient', 'wallet'])
             ->where('status', ClientWalletRefundRequest::STATUS_PENDING)
             ->orderByDesc('id')
-            ->paginate(30);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.wallet_refunds', [
             'title' => 'Wallet refund approvals',
@@ -596,7 +596,7 @@ class LoanFinancialController extends Controller
 
     public function investmentPackages(): View
     {
-        $packages = InvestmentPackage::query()->orderByDesc('id')->paginate(15);
+        $packages = InvestmentPackage::query()->orderByDesc('id')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.investment_packages', [
             'title' => 'Investment packages',
@@ -690,7 +690,7 @@ class LoanFinancialController extends Controller
         $investors = Investor::query()
             ->with('investmentPackage')
             ->orderByDesc('id')
-            ->paginate(15);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.financial.investors_list', [
             'title' => 'Investors list',

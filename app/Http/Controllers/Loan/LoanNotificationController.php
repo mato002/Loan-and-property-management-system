@@ -19,7 +19,7 @@ class LoanNotificationController extends Controller
             $notifications = $request->user()
                 ?->notifications()
                 ->latest()
-                ->paginate(30)
+                ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
                 ->withQueryString();
 
             $unreadCount = (int) ($request->user()?->unreadNotifications()->count() ?? 0);

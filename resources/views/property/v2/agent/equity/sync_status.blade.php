@@ -80,7 +80,7 @@
                     </select>
                     <select name="per_page" class="block w-full rounded-xl border-slate-300 shadow-sm">
                         @foreach ([10, 20, 30, 50, 100, 200] as $size)
-                            <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 20) === $size)>{{ $size }}</option>
+                            <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 100) === $size)>{{ $size }}</option>
                         @endforeach
                     </select>
                 </div>

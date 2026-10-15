@@ -442,7 +442,6 @@ class PropertyUtilityChargeController extends Controller
             'filters' => $viewFilters,
             'units' => $cascade->unitsForProperty($propertyId),
             'properties' => $cascade->properties(),
-            'filterCascadeCatalog' => $cascade->fromUtilityCharges(),
             'wrProperties' => PropertyUnit::query()->withoutGlobalScopes()->with(['property' => function ($q): void {
                 $q->withoutGlobalScopes()->select(['id', 'name']);
             }])->select(['id', 'property_id'])->get()

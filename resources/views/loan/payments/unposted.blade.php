@@ -194,7 +194,7 @@
                 <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
                 <input type="hidden" name="from" value="{{ $from ?? '' }}">
                 <input type="hidden" name="to" value="{{ $to ?? '' }}">
-                <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
+                <input type="hidden" name="per_page" value="{{ $perPage ?? 100 }}">
             </form>
 
             <div class="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">

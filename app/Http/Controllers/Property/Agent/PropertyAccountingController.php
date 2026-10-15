@@ -223,7 +223,7 @@ class PropertyAccountingController extends Controller
             $query->whereHas('lines', fn ($lq) => $lq->where('property_id', $propertyId));
         }
 
-        $paginator = $query->orderByDesc('date')->orderByDesc('id')->paginate(30)->withQueryString();
+        $paginator = $query->orderByDesc('date')->orderByDesc('id')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $batchIds = $paginator->getCollection()->pluck('id')->all();
         $lineSums = AccountingJournalLine::query()
             ->whereIn('batch_id', $batchIds)
@@ -371,7 +371,7 @@ class PropertyAccountingController extends Controller
     public function auditTrail(Request $request): View
     {
         $query = $this->buildAuditTrailBatchQuery($request);
-        $paginator = $query->paginate(50)->withQueryString();
+        $paginator = $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $rowsData = $paginator->getCollection();
         $batchIds = $rowsData->pluck('id')->all();
 
@@ -1319,7 +1319,7 @@ class PropertyAccountingController extends Controller
         }
 
         $paginator = $runsQuery->orderByDesc('period_year')->orderByDesc('period_month')->orderByDesc('id')
-            ->paginate(20)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         $baseScope = AccountingPayrollPeriod::query()->where(function ($q) use ($agentUserId) {
@@ -1654,7 +1654,7 @@ class PropertyAccountingController extends Controller
             ->orderByDesc('id');
 
         $summaryBase = clone $query;
-        $paginator = $query->paginate(50)->withQueryString();
+        $paginator = $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $rows = $paginator->getCollection()->map(function (AccountingPayrollLine $line) {
             $period = $line->period;
             $derivedStatus = (string) ($period?->status ?? 'draft');
@@ -2592,7 +2592,7 @@ class PropertyAccountingController extends Controller
         $batches = $batchQuery
             ->orderByDesc('date')
             ->orderByDesc('id')
-            ->paginate(25)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         $batchIds = $batches->getCollection()->pluck('id')->all();
@@ -2706,7 +2706,7 @@ class PropertyAccountingController extends Controller
             ->when($overdue === 'overdue', fn ($q) => $q->where('due_date', '<', now()->toDateString()))
             ->when($overdue === 'current', fn ($q) => $q->where('due_date', '>=', now()->toDateString()))
             ->orderByDesc('due_date')
-            ->paginate(50)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         if ($minBalance > 0 || $maxBalance !== null) {
@@ -2780,7 +2780,7 @@ class PropertyAccountingController extends Controller
         }
 
         $tenants = $tenantQuery
-            ->paginate(50)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         $statementRows = $tenants->getCollection()->map(function (PmTenant $tenant) use ($formulas) {
@@ -2845,7 +2845,7 @@ class PropertyAccountingController extends Controller
             );
         }
 
-        $rows = $query->paginate(50)->withQueryString();
+        $rows = $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         return property_view('property.agent.accounting.payables_landlord', [
             'rows' => $rows,
@@ -3896,7 +3896,7 @@ class PropertyAccountingController extends Controller
                 return $q->where('status', $status);
             })
             ->orderByDesc('id')
-            ->paginate(50)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         return property_view('property.agent.accounting.payables_landlord_payouts', [
@@ -4370,7 +4370,7 @@ class PropertyAccountingController extends Controller
         $entryReversals = PmAccountingEntry::query()
             ->whereNotNull('reversal_of_id')
             ->orderByDesc('id')
-            ->paginate(50)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         return property_view('property.agent.accounting.controls.reversals', ['rows' => $entryReversals]);
@@ -4380,7 +4380,7 @@ class PropertyAccountingController extends Controller
     {
         app(AccountingPeriodService::class)->openTrailingMonths(1);
 
-        $rows = AccountingPeriod::query()->orderByDesc('start_date')->paginate(50)->withQueryString();
+        $rows = AccountingPeriod::query()->orderByDesc('start_date')->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         return property_view('property.agent.accounting.controls.periods', [
             'rows' => $rows,

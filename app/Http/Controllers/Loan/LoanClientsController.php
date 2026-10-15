@@ -607,7 +607,7 @@ class LoanClientsController extends Controller
             default => $q->orderByDesc('loan_clients.created_at'),
         };
 
-        $leads = $q->paginate(15)->withQueryString();
+        $leads = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         foreach ($leads as $leadRow) {
             if (! $leadRow->relationLoaded('clientLead') || ! $leadRow->clientLead) {
@@ -1007,7 +1007,7 @@ class LoanClientsController extends Controller
                 });
             })
             ->orderBy('name')
-            ->paginate(20)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         return view('loan.clients.default-groups', compact('groups', 'q'));
@@ -1091,7 +1091,7 @@ class LoanClientsController extends Controller
             ->orderBy('last_name')
             ->orderBy('first_name');
 
-        $members = $memberQuery->paginate(30)->withQueryString();
+        $members = $memberQuery->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $export = strtolower(trim((string) $request->query('export', '')));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
@@ -1287,7 +1287,7 @@ class LoanClientsController extends Controller
             );
         }
 
-        $interactions = $q->paginate(25)->withQueryString();
+        $interactions = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $sourceUsers = ClientInteraction::query()
             ->select('user_id')
             ->whereNotNull('user_id')
@@ -1378,7 +1378,7 @@ class LoanClientsController extends Controller
             ->with('user')
             ->where('loan_client_id', $loan_client->id)
             ->orderByDesc('interacted_at')
-            ->paginate(30)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         return view('loan.clients.interaction-for-client', compact('loan_client', 'interactions'));

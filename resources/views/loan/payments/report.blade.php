@@ -42,7 +42,7 @@
                     <label for="per_page" class="block text-xs font-semibold text-slate-600 mb-1">Per page</label>
                     <select id="per_page" name="per_page" class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ([10, 20, 25, 30, 50, 100, 200] as $size)
-                            <option value="{{ $size }}" @selected((int) ($perPage ?? 30) === $size)>{{ $size }}</option>
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 100) === $size)>{{ $size }}</option>
                         @endforeach
                     </select>
                 </div>

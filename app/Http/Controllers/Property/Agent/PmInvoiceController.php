@@ -792,7 +792,6 @@ class PmInvoiceController extends Controller
             'properties' => $cascade->properties(),
             'tenants' => PmTenant::query()->orderBy('name')->get(),
             'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 

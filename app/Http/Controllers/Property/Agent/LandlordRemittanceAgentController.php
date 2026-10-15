@@ -62,7 +62,7 @@ class LandlordRemittanceAgentController extends Controller
         }
 
         return property_view('property.agent.accounting.landlord_remittances', [
-            'rows' => $query->paginate(50)->withQueryString(),
+            'rows' => $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString(),
             'filters' => ['status' => $status, 'q' => $q],
         ]);
     }

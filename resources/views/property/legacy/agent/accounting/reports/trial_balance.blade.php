@@ -39,7 +39,7 @@
             </select>
             <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
                 @foreach ([10, 30, 50, 100, 200] as $size)
-                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 50) === $size)>Rows: {{ $size }}</option>
+                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 100) === $size)>Rows: {{ $size }}</option>
                 @endforeach
             </select>
             <label class="inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">

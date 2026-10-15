@@ -163,7 +163,7 @@
                 name="per_page"
                 label="Per page"
                 :options="collect([10, 25, 50, 100])->map(fn ($n) => ['value' => (string) $n, 'label' => (string) $n])->all()"
-                :value="(string) ($perPage ?? 25)"
+                :value="(string) ($perPage ?? 100)"
             />
         </x-slot>
 

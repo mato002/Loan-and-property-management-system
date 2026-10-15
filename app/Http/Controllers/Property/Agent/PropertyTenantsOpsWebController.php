@@ -168,7 +168,7 @@ class PropertyTenantsOpsWebController extends Controller
         $baseQuery = $this->movementsQuery($filters);
         $movements = (clone $baseQuery)->get();
         $this->hydrateMovementTenants($movements);
-        $movementsPage = (clone $baseQuery)->paginate(50)->withQueryString();
+        $movementsPage = (clone $baseQuery)->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $this->hydrateMovementTenants($movementsPage->getCollection());
 
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {

@@ -33,7 +33,7 @@
         'deposit' => [''],
         'sort' => ['tenant'],
         'dir' => ['asc'],
-        'per_page' => ['30', 30],
+        'per_page' => ['100', 100],
     ]"
 >
     <x-slot name="primary">
@@ -103,7 +103,7 @@
             name="per_page"
             label="Per page"
             :options="collect([10, 30, 50, 100, 200])->map(fn ($n) => ['value' => (string) $n, 'label' => (string) $n])->all()"
-            :value="(string) ($filters['per_page'] ?? 30)"
+            :value="(string) ($filters['per_page'] ?? 100)"
         />
     </x-slot>
 

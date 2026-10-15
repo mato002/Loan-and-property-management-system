@@ -514,7 +514,6 @@ class PmTenantDirectoryController extends Controller
             ],
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
-            'filterCascadeCatalog' => $cascade->fromLeases(),
             'tenantPager' => $tenants,
             'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,

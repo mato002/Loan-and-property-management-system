@@ -51,7 +51,7 @@
             name="per_page"
             label="Per page"
             :options="collect([10, 30, 50, 100, 200])->map(fn ($n) => ['value' => (string) $n, 'label' => $n.' / page'])->all()"
-            :value="(string) ($perPage ?? $filters['per_page'] ?? 30)"
+            :value="(string) ($perPage ?? $filters['per_page'] ?? 100)"
         />
         <x-property.filter-field type="custom" label="Archived" :show-label="false">
             <label class="inline-flex min-h-[38px] items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">

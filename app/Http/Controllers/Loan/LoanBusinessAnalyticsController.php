@@ -20,7 +20,7 @@ class LoanBusinessAnalyticsController extends Controller
         $sizes = AnalyticsLoanSize::query()
             ->orderBy('sort_order')
             ->orderBy('min_principal')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.analytics.loan-sizes.index', compact('sizes'));
     }
@@ -98,7 +98,7 @@ class LoanBusinessAnalyticsController extends Controller
             ->orderByDesc('period_year')
             ->orderByDesc('period_month')
             ->orderBy('branch')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.analytics.targets.index', compact('targets'));
     }
@@ -203,7 +203,7 @@ class LoanBusinessAnalyticsController extends Controller
         $records = AnalyticsPerformanceRecord::query()
             ->orderByDesc('record_date')
             ->orderBy('branch')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.analytics.performance.index', compact('records'));
     }

@@ -27,7 +27,7 @@
             </select>
             <select name="per_page" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                 @foreach ([10, 30, 50, 100, 200] as $size)
-                    <option value="{{ $size }}" @selected((int) ($perPage ?? 30) === $size)>{{ $size }} / page</option>
+                    <option value="{{ $size }}" @selected((int) ($perPage ?? 100) === $size)>{{ $size }} / page</option>
                 @endforeach
             </select>
             <div class="flex items-center gap-2">

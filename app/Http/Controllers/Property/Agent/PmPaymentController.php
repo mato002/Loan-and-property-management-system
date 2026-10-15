@@ -379,7 +379,6 @@ class PmPaymentController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromPayments(),
             'openInvoices' => $openInvoices = PmInvoice::query()
                 ->with(['tenant:id,name,phone,account_number', 'unit:id,label,property_id', 'unit.property:id,name'])
                 ->billableAr()

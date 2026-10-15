@@ -106,7 +106,7 @@
             name="per_page"
             label="Per page"
             :options="collect([10, 30, 50, 100, 200])->map(fn ($n) => ['value' => (string) $n, 'label' => (string) $n])->all()"
-            :value="(string) ($perPage ?? request('per_page', 30))"
+            :value="(string) ($perPage ?? request('per_page', 100))"
         />
     </x-slot>
 

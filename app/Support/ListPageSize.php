@@ -11,6 +11,8 @@ final class ListPageSize
 {
     public const ALL = 'all';
 
+    public const DEFAULT = 100;
+
     public const HARD_CAP = 20000;
 
     /**
@@ -90,8 +92,11 @@ final class ListPageSize
         return null;
     }
 
-    public static function resolve(mixed $requested, int $default = 30, ?int $total = null): int
+    public static function resolve(mixed $requested, int $default = self::DEFAULT, ?int $total = null): int
     {
+        // Keep the legacy parameter for callers, but use one default across all
+        // paginated workspaces so tables show the same number of rows initially.
+        $default = self::DEFAULT;
         $raw = is_scalar($requested) ? strtolower(trim((string) $requested)) : '';
         if ($raw === '' || $raw === 'null') {
             $size = $default;

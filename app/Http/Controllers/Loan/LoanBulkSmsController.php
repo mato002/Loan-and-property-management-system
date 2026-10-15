@@ -207,7 +207,7 @@ class LoanBulkSmsController extends Controller
     {
         $templates = SmsTemplate::query()
             ->orderByDesc('updated_at')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.bulksms.templates.index', compact('templates'));
     }
@@ -268,7 +268,7 @@ class LoanBulkSmsController extends Controller
             ->where('module', 'loan')
             ->with(['user', 'schedule'])
             ->orderByDesc('created_at')
-            ->paginate(30);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.bulksms.logs', compact('logs'));
     }
@@ -278,7 +278,7 @@ class LoanBulkSmsController extends Controller
         $topups = SmsWalletTopup::query()
             ->with('user')
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.bulksms.wallet', [
             'balance' => $bulkSms->walletBalance(),
@@ -309,7 +309,7 @@ class LoanBulkSmsController extends Controller
             ->where('module', 'loan')
             ->with(['user', 'template'])
             ->orderByDesc('scheduled_at')
-            ->paginate(20);
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100));
 
         return view('loan.bulksms.schedules', compact('schedules'));
     }

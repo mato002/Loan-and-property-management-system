@@ -193,7 +193,6 @@ class RevenueController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromLeases(),
         ]);
     }
 
@@ -382,7 +381,6 @@ class RevenueController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromLeases(),
             'missingCount' => $counts['missing'],
             'underbilledCount' => $counts['underbilled'],
         ]);
@@ -962,7 +960,6 @@ class RevenueController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 
@@ -1960,7 +1957,6 @@ class RevenueController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromPayments(),
             'ezenReceiptRegister' => true,
         ]);
     }
@@ -2070,7 +2066,6 @@ class RevenueController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 

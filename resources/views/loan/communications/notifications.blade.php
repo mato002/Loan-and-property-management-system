@@ -25,7 +25,7 @@
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.notifications', [
             'filters' => $filters ?? [],
-            'perPage' => $perPage ?? 25,
+            'perPage' => $perPage ?? 100,
             'canExportCommunications' => $canExportCommunications ?? false,
         ])
     </x-slot>

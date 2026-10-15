@@ -46,7 +46,7 @@
                 name="per_page"
                 label="Rows"
                 :form="$fieldFormId ?? null"
-                :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+                :value="(string) ($filters['per_page'] ?? request()->query('per_page', '100'))"
             />
         @endif
     @else
@@ -78,7 +78,7 @@
                     name="per_page"
                     label="Rows"
                     :form="$fieldFormId ?? null"
-                    :value="(string) ($filters['per_page'] ?? request()->query('per_page', '30'))"
+                    :value="(string) ($filters['per_page'] ?? request()->query('per_page', '100'))"
                 />
             @endif
         </div>

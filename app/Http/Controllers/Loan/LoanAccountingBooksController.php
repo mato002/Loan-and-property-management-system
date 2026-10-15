@@ -578,7 +578,7 @@ class LoanAccountingBooksController extends Controller
             ->with(['journalEntry.createdByUser', 'approvedByUser', 'rejectedByUser'])
             ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
             ->orderByDesc('created_at')
-            ->paginate(30)
+            ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
         return view('loan.accounting.journal.approval-queue', compact('rows'));
@@ -1171,7 +1171,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(20)->withQueryString();
+        $rows = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $categories = AccountingCompanyExpense::query()
             ->select('category')
@@ -1350,7 +1350,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(20)->withQueryString();
+        $rows = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $statuses = AccountingCompanyAsset::query()
             ->select('status')
@@ -1492,7 +1492,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $lines = $q->paginate(25)->withQueryString();
+        $lines = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $employees = Employee::query()
             ->orderBy('first_name')
@@ -1566,7 +1566,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $periods = $q->paginate(15)->withQueryString();
+        $periods = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $statuses = AccountingPayrollPeriod::query()
             ->select('status')
@@ -1744,7 +1744,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(25)->withQueryString();
+        $rows = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         $years = AccountingBudgetLine::query()
             ->select('fiscal_year')

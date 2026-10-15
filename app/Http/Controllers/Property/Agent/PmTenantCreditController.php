@@ -64,7 +64,7 @@ class PmTenantCreditController extends Controller
             );
         }
 
-        $balances = $query->paginate(30)->withQueryString();
+        $balances = $query->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
         $totalUnapplied = (float) PmTenantCreditBalance::query()->where('balance', '>', 0)->sum('balance');
         $rows = $balances->getCollection()->map(function (PmTenantCreditBalance $row) {
             $tenant = $row->tenant;

@@ -13,12 +13,12 @@
                 <input type="hidden" name="month" value="{{ $filters['month'] ?? '' }}" />
                 <input type="hidden" name="sort" value="{{ $filters['sort'] ?? 'id' }}" />
                 <input type="hidden" name="dir" value="{{ $filters['dir'] ?? 'desc' }}" />
-                <input type="hidden" name="per_page" value="{{ $filters['per_page'] ?? 30 }}" />
+                <input type="hidden" name="per_page" value="{{ $filters['per_page'] ?? 100 }}" />
                 <input type="hidden" name="wr_q" value="{{ $filters['wr_q'] ?? '' }}" />
                 <input type="hidden" name="wr_month" value="{{ $filters['wr_month'] ?? '' }}" />
                 <input type="hidden" name="wr_status" value="{{ $filters['wr_status'] ?? '' }}" />
                 <input type="hidden" name="wr_property_id" value="{{ $filters['wr_property_id'] ?? 0 }}" />
-                <input type="hidden" name="wr_per_page" value="{{ $filters['wr_per_page'] ?? 20 }}" />
+                <input type="hidden" name="wr_per_page" value="{{ $filters['wr_per_page'] ?? 100 }}" />
                 <button type="submit" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700">Check</button>
             </form>
         </div>

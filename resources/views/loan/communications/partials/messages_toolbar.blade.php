@@ -123,7 +123,7 @@
         <label class="col-span-2 sm:col-span-1 text-xs text-slate-500 dark:text-slate-400">Per page</label>
         <select name="per_page" onchange="this.form.submit()" class="col-span-2 sm:col-span-1 w-full sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-2 py-2 min-h-[44px] sm:min-h-0">
             @foreach ([10, 25, 50, 100] as $size)
-                <option value="{{ $size }}" @selected((int) ($perPage ?? 25) === $size)>{{ $size }}</option>
+                <option value="{{ $size }}" @selected((int) ($perPage ?? 100) === $size)>{{ $size }}</option>
             @endforeach
         </select>
     </div>

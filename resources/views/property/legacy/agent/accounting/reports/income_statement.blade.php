@@ -24,7 +24,7 @@
             </select>
             <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
                 @foreach ([10, 30, 50, 100, 200] as $size)
-                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 30) === $size)>Txns: {{ $size }}</option>
+                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 100) === $size)>Txns: {{ $size }}</option>
                 @endforeach
             </select>
             <button type="submit" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Apply</button>

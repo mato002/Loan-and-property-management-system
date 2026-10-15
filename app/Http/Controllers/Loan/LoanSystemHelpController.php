@@ -160,7 +160,7 @@ class LoanSystemHelpController extends Controller
             $q->where('user_id', $request->user()->id);
         }
 
-        $tickets = $q->paginate(20)->withQueryString();
+        $tickets = $q->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))->withQueryString();
 
         return view('loan.system.tickets.index', [
             'title' => 'Raised tickets',
