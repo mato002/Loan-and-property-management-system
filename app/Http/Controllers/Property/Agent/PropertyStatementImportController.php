@@ -294,10 +294,12 @@ class PropertyStatementImportController extends Controller
                     $builder->orWhere('phone', 'like', '%'.$q.'%');
                 }
 
-                if (Schema::hasTable('pm_leases') && Schema::hasTable('pm_lease_unit') && Schema::hasTable('property_units')) {
+                if (Schema::hasTable('pm_leases')
+                    && Schema::hasTable('pm_lease_unit')
+                    && Schema::hasTable('property_units')
+                    && Schema::hasColumn('property_units', 'label')) {
                     $builder->orWhereHas('leases.units', function (Builder $uq) use ($q): void {
-                        $uq->where('unit_number', 'like', '%'.$q.'%')
-                            ->orWhere('unit_name', 'like', '%'.$q.'%');
+                        $uq->where('label', 'like', '%'.$q.'%');
                     });
                 }
             });
