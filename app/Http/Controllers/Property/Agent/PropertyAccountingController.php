@@ -3314,7 +3314,13 @@ class PropertyAccountingController extends Controller
 
     public function createPaymentVoucher(Request $request): View
     {
-        return property_view('property.agent.accounting.payment_voucher_create', $this->paymentVoucherFormData($request));
+        $billId = (int) $request->query('bill_id', 0);
+        $bill = $billId > 0 ? PmEzenBill::query()->find($billId) : null;
+
+        return property_view('property.agent.accounting.payment_voucher_create', [
+            ...$this->paymentVoucherFormData($request),
+            'preselectedBill' => $bill,
+        ]);
     }
 
     public function storePaymentVoucher(Request $request, EzenPaymentVouchersImportService $vouchers): RedirectResponse
@@ -3332,6 +3338,7 @@ class PropertyAccountingController extends Controller
             'narration' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'control_amount' => ['required', 'numeric', 'gt:0'],
+            'pm_ezen_bill_id' => ['nullable', 'integer'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'lines.*.expense_group' => ['nullable', 'string', 'max:80'],
@@ -4110,15 +4117,9 @@ class PropertyAccountingController extends Controller
 
     public function markVendorBillPaid(Request $request, PmEzenBill $bill): RedirectResponse
     {
-        $total = (float) $bill->total_amount;
-        $bill->update([
-            'payment_status' => PmEzenBill::STATUS_PAID,
-            'listing_status' => 'closed',
-            'total_paid' => $total,
-            'amount_due' => 0,
-        ]);
-
-        return back()->with('status', 'Bill '.$bill->ezen_bill_no.' marked paid / closed.');
+        return redirect()
+            ->route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id])
+            ->with('status', 'Record a payment voucher to settle this bill and post the property expense.');
     }
 
     public function accountsPayable(Request $request): View|StreamedResponse

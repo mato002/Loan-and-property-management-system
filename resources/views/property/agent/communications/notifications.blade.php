@@ -28,13 +28,16 @@
     </x-slot>
 
     <div class="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
-        <form method="post" action="{{ route('property.notifications.bulk', absolute: false) }}">
+        <form method="post" action="{{ route('property.notifications.bulk', absolute: false) }}" onsubmit="return this.bulk_action.value !== 'delete' || confirm('Permanently delete the selected notifications? This cannot be undone.')">
             @csrf
             <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
                 <select name="bulk_action" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" required>
                     <option value="">Bulk action...</option>
                     <option value="mark_read">Mark as read</option>
                     <option value="mark_unread">Mark as unread</option>
+                    @if ($canManageCommunications ?? false)
+                        <option value="delete">Delete selected</option>
+                    @endif
                 </select>
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Apply to selected</button>
                 @error('bulk_action')

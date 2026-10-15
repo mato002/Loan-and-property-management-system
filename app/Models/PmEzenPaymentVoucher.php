@@ -84,6 +84,7 @@ class PmEzenPaymentVoucher extends Model
         'notes',
         'tax_amount',
         'source',
+        'pm_ezen_bill_id',
     ];
 
     protected function casts(): array
@@ -135,6 +136,11 @@ class PmEzenPaymentVoucher extends Model
     public function accountingEntry(): BelongsTo
     {
         return $this->belongsTo(PmAccountingEntry::class, 'pm_accounting_entry_id');
+    }
+
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(PmEzenBill::class, 'pm_ezen_bill_id');
     }
 
     public function displayPayee(): string

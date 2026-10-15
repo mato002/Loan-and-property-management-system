@@ -31,6 +31,9 @@ class PmEzenBill extends Model
         'listing_status',
         'payment_status',
         'pm_supplier_id',
+        'property_id',
+        'landlord_id',
+        'pm_vendor_service_agreement_id',
     ];
 
     protected function casts(): array
@@ -67,5 +70,20 @@ class PmEzenBill extends Model
             self::STATUS_PARTIAL => 'Partial',
             default => 'Unpaid',
         };
+    }
+
+    public function property(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Property::class);
+    }
+
+    public function landlord(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'landlord_id');
+    }
+
+    public function serviceAgreement(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(PmVendorServiceAgreement::class, 'pm_vendor_service_agreement_id');
     }
 }

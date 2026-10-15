@@ -9,10 +9,23 @@
             @if ($index > 0)
                 <span class="text-slate-300 dark:text-slate-600 select-none" aria-hidden="true">·</span>
             @endif
-            <span @class(['inline-flex items-baseline gap-1', ! empty($stat['emphasis']) ? 'text-rose-700 dark:text-rose-300' : ''])>
-                <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ $stat['value'] }}</span>
-                <span>{{ $stat['label'] }}</span>
-            </span>
+            @php
+                $statClasses = ['inline-flex items-baseline gap-1', ! empty($stat['emphasis']) ? 'text-rose-700 dark:text-rose-300' : ''];
+                if (! empty($stat['href'])) {
+                    $statClasses[] = 'rounded-sm hover:text-blue-700 dark:hover:text-blue-300 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
+                }
+            @endphp
+            @if (! empty($stat['href']))
+                <a href="{{ $stat['href'] }}" @class($statClasses)>
+                    <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ $stat['value'] }}</span>
+                    <span>{{ $stat['label'] }}</span>
+                </a>
+            @else
+                <span @class($statClasses)>
+                    <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ $stat['value'] }}</span>
+                    <span>{{ $stat['label'] }}</span>
+                </span>
+            @endif
         @endforeach
     </div>
 @endif

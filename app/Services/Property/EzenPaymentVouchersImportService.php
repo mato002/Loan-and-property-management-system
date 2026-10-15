@@ -5,6 +5,7 @@ namespace App\Services\Property;
 use App\Models\PmAccountingEntry;
 use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmEzenPaymentVoucherLine;
+use App\Models\PmEzenBill;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
 use App\Models\PmLandlordPayoutItem;
@@ -385,6 +386,16 @@ final class EzenPaymentVouchersImportService
             'link_status' => PmEzenPaymentVoucher::LINK_EXPENSE,
         ]);
 
+        $this->postLandlordExpenseShares(
+            $resolved['property'],
+            $resolved['landlord'],
+            (float) $row['amount'],
+            (string) ($row['txn_date'] ?? now()->toDateString()),
+            $this->voucherDescription($row),
+            (int) $register->id,
+            $agentUserId,
+        );
+
         return [
             'register' => true,
             'remittance' => false,
@@ -705,6 +716,17 @@ final class EzenPaymentVouchersImportService
      */
     public function recordManual(int $agentUserId, User $actor, array $header, array $lines): PmEzenPaymentVoucher
     {
+        $linkedBill = ! empty($header['pm_ezen_bill_id'])
+            ? PmEzenBill::query()->findOrFail((int) $header['pm_ezen_bill_id'])
+            : null;
+        if ($linkedBill?->property_id) {
+            foreach ($lines as &$line) {
+                if (empty($line['property_id']) && (float) ($line['amount'] ?? 0) > 0) {
+                    $line['property_id'] = (int) $linkedBill->property_id;
+                }
+            }
+            unset($line);
+        }
         $prepared = $this->prepareManualLines($lines, (string) ($header['expense_group'] ?? 'operating'));
         if ($prepared === []) {
             throw ValidationException::withMessages([
@@ -725,6 +747,20 @@ final class EzenPaymentVouchersImportService
         $category = PmEzenPaymentVoucher::EXPENSE_GROUPS[$group]['category'] ?? PmEzenPaymentVoucher::CATEGORY_EXPENSE;
 
         return DB::transaction(function () use ($agentUserId, $actor, $header, $prepared, $lineTotal, $taxTotal, $control, $group, $category): PmEzenPaymentVoucher {
+            $linkedBill = ! empty($header['pm_ezen_bill_id'])
+                ? PmEzenBill::query()->lockForUpdate()->findOrFail((int) $header['pm_ezen_bill_id'])
+                : null;
+            if ($linkedBill && $category === PmEzenPaymentVoucher::CATEGORY_REMITTANCE) {
+                throw ValidationException::withMessages(['pm_ezen_bill_id' => 'Vendor bills can only be settled with an expense voucher.']);
+            }
+            if ($linkedBill && $control - (float) $linkedBill->amount_due > 0.009) {
+                throw ValidationException::withMessages([
+                    'control_amount' => 'The payment cannot exceed this bill’s remaining balance of '.number_format((float) $linkedBill->amount_due, 2).'.',
+                ]);
+            }
+            if ($linkedBill?->property_id && collect($prepared)->contains(fn (array $line) => (int) ($line['property_id'] ?? 0) !== (int) $linkedBill->property_id)) {
+                throw ValidationException::withMessages(['lines' => 'All lines for a linked bill must use its property.']);
+            }
             $voucherNo = $this->nextRecordedVoucherNumber($agentUserId);
             $property = null;
             $firstPropertyId = (int) ($prepared[0]['property_id'] ?? 0);
@@ -781,6 +817,7 @@ final class EzenPaymentVouchersImportService
                 'notes' => trim((string) ($header['notes'] ?? '')) ?: null,
                 'tax_amount' => $taxTotal,
                 'source' => PmEzenPaymentVoucher::SOURCE_RECORDED,
+                'pm_ezen_bill_id' => $linkedBill?->id,
             ]);
 
             foreach ($prepared as $line) {
@@ -802,6 +839,17 @@ final class EzenPaymentVouchersImportService
                 $voucher->update([
                     'pm_accounting_entry_id' => $entry?->id,
                     'link_status' => $entry ? PmEzenPaymentVoucher::LINK_EXPENSE : PmEzenPaymentVoucher::LINK_SKIPPED,
+                ]);
+            }
+
+            if ($linkedBill) {
+                $paid = round((float) $linkedBill->total_paid + $control, 2);
+                $due = round(max(0, (float) $linkedBill->total_amount - $paid), 2);
+                $linkedBill->update([
+                    'total_paid' => $paid,
+                    'amount_due' => $due,
+                    'payment_status' => $due <= 0.009 ? PmEzenBill::STATUS_PAID : PmEzenBill::STATUS_PARTIAL,
+                    'listing_status' => $due <= 0.009 ? 'closed' : 'open',
                 ]);
             }
 
@@ -936,10 +984,97 @@ final class EzenPaymentVouchersImportService
                 'description' => $this->voucherDescription($row).($line->description ? ' '.$line->description : ''),
                 'source_key' => $sourceKey,
             ]);
+            $property = $line->property_id ? Property::query()->find((int) $line->property_id) : null;
+            $landlord = $voucher->landlord_id ? User::query()->find((int) $voucher->landlord_id) : null;
+            $this->postLandlordExpenseShares(
+                $property,
+                $landlord,
+                (float) $line->line_total,
+                (string) $row['txn_date'],
+                $this->voucherDescription($row).($line->description ? ' '.$line->description : ''),
+                (int) $voucher->id,
+                (int) $actor->id,
+            );
             $first ??= $entry;
         }
 
         return $first;
+    }
+
+    /**
+     * Charge a property expense to its linked landlords in ownership-share proportions.
+     * A missing property or landlord link leaves the expense in the property accounting
+     * register without changing any landlord balance.
+     */
+    private function postLandlordExpenseShares(
+        ?Property $property,
+        ?User $selectedLandlord,
+        float $amount,
+        string $date,
+        string $description,
+        int $referenceId,
+        int $agentUserId,
+    ): void {
+        if (! $property || $amount <= 0 || ! Schema::hasTable('pm_landlord_ledger_entries')) {
+            return;
+        }
+
+        $property->loadMissing('landlords');
+        $landlords = $selectedLandlord
+            ? $property->landlords->where('id', $selectedLandlord->id)->values()
+            : $property->landlords->values();
+        if ($landlords->isEmpty()) {
+            return;
+        }
+
+        $weights = $landlords
+            ->map(fn (User $landlord) => max(0.0, (float) ($landlord->pivot->ownership_percent ?? 0)))
+            ->values();
+        $weightTotal = $weights->sum();
+        if ($weightTotal <= 0) {
+            return;
+        }
+
+        $landlords = $landlords->filter(fn (User $landlord, int $index) => $weights[$index] > 0)->values();
+        $weights = $landlords
+            ->map(fn (User $landlord) => max(0.0, (float) ($landlord->pivot->ownership_percent ?? 0)))
+            ->values();
+        $weightTotal = $weights->sum();
+
+        $remaining = round($amount, 2);
+        foreach ($landlords->values() as $index => $landlord) {
+            $share = $index === $landlords->count() - 1
+                ? $remaining
+                : round($amount * ($weights[$index] / $weightTotal), 2);
+            $remaining = round($remaining - $share, 2);
+            if ($share <= 0) {
+                continue;
+            }
+
+            $exists = PmLandlordLedgerEntry::query()
+                ->where('reference_type', 'ezen_payment_voucher_expense')
+                ->where('reference_id', $referenceId)
+                ->where('user_id', $landlord->id)
+                ->where('property_id', $property->id)
+                ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
+                ->whereNull('reversal_of_id')
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
+            LandlordLedger::post(
+                $landlord,
+                PmLandlordLedgerEntry::DIRECTION_DEBIT,
+                $share,
+                $description,
+                $property,
+                'ezen_payment_voucher_expense',
+                $referenceId,
+                Carbon::parse($date)->startOfDay(),
+                $agentUserId,
+            );
+        }
     }
 
     /**

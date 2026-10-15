@@ -1,6 +1,6 @@
 <x-property.workspace :compact-list="false"
     :title="$vendor->name"
-    subtitle="Vendor profile, completed earnings, and allocation tracking."
+    subtitle="Service provider details, recurring agreements, bills, and maintenance payment history."
     back-route="property.vendors.directory"
     :stats="$stats"
     :columns="$columns"
@@ -36,7 +36,92 @@
                 <p><span class="text-slate-500">Status:</span> {{ ucfirst((string) $vendor->status) }}</p>
                 <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$vendor->phone" /></p>
                 <p><span class="text-slate-500">Email:</span> {{ $vendor->email ?: '—' }}</p>
+                <p><span class="text-slate-500">ID / Reg. no.:</span> {{ $vendor->registration_no ?: '—' }}</p>
+                <p><span class="text-slate-500">Default property:</span> {{ $vendor->defaultProperty?->name ?? '—' }}</p>
+                <p><span class="text-slate-500">Bank:</span> {{ $vendor->bank_name ?: '—' }}{{ $vendor->bank_branch_code ? ' · '.$vendor->bank_branch_code : '' }}</p>
+                <p><span class="text-slate-500">Account:</span> {{ $vendor->bank_account_name ?: '—' }}{{ $vendor->bank_account_number ? ' · '.$vendor->bank_account_number : '' }}</p>
+                <p><span class="text-slate-500">Creditor account:</span> {{ $vendor->creditor_account ?: '—' }}</p>
             </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold text-slate-900">Recurring service agreements</p>
+                    <p class="mt-1 text-xs text-slate-500">Set a fixed monthly provider cost for a property, then generate one payable bill per month.</p>
+                </div>
+                <a href="{{ route('property.accounting.payables.accounts_payable', ['vendor' => $vendor->name], false) }}" data-turbo-frame="property-main" class="text-sm font-medium text-indigo-700 hover:underline">Open bills</a>
+            </div>
+
+            <form method="post" action="{{ route('property.vendors.service_agreements.store', $vendor, false) }}" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                @csrf
+                <label class="text-xs font-medium text-slate-600 lg:col-span-2">Property
+                    <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Select property…</option>
+                        @foreach ($properties as $property)
+                            <option value="{{ $property->id }}" @selected((string) old('property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <label class="text-xs font-medium text-slate-600 lg:col-span-2">Service
+                    <input name="service_name" value="{{ old('service_name') }}" placeholder="e.g. Garbage collection" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs font-medium text-slate-600">Monthly amount (KES)
+                    <input type="number" name="monthly_amount" value="{{ old('monthly_amount') }}" min="0.01" step="0.01" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs font-medium text-slate-600">Bill day
+                    <input type="number" name="billing_day" value="{{ old('billing_day', 1) }}" min="1" max="28" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs font-medium text-slate-600">Starts
+                    <input type="date" name="starts_on" value="{{ old('starts_on', now()->toDateString()) }}" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs font-medium text-slate-600">Ends (optional)
+                    <input type="date" name="ends_on" value="{{ old('ends_on') }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs font-medium text-slate-600 sm:col-span-2 lg:col-span-3">Agreement notes
+                    <input name="notes" value="{{ old('notes') }}" placeholder="Terms, scope, or reference" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                <div class="flex items-end"><button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Save agreement</button></div>
+                @foreach (['property_id', 'service_name', 'monthly_amount', 'billing_day', 'starts_on', 'ends_on', 'notes'] as $field)
+                    @error($field)<p class="text-xs text-red-600 sm:col-span-2 lg:col-span-6">{{ $message }}</p>@enderror
+                @endforeach
+            </form>
+
+            @if (($serviceAgreements ?? collect())->isEmpty())
+                <p class="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">No recurring agreements have been added for this provider.</p>
+            @else
+                <div class="mt-4 space-y-3">
+                    @foreach ($serviceAgreements as $agreement)
+                        <div class="rounded-xl border border-slate-200 p-3">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="font-semibold text-slate-800">{{ $agreement->service_name }} · {{ $agreement->property?->name }}</p>
+                                    <p class="mt-1 text-xs text-slate-500">{{ \App\Services\Property\PropertyMoney::kes((float) $agreement->monthly_amount) }}/month · {{ $agreement->starts_on?->format('Y-m-d') }} to {{ $agreement->ends_on?->format('Y-m-d') ?? 'ongoing' }} · {{ ucfirst($agreement->status) }}</p>
+                                </div>
+                                @if ($agreement->status === 'active')
+                                    <form method="post" action="{{ route('property.vendors.service_agreements.generate_bill', ['vendor' => $vendor, 'agreement' => $agreement], false) }}" class="flex flex-wrap items-center gap-2">
+                                        @csrf
+                                        <label class="text-xs text-slate-500">Bill month <input type="month" name="period" value="{{ now()->format('Y-m') }}" required class="ml-1 rounded border border-slate-300 px-2 py-1 text-sm text-slate-700" /></label>
+                                        <button type="submit" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">Generate bill</button>
+                                    </form>
+                                @endif
+                            </div>
+                            @if ($agreement->bills->isNotEmpty())
+                                <div class="mt-3 overflow-x-auto">
+                                    <table class="min-w-full text-xs">
+                                        <thead class="text-left uppercase tracking-wide text-slate-500"><tr><th class="py-2 pr-4">Bill / month</th><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Amount</th><th class="py-2 pr-4">Due</th><th class="py-2 pr-4">Status</th><th class="py-2">Action</th></tr></thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            @foreach ($agreement->bills as $bill)
+                                                <tr><td class="py-2 pr-4">{{ $bill->ezen_bill_no }}</td><td class="py-2 pr-4">{{ $bill->bill_date?->format('Y-m-d') ?? '—' }}</td><td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->total_amount) }}</td><td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->amount_due) }}</td><td class="py-2 pr-4">{{ $bill->displayPaymentStatus() }}</td><td class="py-2">@if ((float) $bill->amount_due > 0.009)<a class="font-semibold text-indigo-700 hover:underline" data-turbo-frame="property-main" href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}">Record payment</a>@else<span class="text-emerald-700">Settled</span>@endif</td></tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

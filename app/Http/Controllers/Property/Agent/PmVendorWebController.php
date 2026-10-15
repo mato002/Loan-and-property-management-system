@@ -7,6 +7,9 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmAccountingEntry;
 use App\Models\PmPortalAction;
 use App\Models\PmVendor;
+use App\Models\PmVendorServiceAgreement;
+use App\Models\PmEzenBill;
+use App\Models\Property;
 use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
@@ -21,6 +24,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use Illuminate\View\View;
 
@@ -87,6 +91,7 @@ class PmVendorWebController extends Controller
                 'per_page' => $perPage,
             ],
             'vendorPager' => $vendors,
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
         ]);
     }
 
@@ -118,6 +123,11 @@ class PmVendorWebController extends Controller
 
     public function show(PmVendor $vendor): View
     {
+        $agreements = $vendor->serviceAgreements()
+            ->with(['property', 'bills' => fn ($query) => $query->orderByDesc('bill_date')->orderByDesc('id')])
+            ->orderByDesc('id')
+            ->get();
+        $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
         $jobs = PmMaintenanceJob::query()
             ->with(['request.unit.property'])
             ->where('pm_vendor_id', $vendor->id)
@@ -198,6 +208,8 @@ class PmVendorWebController extends Controller
 
         return property_view('property.agent.vendors.show', [
             'vendor' => $vendor,
+            'serviceAgreements' => $agreements,
+            'properties' => $properties,
             'stats' => [
                 ['label' => 'Total jobs', 'value' => (string) $jobs->count(), 'hint' => 'All statuses'],
                 ['label' => 'Completed jobs', 'value' => (string) $completed->count(), 'hint' => 'Done'],
@@ -214,6 +226,70 @@ class PmVendorWebController extends Controller
             'b2cConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
             'outstandingAmount' => $outstandingAmount,
         ]);
+    }
+
+    public function storeServiceAgreement(Request $request, PmVendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'integer', 'exists:properties,id'],
+            'service_name' => ['required', 'string', 'max:191'],
+            'monthly_amount' => ['required', 'numeric', 'gt:0'],
+            'starts_on' => ['required', 'date'],
+            'ends_on' => ['nullable', 'date', 'after_or_equal:starts_on'],
+            'billing_day' => ['required', 'integer', 'between:1,28'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $property = Property::query()->findOrFail((int) $data['property_id']);
+        $this->assertDefaultPropertyInWorkspace((int) $property->id);
+
+        $vendor->serviceAgreements()->create([
+            ...$data,
+            'agent_user_id' => \App\Models\Concerns\AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) $request->user()->id,
+            'status' => 'active',
+        ]);
+
+        return back()->with('success', 'Monthly service agreement saved. Generate each month’s bill from the agreement history below.');
+    }
+
+    public function generateAgreementBill(Request $request, PmVendor $vendor, PmVendorServiceAgreement $agreement): RedirectResponse
+    {
+        abort_unless((int) $agreement->pm_vendor_id === (int) $vendor->id, 404);
+        $data = $request->validate(['period' => ['required', 'date_format:Y-m']]);
+        $period = (string) $data['period'];
+        $periodStart = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfDay();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+        abort_unless($agreement->status === 'active'
+            && $agreement->starts_on?->lte($periodEnd)
+            && (! $agreement->ends_on || $agreement->ends_on->gte($periodStart)), 422, 'This agreement is not active during the selected month.');
+
+        DB::transaction(function () use ($vendor, $agreement, $period, $periodStart): void {
+            $sourceKey = 'service-agreement-'.$agreement->id.'-'.$period;
+            if (PmEzenBill::query()->where('source_key', $sourceKey)->exists()) {
+                return;
+            }
+            $landlords = $agreement->property->landlords;
+            $landlordId = $landlords->count() === 1 ? (int) $landlords->first()->id : null;
+            PmEzenBill::query()->create([
+                'agent_user_id' => (int) $agreement->agent_user_id,
+                'source_key' => $sourceKey,
+                'ezen_bill_no' => 'AG-'.$agreement->id.'-'.$period,
+                'vendor_invoice_no' => null,
+                'bill_date' => $periodStart->copy()->day(min((int) $agreement->billing_day, $periodStart->daysInMonth)),
+                'due_date' => $periodStart->copy()->day(min((int) $agreement->billing_day, $periodStart->daysInMonth)),
+                'vendor_name' => (string) $vendor->name,
+                'memo' => $agreement->service_name.' — '.$period,
+                'total_amount' => (float) $agreement->monthly_amount,
+                'total_paid' => 0,
+                'amount_due' => (float) $agreement->monthly_amount,
+                'listing_status' => 'open',
+                'payment_status' => PmEzenBill::STATUS_UNPAID,
+                'property_id' => (int) $agreement->property_id,
+                'landlord_id' => $landlordId,
+                'pm_vendor_service_agreement_id' => (int) $agreement->id,
+            ]);
+        });
+
+        return back()->with('success', 'Monthly bill generated for '.$period.'. Duplicate bills for the same agreement and month are prevented.');
     }
 
     public function markJobPaid(Request $request, PmVendor $vendor, PmMaintenanceJob $job): RedirectResponse
@@ -412,7 +488,15 @@ class PmVendorWebController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'status' => ['required', 'in:active,inactive'],
             'rating' => ['nullable', 'numeric', 'between:0,5'],
+            'registration_no' => ['nullable', 'string', 'max:100'],
+            'bank_name' => ['nullable', 'string', 'max:150'],
+            'bank_branch_code' => ['nullable', 'string', 'max:80'],
+            'bank_account_name' => ['nullable', 'string', 'max:191'],
+            'bank_account_number' => ['nullable', 'string', 'max:100'],
+            'creditor_account' => ['nullable', 'string', 'max:120'],
+            'default_property_id' => ['nullable', 'integer', 'exists:properties,id'],
         ]);
+        $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
 
         $vendor = PmVendor::query()->create([
             ...$data,
@@ -482,6 +566,7 @@ class PmVendorWebController extends Controller
     {
         return property_view('property.agent.vendors.edit', array_merge([
             'vendor' => $vendor,
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
         ], $this->propertyFormModalViewData($request)));
     }
 
@@ -494,7 +579,15 @@ class PmVendorWebController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'status' => ['required', 'in:active,inactive'],
             'rating' => ['nullable', 'numeric', 'between:0,5'],
+            'registration_no' => ['nullable', 'string', 'max:100'],
+            'bank_name' => ['nullable', 'string', 'max:150'],
+            'bank_branch_code' => ['nullable', 'string', 'max:80'],
+            'bank_account_name' => ['nullable', 'string', 'max:191'],
+            'bank_account_number' => ['nullable', 'string', 'max:100'],
+            'creditor_account' => ['nullable', 'string', 'max:120'],
+            'default_property_id' => ['nullable', 'integer', 'exists:properties,id'],
         ]);
+        $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
 
         $vendor->update($data);
 
@@ -515,6 +608,16 @@ class PmVendorWebController extends Controller
         ]);
 
         return back()->with('success', 'Vendor status updated.');
+    }
+
+    private function assertDefaultPropertyInWorkspace(?int $propertyId): void
+    {
+        if (! $propertyId || ! \App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
+            return;
+        }
+        $allowedIds = array_map('intval', \App\Models\Concerns\AgentWorkspaceScope::workspaceOwnerIds());
+        $property = Property::query()->findOrFail($propertyId);
+        abort_unless(in_array((int) $property->agent_user_id, $allowedIds, true), 403);
     }
 
     public function createBiddingRfqForm(): View

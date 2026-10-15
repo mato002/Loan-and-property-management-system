@@ -69,7 +69,7 @@
     if ($portalRole === 'agent' && Auth::check() && \Illuminate\Support\Facades\Schema::hasTable('pm_message_logs')) {
         $uid = (int) Auth::id();
         $baseNotifQuery = \App\Models\PmMessageLog::query()
-            ->whereIn('channel', ['system', 'email', 'sms'])
+            ->where('channel', 'system')
             ->orderByDesc('id');
 
         $notificationItems = (clone $baseNotifQuery)
@@ -82,7 +82,7 @@
                     $join->on('pm_message_logs.id', '=', 'pmr.pm_message_log_id')
                         ->where('pmr.user_id', '=', $uid);
                 })
-                ->whereIn('pm_message_logs.channel', ['system', 'email', 'sms'])
+                ->where('pm_message_logs.channel', 'system')
                 ->whereNull('pmr.id')
                 ->count();
         }

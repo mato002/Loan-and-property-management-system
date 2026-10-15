@@ -56,7 +56,7 @@ class PmLeaseWebController extends Controller
 
     /**
      * @return array{
-     *   stats: array<int,array{label:string,value:string,hint:string}>,
+     *   stats: array<int,array{label:string,value:string,hint:string,href?:string}>,
      *   columns: array<int,string>,
      *   tableRows: array<int,array<int,mixed>>,
      *   expiryFilterTexts: array<int,string>
@@ -1601,7 +1601,35 @@ SQL;
 
         $leaseQuery = PmLease::query()->with(['pmTenant', 'units.property']);
         $this->applyLeaseListFilters($leaseQuery, $filters, applyStatus: true, filterEndDate: false);
-        $stats = $this->leaseListStatsFromQuery($leaseQuery);
+
+        $statsFilters = $filters;
+        $statsFilters['status'] = '';
+        $statsFilters['expiring'] = '';
+        $statsQuery = PmLease::query();
+        $this->applyLeaseListFilters($statsQuery, $statsFilters, applyStatus: false, filterEndDate: false);
+        $stats = $this->leaseListStatsFromQuery($statsQuery);
+
+        $summaryStates = [
+            'All leases' => ['status' => '', 'expiring' => ''],
+            'Active' => ['status' => PmLease::STATUS_ACTIVE, 'expiring' => ''],
+            'Ending ≤60d' => ['status' => PmLease::STATUS_ACTIVE, 'expiring' => 'within60'],
+            'Draft' => ['status' => PmLease::STATUS_DRAFT, 'expiring' => ''],
+            'Expired' => ['status' => PmLease::STATUS_EXPIRED, 'expiring' => ''],
+            'Terminated' => ['status' => PmLease::STATUS_TERMINATED, 'expiring' => ''],
+        ];
+        $baseSummaryQuery = $request->query();
+        unset($baseSummaryQuery['page']);
+        foreach ($stats as &$stat) {
+            if (isset($summaryStates[$stat['label']])) {
+                $stat['href'] = route(
+                    'property.tenants.leases',
+                    array_merge($baseSummaryQuery, $summaryStates[$stat['label']]),
+                    false,
+                );
+            }
+        }
+        unset($stat);
+
         $this->applyLeaseListSort($leaseQuery, $filters);
         $leasePager = $this->paginateLeaseList($leaseQuery, $filters);
         $rows = $leasePager->getCollection()

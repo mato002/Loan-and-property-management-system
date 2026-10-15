@@ -4,14 +4,14 @@
 <x-property.workspace
     :legacy-toolbar="false"
     title="Vendor directory"
-    subtitle="Maintenance contractors for jobs and quotes. Supplier bills (garbage collection and similar) are on Accounting → Bills listing."
+    subtitle="Register service providers and maintenance contractors, manage recurring agreements, and track payable bills."
     :show-search="false"
     back-route="property.vendors.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No vendors"
-    empty-hint="Add vendors here; assign them when creating maintenance jobs. Import supplier bill listings under Settings → Register imports."
+        empty-hint="Add a service provider or maintenance contractor here. Set recurring property agreements from the provider profile."
 >
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showVendorForm' => $showVendorFormByDefault]) !!}" ></x-slot>
 
@@ -29,7 +29,7 @@
 
     <x-slot name="secondary">
         <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 max-w-3xl">
-            This directory is for <strong>maintenance vendors</strong> (plumbing, jobs, quotes). Supplier invoices from bill listings live under
+            A service provider is managed as a vendor here. Register their bank details and recurring property agreements on the provider profile. Supplier bills live under
             <a href="{{ route('property.accounting.payables.accounts_payable') }}" class="font-semibold underline">Accounting → Payables → Bills listing</a>.
             Importing bills also adds those supplier names here so you can assign them to jobs.
         </div>
@@ -79,6 +79,39 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rating (0–5)</label>
                     <input type="number" name="rating" value="{{ old('rating') }}" step="0.1" min="0" max="5" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('rating')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">ID / Registration no.</label>
+                    <input type="text" name="registration_no" value="{{ old('registration_no') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default property</label>
+                    <select name="default_property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">Choose later</option>
+                        @foreach ($properties ?? [] as $property)
+                            <option value="{{ $property->id }}" @selected((string) old('default_property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank</label>
+                    <input type="text" name="bank_name" value="{{ old('bank_name') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bank branch code</label>
+                    <input type="text" name="bank_branch_code" value="{{ old('bank_branch_code') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account name</label>
+                    <input type="text" name="bank_account_name" value="{{ old('bank_account_name') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account number</label>
+                    <input type="text" name="bank_account_number" value="{{ old('bank_account_number') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Creditor account</label>
+                    <input type="text" name="creditor_account" value="{{ old('creditor_account') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save vendor</button>

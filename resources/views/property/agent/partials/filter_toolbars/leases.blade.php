@@ -132,6 +132,12 @@
             ]"
             :value="$filters['dir'] ?? ($activeTab === 'expiry' ? 'asc' : 'desc')"
         />
+        <x-property.filter-field
+            type="select"
+            name="per_page"
+            label="Rows"
+            :value="(string) ($filters['per_page'] ?? 100)"
+        />
     </x-slot>
 
     <x-slot name="dateRange">

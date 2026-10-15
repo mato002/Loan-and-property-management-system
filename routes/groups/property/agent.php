@@ -432,6 +432,8 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
     Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
     Route::post('/vendors/{vendor}/pay-outstanding-mpesa', [PmVendorWebController::class, 'payOutstandingViaMpesa'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding_mpesa');
+    Route::post('/vendors/{vendor}/service-agreements', [PmVendorWebController::class, 'storeServiceAgreement'])->middleware('property.permission:vendors.manage')->name('vendors.service_agreements.store');
+    Route::post('/vendors/{vendor}/service-agreements/{agreement}/generate-bill', [PmVendorWebController::class, 'generateAgreementBill'])->middleware('property.permission:vendors.manage')->name('vendors.service_agreements.generate_bill');
     Route::get('/vendors/{vendor}', [PmVendorWebController::class, 'show'])->name('vendors.show');
     Route::get('/vendors', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('vendors'))->name('vendors.index');
 

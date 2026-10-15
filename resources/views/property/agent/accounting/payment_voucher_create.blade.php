@@ -8,6 +8,13 @@
 >
     <form method="post" action="{{ route('property.accounting.payables.payment_vouchers.store', absolute: false) }}" class="property-compact-panel max-w-5xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-4">
         @csrf
+        @if ($preselectedBill ?? false)
+            <input type="hidden" name="pm_ezen_bill_id" value="{{ $preselectedBill->id }}" />
+            <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+                Paying bill <strong>{{ $preselectedBill->ezen_bill_no }}</strong> for {{ $preselectedBill->vendor_name }}. Remaining due: <strong>{{ number_format((float) $preselectedBill->amount_due, 2) }}</strong>. The voucher will update the bill and post the property expense.
+            </div>
+            @error('pm_ezen_bill_id')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+        @endif
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Voucher date</label>
@@ -16,7 +23,7 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Payee</label>
-                <input type="text" name="payee" required value="{{ old('payee') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="payee" required value="{{ old('payee', ($preselectedBill ?? null)?->vendor_name) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('payee')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -41,12 +48,12 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference no.</label>
-                <input type="text" name="ref_no" required value="{{ old('ref_no') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="ref_no" required value="{{ old('ref_no', ($preselectedBill ?? null)?->vendor_invoice_no ?: ($preselectedBill->ezen_bill_no ?? '')) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('ref_no')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Control amount</label>
-                <input type="number" name="control_amount" required min="0.01" step="0.01" value="{{ old('control_amount') }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="number" name="control_amount" required min="0.01" step="0.01" value="{{ old('control_amount', ($preselectedBill ?? null)?->amount_due) }}" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('control_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -61,7 +68,7 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default expense group</label>
                 <select name="expense_group" required class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     @foreach ($expenseGroups as $value => $group)
-                        <option value="{{ $value }}" @selected(old('expense_group', 'operating') === $value)>{{ $group['label'] }}</option>
+                    <option value="{{ $value }}" @selected(old('expense_group', ($preselectedBill ?? null) ? 'utilities' : 'operating') === $value)>{{ $group['label'] }}</option>
                     @endforeach
                 </select>
                 @error('expense_group')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -107,7 +114,7 @@
                                     <select name="lines[{{ $i }}][property_id]" class="w-40 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-1">
                                         <option value="">—</option>
                                         @foreach ($properties as $property)
-                                            <option value="{{ $property->id }}" @selected((string) old('lines.'.$i.'.property_id') === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                                        <option value="{{ $property->id }}" @selected((string) old('lines.'.$i.'.property_id', ($i === 0 ? ($preselectedBill->property_id ?? null) : null)) === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
                                         @endforeach
                                     </select>
                                 </td>
@@ -128,10 +135,10 @@
                                     </select>
                                 </td>
                                 <td class="px-1 py-1">
-                                    <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description') }}" class="w-36 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                    <input type="text" name="lines[{{ $i }}][description]" value="{{ old('lines.'.$i.'.description', $i === 0 ? ($preselectedBill->memo ?? '') : '') }}" class="w-36 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
                                 </td>
                                 <td class="px-1 py-1">
-                                    <input type="number" data-amount name="lines[{{ $i }}][amount]" min="0" step="0.01" value="{{ old('lines.'.$i.'.amount') }}" class="w-24 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
+                                    <input type="number" data-amount name="lines[{{ $i }}][amount]" min="0" step="0.01" value="{{ old('lines.'.$i.'.amount', $i === 0 ? ($preselectedBill->amount_due ?? '') : '') }}" class="w-24 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />
                                 </td>
                                 <td class="px-1 py-1">
                                     <input type="number" data-rate name="lines[{{ $i }}][tax_rate]" min="0" max="100" step="0.01" value="{{ old('lines.'.$i.'.tax_rate') }}" class="w-16 min-h-[34px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2" />

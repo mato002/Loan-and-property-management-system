@@ -1,6 +1,6 @@
 <x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit vendor"
-    subtitle="Update supplier profile used across maintenance jobs, quotes, and performance."
+    subtitle="Update provider contact, payment, and default property details."
     back-route="property.vendors.directory"
     :stats="[
         ['label' => 'Vendor', 'value' => $vendor->name, 'hint' => $vendor->category ?: 'No category'],
@@ -46,6 +46,31 @@
                 <input type="number" name="rating" value="{{ old('rating', $vendor->rating) }}" min="0" max="5" step="0.1" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('rating')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">ID / Registration no.</label>
+                <input type="text" name="registration_no" value="{{ old('registration_no', $vendor->registration_no) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Default property</label>
+                <select name="default_property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <option value="">None</option>
+                    @foreach ($properties as $property)
+                        <option value="{{ $property->id }}" @selected((string) old('default_property_id', $vendor->default_property_id) === (string) $property->id)>{{ $property->code ? $property->code.' — ' : '' }}{{ $property->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            @foreach ([
+                'bank_name' => 'Bank',
+                'bank_branch_code' => 'Bank branch code',
+                'bank_account_name' => 'Account name',
+                'bank_account_number' => 'Account number',
+                'creditor_account' => 'Creditor account',
+            ] as $field => $label)
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">{{ $label }}</label>
+                    <input type="text" name="{{ $field }}" value="{{ old($field, $vendor->{$field}) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+            @endforeach
         </div>
         <div class="flex gap-2">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>

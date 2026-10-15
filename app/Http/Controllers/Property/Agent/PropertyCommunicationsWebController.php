@@ -136,12 +136,16 @@ class PropertyCommunicationsWebController extends Controller
     public function notificationsBulk(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'bulk_action' => ['required', 'in:mark_read,mark_unread'],
+            'bulk_action' => ['required', 'in:mark_read,mark_unread,delete'],
             'selected_ids' => ['required', 'array', 'min:1'],
             'selected_ids.*' => ['integer'],
         ]);
 
-        if (! Schema::hasTable('pm_message_reads')) {
+        if ($data['bulk_action'] === 'delete' && ! $this->canManageCommunications($request)) {
+            abort(403, 'You do not have permission to delete notifications.');
+        }
+
+        if ($data['bulk_action'] !== 'delete' && ! Schema::hasTable('pm_message_reads')) {
             return back()->withErrors(['bulk_action' => 'Read tracking table not available on this instance.']);
         }
 
@@ -160,6 +164,14 @@ class PropertyCommunicationsWebController extends Controller
             ->pluck('id');
         if ($validIds->isEmpty()) {
             return back()->withErrors(['bulk_action' => 'No valid notifications selected.']);
+        }
+
+        if ($data['bulk_action'] === 'delete') {
+            $deleted = PmMessageLog::query()
+                ->whereIn('id', $validIds->all())
+                ->delete();
+
+            return back()->with('success', 'Deleted '.$deleted.' selected notification(s).');
         }
 
         $uid = (int) $request->user()->id;

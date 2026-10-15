@@ -20,6 +20,13 @@ class PmVendor extends Model
         'status',
         'rating',
         'agent_user_id',
+        'registration_no',
+        'bank_name',
+        'bank_branch_code',
+        'bank_account_name',
+        'bank_account_number',
+        'creditor_account',
+        'default_property_id',
     ];
 
     protected function casts(): array
@@ -83,5 +90,15 @@ class PmVendor extends Model
     public function maintenanceJobs(): HasMany
     {
         return $this->hasMany(PmMaintenanceJob::class, 'pm_vendor_id');
+    }
+
+    public function serviceAgreements(): HasMany
+    {
+        return $this->hasMany(PmVendorServiceAgreement::class, 'pm_vendor_id');
+    }
+
+    public function defaultProperty(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Property::class, 'default_property_id');
     }
 }
