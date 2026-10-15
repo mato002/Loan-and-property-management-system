@@ -71,18 +71,21 @@
     </div>
 
     <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table class="min-w-full text-sm">
+        <table class="w-full table-fixed text-sm">
+            <colgroup>
+                <col style="width: 3%"><col style="width: 8%"><col style="width: 12%"><col style="width: 10%"><col style="width: 10%"><col style="width: 12%"><col style="width: 10%"><col style="width: 7%"><col style="width: 28%">
+            </colgroup>
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                    <th class="px-3 py-2 text-center"><input type="checkbox" id="statement-select-page" class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select eligible bank-statement matches on this page"></th>
-                    <th class="px-3 py-2">Date</th>
-                    <th class="px-3 py-2">Reference</th>
-                    <th class="px-3 py-2">Phone</th>
-                    <th class="px-3 py-2">Payer</th>
-                    <th class="px-3 py-2">Tenant / paid to</th>
-                    <th class="px-3 py-2">Amount</th>
-                    <th class="px-3 py-2">Status</th>
-                    <th class="px-3 py-2 text-right">Actions</th>
+                    <th class="px-2 py-2 text-center"><input type="checkbox" id="statement-select-page" class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select eligible bank-statement matches on this page"></th>
+                    <th class="px-2 py-2">Date</th>
+                    <th class="px-2 py-2">Reference</th>
+                    <th class="px-2 py-2">Phone</th>
+                    <th class="px-2 py-2">Payer</th>
+                    <th class="px-2 py-2">Tenant / paid to</th>
+                    <th class="px-2 py-2">Amount</th>
+                    <th class="px-2 py-2">Status</th>
+                    <th class="px-2 py-2">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -100,19 +103,19 @@
                             && ! in_array($line->payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true);
                     @endphp
                     <tr data-line-row="{{ $line->id }}">
-                        <td class="px-3 py-2 text-center">
+                        <td class="px-2 py-2 text-center">
                             @if ($canReverseBankPayment)
                                 <input type="checkbox" value="{{ $paymentId }}" data-statement-reversal-checkbox class="rounded border-slate-300 text-rose-700 focus:ring-rose-600" aria-label="Select bank-statement payment {{ $line->reference ?: $paymentId }}">
                             @endif
                         </td>
-                        <td class="px-3 py-2 whitespace-nowrap">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
-                        <td class="px-3 py-2">
+                        <td class="px-2 py-2 whitespace-nowrap text-xs">{{ $line->txn_date?->format('Y-m-d') ?? '—' }}</td>
+                        <td class="px-2 py-2 break-all">
                             <div class="font-mono text-xs font-semibold text-slate-900">{{ $line->reference ?: '—' }}</div>
                             @if ($line->line_type === 'mpesa_c2b')
                                 <div class="mt-0.5 text-[11px] text-slate-400">M-Pesa match key</div>
                             @endif
                         </td>
-                        <td class="px-3 py-2">
+                        <td class="px-2 py-2 break-words">
                             @if ($phone !== '')
                                 <div class="text-xs font-semibold text-slate-900"><x-phone-link :value="$phone" /></div>
                                 @if ($line->phone && trim((string) $line->phone) !== trim($phone))
@@ -122,8 +125,8 @@
                                 <span class="text-slate-400">—</span>
                             @endif
                         </td>
-                        <td class="px-3 py-2">{{ $line->counterparty ?: '—' }}</td>
-                        <td data-col="tenant" class="px-3 py-2">
+                        <td class="px-2 py-2 break-words text-xs">{{ $line->counterparty ?: '—' }}</td>
+                        <td data-col="tenant" class="px-2 py-2 break-words">
                             @if (data_get($line->payment?->meta, 'split_payment'))
                                 @php $splitRecipients = (array) data_get($line->payment?->meta, 'split_recipients', []); @endphp
                                 <div class="text-xs font-semibold text-emerald-800">Split across {{ count($splitRecipients) }} tenants</div>
@@ -156,23 +159,23 @@
                                 <span class="text-slate-400">—</span>
                             @endif
                         </td>
-                        <td class="px-3 py-2 tabular-nums {{ $line->direction === 'debit' ? 'text-rose-700' : 'text-emerald-800' }}">
+                        <td class="px-2 py-2 whitespace-nowrap tabular-nums text-xs {{ $line->direction === 'debit' ? 'text-rose-700' : 'text-emerald-800' }}">
                             {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}
                         </td>
-                        <td data-col="status" class="px-3 py-2">
+                        <td data-col="status" class="px-2 py-2 break-words">
                             @php $shownStatus = $line->displayMatchStatus(); @endphp
                             <span class="text-xs font-semibold {{ in_array($shownStatus, ['Matched', 'Landlord', 'Employee', 'Vendor'], true) ? 'text-emerald-700' : ($shownStatus === 'Unmatched' ? 'text-amber-700' : 'text-slate-500') }}">
                                 {{ $shownStatus }}
                             </span>
                         </td>
-                        <td data-col="actions" class="px-3 py-2 text-right">
-                            <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                        <td data-col="actions" class="px-2 py-2 text-left">
+                            <div class="flex flex-wrap items-center gap-1.5">
                                 @if (! $line->isAllocatedToTenant() && $line->direction === 'credit' && $line->line_type === 'mpesa_c2b')
-                                    <form method="POST" action="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}" data-statement-assign data-line-id="{{ $line->id }}" data-line-phone="{{ $phone }}" data-line-counterparty="{{ $line->counterparty }}" class="flex items-center gap-1">
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.assign', [$statement, $line]) }}" data-statement-assign data-line-id="{{ $line->id }}" data-line-phone="{{ $phone }}" data-line-counterparty="{{ $line->counterparty }}" class="flex flex-wrap items-center gap-1">
                                         @csrf
                                         <input type="hidden" name="tenant_id" value="">
                                         <div class="relative flex items-center">
-                                            <input type="text" data-tenant-query data-search-url="{{ route('property.revenue.statements.search.tenants', [], false) }}" data-auto-submit="off" autocomplete="off" placeholder="Tenant, account, or phone" required class="h-8 w-52 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all" />
+                                            <input type="text" data-tenant-query data-search-url="{{ route('property.revenue.statements.search.tenants', [], false) }}" data-auto-submit="off" autocomplete="off" placeholder="Tenant, account, or phone" required class="h-8 w-40 max-w-full rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all" />
                                             <span data-search-spinner class="pointer-events-none absolute right-1.5 hidden text-slate-400">
                                                 <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
                                             </span>
@@ -206,7 +209,7 @@
                                         Open tenant
                                     </a>
                                 @elseif ((string) $line->match_status === 'bank_only')
-                                    <form method="POST" action="{{ route('property.revenue.statements.lines.payee', [$statement, $line]) }}" data-statement-payee class="flex flex-nowrap items-center justify-end gap-1">
+                                    <form method="POST" action="{{ route('property.revenue.statements.lines.payee', [$statement, $line]) }}" data-statement-payee class="flex flex-wrap items-center gap-1">
                                         @csrf
                                         <select name="paid_to_kind" data-payee-kind class="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs">
                                             <option value="landlord" @selected(($line->paid_to_kind ?: 'landlord') === 'landlord')>Landlord</option>
@@ -219,13 +222,13 @@
                                         <input type="hidden" name="employee_id" value="{{ $line->paid_to_employee_id }}">
                                         <input type="hidden" name="vendor_id" value="{{ $line->paid_to_vendor_id }}">
                                         <div class="relative flex items-center">
-                                            <input type="text" data-payee-query autocomplete="off" placeholder="Choose payee" value="{{ in_array($line->paid_to_kind, ['landlord', 'employee', 'vendor'], true) ? $line->paid_to_name : '' }}" class="h-8 w-40 rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600">
+                                            <input type="text" data-payee-query autocomplete="off" placeholder="Choose payee" value="{{ in_array($line->paid_to_kind, ['landlord', 'employee', 'vendor'], true) ? $line->paid_to_name : '' }}" class="h-8 w-36 max-w-full rounded-lg border border-slate-300 px-2 pr-6 text-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600">
                                             <span data-search-spinner class="pointer-events-none absolute right-1.5 hidden text-slate-400">
                                                 <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
                                             </span>
                                         </div>
-                                        <input type="text" name="paid_to_name" value="{{ $line->paid_to_kind === 'other' ? $line->paid_to_name : '' }}" placeholder="Who was paid" class="h-8 w-36 rounded-lg border border-slate-300 px-2 text-xs">
-                                        <input type="text" name="paid_to_note" value="{{ $line->paid_to_note }}" placeholder="Cheque / note" class="h-8 w-28 rounded-lg border border-slate-300 px-2 text-xs">
+                                        <input type="text" name="paid_to_name" value="{{ $line->paid_to_kind === 'other' ? $line->paid_to_name : '' }}" placeholder="Who was paid" class="h-8 w-28 max-w-full rounded-lg border border-slate-300 px-2 text-xs">
+                                        <input type="text" name="paid_to_note" value="{{ $line->paid_to_note }}" placeholder="Cheque / note" class="h-8 w-24 max-w-full rounded-lg border border-slate-300 px-2 text-xs">
                                         <button type="submit" class="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800">Save</button>
                                     </form>
                                 @else
