@@ -237,14 +237,17 @@
                 animation: property-frame-progress 0.9s ease-in-out infinite;
             }
             #property-workspace-loading {
-                position: absolute;
+                position: fixed;
                 inset: 0;
-                z-index: 45;
+                z-index: 10000;
                 display: none;
                 align-items: center;
                 justify-content: center;
                 padding: 1rem;
-                pointer-events: none;
+                background: rgb(15 23 42 / 0.14);
+                -webkit-backdrop-filter: blur(6px);
+                backdrop-filter: blur(6px);
+                pointer-events: auto;
             }
             #property-workspace-loading[data-active] {
                 display: flex;

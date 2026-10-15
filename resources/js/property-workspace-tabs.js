@@ -3,8 +3,6 @@
  * and keep the active tab visible after Turbo frame swaps.
  */
 
-import { notePendingWorkspaceNavigation } from './property-frame-reconciliation';
-
 /** Horizontal movement must exceed this before a gesture counts as scroll-drag. */
 const HORIZONTAL_DRAG_THRESHOLD_PX = 16;
 /** Nav scrollLeft must change by at least this to suppress the click (real scroll). */
@@ -70,11 +68,6 @@ function bindScrollableTabNav(nav) {
         (event) => {
             if (event.button !== 0) {
                 return;
-            }
-
-            const tabLink = event.target?.closest?.('a.property-workspace-tab, a.property-workspace-subtab');
-            if (tabLink instanceof HTMLAnchorElement && tabLink.href) {
-                notePendingWorkspaceNavigation(tabLink.href);
             }
 
             suppressNextClick = false;
