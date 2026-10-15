@@ -161,7 +161,7 @@
                         </td>
                         <td class="px-2 py-2 whitespace-nowrap tabular-nums text-xs {{ $line->direction === 'debit' ? 'text-rose-700' : 'text-emerald-800' }}">
                             @php($displayAmount = $line->match_status === \App\Models\PmBankStatementLine::MATCH_UNMATCHED && $line->matched_type === 'payment_split_partial' ? (float) ($line->unassignedPayment?->amount ?? $line->amount) : (float) $line->amount)
-                            {{ $line->direction === 'debit' ? '−' : '+' }}{{ \App\Services\Property\PropertyMoney::kes($displayAmount) }}
+                            {{ ($line->direction === 'debit' ? '−' : '+') . \App\Services\Property\PropertyMoney::kes($displayAmount) }}
                             @if ($line->matched_type === 'payment_split_partial')
                                 <div class="mt-1 text-[10px] text-slate-500">remaining of {{ \App\Services\Property\PropertyMoney::kes((float) $line->amount) }}</div>
                             @endif
