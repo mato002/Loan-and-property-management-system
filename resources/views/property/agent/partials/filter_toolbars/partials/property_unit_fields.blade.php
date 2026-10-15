@@ -7,6 +7,7 @@
 
 <x-property.filter-field type="select"
     name="property_id"
+    :live-row-filter="request()->routeIs('property.tenants.directory')"
     label="Property"
     :options="collect([['value' => '0', 'label' => 'Property: All']])
         ->merge(collect($properties ?? [])->map(fn ($property) => ['value' => (string) $property->id, 'label' => (string) $property->name]))
@@ -15,6 +16,7 @@
 />
 <x-property.filter-field type="select"
     name="unit_id"
+    :live-row-filter="request()->routeIs('property.tenants.directory')"
     label="Unit"
     :options="collect([['value' => '0', 'label' => 'Unit: All']])
         ->merge(collect($units ?? [])->map(fn ($unit) => ['value' => (string) $unit->id, 'label' => $unitLabel($unit)]))

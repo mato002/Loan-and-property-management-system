@@ -394,6 +394,12 @@ class PmTenantDirectoryController extends Controller
         $stats = $this->tenantDirectoryStatsFromQuery($request);
         $perPage = $this->directoryPerPage($request);
         $tenants = $tenantQuery
+            ->withCount(['invoices as overdue_invoices_count' => function ($query): void {
+                $query->whereNull('deleted_at')
+                    ->whereNotIn('status', [PmInvoice::STATUS_CANCELLED, PmInvoice::STATUS_DRAFT])
+                    ->where('is_past_due', true)
+                    ->where('balance_due', '>', 0.009);
+            }])
             ->with(['leases' => function ($query): void {
                 $query->where('status', PmLease::STATUS_ACTIVE)
                     ->with(['units.property'])
@@ -405,7 +411,8 @@ class PmTenantDirectoryController extends Controller
             ->withQueryString();
 
         $statementLedger = app(TenantStatementLedgerService::class);
-        $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger) {
+        $rowFilters = [];
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger, &$rowFilters) {
             $leaseEnd = $t->leases_max_end_date
                 ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
                 : '—';
@@ -419,6 +426,26 @@ class PmTenantDirectoryController extends Controller
             // the leftover-credit wallet again — that turns a settled deposit
             // payment into a fake CR extra on the directory.
             $accountBalance = $statementLedger->closingBalance($t);
+            $statusKey = TenantProfileStatus::forTenant($t)['key'];
+            $balanceKey = abs((float) $accountBalance) <= 0.009
+                ? TenantDirectoryBalanceFilter::SETTLED
+                : ((float) $accountBalance > 0 ? TenantDirectoryBalanceFilter::ARREARS : TenantDirectoryBalanceFilter::CREDIT);
+            $portalKey = $t->user_id ? 'with' : 'without';
+            $rowFilters[] = implode(' ', [
+                (string) $t->name,
+                (string) ($t->account_number ?? ''),
+                (string) ($t->phone ?? ''),
+                (string) ($t->email ?? ''),
+                (string) ($t->national_id ?? ''),
+                $unitLabel,
+                'property_id:'.(string) ($activeUnit?->property_id ?? 0),
+                'unit_id:'.(string) ($activeUnit?->id ?? 0),
+                'status:'.$statusKey,
+                'balance:'.$balanceKey,
+                'risk:'.strtolower((string) $t->risk_level),
+                'portal:'.$portalKey,
+                (int) $t->overdue_invoices_count > 0 ? 'balance:'.TenantDirectoryBalanceFilter::OVERDUE : '',
+            ]);
 
             $actions = new HtmlString(
                 '<div class="relative inline-block text-left">'.
@@ -491,6 +518,7 @@ class PmTenantDirectoryController extends Controller
             'tenantPager' => $tenants,
             'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,
+            'tableRowFilters' => $rowFilters,
         ];
     }
 

@@ -34,6 +34,7 @@
         ])
         <x-property.filter-field type="select"
             name="status"
+            :live-row-filter="true"
             label="Status"
             empty-option="All statuses"
             :options="\App\Support\Property\TenantProfileStatus::filterOptions()"
@@ -41,6 +42,7 @@
         />
         <x-property.filter-field type="select"
             name="balance"
+            :live-row-filter="true"
             label="Balance"
             empty-option="All balances"
             :options="\App\Support\Property\TenantDirectoryBalanceFilter::filterOptions()"
@@ -48,6 +50,7 @@
         />
         <x-property.filter-field type="select"
             name="risk"
+            :live-row-filter="true"
             label="Risk"
             empty-option="All risk"
             :options="[
@@ -59,6 +62,7 @@
         />
         <x-property.filter-field type="select"
             name="portal"
+            :live-row-filter="true"
             label="Portal"
             empty-option="Portal login: all"
             :options="[

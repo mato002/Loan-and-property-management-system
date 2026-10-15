@@ -10,6 +10,7 @@
     'form' => null,
     'showLabel' => true,
     'wide' => false,
+    'liveRowFilter' => false,
 ])
 
 @php
@@ -73,6 +74,7 @@
                 @if ($fieldId) id="{{ $fieldId }}" @endif
                 @if ($name) name="{{ $name }}" @endif
                 @if ($isPageSize) data-page-size-select="1" data-property-searchable="false" @endif
+                @if ($liveRowFilter && !$isPageSize) data-live-row-filter="1" @endif
                 {!! $formAttr !!}
                 class="{{ $inputClass }}"
             >

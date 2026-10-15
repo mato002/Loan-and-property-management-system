@@ -251,15 +251,21 @@ function liveFilterNeedles(scope) {
     const seen = new Set();
 
     scope.querySelectorAll('input, select').forEach((control) => {
-        if (!isLiveSearchControl(control)) {
+        if (!isLiveSearchControl(control) || !filterControlIsVisible(control)) {
             return;
         }
         const value = (control.value || '').toLowerCase().trim();
-        if (value === '' || seen.has(value)) {
+        if (value === '' || ((control.name === 'property_id' || control.name === 'unit_id') && value === '0')) {
             return;
         }
-        seen.add(value);
-        needles.push(value);
+        const needle = control instanceof HTMLSelectElement && control.matches('[data-live-row-filter]')
+            ? `${control.name}:${value}`
+            : value;
+        if (seen.has(needle)) {
+            return;
+        }
+        seen.add(needle);
+        needles.push(needle);
     });
 
     return needles;
@@ -970,6 +976,14 @@ function bindFilterLifecycle() {
         }
         handleSearchInput(el);
     }, true);
+
+    document.addEventListener('change', (event) => {
+        const control = event.target;
+        if (!(control instanceof HTMLSelectElement) || !control.matches('[data-live-row-filter]')) {
+            return;
+        }
+        applyLiveWorkspaceSearch(control);
+    });
 
     document.addEventListener('submit', (event) => {
         const form = event.target;
