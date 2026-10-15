@@ -12,7 +12,7 @@
             <a
                 href="{{ \App\Support\Property\PropertyWorkspaceTabs::tabUrl($subTab) }}"
                 data-turbo-frame="property-main"
-                data-turbo-prefetch="true"
+                data-turbo-prefetch="false"
                 data-property-nav="{{ implode('|', $subTab['active'] ?? []) }}"
                 data-property-workspace-subtab="{{ $subTab['key'] ?? '' }}"
                 @if ($subActive) aria-current="page" @endif

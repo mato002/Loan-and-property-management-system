@@ -145,7 +145,8 @@
                 persistScroll(bar);
                 var currentIndex = currentHistoryIndex();
                 var targetIndex = Number(task.historyIndex);
-                if (task.historyIndex !== null && task.historyIndex !== undefined
+                if ((bar.getAttribute('data-open-tasks-scope') || '') === 'property'
+                    && task.historyIndex !== null && task.historyIndex !== undefined
                     && task.historySession && task.historySession === historySession()
                     && Number.isInteger(targetIndex) && currentIndex !== null && targetIndex !== currentIndex) {
                     sessionStorage.setItem('ph.openTasks.restore', task.key);

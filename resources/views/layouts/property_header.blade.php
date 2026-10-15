@@ -362,7 +362,7 @@
                     <a
                         href="{{ PropertyNavigation::workspaceHref($link) }}"
                         data-turbo-frame="property-main"
-                        data-turbo-prefetch="true"
+                        data-turbo-prefetch="false"
                         data-property-nav="{{ implode('|', $link['patterns']) }}"
                         @if ($active) aria-current="page" @endif
                         class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
