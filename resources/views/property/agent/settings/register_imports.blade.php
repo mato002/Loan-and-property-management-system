@@ -20,6 +20,8 @@
         'register_upserted' => 'Register upserted',
         'matched' => 'Matched',
         'unmatched' => 'Unmatched',
+        'source_paid_rows' => 'Rows with source Paid values',
+        'source_paid_total' => 'Source Paid total (reference only)',
     ];
 @endphp
 <x-property.workspace
@@ -138,6 +140,9 @@
                 <p class="mt-2 text-xs text-amber-800" x-show="type === 'tenants_leases'" x-cloak>
                     Properties must already exist with matching codes (e.g. A00039A). Run Dry run first — the summary shows tenants/leases created vs updated, plus any unmatched property/unit warnings.
                 </p>
+                <p class="mt-2 text-xs text-amber-800" x-show="type === 'late_penalty_invoices'" x-cloak>
+                    Source Paid amounts are retained for reference only. This import creates invoices, never payments; reconcile each paid amount against actual receipts separately.
+                </p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
@@ -194,7 +199,7 @@
                     <input type="checkbox" name="include_already_paid" value="1" class="rounded border-slate-300">
                     Include already-paid tenants
                 </label>
-                <label class="inline-flex items-center gap-2" x-show="['payment_vouchers','rental_invoices'].includes(type)" x-cloak>
+                <label class="inline-flex items-center gap-2" x-show="['payment_vouchers','rental_invoices','late_penalty_invoices'].includes(type)" x-cloak>
                     <input type="checkbox" name="post_gl" value="1" class="rounded border-slate-300">
                     Post GL
                 </label>

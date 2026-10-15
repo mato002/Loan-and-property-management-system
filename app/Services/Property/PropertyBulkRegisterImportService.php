@@ -23,6 +23,8 @@ final class PropertyBulkRegisterImportService
 
     public const TYPE_RENTAL_INVOICES = 'rental_invoices';
 
+    public const TYPE_LATE_PENALTY_INVOICES = 'late_penalty_invoices';
+
     public const TYPE_DEPOSITS = 'deposits';
 
     public const TYPE_BILLING_SCHEDULE = 'billing_schedule';
@@ -65,6 +67,11 @@ final class PropertyBulkRegisterImportService
                 'label' => 'Rental invoice history',
                 'description' => 'Historical rental invoices (amount, paid, due) for matched tenants and units.',
                 'accept' => '.csv,.txt,.pdf',
+            ],
+            self::TYPE_LATE_PENALTY_INVOICES => [
+                'label' => 'Late penalty invoices',
+                'description' => 'Import late-payment penalty invoices from the prepared CSV using property code, unit, tenant account, source invoice number, period, and amount. The source Paid column is retained for review and never posted as a payment.',
+                'accept' => '.csv',
             ],
             self::TYPE_DEPOSITS => [
                 'label' => 'Rent & utility deposits',
@@ -210,6 +217,15 @@ final class PropertyBulkRegisterImportService
                 $property,
                 $limit,
             ),
+            self::TYPE_LATE_PENALTY_INVOICES => app(EzenLatePenaltyInvoicesImportService::class)->importFromPath(
+                $path,
+                $agentUserId,
+                $actor,
+                $dryRun,
+                (bool) ($options['post_gl'] ?? false),
+                $property,
+                $limit,
+            ),
             self::TYPE_DEPOSITS => app(EzenRentDepositImportService::class)->importFromPath(
                 $path,
                 $agentUserId,
@@ -307,6 +323,10 @@ final class PropertyBulkRegisterImportService
             'vendors',
             'payments_posted',
             'enriched_existing',
+            'skipped_existing',
+            'skipped_unmatched',
+            'source_paid_rows',
+            'source_paid_total',
         ] as $key) {
             if (isset($summary[$key]) && ! is_array($summary[$key])) {
                 $parts[] = str_replace('_', ' ', $key).': '.$summary[$key];
