@@ -377,7 +377,7 @@ final class PropertyNavigation
             'vendors' => [
                 'key' => 'vendors',
                 'label' => 'Vendors',
-                'sublabel' => 'Directory, bills, requisitions',
+                'sublabel' => 'Directory, bills, requisitions, payments',
                 'icon' => 'fa-truck-field',
                 'route' => 'property.vendors.index',
                 'sidebar' => false,
@@ -387,8 +387,9 @@ final class PropertyNavigation
                 'flyout' => [
                     ['label' => 'Vendor hub', 'route' => 'property.vendors.index', 'active' => ['property.vendors.index']],
                     ['label' => 'Vendor directory', 'route' => 'property.vendors.directory', 'active' => ['property.vendors.directory', 'property.vendors.store', 'property.vendors.show', 'property.vendors.edit']],
-                    ['label' => 'Bills listing', 'route' => 'property.vendors.bills', 'active' => ['property.vendors.bills']],
-                    ['label' => 'Expense requisitions', 'route' => 'property.vendors.expense_requisitions', 'active' => ['property.vendors.expense_requisitions']],
+                    ['label' => 'Bills listing', 'route' => 'property.vendors.bills', 'active' => ['property.vendors.bills', 'property.vendors.bills.*']],
+                    ['label' => 'Expense requisitions', 'route' => 'property.vendors.expense_requisitions', 'active' => ['property.vendors.expense_requisitions', 'property.vendors.expense_requisitions.*']],
+                    ['label' => 'Payment vouchers', 'route' => 'property.vendors.payment_vouchers', 'active' => ['property.vendors.payment_vouchers', 'property.vendors.payment_vouchers.*']],
                     ['label' => 'RFQ & bidding', 'route' => 'property.vendors.bidding', 'active' => ['property.vendors.bidding', 'property.vendors.bidding.*']],
                     ['label' => 'Quotes', 'route' => 'property.vendors.quotes', 'active' => ['property.vendors.quotes']],
                     ['label' => 'Work records', 'route' => 'property.vendors.work_records', 'active' => ['property.vendors.work_records']],

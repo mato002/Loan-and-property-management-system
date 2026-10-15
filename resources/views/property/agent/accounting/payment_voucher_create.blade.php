@@ -1,12 +1,17 @@
+@php
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.payment_vouchers.create');
+    $vouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
+    $storeVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.store' : 'property.accounting.payables.payment_vouchers.store';
+@endphp
 <x-property.crud-shell
     :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Record payment voucher"
     subtitle="Outgoing payment. The voucher number is assigned when you save. Line totals must equal the control amount."
-    back-route="property.accounting.payables.payment_vouchers"
+    :back-route="$vouchersRoute"
     :stats="[]"
     :columns="[]"
 >
-    <form method="post" action="{{ route('property.accounting.payables.payment_vouchers.store', absolute: false) }}" class="property-compact-panel max-w-5xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-4">
+    <form method="post" action="{{ route($storeVoucherRoute, absolute: false) }}" class="property-compact-panel max-w-5xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-4">
         @csrf
         <input type="hidden" name="pm_ezen_bill_id" value="{{ old('pm_ezen_bill_id', ($preselectedBill ?? null)?->id) }}" data-linked-bill-id />
         <div class="grid gap-3 sm:grid-cols-2">
@@ -191,7 +196,7 @@
 
         <div class="flex flex-wrap gap-2">
             <button type="submit" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Save voucher</button>
-            <a href="{{ route('property.accounting.payables.payment_vouchers', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">Cancel</a>
+            <a href="{{ route($vouchersRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700">Cancel</a>
         </div>
     </form>
     <script>

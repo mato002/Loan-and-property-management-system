@@ -2,6 +2,10 @@
     $vendorWorkspaceRoute = request()->routeIs('property.vendors.expense_requisitions');
     $requisitionsRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions' : 'property.accounting.payables.expense_requisitions';
     $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
+    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
+    $approveRequisitionRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.approve' : 'property.accounting.payables.expense_requisitions.approve';
+    $rejectRequisitionRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.reject' : 'property.accounting.payables.expense_requisitions.reject';
+    $attachmentRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions.attachment' : 'property.accounting.payables.expense_requisitions.attachment';
 @endphp
 <x-property.crud-shell
     title="Expense requisitions"
@@ -80,7 +84,7 @@
             <tbody class="divide-y divide-slate-100">
                 @forelse ($requisitions as $requisition)
                     <tr class="align-top">
-                        <td class="px-3 py-3"><p class="font-semibold text-slate-800">{{ $requisition->title }}</p><p class="mt-1 max-w-sm text-xs text-slate-500">{{ $requisition->description ?: '—' }}</p>@if ($requisition->vendor_invoice_no)<p class="mt-1 text-xs text-slate-500">Inv. {{ $requisition->vendor_invoice_no }}</p>@endif @if ($requisition->attachment_path)<a class="mt-1 inline-block text-xs font-semibold text-indigo-700 hover:underline" href="{{ route('property.accounting.payables.expense_requisitions.attachment', $requisition, false) }}">Download attachment</a>@endif</td>
+                        <td class="px-3 py-3"><p class="font-semibold text-slate-800">{{ $requisition->title }}</p><p class="mt-1 max-w-sm text-xs text-slate-500">{{ $requisition->description ?: '—' }}</p>@if ($requisition->vendor_invoice_no)<p class="mt-1 text-xs text-slate-500">Inv. {{ $requisition->vendor_invoice_no }}</p>@endif @if ($requisition->attachment_path)<a class="mt-1 inline-block text-xs font-semibold text-indigo-700 hover:underline" href="{{ route($attachmentRoute, $requisition, false) }}">Download attachment</a>@endif</td>
                         <td class="px-3 py-3">{{ $requisition->requested_date?->format('Y-m-d') ?? '—' }}@if ($requisition->due_date)<p class="text-xs text-slate-500">Due {{ $requisition->due_date->format('Y-m-d') }}</p>@endif</td>
                         <td class="px-3 py-3">{{ $requisition->vendor?->name ?? '—' }}</td>
                         <td class="px-3 py-3">{{ $requisition->property?->name ?? '—' }}</td>
@@ -89,18 +93,18 @@
                         <td class="px-3 py-3">{{ $requisition->requester?->name ?? '—' }}</td>
                         <td class="px-3 py-3">
                             @if ($requisition->status === 'pending')
-                                <form method="post" action="{{ route('property.accounting.payables.expense_requisitions.approve', $requisition, false) }}" class="mb-2" data-swal-title="Approve expense?" data-swal-confirm="Approval creates an unpaid payable bill for this property." data-swal-confirm-text="Approve">
+                                <form method="post" action="{{ route($approveRequisitionRoute, $requisition, false) }}" class="mb-2" data-swal-title="Approve expense?" data-swal-confirm="Approval creates an unpaid payable bill for this property." data-swal-confirm-text="Approve">
                                     @csrf
                                     <input name="review_note" placeholder="Review note (optional)" class="mb-1 w-48 rounded border border-slate-300 px-2 py-1 text-xs" />
                                     <button class="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold text-white">Approve and create bill</button>
                                 </form>
-                                <form method="post" action="{{ route('property.accounting.payables.expense_requisitions.reject', $requisition, false) }}" onsubmit="return confirm('Reject this requisition? Add a reason.')">
+                                <form method="post" action="{{ route($rejectRequisitionRoute, $requisition, false) }}" onsubmit="return confirm('Reject this requisition? Add a reason.')">
                                     @csrf
                                     <input name="review_note" required placeholder="Reason for rejection" class="mb-1 w-48 rounded border border-slate-300 px-2 py-1 text-xs" />
                                     <button class="rounded border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700">Reject</button>
                                 </form>
                             @elseif ($requisition->bill && (float) $requisition->bill->amount_due > 0.009)
-                                <a href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $requisition->bill->id], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Record payment</a>
+                                <a href="{{ route($createVoucherRoute, ['bill_id' => $requisition->bill->id], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Record payment</a>
                             @elseif ($requisition->review_note)
                                 <span class="text-xs text-slate-500">{{ $requisition->review_note }}</span>
                             @else

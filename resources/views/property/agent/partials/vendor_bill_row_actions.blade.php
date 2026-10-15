@@ -3,18 +3,24 @@
     $vendorName = (string) ($bill->vendor_name ?? '');
     $due = (float) ($bill->amount_due ?? 0);
     $isPaid = strtolower((string) ($bill->payment_status ?? '')) === \App\Models\PmEzenBill::STATUS_PAID;
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills');
+    $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
+    $voucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
+    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
 @endphp
 <x-property.action-menu width="w-52">
     @if ($vendorName !== '')
         <a href="{{ route('property.vendors.directory', ['q' => $vendorName], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Find vendor</a>
     @endif
     @if (! $isPaid && $due > 0.009)
-        <a href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-700/50">Record payment voucher</a>
+        <a href="{{ route($createVoucherRoute, ['bill_id' => $bill->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-700/50">Record payment voucher</a>
         @if (auth()->user()?->hasPmPermission('accounting.entries.manage'))
-            <a href="{{ route('property.accounting.payables.accounts_payable.link_voucher_form', $bill, false) }}" data-property-form-modal data-property-form-modal-title="Link existing payment voucher" class="block px-3 py-2 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-slate-700/50">Link existing voucher</a>
+            <a href="{{ route($vendorWorkspaceRoute ? 'property.vendors.bills.link_voucher_form' : 'property.accounting.payables.accounts_payable.link_voucher_form', $bill, false) }}" data-property-form-modal data-property-form-modal-title="Link existing payment voucher" class="block px-3 py-2 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-slate-700/50">Link existing voucher</a>
         @endif
-        <a href="{{ route('property.accounting.payables.payment_vouchers', ['q' => $bill->ezen_bill_no], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50 dark:text-teal-200 dark:hover:bg-slate-700/50">Related vouchers</a>
-        <a href="{{ route('property.settings.register_imports') }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-slate-700/50">Import payment voucher</a>
+        <a href="{{ route($voucherRoute, ['q' => $bill->ezen_bill_no], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50 dark:text-teal-200 dark:hover:bg-slate-700/50">Related vouchers</a>
+        @unless ($vendorWorkspaceRoute)
+            <a href="{{ route('property.settings.register_imports') }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-slate-700/50">Import payment voucher</a>
+        @endunless
     @endif
-    <a href="{{ route('property.accounting.payables.accounts_payable', ['q' => $bill->ezen_bill_no], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/50">Filter this bill</a>
+    <a href="{{ route($billsRoute, ['q' => $bill->ezen_bill_no], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/50">Filter this bill</a>
 </x-property.action-menu>

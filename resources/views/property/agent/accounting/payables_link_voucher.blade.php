@@ -1,11 +1,16 @@
+@php
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills.link_voucher_form');
+    $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
+    $linkVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.bills.link_voucher' : 'property.accounting.payables.accounts_payable.link_voucher';
+@endphp
 <x-property.crud-shell
     :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Link existing payment voucher"
     subtitle="Associate an already-recorded vendor payment with this bill. This does not post the expense again."
-    back-route="property.accounting.payables.accounts_payable"
+    :back-route="$billsRoute"
     :columns="[]"
 >
-    <form method="post" action="{{ route('property.accounting.payables.accounts_payable.link_voucher', $bill, absolute: false) }}" class="max-w-3xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-property-form-modal-alerts="1">
+    <form method="post" action="{{ route($linkVoucherRoute, $bill, absolute: false) }}" class="max-w-3xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-property-form-modal-alerts="1">
         @csrf
         <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
             Bill <strong>{{ $bill->ezen_bill_no }}</strong> · {{ $bill->vendor_name }} · Remaining due <strong>KES {{ number_format((float) $bill->amount_due, 2) }}</strong>
@@ -27,7 +32,7 @@
             <p class="text-xs text-slate-500">Only unlinked expense vouchers for this vendor and property are listed. You can link partial payments one at a time.</p>
         @endif
         <div class="flex justify-end gap-2">
-            <a href="{{ route('property.accounting.payables.accounts_payable', absolute: false) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</a>
+            <a href="{{ route($billsRoute, absolute: false) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</a>
             <button type="submit" @disabled($vouchers->isEmpty()) class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">Link voucher</button>
         </div>
     </form>

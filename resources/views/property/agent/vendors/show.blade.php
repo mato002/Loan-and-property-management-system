@@ -122,7 +122,7 @@
                                                     <td class="py-2 pr-4 {{ $comparison && $comparison['difference'] < 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $comparison ? \App\Services\Property\PropertyMoney::kes($comparison['difference']) : '—' }}</td>
                                                     <td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->amount_due) }}</td>
                                                     <td class="py-2 pr-4">{{ $bill->displayPaymentStatus() }}</td>
-                                                    <td class="py-2">@if ((float) $bill->amount_due > 0.009)<a class="font-semibold text-indigo-700 hover:underline" data-turbo-frame="property-main" href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}">Record payment</a>@else<span class="text-emerald-700">Settled</span>@endif</td>
+                                                    <td class="py-2">@if ((float) $bill->amount_due > 0.009)<a class="font-semibold text-indigo-700 hover:underline" data-turbo-frame="property-main" href="{{ route('property.vendors.payment_vouchers.create', ['bill_id' => $bill->id], false) }}">Record payment</a>@else<span class="text-emerald-700">Settled</span>@endif</td>
                                                 </tr>
                                             @endforeach
                                         </tbody>

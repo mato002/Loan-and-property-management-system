@@ -1,10 +1,11 @@
 @php
     $lineTotal = (float) $voucher->lines->sum('line_total');
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.payment_vouchers.show');
 @endphp
 <x-property.workspace
     :title="'Voucher '.$voucher->ezen_voucher_no"
     subtitle="{{ $voucher->displayExpenseGroup() }} · {{ $voucher->displayLinkStatus() }}"
-    back-route="property.accounting.payables.payment_vouchers"
+    :back-route="$vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers'"
     :stats="[
         ['label' => 'Amount', 'value' => number_format((float) $voucher->amount, 2), 'hint' => 'Control amount'],
         ['label' => 'Tax', 'value' => number_format((float) $voucher->tax_amount, 2), 'hint' => 'On lines'],
@@ -40,7 +41,7 @@
             </div>
             <p><span class="text-slate-500">Landlord:</span> {{ $voucher->landlord?->name ?: '—' }}</p>
             <p><span class="text-slate-500">Notes:</span> {{ $voucher->notes ?: '—' }}</p>
-            @if ($voucher->pm_landlord_payout_id)
+            @if (! $vendorWorkspaceRoute && $voucher->pm_landlord_payout_id)
                 <p><a href="{{ route('property.accounting.payables.landlord_payouts', ['q' => $voucher->pm_landlord_payout_id], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Open payout PAY-{{ $voucher->pm_landlord_payout_id }}</a></p>
             @endif
         </div>

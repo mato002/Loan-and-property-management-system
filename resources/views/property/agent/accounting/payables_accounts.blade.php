@@ -3,6 +3,7 @@
     $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills');
     $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
     $expenseRequisitionsRoute = $vendorWorkspaceRoute ? 'property.vendors.expense_requisitions' : 'property.accounting.payables.expense_requisitions';
+    $paymentVouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
 @endphp
 <x-property.workspace
     :legacy-toolbar="false"
@@ -27,7 +28,7 @@
 
     <x-slot name="actions">
         @if (auth()->user()?->hasPmPermission('accounting.entries.manage'))
-            <a href="{{ route('property.accounting.payables.accounts_payable.create', absolute: false) }}" data-property-form-modal data-property-form-modal-title="Create vendor bill" class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Create bill</a>
+            <a href="{{ route($vendorWorkspaceRoute ? 'property.vendors.bills.create' : 'property.accounting.payables.accounts_payable.create', absolute: false) }}" data-property-form-modal data-property-form-modal-title="Create vendor bill" class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Create bill</a>
         @endif
         @include('property.agent.partials.export_dropdown', [
             'route' => $billsRoute,
@@ -35,8 +36,10 @@
         ])
         @if ($vendorWorkspaceRoute)
             <a href="{{ route($expenseRequisitionsRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
+            <a href="{{ route($paymentVouchersRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Payment vouchers</a>
+        @else
+            <a href="{{ route($paymentVouchersRoute) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Payment vouchers</a>
         @endif
-        <a href="{{ route('property.accounting.payables.payment_vouchers') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment vouchers</a>
     </x-slot>
 
     <x-slot name="toolbar">

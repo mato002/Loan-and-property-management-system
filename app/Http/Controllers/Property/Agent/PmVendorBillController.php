@@ -95,7 +95,9 @@ class PmVendorBillController extends Controller
             return response()->view('property.agent.partials.form_modal_success', ['message' => $message]);
         }
 
-        return redirect()->route('property.accounting.payables.accounts_payable')->with('success', $message);
+        return redirect()->route(
+            $request->routeIs('property.vendors.bills.link_voucher') ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable',
+        )->with('success', $message);
     }
 
     public function create(Request $request): View
@@ -154,6 +156,8 @@ class PmVendorBillController extends Controller
             return response()->view('property.agent.partials.form_modal_success', ['message' => $message]);
         }
 
-        return redirect()->route('property.accounting.payables.accounts_payable')->with('success', $message);
+        return redirect()->route(
+            $request->routeIs('property.vendors.bills.store') ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable',
+        )->with('success', $message);
     }
 }

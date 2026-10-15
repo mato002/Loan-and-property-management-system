@@ -1,10 +1,16 @@
-@php $appName = config('app.name', 'Property ERP'); @endphp
+@php
+    $appName = config('app.name', 'Property ERP');
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.payment_vouchers');
+    $vouchersRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers' : 'property.accounting.payables.payment_vouchers';
+    $createVoucherRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.create' : 'property.accounting.payables.payment_vouchers.create';
+    $assignExportRoute = $vendorWorkspaceRoute ? 'property.vendors.payment_vouchers.assign_export' : 'property.accounting.payables.payment_vouchers.assign_export';
+@endphp
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
     title="Payment vouchers"
     subtitle="Outgoing payments — record a voucher here, or import an EZEN listing. Remittances become landlord payouts; other rows become expenses."
-    back-route="property.accounting.index"
+    :back-route="$vendorWorkspaceRoute ? 'property.vendors.directory' : 'property.accounting.index'"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
@@ -13,12 +19,14 @@
     empty-hint="Record a voucher, or upload an EZEN listing under Settings → Register imports."
 >
     <x-slot name="secondary">
-        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
-            <p class="text-lg font-semibold text-slate-900">Outgoing payments register</p>
-            <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and tax rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
-            <a href="{{ route('property.settings.register_imports') }}" class="mt-3 inline-flex text-sm font-semibold text-teal-800 hover:underline">Open register imports →</a>
-        </div>
-        <form method="post" action="{{ route('property.accounting.payables.payment_vouchers.assign_export', absolute: false) }}" enctype="multipart/form-data" data-turbo="false" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-w-3xl space-y-3">
+        @unless ($vendorWorkspaceRoute)
+            <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
+                <p class="text-lg font-semibold text-slate-900">Outgoing payments register</p>
+                <p class="mt-1 text-sm text-slate-600">These are not tenant receipts. Rent remittance rows become paid landlord payouts; airtime, utilities, commission, and tax rows become expense entries. Re-run the import after adding missing landlords to post unmatched remittances.</p>
+                <a href="{{ route('property.settings.register_imports') }}" class="mt-3 inline-flex text-sm font-semibold text-teal-800 hover:underline">Open register imports →</a>
+            </div>
+        @endunless
+        <form method="post" action="{{ route($assignExportRoute, absolute: false) }}" enctype="multipart/form-data" data-turbo="false" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-w-3xl space-y-3">
             @csrf
             <p class="text-sm font-semibold text-slate-900">Property export</p>
             <p class="text-sm text-slate-600">Upload an EZEN voucher listing that was filtered to one property. Every voucher in the file is linked to that property. A line that names one unit, such as LUGAS M12, is linked to that unit.</p>
@@ -42,20 +50,26 @@
     </x-slot>
 
     <x-slot name="actions">
-        <a href="{{ route('property.accounting.payables.payment_vouchers.create', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Record voucher</a>
+        <a href="{{ route($createVoucherRoute, absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Record voucher</a>
         @include('property.agent.partials.export_dropdown', [
-            'route' => 'property.accounting.payables.payment_vouchers',
+            'route' => $vouchersRoute,
             'query' => request()->except(['export', 'format', 'page']),
         ])
-        <a href="{{ route('property.accounting.payables.landlord_payouts') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Landlord payouts</a>
-        <a href="{{ route('property.accounting.entries') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Journal entries</a>
+        @if ($vendorWorkspaceRoute)
+            <a href="{{ route('property.vendors.bills', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Bills listing</a>
+            <a href="{{ route('property.vendors.expense_requisitions', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
+        @endif
+        @unless ($vendorWorkspaceRoute)
+            <a href="{{ route('property.accounting.payables.landlord_payouts') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Landlord payouts</a>
+            <a href="{{ route('property.accounting.entries') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Journal entries</a>
+        @endunless
     </x-slot>
 
     <x-slot name="toolbar">
         @if (session('status'))
             <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{{ session('status') }}</div>
         @endif
-        <form method="get" action="{{ route('property.accounting.payables.payment_vouchers') }}" class="flex flex-wrap items-end gap-2">
+        <form method="get" action="{{ route($vouchersRoute, absolute: false) }}" class="flex flex-wrap items-end gap-2">
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
                 <select name="property_id" class="mt-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm min-w-[12rem]">
@@ -106,7 +120,7 @@
                 <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
             </div>
             <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 mt-5">Apply</button>
-            <a href="{{ route('property.accounting.payables.payment_vouchers') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 mt-5">Reset</a>
+            <a href="{{ route($vouchersRoute, absolute: false) }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 mt-5">Reset</a>
         </form>
     </x-slot>
 

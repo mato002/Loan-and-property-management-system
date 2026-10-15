@@ -1,11 +1,15 @@
+@php
+    $vendorWorkspaceRoute = request()->routeIs('property.vendors.bills.create');
+    $billsRoute = $vendorWorkspaceRoute ? 'property.vendors.bills' : 'property.accounting.payables.accounts_payable';
+@endphp
 <x-property.crud-shell
     :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Create vendor bill"
     subtitle="Record a supplier invoice as an unpaid payable. Record its actual payment using a payment voucher."
-    back-route="property.accounting.payables.accounts_payable"
+    :back-route="$billsRoute"
     :columns="[]"
 >
-    <form method="post" action="{{ route('property.accounting.payables.accounts_payable.store', absolute: false) }}" class="max-w-3xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-property-form-modal-alerts="1">
+    <form method="post" action="{{ route($vendorWorkspaceRoute ? 'property.vendors.bills.store' : 'property.accounting.payables.accounts_payable.store', absolute: false) }}" class="max-w-3xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-property-form-modal-alerts="1">
         @csrf
         <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm font-medium text-slate-700">Vendor <span class="text-rose-600">*</span>
@@ -49,7 +53,7 @@
         </div>
         <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">This creates an unpaid supplier bill. Use a payment voucher to record payment and post the expense.</p>
         <div class="flex justify-end gap-2">
-            <a href="{{ route('property.accounting.payables.accounts_payable', absolute: false) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</a>
+            <a href="{{ route($billsRoute, absolute: false) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</a>
             <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Create bill</button>
         </div>
     </form>

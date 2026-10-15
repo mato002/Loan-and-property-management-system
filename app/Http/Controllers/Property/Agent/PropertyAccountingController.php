@@ -3131,7 +3131,7 @@ class PropertyAccountingController extends Controller
             ['label' => 'Unmatched', 'value' => (string) $unmatchedCount, 'hint' => 'Payee not linked yet'],
         ];
 
-        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($landlords, $properties, $propertyByCode, $unitsByProperty) {
+        $rows = $vouchers->getCollection()->map(function (PmEzenPaymentVoucher $voucher) use ($request, $landlords, $properties, $propertyByCode, $unitsByProperty) {
             $posted = '—';
             if ($voucher->pm_landlord_payout_id) {
                 $posted = new HtmlString('<a href="'.e(route('property.accounting.payables.landlord_payouts', ['q' => $voucher->pm_landlord_payout_id], false)).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$voucher->pm_landlord_payout_id.'</a>');
@@ -3139,7 +3139,10 @@ class PropertyAccountingController extends Controller
                 $posted = $voucher->ezen_voucher_no;
             }
 
-            $showUrl = route('property.accounting.payables.payment_vouchers.show', $voucher, false);
+            $showRoute = $request->routeIs('property.vendors.payment_vouchers')
+                ? 'property.vendors.payment_vouchers.show'
+                : 'property.accounting.payables.payment_vouchers.show';
+            $showUrl = route($showRoute, $voucher, false);
             $linkedProperty = $this->voucherProperty($voucher, $propertyByCode);
             $actions = new HtmlString(view('property.agent.partials.payment_voucher_row_actions', [
                 'voucher' => $voucher,
@@ -3249,7 +3252,12 @@ class PropertyAccountingController extends Controller
         $summary = $vouchers->assignPropertyExport($path, $property, $agentUserId);
 
         return redirect()
-            ->route('property.accounting.payables.payment_vouchers', ['property_id' => $property->id])
+            ->route(
+                $request->routeIs('property.vendors.payment_vouchers.assign_export')
+                    ? 'property.vendors.payment_vouchers'
+                    : 'property.accounting.payables.payment_vouchers',
+                ['property_id' => $property->id],
+            )
             ->with('status', $property->name.': '.$summary['updated'].' vouchers linked'
                 .($summary['created'] > 0 ? ', '.$summary['created'].' added' : '')
                 .', '.$summary['units'].' tied to a unit.');
@@ -3370,7 +3378,12 @@ class PropertyAccountingController extends Controller
         }
 
         return redirect()
-            ->route('property.accounting.payables.payment_vouchers.show', $voucher)
+            ->route(
+                $request->routeIs('property.vendors.payment_vouchers.store')
+                    ? 'property.vendors.payment_vouchers.show'
+                    : 'property.accounting.payables.payment_vouchers.show',
+                $voucher,
+            )
             ->with('status', 'Voucher '.$voucher->ezen_voucher_no.' recorded.');
     }
 
