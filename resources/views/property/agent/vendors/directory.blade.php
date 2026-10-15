@@ -25,6 +25,7 @@
             <span>Add vendor</span>
         </button>
         <a href="{{ route('property.accounting.payables.accounts_payable') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Bills listing</a>
+        <a href="{{ route('property.accounting.payables.expense_requisitions', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
     </x-slot>
 
     <x-slot name="secondary">

@@ -10,6 +10,7 @@
 >
     <x-slot name="actions">
         <a href="{{ route('property.vendors.edit', $vendor, false) }}" class="inline-flex items-center rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit vendor</a>
+        <a href="{{ route('property.accounting.payables.expense_requisitions', ['vendor_id' => $vendor->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">Expense requisitions</a>
         <form method="post" action="{{ route('property.vendors.pay_outstanding', $vendor, false) }}" class="inline-flex items-center gap-1" data-swal-title="Settle all outstanding payments?" data-swal-confirm="This will mark all eligible allocated jobs for this vendor as paid." data-swal-confirm-text="Yes, settle all">
             @csrf
             <input type="date" name="paid_date" value="{{ now()->toDateString() }}" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />
@@ -109,10 +110,21 @@
                             @if ($agreement->bills->isNotEmpty())
                                 <div class="mt-3 overflow-x-auto">
                                     <table class="min-w-full text-xs">
-                                        <thead class="text-left uppercase tracking-wide text-slate-500"><tr><th class="py-2 pr-4">Bill / month</th><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Amount</th><th class="py-2 pr-4">Due</th><th class="py-2 pr-4">Status</th><th class="py-2">Action</th></tr></thead>
+                                        <thead class="text-left uppercase tracking-wide text-slate-500"><tr><th class="py-2 pr-4">Bill / month</th><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Tenant garbage billed</th><th class="py-2 pr-4">Collected</th><th class="py-2 pr-4">Provider cost</th><th class="py-2 pr-4">Collected less cost</th><th class="py-2 pr-4">Due</th><th class="py-2 pr-4">Status</th><th class="py-2">Action</th></tr></thead>
                                         <tbody class="divide-y divide-slate-100">
                                             @foreach ($agreement->bills as $bill)
-                                                <tr><td class="py-2 pr-4">{{ $bill->ezen_bill_no }}</td><td class="py-2 pr-4">{{ $bill->bill_date?->format('Y-m-d') ?? '—' }}</td><td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->total_amount) }}</td><td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->amount_due) }}</td><td class="py-2 pr-4">{{ $bill->displayPaymentStatus() }}</td><td class="py-2">@if ((float) $bill->amount_due > 0.009)<a class="font-semibold text-indigo-700 hover:underline" data-turbo-frame="property-main" href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}">Record payment</a>@else<span class="text-emerald-700">Settled</span>@endif</td></tr>
+                                                @php($comparison = $agreementComparisons[$bill->id] ?? null)
+                                                <tr>
+                                                    <td class="py-2 pr-4">{{ $bill->ezen_bill_no }}</td>
+                                                    <td class="py-2 pr-4">{{ $bill->bill_date?->format('Y-m-d') ?? '—' }}</td>
+                                                    <td class="py-2 pr-4">{{ $comparison ? \App\Services\Property\PropertyMoney::kes($comparison['billed']) : '—' }}</td>
+                                                    <td class="py-2 pr-4">{{ $comparison ? \App\Services\Property\PropertyMoney::kes($comparison['collected']) : '—' }}</td>
+                                                    <td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->total_amount) }}</td>
+                                                    <td class="py-2 pr-4 {{ $comparison && $comparison['difference'] < 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $comparison ? \App\Services\Property\PropertyMoney::kes($comparison['difference']) : '—' }}</td>
+                                                    <td class="py-2 pr-4">{{ \App\Services\Property\PropertyMoney::kes((float) $bill->amount_due) }}</td>
+                                                    <td class="py-2 pr-4">{{ $bill->displayPaymentStatus() }}</td>
+                                                    <td class="py-2">@if ((float) $bill->amount_due > 0.009)<a class="font-semibold text-indigo-700 hover:underline" data-turbo-frame="property-main" href="{{ route('property.accounting.payables.payment_vouchers.create', ['bill_id' => $bill->id], false) }}">Record payment</a>@else<span class="text-emerald-700">Settled</span>@endif</td>
+                                                </tr>
                                             @endforeach
                                         </tbody>
                                     </table>

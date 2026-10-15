@@ -10,6 +10,7 @@ use App\Models\PmVendor;
 use App\Models\PmVendorServiceAgreement;
 use App\Models\PmEzenBill;
 use App\Models\Property;
+use App\Services\Property\LandlordLedger;
 use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
@@ -25,6 +26,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use Illuminate\View\View;
 
@@ -127,6 +129,26 @@ class PmVendorWebController extends Controller
             ->with(['property', 'bills' => fn ($query) => $query->orderByDesc('bill_date')->orderByDesc('id')])
             ->orderByDesc('id')
             ->get();
+        $settlements = app(\App\Services\Property\LandlordSettlementService::class);
+        $agreementComparisons = [];
+        foreach ($agreements as $agreement) {
+            foreach ($agreement->bills as $bill) {
+                if (! $bill->bill_date) {
+                    continue;
+                }
+                $periodStart = Carbon::parse($bill->bill_date)->startOfMonth();
+                $periodEnd = $periodStart->copy()->endOfMonth();
+                $unitLines = $settlements->unitSettlementLines((int) $agreement->property_id, $periodStart, $periodEnd);
+                $garbageBilled = round((float) collect($unitLines)->sum('garbage_billed'), 2);
+                $garbageCollected = round((float) collect($unitLines)->sum('garbage_received'), 2);
+                $agreementComparisons[$bill->id] = [
+                    'billed' => $garbageBilled,
+                    'collected' => $garbageCollected,
+                    'cost' => (float) $bill->total_amount,
+                    'difference' => round($garbageCollected - (float) $bill->total_amount, 2),
+                ];
+            }
+        }
         $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
         $jobs = PmMaintenanceJob::query()
             ->with(['request.unit.property'])
@@ -209,6 +231,7 @@ class PmVendorWebController extends Controller
         return property_view('property.agent.vendors.show', [
             'vendor' => $vendor,
             'serviceAgreements' => $agreements,
+            'agreementComparisons' => $agreementComparisons,
             'properties' => $properties,
             'stats' => [
                 ['label' => 'Total jobs', 'value' => (string) $jobs->count(), 'hint' => 'All statuses'],
@@ -332,10 +355,11 @@ class PmVendorWebController extends Controller
         $entryDate = ! empty($data['paid_date']) ? (string) $data['paid_date'] : now()->toDateString();
         $note = trim((string) ($data['payment_note'] ?? ''));
         $description = 'Vendor payment settled'.($note !== '' ? ' - '.$note : '');
+        $propertyId = optional(optional($job->request)->unit)->property_id;
 
         PmAccountingEntry::query()->create([
             'entry_date' => $entryDate,
-            'property_id' => optional(optional($job->request)->unit)->property_id,
+            'property_id' => $propertyId,
             'recorded_by_user_id' => $request->user()->id,
             'account_name' => 'Accounts Payable',
             'category' => PmAccountingEntry::CATEGORY_LIABILITY,
@@ -347,7 +371,7 @@ class PmVendorWebController extends Controller
         ]);
         PmAccountingEntry::query()->create([
             'entry_date' => $entryDate,
-            'property_id' => optional(optional($job->request)->unit)->property_id,
+            'property_id' => $propertyId,
             'recorded_by_user_id' => $request->user()->id,
             'account_name' => 'Cash / Bank',
             'category' => PmAccountingEntry::CATEGORY_ASSET,
@@ -357,6 +381,10 @@ class PmVendorWebController extends Controller
             'description' => $description,
             'source_key' => 'maintenance_payment',
         ]);
+        $property = $propertyId ? Property::query()->find((int) $propertyId) : null;
+        if ($property) {
+            LandlordLedger::postPropertyExpenseShares($property, $amount, $description, 'maintenance_vendor_payment', (int) $job->id, \Illuminate\Support\Carbon::parse($entryDate), (int) $request->user()->id);
+        }
 
         return back()->with('success', 'Vendor marked as paid for job #'.$job->id.'.');
     }
@@ -430,6 +458,10 @@ class PmVendorWebController extends Controller
                 'description' => $description,
                 'source_key' => 'maintenance_payment',
             ]);
+            $property = $propertyId ? Property::query()->find((int) $propertyId) : null;
+            if ($property) {
+                LandlordLedger::postPropertyExpenseShares($property, $amount, $description, 'maintenance_vendor_payment', (int) $job->id, \Illuminate\Support\Carbon::parse($entryDate), (int) $request->user()->id);
+            }
             PmAccountingEntry::query()->create([
                 'entry_date' => $entryDate,
                 'property_id' => $propertyId,

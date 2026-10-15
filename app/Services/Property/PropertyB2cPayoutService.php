@@ -9,6 +9,7 @@ use App\Models\PmAccountingEntry;
 use App\Models\PmLandlordPayout;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmVendor;
+use App\Models\Property;
 use App\Models\User;
 use App\Services\Integrations\MpesaDarajaService;
 use Illuminate\Support\Arr;
@@ -481,6 +482,18 @@ class PropertyB2cPayoutService
                     'description' => $description,
                     'source_key' => 'maintenance_payment',
                 ]);
+                $property = $propertyId ? Property::query()->find((int) $propertyId) : null;
+                if ($property) {
+                    LandlordLedger::postPropertyExpenseShares(
+                        $property,
+                        $amount,
+                        $description,
+                        'maintenance_vendor_payment',
+                        (int) $job->id,
+                        \Illuminate\Support\Carbon::parse($entryDate),
+                        $actorId ?: null,
+                    );
+                }
             }
         });
     }

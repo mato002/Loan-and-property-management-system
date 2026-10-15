@@ -386,15 +386,17 @@ final class EzenPaymentVouchersImportService
             'link_status' => PmEzenPaymentVoucher::LINK_EXPENSE,
         ]);
 
-        $this->postLandlordExpenseShares(
-            $resolved['property'],
-            $resolved['landlord'],
-            (float) $row['amount'],
-            (string) ($row['txn_date'] ?? now()->toDateString()),
-            $this->voucherDescription($row),
-            (int) $register->id,
-            $agentUserId,
-        );
+        if ($resolved['property']) {
+            LandlordLedger::postPropertyExpenseShares(
+                $resolved['property'],
+                (float) $row['amount'],
+                $this->voucherDescription($row),
+                'ezen_payment_voucher_expense',
+                (int) $register->id,
+                Carbon::parse((string) ($row['txn_date'] ?? now()->toDateString()))->startOfDay(),
+                $agentUserId,
+            );
+        }
 
         return [
             'register' => true,
@@ -985,96 +987,21 @@ final class EzenPaymentVouchersImportService
                 'source_key' => $sourceKey,
             ]);
             $property = $line->property_id ? Property::query()->find((int) $line->property_id) : null;
-            $landlord = $voucher->landlord_id ? User::query()->find((int) $voucher->landlord_id) : null;
-            $this->postLandlordExpenseShares(
-                $property,
-                $landlord,
-                (float) $line->line_total,
-                (string) $row['txn_date'],
-                $this->voucherDescription($row).($line->description ? ' '.$line->description : ''),
-                (int) $voucher->id,
-                (int) $actor->id,
-            );
+            if ($property) {
+                LandlordLedger::postPropertyExpenseShares(
+                    $property,
+                    (float) $line->line_total,
+                    $this->voucherDescription($row).($line->description ? ' '.$line->description : ''),
+                    'ezen_payment_voucher_expense',
+                    (int) $voucher->id,
+                    Carbon::parse((string) $row['txn_date'])->startOfDay(),
+                    (int) $actor->id,
+                );
+            }
             $first ??= $entry;
         }
 
         return $first;
-    }
-
-    /**
-     * Charge a property expense to its linked landlords in ownership-share proportions.
-     * A missing property or landlord link leaves the expense in the property accounting
-     * register without changing any landlord balance.
-     */
-    private function postLandlordExpenseShares(
-        ?Property $property,
-        ?User $selectedLandlord,
-        float $amount,
-        string $date,
-        string $description,
-        int $referenceId,
-        int $agentUserId,
-    ): void {
-        if (! $property || $amount <= 0 || ! Schema::hasTable('pm_landlord_ledger_entries')) {
-            return;
-        }
-
-        $property->loadMissing('landlords');
-        $landlords = $selectedLandlord
-            ? $property->landlords->where('id', $selectedLandlord->id)->values()
-            : $property->landlords->values();
-        if ($landlords->isEmpty()) {
-            return;
-        }
-
-        $weights = $landlords
-            ->map(fn (User $landlord) => max(0.0, (float) ($landlord->pivot->ownership_percent ?? 0)))
-            ->values();
-        $weightTotal = $weights->sum();
-        if ($weightTotal <= 0) {
-            return;
-        }
-
-        $landlords = $landlords->filter(fn (User $landlord, int $index) => $weights[$index] > 0)->values();
-        $weights = $landlords
-            ->map(fn (User $landlord) => max(0.0, (float) ($landlord->pivot->ownership_percent ?? 0)))
-            ->values();
-        $weightTotal = $weights->sum();
-
-        $remaining = round($amount, 2);
-        foreach ($landlords->values() as $index => $landlord) {
-            $share = $index === $landlords->count() - 1
-                ? $remaining
-                : round($amount * ($weights[$index] / $weightTotal), 2);
-            $remaining = round($remaining - $share, 2);
-            if ($share <= 0) {
-                continue;
-            }
-
-            $exists = PmLandlordLedgerEntry::query()
-                ->where('reference_type', 'ezen_payment_voucher_expense')
-                ->where('reference_id', $referenceId)
-                ->where('user_id', $landlord->id)
-                ->where('property_id', $property->id)
-                ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
-                ->whereNull('reversal_of_id')
-                ->exists();
-            if ($exists) {
-                continue;
-            }
-
-            LandlordLedger::post(
-                $landlord,
-                PmLandlordLedgerEntry::DIRECTION_DEBIT,
-                $share,
-                $description,
-                $property,
-                'ezen_payment_voucher_expense',
-                $referenceId,
-                Carbon::parse($date)->startOfDay(),
-                $agentUserId,
-            );
-        }
     }
 
     /**

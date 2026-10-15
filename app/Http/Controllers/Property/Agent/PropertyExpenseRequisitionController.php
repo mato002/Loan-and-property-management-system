@@ -11,6 +11,7 @@ use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class PropertyExpenseRequisitionController extends Controller
@@ -18,6 +19,7 @@ class PropertyExpenseRequisitionController extends Controller
     public function index(Request $request): View
     {
         $status = trim((string) $request->query('status', ''));
+        $vendorFilter = (int) $request->query('vendor_id', 0);
         $requisitions = PmPropertyExpenseRequisition::query()
             ->with(['vendor', 'property', 'requester', 'reviewer', 'bill'])
             ->when(in_array($status, ['pending', 'approved', 'rejected'], true), fn ($query) => $query->where('status', $status))
@@ -27,6 +29,7 @@ class PropertyExpenseRequisitionController extends Controller
             'requisitions' => $requisitions,
             'statusFilter' => $status,
             'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'vendorFilter' => $vendorFilter,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
         ]);
     }
@@ -42,13 +45,17 @@ class PropertyExpenseRequisitionController extends Controller
             'requested_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:requested_date'],
             'amount' => ['required', 'numeric', 'gt:0'],
+            'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
         $vendor = PmVendor::query()->findOrFail((int) $data['pm_vendor_id']);
         $property = Property::query()->findOrFail((int) $data['property_id']);
         $this->assertPropertyInWorkspace($property);
 
+        $attachmentPath = $request->file('attachment')?->store('property/expense-requisitions', 'local');
+        unset($data['attachment']);
         PmPropertyExpenseRequisition::query()->create([
             ...$data,
+            'attachment_path' => $attachmentPath,
             'agent_user_id' => AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) $request->user()->id,
             'requested_by' => (int) $request->user()->id,
             'status' => 'pending',
@@ -107,15 +114,25 @@ class PropertyExpenseRequisitionController extends Controller
     public function reject(Request $request, PmPropertyExpenseRequisition $requisition): RedirectResponse
     {
         $data = $request->validate(['review_note' => ['required', 'string', 'max:2000']]);
-        abort_unless($requisition->status === 'pending', 422, 'Only pending requisitions can be rejected.');
-        $requisition->update([
-            'status' => 'rejected',
-            'reviewed_by' => (int) $request->user()->id,
-            'reviewed_at' => now(),
-            'review_note' => $data['review_note'],
-        ]);
+        DB::transaction(function () use ($request, $requisition, $data): void {
+            $locked = PmPropertyExpenseRequisition::query()->lockForUpdate()->findOrFail($requisition->id);
+            abort_unless($locked->status === 'pending', 422, 'Only pending requisitions can be rejected.');
+            $locked->update([
+                'status' => 'rejected',
+                'reviewed_by' => (int) $request->user()->id,
+                'reviewed_at' => now(),
+                'review_note' => $data['review_note'],
+            ]);
+        });
 
         return back()->with('success', 'Expense requisition rejected.');
+    }
+
+    public function downloadAttachment(PmPropertyExpenseRequisition $requisition)
+    {
+        abort_unless($requisition->attachment_path && Storage::disk('local')->exists($requisition->attachment_path), 404);
+
+        return Storage::disk('local')->download($requisition->attachment_path);
     }
 
     private function assertPropertyInWorkspace(Property $property): void

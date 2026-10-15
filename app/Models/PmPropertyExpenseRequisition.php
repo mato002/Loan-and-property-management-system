@@ -13,7 +13,7 @@ class PmPropertyExpenseRequisition extends Model
 
     protected $fillable = [
         'agent_user_id', 'pm_vendor_id', 'property_id', 'title', 'description',
-        'vendor_invoice_no', 'requested_date', 'due_date', 'amount', 'status',
+        'vendor_invoice_no', 'attachment_path', 'requested_date', 'due_date', 'amount', 'status',
         'requested_by', 'reviewed_by', 'reviewed_at', 'pm_ezen_bill_id', 'review_note',
     ];
 

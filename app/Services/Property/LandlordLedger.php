@@ -61,4 +61,72 @@ final class LandlordLedger
 
         return $last ? (float) $last->balance_after : 0.0;
     }
+
+    /** Post a paid property expense across owners according to their registered shares. */
+    public static function postPropertyExpenseShares(
+        Property $property,
+        float $amount,
+        string $description,
+        string $referenceType,
+        int $referenceId,
+        ?\DateTimeInterface $occurredAt = null,
+        ?int $agentUserId = null,
+    ): int {
+        if ($amount <= 0) {
+            return 0;
+        }
+
+        $landlords = $property->landlords()->get()->filter(
+            fn (User $landlord) => (float) ($landlord->pivot->ownership_percent ?? 0) > 0,
+        )->values();
+        if ($landlords->isEmpty()) {
+            return 0;
+        }
+
+        $weights = $landlords->map(fn (User $landlord) => (float) $landlord->pivot->ownership_percent)->values();
+        $weightTotal = $weights->sum();
+        if ($weightTotal <= 0) {
+            return 0;
+        }
+
+        $amount = round($amount, 2);
+        $remaining = $amount;
+        $posted = 0;
+        foreach ($landlords as $index => $landlord) {
+            $share = $index === $landlords->count() - 1
+                ? $remaining
+                : round($amount * ($weights[$index] / $weightTotal), 2);
+            $remaining = round($remaining - $share, 2);
+            if ($share <= 0) {
+                continue;
+            }
+
+            $exists = PmLandlordLedgerEntry::query()
+                ->where('reference_type', $referenceType)
+                ->where('reference_id', $referenceId)
+                ->where('user_id', $landlord->id)
+                ->where('property_id', $property->id)
+                ->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)
+                ->whereNull('reversal_of_id')
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
+            self::post(
+                $landlord,
+                PmLandlordLedgerEntry::DIRECTION_DEBIT,
+                $share,
+                $description,
+                $property,
+                $referenceType,
+                $referenceId,
+                $occurredAt,
+                $agentUserId,
+            );
+            $posted++;
+        }
+
+        return $posted;
+    }
 }

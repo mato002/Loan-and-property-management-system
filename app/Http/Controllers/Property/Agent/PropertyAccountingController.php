@@ -4127,7 +4127,7 @@ class PropertyAccountingController extends Controller
         if (! Schema::hasTable('pm_ezen_bills')) {
             return property_view('property.agent.accounting.payables_accounts', [
                 'stats' => [['label' => 'Bills', 'value' => '0', 'hint' => 'Run migrations, then import the EZEN Bills Listing']],
-                'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status'],
+                'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Property', 'Memo', 'Total', 'Paid', 'Due', 'Status'],
                 'tableRows' => [],
                 'paginator' => null,
                 'filters' => [
@@ -4149,7 +4149,7 @@ class PropertyAccountingController extends Controller
         ];
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
-        $query = PmEzenBill::query();
+        $query = PmEzenBill::query()->with('property');
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q): void {
@@ -4184,7 +4184,7 @@ class PropertyAccountingController extends Controller
 
             return TabularExport::stream(
                 'ezen-bills-'.now()->format('Ymd_His'),
-                ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Listing', 'Status'],
+                ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Property', 'Memo', 'Total', 'Paid', 'Due', 'Listing', 'Status'],
                 function () use ($items) {
                     foreach ($items as $bill) {
                         yield [
@@ -4193,6 +4193,7 @@ class PropertyAccountingController extends Controller
                             $bill->bill_date?->format('Y-m-d') ?? '',
                             $bill->due_date?->format('Y-m-d') ?? '',
                             (string) $bill->vendor_name,
+                            (string) ($bill->property?->name ?? ''),
                             (string) ($bill->memo ?? ''),
                             number_format((float) $bill->total_amount, 2, '.', ''),
                             number_format((float) $bill->total_paid, 2, '.', ''),
@@ -4230,6 +4231,7 @@ class PropertyAccountingController extends Controller
                 $bill->bill_date?->format('Y-m-d') ?? '—',
                 $bill->due_date?->format('Y-m-d') ?? '—',
                 $bill->vendor_name,
+                $bill->property?->name ?? '—',
                 $bill->memo !== null && $bill->memo !== '' ? $bill->memo : '—',
                 number_format((float) $bill->total_amount, 2),
                 number_format((float) $bill->total_paid, 2),
@@ -4241,7 +4243,7 @@ class PropertyAccountingController extends Controller
 
         return property_view('property.agent.accounting.payables_accounts', [
             'stats' => $stats,
-            'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Memo', 'Total', 'Paid', 'Due', 'Status', 'Actions'],
+            'columns' => ['Bill #', 'Ven. Inv #', 'Date', 'Due date', 'Vendor', 'Property', 'Memo', 'Total', 'Paid', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $bills,
             'filters' => $filters,
