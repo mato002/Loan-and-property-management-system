@@ -1145,7 +1145,16 @@ window.addEventListener('popstate', () => {
     const frame = getPropertyMainFrame();
     if (frame) {
         resetPropertyFrameReconcileToken('popstate');
-        reconcilePropertyFrameWithBrowserUrl(frame, { force: true });
+        let restoringOpenTask = false;
+        try {
+            restoringOpenTask = sessionStorage.getItem('ph.openTasks.restoreHistory') === '1';
+            sessionStorage.removeItem('ph.openTasks.restoreHistory');
+        } catch {
+            // Continue normal reconciliation when session storage is unavailable.
+        }
+        if (!restoringOpenTask) {
+            reconcilePropertyFrameWithBrowserUrl(frame, { force: true });
+        }
     }
 });
 

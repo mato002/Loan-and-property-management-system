@@ -38,7 +38,11 @@ class PmVendorWebController extends Controller
     {
         $filters = $request->only(['q', 'status', 'category', 'sort', 'dir', 'per_page']);
         $vendorQuery = $this->directoryQuery($filters);
-        $statsSource = (clone $vendorQuery)->get();
+        $statusCounts = (clone $vendorQuery)
+            ->reorder()
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
         $perPage = $this->directoryPerPage($filters);
         $vendors = $vendorQuery
             ->orderBy('name')
@@ -46,9 +50,9 @@ class PmVendorWebController extends Controller
             ->withQueryString();
 
         $stats = [
-            ['label' => 'Vendors', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
-            ['label' => 'Active', 'value' => (string) $statsSource->where('status', 'active')->count(), 'hint' => ''],
-            ['label' => 'Inactive', 'value' => (string) $statsSource->where('status', '!=', 'active')->count(), 'hint' => ''],
+            ['label' => 'Vendors', 'value' => (string) $statusCounts->sum(), 'hint' => 'Filtered'],
+            ['label' => 'Active', 'value' => (string) ($statusCounts['active'] ?? 0), 'hint' => ''],
+            ['label' => 'Inactive', 'value' => (string) $statusCounts->except('active')->sum(), 'hint' => ''],
         ];
 
         $rows = $vendors->getCollection()->map(function (PmVendor $v) {
@@ -659,9 +663,22 @@ class PmVendorWebController extends Controller
 
     public function edit(Request $request, PmVendor $vendor): View
     {
+        $agreements = $vendor->serviceAgreements()
+            ->with('property:id,name,code')
+            ->where('status', 'active')
+            ->orderBy('service_name')
+            ->orderBy('property_id')
+            ->get();
+        $serviceGroupName = $agreements->first()?->service_name;
+        $serviceAgreements = $serviceGroupName
+            ? $agreements->where('service_name', $serviceGroupName)->values()
+            : collect();
+
         return property_view('property.agent.vendors.edit', array_merge([
             'vendor' => $vendor,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name', 'code']),
+            'serviceAgreements' => $serviceAgreements,
+            'serviceGroupName' => $serviceGroupName,
         ], $this->propertyFormModalViewData($request)));
     }
 
@@ -680,11 +697,109 @@ class PmVendorWebController extends Controller
             'bank_account_name' => ['nullable', 'string', 'max:191'],
             'bank_account_number' => ['nullable', 'string', 'max:100'],
             'creditor_account' => ['nullable', 'string', 'max:120'],
-            'default_property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'service_group_name' => ['nullable', 'string', 'max:191'],
+            'service_property_ids' => ['nullable', 'array'],
+            'service_property_ids.*' => ['integer', 'distinct', 'exists:properties,id'],
+            'service_name' => ['nullable', 'required_with:service_property_ids', 'string', 'max:191'],
+            'service_amount_mode' => ['nullable', 'required_with:service_property_ids', 'in:shared,per_property'],
+            'service_monthly_amount' => ['nullable', 'numeric', 'gt:0'],
+            'service_monthly_amounts' => ['nullable', 'array'],
+            'service_monthly_amounts.*' => ['nullable', 'numeric', 'gt:0'],
+            'service_starts_on' => ['nullable', 'required_with:service_property_ids', 'date'],
+            'service_billing_day' => ['nullable', 'required_with:service_property_ids', 'integer', 'between:1,28'],
         ]);
-        $this->assertDefaultPropertyInWorkspace($data['default_property_id'] ?? null);
 
-        $vendor->update($data);
+        $servicePropertyIds = array_map('intval', $data['service_property_ids'] ?? []);
+        if ($servicePropertyIds !== []) {
+            $amountErrors = [];
+            if (($data['service_amount_mode'] ?? 'shared') === 'shared') {
+                if (! isset($data['service_monthly_amount']) || (float) $data['service_monthly_amount'] <= 0) {
+                    $amountErrors['service_monthly_amount'] = 'Enter the monthly amount shared by the selected properties.';
+                }
+            } else {
+                foreach ($servicePropertyIds as $propertyId) {
+                    $amount = $data['service_monthly_amounts'][$propertyId] ?? null;
+                    if (! is_numeric($amount) || (float) $amount <= 0) {
+                        $amountErrors['service_monthly_amounts.'.$propertyId] = 'Enter the agreed monthly amount for this property.';
+                    }
+                }
+            }
+            if ($amountErrors !== []) {
+                throw \Illuminate\Validation\ValidationException::withMessages($amountErrors);
+            }
+        }
+        foreach ($servicePropertyIds as $propertyId) {
+            $this->assertDefaultPropertyInWorkspace($propertyId);
+        }
+
+        $serviceGroupName = trim((string) ($data['service_group_name'] ?? ''));
+        $serviceAgreements = $vendor->serviceAgreements()
+            ->where('status', 'active')
+            ->when($serviceGroupName !== '', fn (Builder $query) => $query->where('service_name', $serviceGroupName))
+            ->get();
+        $serviceData = collect($data)->only([
+            'service_name', 'service_amount_mode', 'service_monthly_amount', 'service_monthly_amounts',
+            'service_starts_on', 'service_billing_day',
+        ])->all();
+        $vendorData = collect($data)->except([
+            'service_group_name', 'service_property_ids', 'service_name', 'service_amount_mode',
+            'service_monthly_amount', 'service_monthly_amounts', 'service_starts_on', 'service_billing_day',
+        ])->all();
+        $vendorData['default_property_id'] = $servicePropertyIds[0] ?? $vendor->default_property_id;
+
+        DB::transaction(function () use ($vendor, $vendorData, $serviceAgreements, $servicePropertyIds, $serviceData, $data): void {
+            $vendor->update($vendorData);
+            $newPropertyIds = collect($servicePropertyIds)->mapWithKeys(fn (int $id) => [$id => true]);
+
+            foreach ($serviceAgreements as $agreement) {
+                if (! $newPropertyIds->has((int) $agreement->property_id)) {
+                    $agreement->update(['status' => 'inactive']);
+                }
+            }
+
+            foreach ($servicePropertyIds as $propertyId) {
+                $monthlyAmount = ($serviceData['service_amount_mode'] ?? 'shared') === 'per_property'
+                    ? (float) $data['service_monthly_amounts'][$propertyId]
+                    : (float) $data['service_monthly_amount'];
+                $agreement = $serviceAgreements->firstWhere('property_id', $propertyId);
+                $agreementFields = [
+                    'service_name' => $serviceData['service_name'],
+                    'monthly_amount' => $monthlyAmount,
+                    'starts_on' => $serviceData['service_starts_on'],
+                    'billing_day' => $serviceData['service_billing_day'],
+                ];
+
+                if ($agreement) {
+                    $changed = (string) $agreement->service_name !== (string) $agreementFields['service_name']
+                        || (float) $agreement->monthly_amount !== $monthlyAmount
+                        || $agreement->starts_on?->toDateString() !== $agreementFields['starts_on']
+                        || (int) $agreement->billing_day !== (int) $agreementFields['billing_day'];
+
+                    if ($changed && $agreement->bills()->exists()) {
+                        $agreement->update(['status' => 'inactive']);
+                        if ($agreementFields['starts_on'] <= now()->toDateString()) {
+                            $agreementFields['starts_on'] = now()->toDateString();
+                        }
+                        $vendor->serviceAgreements()->create([
+                            ...$agreementFields,
+                            'agent_user_id' => \App\Models\Concerns\AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) request()->user()->id,
+                            'property_id' => $propertyId,
+                            'status' => 'active',
+                        ]);
+                    } else {
+                        $agreement->update($agreementFields);
+                    }
+                    continue;
+                }
+
+                $vendor->serviceAgreements()->create([
+                    ...$agreementFields,
+                    'agent_user_id' => \App\Models\Concerns\AgentWorkspaceScope::ownerIdForNewRecord() ?: (int) request()->user()->id,
+                    'property_id' => $propertyId,
+                    'status' => 'active',
+                ]);
+            }
+        });
 
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
@@ -748,7 +863,7 @@ class PmVendorWebController extends Controller
             ->with('success', 'RFQ draft saved. Vendors can be invited from your workflow when RFQs are wired to the database.');
     }
 
-    public function bidding(): View
+    public function bidding(Request $request): View
     {
         $rfqs = PmPortalAction::query()
             ->where('action_key', 'create_vendor_rfq')

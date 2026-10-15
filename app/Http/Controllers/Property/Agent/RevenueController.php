@@ -8,6 +8,8 @@ use App\Models\PmInvoice;
 use App\Models\PmMessageLog;
 use App\Models\PmPayment;
 use App\Models\PmPenaltyRule;
+use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\PmTenant;
 use App\Models\PmTenantNotice;
 use App\Services\BulkSmsService;
@@ -1620,7 +1622,7 @@ class RevenueController extends Controller
         ];
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
-        $query = PmPenaltyRule::query();
+        $query = PmPenaltyRule::query()->with(['property:id,name', 'unit.property:id,name']);
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q) {
@@ -1647,11 +1649,12 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'penalty-rules-'.now()->format('Ymd_His'),
-                ['Rule name', 'How it is calculated', 'When it is charged', 'Wait after due date', 'Maximum charge', 'Starts', 'Status'],
+                ['Rule name', 'Applies to', 'How it is calculated', 'When it is charged', 'Wait after due date', 'Maximum charge', 'Starts', 'Status'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $r) {
                         yield [
                             (string) $r->name,
+                            $r->unit_id ? (($r->unit?->property?->name ?? 'Property').' / '.($r->unit?->label ?? 'Unit')) : ($r->property_id ? ($r->property?->name ?? 'Property') : 'All properties'),
                             PmPenaltyRule::formulaLabel((string) $r->formula),
                             PmPenaltyRule::compoundingLabel((string) $r->compounding_mode),
                             (string) ((int) $r->grace_days).' day(s)',
@@ -1684,6 +1687,7 @@ class RevenueController extends Controller
 
             return [
                 $r->name,
+                $r->unit_id ? (($r->unit?->property?->name ?? 'Property').' / '.($r->unit?->label ?? 'Unit')) : ($r->property_id ? ($r->property?->name ?? 'Property') : 'All properties'),
                 $how,
                 PmPenaltyRule::compoundingLabel((string) $r->compounding_mode).' · wait '.(int) $r->grace_days.' day(s)',
                 $maximum,
@@ -1699,9 +1703,11 @@ class RevenueController extends Controller
                 ['label' => 'Charged this month', 'value' => PropertyMoney::kes(0), 'hint' => 'Charges posted this month'],
                 ['label' => 'Waived this month', 'value' => PropertyMoney::kes(0), 'hint' => ''],
             ],
-            'columns' => ['Rule name', 'How it is calculated', 'When it is charged', 'Maximum charge', 'Starts', 'Status'],
+            'columns' => ['Rule name', 'Applies to', 'How it is calculated', 'When it is charged', 'Maximum charge', 'Starts', 'Status'],
             'tableRows' => $rows,
             'penaltyRules' => $rules->getCollection(),
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'penaltyUnits' => PropertyUnit::query()->with('property:id,name')->orderBy('property_id')->orderBy('label')->get(['id', 'property_id', 'label']),
             'paginator' => $rules,
             'filters' => [
                 ...$filters,
@@ -1718,6 +1724,8 @@ class RevenueController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:128'],
             'scope' => ['required', 'in:global'],
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'trigger_event' => ['required', 'in:days_after_due'],
             'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'formula' => ['required', 'in:percent_of_rent,flat,percent_plus_flat'],
@@ -1729,6 +1737,14 @@ class RevenueController extends Controller
             'effective_from' => ['nullable', 'date'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+
+        if (! empty($data['unit_id'])) {
+            $unit = PropertyUnit::query()->findOrFail($data['unit_id']);
+            if (! empty($data['property_id']) && (int) $data['property_id'] !== (int) $unit->property_id) {
+                return back()->withErrors(['unit_id' => 'The selected unit does not belong to the selected property.'])->withInput();
+            }
+            $data['property_id'] = (int) $unit->property_id;
+        }
 
         $rule = PmPenaltyRule::query()->create([
             ...$data,

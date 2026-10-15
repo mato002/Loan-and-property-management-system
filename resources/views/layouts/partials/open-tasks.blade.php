@@ -120,6 +120,45 @@
                 return 'ph.openTasks.v1.' + (bar.getAttribute('data-open-tasks-scope') || 'app') + '.' + (bar.getAttribute('data-open-tasks-user') || '0');
             }
 
+            function currentHistoryIndex() {
+                var value = window.history.state && window.history.state.turbo
+                    ? Number(window.history.state.turbo.restorationIndex)
+                    : NaN;
+                return Number.isInteger(value) ? value : null;
+            }
+
+            function historySession() {
+                var key = 'ph.openTasks.historySession';
+                try {
+                    var session = sessionStorage.getItem(key);
+                    if (!session) {
+                        session = Date.now().toString(36) + Math.random().toString(36).slice(2);
+                        sessionStorage.setItem(key, session);
+                    }
+                    return session;
+                } catch (error) {
+                    return '';
+                }
+            }
+
+            function focusTask(bar, task) {
+                persistScroll(bar);
+                var currentIndex = currentHistoryIndex();
+                var targetIndex = Number(task.historyIndex);
+                if (task.historyIndex !== null && task.historyIndex !== undefined
+                    && task.historySession && task.historySession === historySession()
+                    && Number.isInteger(targetIndex) && currentIndex !== null && targetIndex !== currentIndex) {
+                    sessionStorage.setItem('ph.openTasks.restore', task.key);
+                    sessionStorage.setItem('ph.openTasks.restoreHistory', '1');
+                    window.history.go(targetIndex - currentIndex);
+                    return;
+                }
+
+                sessionStorage.removeItem('ph.openTasks.restoreHistory');
+                sessionStorage.setItem('ph.openTasks.restore', task.key);
+                visit(bar, task.url);
+            }
+
             function isRecordPath(pathname) {
                 return /\/\d+(?:\/|$)/.test(String(pathname || ''));
             }
@@ -286,8 +325,8 @@
                             event.preventDefault();
                             return;
                         }
-                        persistScroll(bar);
-                        sessionStorage.setItem('ph.openTasks.restore', task.key);
+                        event.preventDefault();
+                        focusTask(bar, task);
                     });
 
                     var close = document.createElement('button');
@@ -324,7 +363,14 @@
                 sessionStorage.removeItem('ph.openTasks.suppress');
                 var list = load(bar);
                 var index = list.findIndex(function (task) { return task.key === meta.key; });
-                var next = { key: meta.key, url: meta.url, title: meta.title, scroll: 0 };
+                var next = {
+                    key: meta.key,
+                    url: meta.url,
+                    title: meta.title,
+                    scroll: 0,
+                    historyIndex: currentHistoryIndex(),
+                    historySession: historySession()
+                };
                 if (index >= 0) {
                     next.scroll = list[index].url === meta.url ? (list[index].scroll || 0) : 0;
                     list[index] = next;
@@ -433,14 +479,18 @@
                     return;
                 }
                 var existing = load(bar).find(function (task) { return task.key === taskKey(dest); });
-                if (!existing || existing.url === taskUrl(dest)) {
+                if (!existing) {
+                    return;
+                }
+                var active = currentMeta(bar);
+                if (active && active.key === existing.key && active.url === taskUrl(dest)) {
+                    event.preventDefault();
+                    event.stopPropagation();
                     return;
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                persistScroll(bar);
-                sessionStorage.setItem('ph.openTasks.restore', existing.key);
-                visit(bar, existing.url);
+                focusTask(bar, existing);
             }, true);
 
             document.addEventListener('submit', function () {

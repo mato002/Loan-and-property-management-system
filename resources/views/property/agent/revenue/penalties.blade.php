@@ -5,7 +5,7 @@
     :legacy-toolbar="false"
     :show-search="false"
     title="Late payment penalties"
-    subtitle="Set how much to charge when rent is paid after the due date. The system applies this to every property."
+    subtitle="Set how much to charge when rent is paid after the due date, with optional property or unit scope."
     back-route="property.revenue.index"
     :stats="$stats"
     :columns="$columns"
@@ -38,13 +38,32 @@
             method="post"
             action="{{ route('property.revenue.penalties.store') }}"
             class="space-y-3"
-            x-data="{ formula: @js(old('formula', 'percent_of_rent')) }"
+            x-data="{ formula: @js(old('formula', 'percent_of_rent')), propertyId: @js(old('property_id', '')) }"
         >
             @csrf
             <input type="hidden" name="scope" value="global" />
             <input type="hidden" name="trigger_event" value="days_after_due" />
-            <p class="text-sm text-slate-600 dark:text-slate-300">This rule applies to every property. The charge starts after the rent due date.</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300 sm:col-span-2">Choose where the rule applies. Leave both selectors blank to apply it across all properties. A unit selection is limited to that unit. The charge starts after the rent due date.</p>
             <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (optional)</label>
+                    <select name="property_id" x-model="propertyId" @change="$refs.penaltyUnit.value = ''" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All properties</option>
+                        @foreach ($properties as $property)
+                            <option value="{{ $property->id }}">{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (optional)</label>
+                    <select name="unit_id" x-ref="penaltyUnit" x-effect="$refs.penaltyUnit.querySelectorAll('option[data-property-id]').forEach(option => option.hidden = !!propertyId && option.dataset.propertyId !== String(propertyId))" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All units in selected property</option>
+                        @foreach ($penaltyUnits as $unit)
+                            <option value="{{ $unit->id }}" data-property-id="{{ $unit->property_id }}" @selected((string) old('unit_id') === (string) $unit->id)>{{ $unit->property?->name }} / {{ $unit->label }}</option>
+                        @endforeach
+                    </select>
+                    @error('unit_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                </div>
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rule name</label>
                     <input type="text" name="name" value="{{ old('name', 'Late payment penalty') }}" required placeholder="Late payment penalty" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />

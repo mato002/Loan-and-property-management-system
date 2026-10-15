@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PmPenaltyRule extends Model
 {
@@ -61,6 +62,8 @@ class PmPenaltyRule extends Model
     protected $fillable = [
         'name',
         'scope',
+        'property_id',
+        'unit_id',
         'trigger_event',
         'grace_days',
         'formula',
@@ -72,6 +75,16 @@ class PmPenaltyRule extends Model
         'effective_from',
         'is_active',
     ];
+
+    public function property(): BelongsTo
+    {
+        return $this->belongsTo(Property::class);
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(PropertyUnit::class, 'unit_id');
+    }
 
     protected function casts(): array
     {
