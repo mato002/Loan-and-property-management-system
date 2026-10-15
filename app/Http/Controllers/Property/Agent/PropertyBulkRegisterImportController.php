@@ -19,6 +19,7 @@ class PropertyBulkRegisterImportController extends Controller
             'appName' => $appName,
             'catalog' => PropertyBulkRegisterImportService::catalog(),
             'selectedType' => old('import_type', PropertyBulkRegisterImportService::TYPE_TENANTS_LEASES),
+            'targetAgentUserId' => old('target_agent_user_id', 2),
             'lastImportResult' => session('register_import_last_result'),
         ]);
     }
@@ -77,6 +78,7 @@ class PropertyBulkRegisterImportController extends Controller
             'include_deposits' => ['nullable', 'boolean'],
             'no_update' => ['nullable', 'boolean'],
             'sync_invoices' => ['nullable', 'boolean'],
+            'target_agent_user_id' => ['nullable', 'integer', 'min:1', 'exists:users,id'],
         ]);
 
         $type = (string) $data['import_type'];
@@ -102,6 +104,10 @@ class PropertyBulkRegisterImportController extends Controller
             'no_update' => $request->boolean('no_update'),
             'sync_invoices' => $request->boolean('sync_invoices'),
         ];
+        if ($type === PropertyBulkRegisterImportService::TYPE_LATE_PENALTY_INVOICES
+            && ($request->user()->is_super_admin ?? false)) {
+            $options['agent_user_id'] = (int) ($data['target_agent_user_id'] ?? $request->user()->id);
+        }
 
         try {
             $result = $importer->importUploaded(

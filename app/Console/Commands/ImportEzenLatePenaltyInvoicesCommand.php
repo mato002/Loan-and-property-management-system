@@ -14,7 +14,8 @@ class ImportEzenLatePenaltyInvoicesCommand extends Command
         {--property= : Optional property code filter}
         {--limit= : Import only the first N parsed rows}
         {--post-gl : Post invoice issuance to trust GL}
-        {--dry-run : Validate and match without saving}';
+        {--apply : Create the invoices; without this option the command is a dry run}
+        {--dry-run : Explicitly force a dry run}';
 
     protected $description = 'Import EZEN late penalty invoices from the penalty invoice register.';
 
@@ -34,7 +35,7 @@ class ImportEzenLatePenaltyInvoicesCommand extends Command
             (string) $this->argument('file'),
             $agentUserId,
             $actor,
-            (bool) $this->option('dry-run'),
+            ! (bool) $this->option('apply') || (bool) $this->option('dry-run'),
             (bool) $this->option('post-gl'),
             $this->option('property') ? (string) $this->option('property') : null,
             $limit,
@@ -57,7 +58,9 @@ class ImportEzenLatePenaltyInvoicesCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info($this->option('dry-run') ? 'Dry run complete.' : 'Late penalty invoice import complete.');
+        $this->info(! $this->option('apply') || $this->option('dry-run')
+            ? 'Dry run complete; no invoices or receipts were created.'
+            : 'Late penalty invoice import complete; no receipts were created.');
 
         return self::SUCCESS;
     }

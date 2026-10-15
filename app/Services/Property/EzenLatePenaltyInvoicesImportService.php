@@ -97,6 +97,12 @@ final class EzenLatePenaltyInvoicesImportService
 
                 try {
                     $this->validateRow($row);
+                    $sourcePaid = $this->money($row['source_paid_amount']);
+                    if ($sourcePaid > 0.009) {
+                        $summary['source_paid_rows']++;
+                        $summary['source_paid_total'] = round($summary['source_paid_total'] + $sourcePaid, 2);
+                    }
+
                     $resolved = $this->resolveRow($row, $agentUserId);
                     if ($resolved === null) {
                         $summary['skipped_unmatched']++;
@@ -108,12 +114,6 @@ final class EzenLatePenaltyInvoicesImportService
                     if ($existing !== null) {
                         $summary['skipped_existing']++;
                         continue;
-                    }
-
-                    $sourcePaid = $this->money($row['source_paid_amount']);
-                    if ($sourcePaid > 0.009) {
-                        $summary['source_paid_rows']++;
-                        $summary['source_paid_total'] = round($summary['source_paid_total'] + $sourcePaid, 2);
                     }
 
                     if (! $dryRun) {

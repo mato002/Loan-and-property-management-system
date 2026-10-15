@@ -157,6 +157,13 @@
             </div>
 
             <div class="grid gap-3 md:grid-cols-3">
+                @if (auth()->user()?->is_super_admin)
+                    <div x-show="type === 'late_penalty_invoices'" x-cloak>
+                        <label class="mb-1 block text-xs font-semibold text-slate-600">Target agent user ID</label>
+                        <input type="number" name="target_agent_user_id" value="{{ $targetAgentUserId ?? 2 }}" min="1" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                        <p class="mt-1 text-xs text-slate-500">Use the agent workspace that owns these properties. Passion Homes: 2.</p>
+                    </div>
+                @endif
                 <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Property code filter (optional)</label>
                     <input type="text" name="property" value="{{ old('property') }}" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" placeholder="e.g. A00039A">

@@ -132,7 +132,9 @@ final class PropertyBulkRegisterImportService
             $secondaryPath = Storage::disk('local')->path($sec);
         }
 
-        $agentUserId = (int) $actor->id;
+        $agentUserId = $type === self::TYPE_LATE_PENALTY_INVOICES && ! empty($options['agent_user_id'])
+            ? (int) $options['agent_user_id']
+            : (int) $actor->id;
         $dryRun = (bool) ($options['dry_run'] ?? false);
         $summary = $this->dispatch($type, $path, $agentUserId, $actor, $dryRun, $options, $secondaryPath);
 
