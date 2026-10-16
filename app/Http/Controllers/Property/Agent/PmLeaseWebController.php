@@ -9,6 +9,7 @@ use App\Models\LeaseDepositLine;
 use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
+use App\Models\PmActivityLog;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PmUnitUtilityCharge;
@@ -1966,6 +1967,48 @@ SQL;
         $tenantId = (int) ($lease->pm_tenant_id ?? 0);
         $unitIds = $lease->units->pluck('id')->map(fn ($id) => (int) $id)->filter()->values();
 
+        $rentChanges = collect();
+        if (Schema::hasTable('pm_activity_logs')) {
+            $rentChanges = PmActivityLog::query()
+                ->with('actor:id,name')
+                ->where('pm_lease_id', $lease->id)
+                ->where('action', 'lease.updated')
+                ->orderBy('occurred_at')
+                ->orderBy('id')
+                ->get()
+                ->filter(fn (PmActivityLog $log) => data_get($log->payload, 'changes.monthly_rent') !== null)
+                ->values();
+        }
+        $rentHistory = collect();
+        if ($rentChanges->isNotEmpty()) {
+            $firstRentChange = data_get($rentChanges->first()->payload, 'changes.monthly_rent');
+            $rentHistory->push([
+                'date' => $lease->start_date,
+                'from' => null,
+                'to' => (float) ($firstRentChange['from'] ?? $lease->monthly_rent),
+                'actor' => null,
+                'label' => 'Starting rent',
+            ]);
+            foreach ($rentChanges as $log) {
+                $change = data_get($log->payload, 'changes.monthly_rent', []);
+                $rentHistory->push([
+                    'date' => $log->occurred_at,
+                    'from' => isset($change['from']) ? (float) $change['from'] : null,
+                    'to' => isset($change['to']) ? (float) $change['to'] : null,
+                    'actor' => $log->actor?->name,
+                    'label' => 'Rent changed',
+                ]);
+            }
+        } else {
+            $rentHistory->push([
+                'date' => $lease->start_date,
+                'from' => null,
+                'to' => (float) $lease->monthly_rent,
+                'actor' => null,
+                'label' => 'Recorded rent',
+            ]);
+        }
+
         $outstanding = 0.0;
         if ($tenantId > 0) {
             $outstanding = app(FinanceBalanceSnapshotService::class)->tenantOutstanding($tenantId);
@@ -2027,6 +2070,8 @@ SQL;
             'outstanding' => $outstanding,
             'recentInvoices' => $recentInvoices,
             'recentPayments' => $recentPayments,
+            'rentChanges' => $rentChanges,
+            'rentHistory' => $rentHistory,
             'quickActions' => $quickActions,
         ]);
     }

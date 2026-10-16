@@ -131,6 +131,36 @@
             @endif
         </div>
 
+        @if (! empty($s['agreement']))
+            <div class="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-sm">
+                <h3 class="font-semibold text-indigo-950">Landlord agreement estimate</h3>
+                <p class="mt-1 text-xs text-indigo-800">This estimate follows the configured agreement. The payable amount below remains the posted landlord ledger balance.</p>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div><span class="block text-xs text-slate-600">Payment basis</span><strong>{{ $s['agreement']['settlement_basis'] === 'guaranteed_rent' ? 'Agreed rent, including vacant units' : 'Rent and charges collected' }}</strong></div>
+                    <div><span class="block text-xs text-slate-600">Commission</span><strong>{{ $s['agreement']['commission_basis'] === 'rent_only' ? 'Rent only' : 'All rent and charges' }}</strong></div>
+                    <div><span class="block text-xs text-slate-600">Provider costs</span><strong>{{ $s['agreement']['provider_cost_payer'] === 'agency' ? 'Agency pays and deducts' : 'Landlord pays providers' }}</strong></div>
+                    <div><span class="block text-xs text-slate-600">Advances</span><strong>{{ $s['agreement']['advances_allowed'] ? 'Allowed' : 'Not allowed' }}</strong></div>
+                </div>
+                <div class="mt-3 overflow-x-auto">
+                    <table class="min-w-full text-xs">
+                        <tbody class="divide-y divide-indigo-100">
+                            @if ($s['agreement']['settlement_basis'] === 'guaranteed_rent')
+                                <tr><th class="py-2 text-left font-medium">Agreed rent share (vacant units included)</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['contracted_rent_share']) }}</td></tr>
+                            @else
+                                <tr><th class="py-2 text-left font-medium">Collected landlord entitlement</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['gross_entitlement']) }}</td></tr>
+                            @endif
+                            <tr><th class="py-2 text-left font-medium">Commission</th><td class="py-2 text-right">− {{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['management_fee']) }}</td></tr>
+                            @if ($s['agreement']['provider_cost_payer'] === 'agency')
+                                <tr><th class="py-2 text-left font-medium">Recorded provider cost deductions</th><td class="py-2 text-right">− {{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['provider_cost_deductions']) }}</td></tr>
+                            @endif
+                            <tr class="font-semibold"><th class="py-2 text-left">Estimated net under agreement</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['net_estimate']) }}</td></tr>
+                            <tr class="font-semibold text-slate-700"><th class="py-2 text-left">Posted ledger amount due</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) ($s['net_amount_due'] ?? 0)) }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
         <div class="grid gap-4 lg:grid-cols-3">
             <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm">
                 <h3 class="font-semibold text-slate-900">Additions</h3>
@@ -173,7 +203,7 @@
                 <dl class="mt-3 space-y-2">
                     <div class="flex justify-between"><dt>Rent received</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['rent_received'] ?? 0)) }}</dd></div>
                     <div class="flex justify-between"><dt>Total utility</dt><dd class="font-medium">{{ \App\Services\Property\PropertyMoney::kes((float) ($s['utility_received'] ?? 0)) }}</dd></div>
-                    <div class="flex justify-between"><dt>Less management fee ({{ $s['commission_percent'] ?? 0 }}%)</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['management_fee'] ?? 0)) }}</dd></div>
+                    <div class="flex justify-between"><dt>Less management fee ({{ $s['commission_percent'] ?? 0 }}%)</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['agreement']['management_fee'] ?? $s['management_fee'] ?? 0)) }}</dd></div>
                     <div class="flex justify-between"><dt>Less other expenses</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['other_expenses'] ?? 0)) }}</dd></div>
                     <div class="flex justify-between"><dt>Add total additions</dt><dd class="font-medium text-emerald-700">+ {{ \App\Services\Property\PropertyMoney::kes((float) ($s['additions_total'] ?? 0)) }}</dd></div>
                     <div class="flex justify-between"><dt>Less total deductions</dt><dd class="font-medium text-rose-700">− {{ \App\Services\Property\PropertyMoney::kes((float) ($s['deductions_total'] ?? 0)) }}</dd></div>

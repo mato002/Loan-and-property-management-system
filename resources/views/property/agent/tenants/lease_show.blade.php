@@ -100,6 +100,46 @@
         </div>
     </div>
 
+    <div class="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <h3 class="text-sm font-semibold text-slate-900">Rent history</h3>
+                <p class="mt-0.5 text-xs text-slate-500">The starting rate and every recorded change for this lease.</p>
+            </div>
+            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Current: {{ PropertyMoney::kes((float) $lease->monthly_rent) }} / month</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border-collapse text-sm [&_th]:border-b [&_th]:border-slate-200 [&_td]:border-b [&_td]:border-slate-100">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                        <th class="px-4 py-2.5">When</th>
+                        <th class="px-4 py-2.5">Change</th>
+                        <th class="px-4 py-2.5">Monthly rent</th>
+                        <th class="px-4 py-2.5">Changed by</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($rentHistory as $entry)
+                        <tr>
+                            <td class="px-4 py-2.5 whitespace-nowrap">{{ $entry['date']?->format('Y-m-d') ?? '—' }}</td>
+                            <td class="px-4 py-2.5">{{ $entry['label'] }}</td>
+                            <td class="px-4 py-2.5 tabular-nums">
+                                @if (!is_null($entry['from']))
+                                    {{ PropertyMoney::kes((float) $entry['from']) }} <span class="text-slate-400">→</span>
+                                @endif
+                                <span class="font-semibold text-slate-900">{{ PropertyMoney::kes((float) $entry['to']) }}</span>
+                            </td>
+                            <td class="px-4 py-2.5">{{ $entry['actor'] ?: '—' }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @if ($rentHistory->count() === 1 && $rentChanges->isEmpty())
+            <p class="px-4 py-2.5 text-xs text-slate-500">No rent changes are recorded for this lease yet. Future rent edits will appear here.</p>
+        @endif
+    </div>
+
     <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900">Carry-forward & extra charges</h3>

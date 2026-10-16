@@ -93,11 +93,25 @@
                         <a href="{{ route('property.payments.receipt.show', $payment, false) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap">
-                        @if (strtolower(trim((string) $payment->channel)) === 'bank_statement' && $payment->status === \App\Models\PmPayment::STATUS_COMPLETED && ! in_array($payment->reversal_status, [\App\Models\PmPayment::REVERSAL_STATUS_PENDING, \App\Models\PmPayment::REVERSAL_STATUS_REVERSED], true))
-                            <form method="post" action="{{ route('property.payments.bank_statement.reverse_match', $payment, false) }}" data-swal-title="Reverse this bank-statement match?" data-swal-confirm="This reverses the imported payment, releases its active invoice allocations and tenant credit, and returns linked statement lines to Unmatched. It does not initiate a bank refund.">
-                                @csrf
-                                <button type="submit" class="text-xs font-semibold text-rose-700 hover:underline">Reverse match</button>
-                            </form>
+                        @if ($payment->status === \App\Models\PmPayment::STATUS_COMPLETED && $payment->reversal_status !== \App\Models\PmPayment::REVERSAL_STATUS_REVERSED && auth()->user()?->hasPmPermission('payments.settle'))
+                            @if (strtolower(trim((string) $payment->channel)) === 'bank_statement' && $payment->reversal_status !== \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
+                                <form method="post" action="{{ route('property.payments.bank_statement.reverse_match', $payment, false) }}" data-swal-title="Reverse this bank-statement match?" data-swal-confirm="This reverses the imported payment, releases its active invoice allocations and tenant credit, and returns linked statement lines to Unmatched. It does not initiate a bank refund.">
+                                    @csrf
+                                    <button type="submit" class="text-xs font-semibold text-rose-700 hover:underline">Reverse match</button>
+                                </form>
+                            @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
+                                <form method="post" action="{{ route('property.payments.reversal.approve', $payment, false) }}" class="js-reversal-approve-form" data-turbo-frame="property-main" data-payment-ref="{{ $payment->external_ref ?: 'PAY-'.$payment->id }}" data-swal-confirm="Approve and apply this payment reversal now?">
+                                    @csrf
+                                    <input type="hidden" name="reason" value="" />
+                                    <button type="submit" class="text-xs font-semibold text-rose-700 hover:underline">Approve reversal</button>
+                                </form>
+                            @else
+                                <form method="post" action="{{ route('property.payments.reversal.request', $payment, false) }}" class="js-reversal-request-form" data-turbo-frame="property-main" data-payment-ref="{{ $payment->external_ref ?: 'PAY-'.$payment->id }}">
+                                    @csrf
+                                    <input type="hidden" name="reason" value="" />
+                                    <button type="submit" class="text-xs font-semibold text-rose-700 hover:underline">Request reversal</button>
+                                </form>
+                            @endif
                         @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_PENDING)
                             <span class="text-xs text-amber-700">Reversal pending</span>
                         @elseif ($payment->reversal_status === \App\Models\PmPayment::REVERSAL_STATUS_REVERSED)

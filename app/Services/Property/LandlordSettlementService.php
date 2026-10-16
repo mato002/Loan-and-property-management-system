@@ -55,6 +55,10 @@ final class LandlordSettlementService
                 'property_landlord.ownership_percent',
                 'property_landlord.agreed_pay_day',
                 'property_landlord.agreed_pay_notes',
+                'property_landlord.settlement_basis',
+                'property_landlord.commission_basis',
+                'property_landlord.provider_cost_payer',
+                'property_landlord.advances_allowed',
                 'u.name as landlord_name',
                 'p.name as property_name',
             ])
@@ -77,9 +81,26 @@ final class LandlordSettlementService
             'total' => round($collected['total'] * $ownershipFactor, 2),
         ];
 
-        $grossOwnerShare = $ownerCollected['total'];
-        $managementFee = round($grossOwnerShare * ($commissionPct / 100), 2);
-        $netCollected = round($grossOwnerShare - $managementFee, 2);
+        $settlementBasis = in_array((string) ($link->settlement_basis ?? 'collected'), ['collected', 'guaranteed_rent'], true)
+            ? (string) ($link->settlement_basis ?? 'collected') : 'collected';
+        $commissionBasis = in_array((string) ($link->commission_basis ?? 'all_collected'), ['rent_only', 'all_collected'], true)
+            ? (string) ($link->commission_basis ?? 'all_collected') : 'all_collected';
+        $providerCostPayer = in_array((string) ($link->provider_cost_payer ?? 'landlord'), ['landlord', 'agency'], true)
+            ? (string) ($link->provider_cost_payer ?? 'landlord') : 'landlord';
+        $advancesAllowed = (bool) ($link->advances_allowed ?? true);
+        $contractRent = $settlementBasis === 'guaranteed_rent'
+            ? round($this->contractedRentForPeriod($propertyId, $periodStart, $periodEnd) * $ownershipFactor, 2)
+            : 0.0;
+        $nonRentCollected = round($ownerCollected['garbage'] + $ownerCollected['water'] + $ownerCollected['other'], 2);
+        $agreementGross = $settlementBasis === 'guaranteed_rent'
+            ? round($contractRent + $nonRentCollected, 2)
+            : $ownerCollected['total'];
+        $commissionable = $commissionBasis === 'rent_only'
+            ? ($settlementBasis === 'guaranteed_rent' ? $contractRent : $ownerCollected['rent'])
+            : $agreementGross;
+        $agreementManagementFee = round($commissionable * ($commissionPct / 100), 2);
+        $managementFee = round($ownerCollected['total'] * ($commissionPct / 100), 2);
+        $netCollected = round($ownerCollected['total'] - $managementFee, 2);
 
         $periodRemitted = $this->remittedTotal([$propertyId], $landlordId, $periodStart, $periodEnd);
         $balanceBf = $this->ledgerNetBalance($landlordId, $propertyId, $periodStart);
@@ -98,6 +119,10 @@ final class LandlordSettlementService
         $unitTotals = $this->sumUnitLines($unitLines);
         $additionsTotal = round(collect($additions)->sum('amount'), 2);
         $deductionsTotal = round(collect($deductions)->sum('amount'), 2);
+        $providerCostDeductions = $providerCostPayer === 'agency'
+            ? round(collect($deductions)->where('line_type', self::LINE_OTHER)->sum('amount'), 2)
+            : 0.0;
+        $agreementNetEstimate = round(max(0.0, $agreementGross - $agreementManagementFee - $providerCostDeductions), 2);
         $utilityReceived = round($collected['garbage'] + $collected['water'], 2);
         $otherExpenses = round(max(0.0, $collected['other']), 2);
 
@@ -121,6 +146,18 @@ final class LandlordSettlementService
             'other_expenses' => $otherExpenses,
             'management_fee' => $managementFee,
             'net_collected' => $netCollected,
+            'agreement' => [
+                'settlement_basis' => $settlementBasis,
+                'commission_basis' => $commissionBasis,
+                'provider_cost_payer' => $providerCostPayer,
+                'advances_allowed' => $advancesAllowed,
+                'contracted_rent_share' => $contractRent,
+                'gross_entitlement' => $agreementGross,
+                'commissionable_amount' => round($commissionable, 2),
+                'management_fee' => $agreementManagementFee,
+                'provider_cost_deductions' => $providerCostDeductions,
+                'net_estimate' => $agreementNetEstimate,
+            ],
             'balance_brought_forward' => $balanceBf,
             'period_credits' => $periodCredits,
             'period_debits' => $periodDebits,
@@ -313,6 +350,26 @@ final class LandlordSettlementService
             'other' => round((float) ($row->other ?? 0), 2),
             'total' => round((float) ($row->total ?? 0), 2),
         ];
+    }
+
+    private function contractedRentForPeriod(int $propertyId, Carbon $start, Carbon $end): float
+    {
+        $unitLines = $this->unitSettlementLines($propertyId, $start, $end);
+        $total = 0.0;
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+
+        while ($cursor->lte($last)) {
+            $monthStart = $cursor->copy()->startOfMonth();
+            $monthEnd = $cursor->copy()->endOfMonth();
+            $daysInMonth = $monthStart->daysInMonth;
+            $days = min($last->day, $daysInMonth) - $cursor->day + 1;
+            $monthlyRent = (float) collect($unitLines)->sum('rent_per_month');
+            $total += $monthlyRent * ($days / $daysInMonth);
+            $cursor = $monthEnd->addDay()->startOfDay();
+        }
+
+        return round($total, 2);
     }
 
     /**

@@ -46,6 +46,7 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ownership %</label>
                 <input type="number" name="ownership_percent" value="{{ old('ownership_percent', 100) }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
             </div>
+            @include('property.agent.properties.partials.agreed_pay_fields', ['compact' => false])
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Link property</button>
         @endif
     </form>

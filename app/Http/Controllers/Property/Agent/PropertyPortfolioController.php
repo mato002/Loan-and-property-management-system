@@ -5725,12 +5725,16 @@ class PropertyPortfolioController extends Controller
         return [
             'agreed_pay_day' => ['nullable', 'integer', 'min:1', 'max:28'],
             'agreed_pay_notes' => ['nullable', 'string', 'max:255'],
+            'settlement_basis' => ['nullable', 'in:collected,guaranteed_rent'],
+            'commission_basis' => ['nullable', 'in:rent_only,all_collected'],
+            'provider_cost_payer' => ['nullable', 'in:landlord,agency'],
+            'advances_allowed' => ['nullable', 'boolean'],
         ];
     }
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{agreed_pay_day: int|null, agreed_pay_notes: string|null}
+     * @return array<string, mixed>
      */
     private function agreedPayPivotFromRequest(array $data): array
     {
@@ -5741,6 +5745,10 @@ class PropertyPortfolioController extends Controller
             'agreed_pay_notes' => isset($data['agreed_pay_notes']) && trim((string) $data['agreed_pay_notes']) !== ''
                 ? trim((string) $data['agreed_pay_notes'])
                 : null,
+            'settlement_basis' => $data['settlement_basis'] ?? 'collected',
+            'commission_basis' => $data['commission_basis'] ?? 'all_collected',
+            'provider_cost_payer' => $data['provider_cost_payer'] ?? 'landlord',
+            'advances_allowed' => filter_var($data['advances_allowed'] ?? true, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 

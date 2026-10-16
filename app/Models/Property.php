@@ -235,7 +235,7 @@ class Property extends Model
     public function landlords(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'property_landlord')
-            ->withPivot('ownership_percent', 'agreed_pay_day', 'agreed_pay_notes')
+            ->withPivot('ownership_percent', 'agreed_pay_day', 'agreed_pay_notes', 'settlement_basis', 'commission_basis', 'provider_cost_payer', 'advances_allowed')
             ->withTimestamps();
     }
 

@@ -3948,6 +3948,17 @@ class PropertyAccountingController extends Controller
             'mark_paid' => ['nullable', 'boolean'],
         ]);
 
+        $advanceAllowed = DB::table('property_landlord')
+            ->where('property_id', (int) $validated['property_id'])
+            ->where('user_id', (int) $validated['landlord_id'])
+            ->value('advances_allowed');
+        if ($advanceAllowed === null) {
+            return back()->withErrors(['landlord_id' => 'This landlord is not linked to the selected property.']);
+        }
+        if (! (bool) $advanceAllowed) {
+            return back()->withErrors(['amount' => 'Advance payments are disabled for this landlord and property agreement.']);
+        }
+
         $payout = $advances->recordAdvance(
             (int) $validated['property_id'],
             (int) $validated['landlord_id'],
