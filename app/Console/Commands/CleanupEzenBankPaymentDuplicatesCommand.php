@@ -163,14 +163,15 @@ class CleanupEzenBankPaymentDuplicatesCommand extends Command
     {
         $meta = is_array($ezenPayment->meta) ? $ezenPayment->meta : [];
         $receiptNo = strtoupper(trim((string) ($meta['ezen_receipt_no'] ?? '')));
+        $register = null;
         if ($receiptNo !== '' && Schema::hasTable('pm_ezen_receipt_register')) {
-            $registerId = PmEzenReceiptRegister::withoutGlobalScopes()
+            $register = PmEzenReceiptRegister::withoutGlobalScopes()
                 ->whereRaw('UPPER(TRIM(ezen_receipt_no)) = ?', [$receiptNo])
                 ->where('pm_tenant_id', (int) $ezenPayment->pm_tenant_id)
-                ->value('id');
-            if ($registerId && PmBankStatementLine::withoutGlobalScopes()
+                ->first(['id', 'ref_no']);
+            if ($register && PmBankStatementLine::withoutGlobalScopes()
                 ->where('pm_payment_id', (int) $bankPayment->id)
-                ->where('pm_ezen_receipt_register_id', (int) $registerId)
+                ->where('pm_ezen_receipt_register_id', (int) $register->id)
                 ->exists()) {
                 return true;
             }
@@ -178,7 +179,13 @@ class CleanupEzenBankPaymentDuplicatesCommand extends Command
 
         $receiptReferences = array_filter(array_map(
             static fn ($value): string => strtoupper(trim((string) $value)),
-            [$meta['ezen_ref_no'] ?? null, $meta['mpesa_ref'] ?? null],
+            [$meta['ezen_ref_no'] ?? null, $meta['mpesa_ref'] ?? null, $register?->ref_no],
+        ));
+        $receiptReferences = array_values(array_filter(
+            $receiptReferences,
+            static fn (string $reference): bool => $reference !== ''
+                && $reference !== 'CASH'
+                && ! str_starts_with($reference, 'EZEN-')
         ));
         if ($receiptReferences === []) {
             return false;
