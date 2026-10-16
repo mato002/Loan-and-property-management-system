@@ -136,6 +136,16 @@ class PropertyPaymentWebhookController extends Controller
         }
 
         $parsed = MpesaSmsForwarderParser::extractMpesaFields($rawMessage);
+        $payerName = trim((string) (
+            $parsed['sender_name']
+            ?? $payload['sender_name']
+            ?? $payload['payer_name']
+            ?? $payload['name']
+            ?? ''
+        ));
+        if ($payerName === '') {
+            $payerName = null;
+        }
         // Prefer payment timestamp parsed from SMS content over forwarder metadata timestamp.
         $paidAt = MpesaSmsForwarderParser::extractMpesaPaidAt($rawMessage) ?? $paidAt;
         // Prefer transaction code extracted from SMS body, since some forwarders may send altered ref ids.
@@ -220,6 +230,7 @@ class PropertyPaymentWebhookController extends Controller
         $tx = [
             'transaction_id' => $providerTxnCode,
             'amount' => $amount,
+            'payer_name' => $payerName,
             'account_number' => (string) ($payload['account_number'] ?? ''),
             'reference' => (string) ($payload['reference'] ?? ''),
             'phone' => (string) ($normalizedPhone ?? ''),
@@ -228,6 +239,7 @@ class PropertyPaymentWebhookController extends Controller
                 'provider' => $provider !== '' ? $provider : 'mpesa',
                 'source_device' => $data['source_device'] ?? null,
                 'raw_message' => $data['raw_message'] ?? null,
+                'payer_name' => $payerName,
                 'payload' => $payload,
             ],
         ];
@@ -297,6 +309,7 @@ class PropertyPaymentWebhookController extends Controller
                     'provider' => $provider !== '' ? $provider : 'mpesa',
                     'source_device' => $data['source_device'] ?? null,
                     'payer_phone' => $normalizedPhone,
+                    'payer_name' => $payerName,
                     'raw_message' => $data['raw_message'] ?? null,
                     'payload' => $payload,
                 ],

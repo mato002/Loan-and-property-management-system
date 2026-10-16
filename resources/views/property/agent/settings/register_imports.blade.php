@@ -23,6 +23,8 @@
         'unmatched' => 'Unmatched',
         'source_paid_rows' => 'Rows with source Paid values',
         'source_paid_total' => 'Source Paid total (reference only)',
+        'charges_parsed' => 'Statement charges found',
+        'payments_ignored_unverified' => 'Legacy receipts not posted',
     ];
 @endphp
 <x-property.workspace
@@ -184,6 +186,7 @@
                         <label x-show="['rent_receipts','payment_vouchers'].includes(type)" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="register_only" value="1" class="rounded border-slate-300"> Register only</label>
                         <label x-show="type === 'rent_receipts'" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="include_already_paid" value="1" class="rounded border-slate-300"> Include already-paid tenants</label>
                         <label x-show="['payment_vouchers','rental_invoices','late_penalty_invoices'].includes(type)" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="post_gl" value="1" class="rounded border-slate-300"> Post to general ledger</label>
+                        <label x-show="type === 'tenant_statement'" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="post_gl" value="1" class="rounded border-slate-300"> Post imported charges to general ledger</label>
                         <label x-show="type === 'rental_invoices'" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="include_deposits" value="1" class="rounded border-slate-300"> Include deposit invoice rows</label>
                         <label x-show="['deposits','billing_schedule','tenants_leases'].includes(type)" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="no_update" value="1" class="rounded border-slate-300"><span x-text="type === 'tenants_leases' ? 'Create only; do not update existing records' : 'Skip rows that already have values'"></span></label>
                         <label x-show="type === 'statement_balances'" x-cloak class="inline-flex items-center gap-2"><input type="checkbox" name="sync_invoices" value="1" class="rounded border-slate-300"> Create carry-forward invoices</label>

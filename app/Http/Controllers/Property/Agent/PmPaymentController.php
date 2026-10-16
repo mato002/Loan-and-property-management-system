@@ -344,7 +344,6 @@ class PmPaymentController extends Controller
 
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
-                'PAY-'.$p->id,
                 PmPaymentPresentation::propertyUnit($p),
                 PmPaymentPresentation::payerPhone($p),
                 PmPaymentPresentation::transactionRef($p),
@@ -369,9 +368,9 @@ class PmPaymentController extends Controller
             'statsPrimary' => $statsPrimary,
             'statsTable' => $statsTable,
             'receivedRangeLabel' => $receivedRangeLabel,
-            'columns' => ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Select', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
             'columnConfig' => ResponsiveTableColumns::payments(),
-            'tableMinWidth' => '1280px',
+            'tableMinWidth' => '1160px',
             'tableRows' => $rows,
             'paginator' => $payments,
             'perPage' => $perPage,

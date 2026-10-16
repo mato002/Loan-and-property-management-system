@@ -69,6 +69,14 @@ class PaymentMatchingService
             }
         }
 
+        $payerName = trim((string) ($transaction['payer_name'] ?? $transaction['sender_name'] ?? ''));
+        if ($payerName !== '') {
+            $nameMatch = $this->matchByExactTenantName($payerName, $agentUserId, $scopeTenants);
+            if ($nameMatch['tenant_id'] !== null || $nameMatch['reason'] !== null) {
+                return $nameMatch;
+            }
+        }
+
         $reference = $this->normalizeReference((string) ($transaction['reference'] ?? ''));
         if ($reference !== '' && $reference !== $account) {
             $unitMatch = $this->matchByUnitOrHouseCode($reference, $agentUserId);
@@ -104,7 +112,56 @@ class PaymentMatchingService
             }
         }
 
-        return ['tenant_id' => null, 'matched_by' => null, 'reason' => 'No tenant match by account number, unit/house code, phone, or reference'];
+        return ['tenant_id' => null, 'matched_by' => null, 'reason' => 'No tenant match by account number, unit/house code, phone, name, or reference'];
+    }
+
+    /**
+     * Match by an exact normalized tenant name only when it is unique in the
+     * agent's portfolio. Names are weaker than account/phone identifiers, so
+     * fuzzy or ambiguous matches stay unmatched for review.
+     *
+     * @param  callable  $scopeTenants
+     * @return array{tenant_id:int|null, matched_by:string|null, reason:string|null}
+     */
+    private function matchByExactTenantName(string $name, ?int $agentUserId, callable $scopeTenants): array
+    {
+        if (! Schema::hasColumn('pm_tenants', 'name')) {
+            return ['tenant_id' => null, 'matched_by' => null, 'reason' => null];
+        }
+
+        $normalizedName = $this->normalizePersonName($name);
+        if ($normalizedName === '') {
+            return ['tenant_id' => null, 'matched_by' => null, 'reason' => null];
+        }
+
+        $query = PmTenant::query()->select(['id', 'name']);
+        $scopeTenants($query);
+        $matches = $query->get()->filter(
+            fn (PmTenant $tenant): bool => $this->normalizePersonName((string) $tenant->name) === $normalizedName
+        )->values();
+
+        if ($matches->count() === 1) {
+            return ['tenant_id' => (int) $matches->first()->id, 'matched_by' => 'name', 'reason' => null];
+        }
+
+        if ($matches->count() > 1) {
+            return [
+                'tenant_id' => null,
+                'matched_by' => null,
+                'reason' => 'Multiple tenants have this payer name; leave unmatched for manual review.',
+            ];
+        }
+
+        return ['tenant_id' => null, 'matched_by' => null, 'reason' => null];
+    }
+
+    private function normalizePersonName(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = preg_replace('/[^\pL\pN]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 
     /**

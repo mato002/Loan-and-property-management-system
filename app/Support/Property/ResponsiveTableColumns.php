@@ -295,20 +295,19 @@ final class ResponsiveTableColumns
     public static function payments(): array
     {
         return self::build(
-            ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
+            ['Select', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Tenant', 'Allocated to', 'Status', 'Actions'],
             [
                 0 => ['is_bulk_select' => true],
-                1 => ['priority' => 8, 'hide_on_mobile' => true],
-                2 => ['is_subtitle' => true, 'priority' => 2, 'mobile_label' => 'Property / unit'],
-                3 => ['is_primary' => true, 'priority' => 1, 'mobile_label' => 'Payer phone'],
-                4 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
-                5 => ['priority' => 5, 'mobile_label' => 'Payment method'],
-                6 => ['is_amount' => true, 'priority' => 3],
-                7 => ['priority' => 6, 'mobile_label' => 'Received'],
-                8 => ['priority' => 3, 'mobile_label' => 'Tenant'],
-                9 => ['priority' => 7, 'mobile_label' => 'Invoice'],
-                10 => ['is_status' => true, 'priority' => 9],
-                11 => ['is_action' => true],
+                1 => ['is_subtitle' => true, 'priority' => 2, 'mobile_label' => 'Property / unit'],
+                2 => ['is_primary' => true, 'priority' => 1, 'mobile_label' => 'Payer phone'],
+                3 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
+                4 => ['priority' => 5, 'mobile_label' => 'Payment method'],
+                5 => ['is_amount' => true, 'priority' => 3],
+                6 => ['priority' => 6, 'mobile_label' => 'Received'],
+                7 => ['priority' => 3, 'mobile_label' => 'Tenant'],
+                8 => ['priority' => 7, 'mobile_label' => 'Invoice'],
+                9 => ['is_status' => true, 'priority' => 9],
+                10 => ['is_action' => true],
             ]
         );
     }

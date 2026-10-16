@@ -985,17 +985,18 @@ class EquitySyncController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $listQuery)->limit(10000)->get();
+            $messageMap = $this->matchedPaymentMessageMap($rows->pluck('id')->all());
 
             return TabularExport::stream(
                 'matched-payments-'.now()->format('Ymd_His'),
-                ['Date', 'Reference', 'Method', 'Origin', 'Tenant', 'Account', 'Phone', 'Amount', 'Property / unit'],
-                function () use ($rows) {
+                ['Date', 'Reference', 'Method', 'Message', 'Tenant', 'Account', 'Phone', 'Amount', 'Property / unit'],
+                function () use ($rows, $messageMap) {
                     foreach ($rows as $payment) {
                         yield [
                             $payment->paid_at?->format('Y-m-d H:i:s') ?? '',
                             PmPaymentPresentation::transactionRef($payment, (string) ($payment->external_ref ?: 'PAY-'.$payment->id)),
                             PmPaymentPresentation::paymentMethod($payment, PmPaymentPresentation::methodGroupFromChannel($payment->channel)),
-                            PmPaymentPresentation::originLabel($payment),
+                            $messageMap[(int) $payment->id] ?? (string) data_get($payment->meta, 'raw_message', ''),
                             (string) ($payment->tenant?->name ?? ''),
                             (string) ($payment->tenant?->account_number ?? ''),
                             PmPaymentPresentation::payerPhone($payment, ''),
@@ -1073,6 +1074,13 @@ class EquitySyncController extends Controller
         }
 
         $items = $listQuery->paginate($perPage)->withQueryString();
+        $messageMap = $this->matchedPaymentMessageMap($items->getCollection()->pluck('id')->all());
+        $items->getCollection()->each(function (PmPayment $payment) use ($messageMap): void {
+            $payment->setAttribute(
+                'forwarded_message',
+                $messageMap[(int) $payment->id] ?? (string) data_get($payment->meta, 'raw_message', '')
+            );
+        });
 
         return property_view('property.agent.revenue.matched_payments', [
             'items' => $items,
@@ -1091,6 +1099,24 @@ class EquitySyncController extends Controller
                 'per_page' => (string) $perPage,
             ],
         ]);
+    }
+
+    /** @param array<int, int|string> $paymentIds
+     *  @return array<int, string>
+     */
+    private function matchedPaymentMessageMap(array $paymentIds): array
+    {
+        if ($paymentIds === [] || ! Schema::hasTable('pm_sms_ingests')) {
+            return [];
+        }
+
+        return PmSmsIngest::query()
+            ->whereIn('pm_payment_id', $paymentIds)
+            ->whereNotNull('raw_message')
+            ->where('raw_message', '<>', '')
+            ->get(['pm_payment_id', 'raw_message'])
+            ->mapWithKeys(fn (PmSmsIngest $ingest): array => [(int) $ingest->pm_payment_id => (string) $ingest->raw_message])
+            ->all();
     }
 
     private function notReadyView(string $reason): View

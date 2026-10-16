@@ -107,7 +107,7 @@
                     <th class="px-3 py-2">Date</th>
                     <th class="px-3 py-2">Reference</th>
                     <th class="px-3 py-2">Method</th>
-                    <th class="px-3 py-2">Origin</th>
+                    <th class="px-3 py-2">Message</th>
                     <th class="px-3 py-2">Tenant</th>
                     <th class="px-3 py-2">Phone</th>
                     <th class="px-3 py-2 text-right">Amount</th>
@@ -126,7 +126,13 @@
                         <td class="px-3 py-2 whitespace-nowrap">{{ $payment->paid_at?->format('Y-m-d H:i') ?? '—' }}</td>
                         <td class="px-3 py-2 font-mono text-xs font-semibold">{{ \App\Support\Property\PmPaymentPresentation::transactionRef($payment) }}</td>
                         <td class="px-3 py-2">{{ \App\Support\Property\PmPaymentPresentation::paymentMethod($payment, \App\Support\Property\PmPaymentPresentation::methodGroupFromChannel($payment->channel)) }}</td>
-                        <td class="px-3 py-2 text-xs text-slate-600">{{ \App\Support\Property\PmPaymentPresentation::originLabel($payment) }}</td>
+                        <td class="max-w-sm px-3 py-2 text-xs text-slate-600" title="{{ $payment->forwarded_message ?: '' }}">
+                            @if (filled($payment->forwarded_message))
+                                <span class="line-clamp-3 whitespace-normal">{{ $payment->forwarded_message }}</span>
+                            @else
+                                <span class="text-slate-400">No forwarded M-Pesa message</span>
+                            @endif
+                        </td>
                         <td class="px-3 py-2">
                             @if ($payment->pm_tenant_id)
                                 <a href="{{ route('property.tenants.show', $payment->pm_tenant_id) }}" class="font-medium text-blue-700 hover:underline">{{ $payment->tenant?->name ?? 'Tenant #'.$payment->pm_tenant_id }}</a>
