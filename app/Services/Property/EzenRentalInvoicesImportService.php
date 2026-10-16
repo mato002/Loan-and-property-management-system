@@ -46,6 +46,9 @@ final class EzenRentalInvoicesImportService
         ?int $limit = null,
         bool $chargesOnly = false,
     ): array {
+        // The EZEN "paid" column is historical/unverified. Carry the invoices
+        // across as charges; verified bank/M-Pesa transactions establish paid status.
+        $chargesOnly = true;
         $rows = $this->parser->parsePath($path);
         if ($propertyCodeFilter !== null && trim($propertyCodeFilter) !== '') {
             $filter = strtoupper(trim($propertyCodeFilter));

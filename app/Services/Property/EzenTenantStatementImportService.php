@@ -34,6 +34,7 @@ final class EzenTenantStatementImportService
      *     skipped_existing: int,
      *     payments_parsed: int,
      *     payments_imported: int,
+     *     payments_ignored_unverified: int,
      *     payments_skipped_existing: int,
      *     skipped_unmatched: int,
      *     payments_reallocated: float,
@@ -55,6 +56,7 @@ final class EzenTenantStatementImportService
             'skipped_existing' => 0,
             'payments_parsed' => 0,
             'payments_imported' => 0,
+            'payments_ignored_unverified' => 0,
             'payments_skipped_existing' => 0,
             'skipped_unmatched' => 0,
             'payments_reallocated' => 0.0,
@@ -159,90 +161,13 @@ final class EzenTenantStatementImportService
             }
         }
 
-        foreach ($parsed['payments'] as $row) {
-            $existingPayment = $this->findExistingPayment(
-                (int) $tenant->id,
-                $row['txn_no'],
-                $row['external_ref'],
-            );
-            $paymentAmount = (float) $row['amount'];
-            $externalRef = $row['external_ref'];
-            $isAmountRepair = false;
-            if ($existingPayment !== null) {
-                $recordedAmount = (float) PmPayment::query()
-                    ->withoutGlobalScopes()
-                    ->where('pm_tenant_id', $tenant->id)
-                    ->where(function ($query) use ($row): void {
-                        $query->whereIn('external_ref', [
-                            $row['external_ref'],
-                            $row['external_ref'].'-STMT-ADJ',
-                        ]);
-                        if (Schema::hasColumn('pm_payments', 'meta')) {
-                            $query->orWhere('meta->ezen_receipt_no', $row['txn_no']);
-                        }
-                    })
-                    ->sum('amount');
-                $difference = round($paymentAmount - $recordedAmount, 2);
-                // SpreadsheetML displays whole shillings in many exports while
-                // imported register rows retain cents. Do not "repair" display
-                // rounding; only restore a materially short receipt.
-                if ($difference <= 1.00) {
-                    if ($difference < -1.00) {
-                        $summary['warnings'][] = $row['txn_no'].' is '
-                            .number_format(abs($difference), 2)
-                            .' lower than payments already recorded; existing payments were not reduced.';
-                    }
-                    $summary['payments_skipped_existing']++;
-
-                    continue;
-                }
-                $paymentAmount = $difference;
-                $externalRef .= '-STMT-ADJ';
-                $isAmountRepair = true;
-            }
-
-            $summary['pending_payments'][] = $row['txn_no'].' '.number_format($paymentAmount, 2);
-
-            if ($dryRun) {
-                $summary['payments_imported']++;
-
-                continue;
-            }
-
-            try {
-                app(PropertyPaymentSettlementService::class)->recordAdvancePayment([
-                    'pm_tenant_id' => $tenant->id,
-                    'channel' => 'ezen_import',
-                    'amount' => $paymentAmount,
-                    'external_ref' => $externalRef,
-                    'paid_at' => $row['date'],
-                    'meta' => [
-                        'source' => $isAmountRepair
-                            ? 'ezen_tenant_statement_amount_repair'
-                            : 'ezen_tenant_statement',
-                        'ezen_receipt_no' => $row['txn_no'],
-                        'ezen_ref_no' => $row['bank_ref'],
-                        'particulars' => $row['memo'],
-                        'statement_amount' => $row['amount'],
-                        'property_code' => $parsed['property'],
-                        'unit_label' => $parsed['unit'],
-                    ],
-                ], $actor);
-                $summary['payments_imported']++;
-            } catch (QueryException $e) {
-                if ($this->findExistingPayment((int) $tenant->id, $row['txn_no'], $row['external_ref']) !== null) {
-                    $summary['payments_skipped_existing']++;
-
-                    continue;
-                }
-                $summary['errors'][] = $row['txn_no'].': '.$e->getMessage();
-            } catch (\Throwable $e) {
-                $summary['errors'][] = $row['txn_no'].': '.$e->getMessage();
-            }
-        }
-
-        if (! $dryRun && ($summary['imported'] > 0 || $summary['payments_imported'] > 0)) {
-            $summary['payments_reallocated'] = $this->allocateLeftoverPayments((int) $tenant->id);
+        // Legacy tenant statements are useful for charges and account history,
+        // but their receipt rows are not a verified source of funds. Payments
+        // must come from bank/M-Pesa imports, so retain these only for review.
+        if ($parsed['payments'] !== []) {
+            $summary['payments_ignored_unverified'] = count($parsed['payments']);
+            $summary['warnings'][] = count($parsed['payments'])
+                .' legacy receipt row(s) were not posted; import verified bank/M-Pesa transactions instead.';
         }
 
         $this->retireOpeningArrearsReplacedByStatement($tenant, $dryRun, $summary);

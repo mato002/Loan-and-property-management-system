@@ -20,7 +20,7 @@ class ImportEzenRentReceiptsCommand extends Command
         {--relink-existing : Allocate leftover amount on receipts that already have a payment row}
         {--dry-run : Parse and match without saving}';
 
-    protected $description = 'Import EZEN tenant rent receipts and allocate to open invoices (skips duplicates and already-paid tenants by default).';
+    protected $description = 'Import EZEN receipts into the legacy register for review; does not create or allocate payments.';
 
     public function handle(EzenRentReceiptsImportService $service): int
     {
@@ -73,22 +73,8 @@ class ImportEzenRentReceiptsCommand extends Command
         );
 
         $this->line('Parsed: '.$summary['parsed']);
-        if ($this->option('register-only')) {
-            $this->line('Receipt register rows saved: '.$summary['register_upserted']);
-        } elseif ($this->option('enrich-only')) {
-            $this->line('Enriched existing payments: '.$summary['enriched_existing']);
-            $this->line('No matching payment: '.$summary['skipped_no_match']);
-        } else {
-            $this->line('Imported: '.$summary['imported']);
-            $this->line('Skipped existing: '.$summary['skipped_existing']);
-            $this->line('Relinked existing: '.($summary['relinked'] ?? 0));
-            $this->line('Skipped no tenant: '.$summary['skipped_no_tenant']);
-            $this->line('Skipped no open balance: '.$summary['skipped_no_open_balance']);
-            $this->line('Enriched existing payments: '.$summary['enriched_existing']);
-            $this->line('Skipped zero amount: '.$summary['skipped_zero_amount']);
-            $this->line('Allocated to invoices: '.number_format((float) $summary['allocated'], 2));
-            $this->line('Unallocated / credit: '.number_format((float) $summary['unallocated'], 2));
-        }
+        $this->line('Receipt register rows saved for reference: '.$summary['register_upserted']);
+        $this->line('Payments created or allocated: 0 (use verified bank/M-Pesa imports for payment posting).');
         foreach ($summary['warnings'] as $warning) {
             $this->warn($warning);
         }
@@ -102,9 +88,7 @@ class ImportEzenRentReceiptsCommand extends Command
 
         $this->info($this->option('dry-run')
             ? 'Dry run complete.'
-            : ($this->option('register-only')
-                ? 'Receipt register import complete.'
-                : ($this->option('enrich-only') ? 'Enrichment complete.' : 'Import complete.')));
+            : 'Receipt register import complete; no payments were posted.');
 
         return self::SUCCESS;
     }

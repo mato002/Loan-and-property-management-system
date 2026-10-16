@@ -75,26 +75,14 @@ final class TenantStatementLedgerService
                 ->values();
         }
 
-        // Snapshot B/F already nets historical receipts — suppress register + receipt-import
-        // payments only in pure snapshot mode (no EZEN invoice history).
-        $snapshotBfMode = $openingArrears > 0.009 && ! $hasEzenInvoiceHistory;
-        $suppressRegisterCredits = $hasEzenInvoiceHistory || $openingArrears > 0.009;
+        // EZEN receipt/payment imports are unverified history, not evidence of
+        // money received. They must never affect the live tenant ledger.
+        $suppressRegisterCredits = true;
 
         $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
-        if ($residualBfWithEzenRentHistory) {
-            $payments = $payments
-                ->reject(function (PmPayment $payment): bool {
-                    return $this->isEzenRentReceiptImportPayment($payment)
-                        || $this->isEzenRentalInvoiceImportPayment($payment);
-                })
-                ->values();
-        } elseif ($snapshotBfMode) {
-            $payments = $payments
-                ->reject(fn (PmPayment $payment): bool => $this->isEzenRentReceiptImportPayment($payment))
-                ->values();
-        } elseif ($hasEzenInvoiceHistory) {
-            $payments = $this->dedupeInvoiceImportsAgainstReceiptImports($payments);
-        }
+        $payments = $payments
+            ->reject(fn (PmPayment $payment): bool => $this->isUnverifiedEzenPayment($payment))
+            ->values();
 
         // Applying wallet credit creates a second completed payment (channel
         // tenant_credit). The cash was already credited on the source payment,
@@ -138,14 +126,12 @@ final class TenantStatementLedgerService
                 ->where('status', PmPayment::STATUS_COMPLETED)
                 ->where(function ($query): void {
                     $query->whereNull('channel')
-                        ->orWhere('channel', '!=', 'tenant_credit');
-                });
-            if ($snapshotBfMode) {
-                $openingPaymentsQuery->where(function ($query): void {
+                        ->orWhereNotIn('channel', ['tenant_credit', 'ezen_import', 'ezen_receipt']);
+                })
+                ->where(function ($query): void {
                     $query->whereNull('meta->source')
-                        ->orWhere('meta->source', '!=', 'ezen_rent_receipt_import');
+                        ->orWhere('meta->source', 'not like', 'ezen\\_%');
                 });
-            }
             $openingPayments = (float) $openingPaymentsQuery->sum('amount');
 
             if (! $suppressRegisterCredits) {
@@ -706,6 +692,17 @@ final class TenantStatementLedgerService
         $meta = is_array($payment->meta) ? $payment->meta : [];
 
         return ($meta['source'] ?? '') === 'ezen_rent_receipt_import';
+    }
+
+    private function isUnverifiedEzenPayment(PmPayment $payment): bool
+    {
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $source = strtolower(trim((string) ($meta['source'] ?? '')));
+        $channel = strtolower(trim((string) ($payment->channel ?? '')));
+
+        return str_starts_with($source, 'ezen_')
+            || in_array($channel, ['ezen_import', 'ezen_receipt'], true)
+            || str_starts_with(strtoupper((string) $payment->external_ref), 'EZEN-RC');
     }
 
     private function isEzenRentalInvoiceImportPayment(PmPayment $payment): bool

@@ -233,6 +233,7 @@ class ImportEzenTenantStatementCommand extends Command
         $this->line('Skipped existing: '.$summary['skipped_existing']);
         $this->line('Payments parsed: '.$summary['payments_parsed']);
         $this->line('Payments imported: '.$summary['payments_imported']);
+        $this->line('Legacy receipts ignored as unverified: '.($summary['payments_ignored_unverified'] ?? 0));
         $this->line('Payments skipped existing: '.$summary['payments_skipped_existing']);
         $this->line('Skipped unmatched: '.$summary['skipped_unmatched']);
         $this->line('Payments reallocated: '.number_format((float) $summary['payments_reallocated'], 2));

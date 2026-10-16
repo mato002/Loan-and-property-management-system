@@ -51,6 +51,9 @@ final class EzenRentReceiptsImportService
         bool $registerOnly = false,
         bool $relinkExisting = false,
     ): array {
+        // EZEN receipt registers are legacy records, not proof of a received
+        // payment. Only bank/M-Pesa integrations may create live payment rows.
+        $registerOnly = true;
         $rows = $this->parser->parsePath($path);
         if ($propertyCodeFilter !== null && trim($propertyCodeFilter) !== '') {
             $filter = strtoupper(trim($propertyCodeFilter));
@@ -108,7 +111,7 @@ final class EzenRentReceiptsImportService
             }
         }
 
-        if (! $dryRun && $summary['register_upserted'] > 0) {
+        if (! $dryRun && ! $registerOnly && $summary['register_upserted'] > 0) {
             $summary['statement_lines_linked'] = $this->statementAutoAssign->linkExistingReceiptMatches(
                 $agentUserId,
                 array_values(array_filter(array_map(
@@ -138,11 +141,7 @@ final class EzenRentReceiptsImportService
      */
     public function syncPaymentsFromRegister(int $agentUserId, bool $dryRun = false): array
     {
-        if (! Schema::hasTable('pm_ezen_receipt_register')) {
-            throw new RuntimeException('Receipt register table not found — run migrations first.');
-        }
-
-        $summary = [
+        return [
             'register_rows' => 0,
             'payments_updated' => 0,
             'register_rows_matched' => 0,
@@ -150,84 +149,10 @@ final class EzenRentReceiptsImportService
             'fallback_matches' => 0,
             'skipped_no_tenant' => 0,
             'skipped_no_payment' => 0,
-            'warnings' => [],
+            'warnings' => [
+                'Disabled: EZEN receipt references are unverified legacy data. Import verified bank/M-Pesa transactions to create or enrich payments.',
+            ],
         ];
-
-        $registers = PmEzenReceiptRegister::query()
-            ->withoutGlobalScopes()
-            ->where('agent_user_id', $agentUserId)
-            ->whereNotNull('ref_no')
-            ->where('ref_no', '!=', '')
-            ->orderBy('banking_date')
-            ->orderBy('id')
-            ->get();
-
-        $summary['register_rows'] = $registers->count();
-
-        foreach ($registers as $register) {
-            if (! $this->registerShouldProcess($register)) {
-                continue;
-            }
-
-            $tenant = $register->pm_tenant_id
-                ? PmTenant::query()->withoutGlobalScopes()->find($register->pm_tenant_id)
-                : null;
-            if ($tenant === null && trim((string) ($register->tnt_account ?? '')) !== '') {
-                $tenant = $this->resolveTenant((string) $register->tnt_account, $agentUserId);
-            }
-            if ($tenant === null) {
-                $summary['skipped_no_tenant']++;
-                continue;
-            }
-
-            $paidAt = Carbon::parse($register->banking_date ?? $register->txn_date ?? now());
-            $targets = $this->findPaymentsForRegisterRow($register, $tenant);
-
-            if ($targets->isEmpty()) {
-                $summary['skipped_no_payment']++;
-                continue;
-            }
-
-            $summary['register_rows_matched']++;
-
-            if ($dryRun) {
-                $summary['payments_updated'] += $targets->count();
-                continue;
-            }
-
-            $phone = trim((string) ($register->phone ?? ''));
-            if ($phone === '') {
-                $phone = trim((string) ($tenant->phone ?? $tenant->user?->phone ?? ''));
-            }
-
-            $this->applyEnrichmentToPayments(
-                $targets,
-                [(string) $register->ezen_receipt_no],
-                [(string) $register->ref_no],
-                $phone,
-                (string) ($register->receipted_to ?? ''),
-                (string) ($register->property_code ?? ''),
-                (string) ($register->unit_label ?? ''),
-            );
-
-            $summary['payments_updated'] += $targets->count();
-
-            $this->linkRegistersToPayments(collect([$register]), $tenant->id, $targets);
-        }
-
-        if (! $dryRun) {
-            $groupSummary = $this->syncPaymentGroupsFromRegister($agentUserId);
-            $summary['group_matches'] = $groupSummary['groups_matched'];
-            $summary['payments_updated'] += $groupSummary['payments_updated'];
-
-            $fallbackSummary = $this->syncUnmatchedPaymentsFromRegister($agentUserId);
-            $summary['fallback_matches'] = $fallbackSummary['payments_updated'];
-            $summary['payments_updated'] += $fallbackSummary['payments_updated'];
-
-            $summary['payments_updated'] += $this->normalizeCashReceiptMetadata($agentUserId);
-        }
-
-        return $summary;
     }
 
     /**
