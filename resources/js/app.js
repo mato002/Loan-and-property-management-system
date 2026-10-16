@@ -7,7 +7,7 @@ import './property-flash-lifecycle';
 import './property-portal-ui';
 import './property-statement-tenant-search';
 import './property-statement-split';
-import './tenant-statement-viewport';
+import './tenant-statement-frame';
 import './property-page-modals';
 import './property-modal-manager';
 import './property-form-modal';
