@@ -201,8 +201,20 @@ class EquitySyncController extends Controller
                 ->all()
             : [];
 
+        $tenantQuery = PmTenant::query()->orderBy('name');
+        $user = $request->user();
+        if (
+            $user
+            && ($user->is_super_admin ?? false) !== true
+            && (string) ($user->property_portal_role ?? '') === 'agent'
+            && Schema::hasColumn('pm_tenants', 'agent_user_id')
+        ) {
+            $tenantQuery->where('agent_user_id', $user->id);
+        }
+
         return property_view('property.agent.equity.unmatched_payments', [
             'items' => $items,
+            'tenants' => $tenantQuery->get(['id', 'name', 'phone', 'account_number']),
             'hasPaymentMethod' => $hasPaymentMethod,
             'sourceOptions' => $sourceOptions,
             'filters' => [
@@ -454,7 +466,7 @@ class EquitySyncController extends Controller
         $unassignedPayment->delete();
 
         return redirect()
-            ->route('property.equity.unmatched')
+            ->route('property.equity.unmatched', $request->only(['q', 'name', 'source', 'from', 'to', 'per_page']))
             ->with('success', 'Payment assigned and posted successfully.');
     }
 

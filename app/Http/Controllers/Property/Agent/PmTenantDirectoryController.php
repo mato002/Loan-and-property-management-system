@@ -79,9 +79,10 @@ class PmTenantDirectoryController extends Controller
     {
         $tenants = $this->buildTenantDirectoryQuery($request)
             ->with(['leases' => function ($query): void {
-                $query->where('status', PmLease::STATUS_ACTIVE)
-                    ->with(['units.property'])
-                    ->orderByDesc('start_date');
+                $query->with(['units.property'])
+                    ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [PmLease::STATUS_ACTIVE])
+                    ->orderByDesc('start_date')
+                    ->orderByDesc('id');
             }])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -95,8 +96,9 @@ class PmTenantDirectoryController extends Controller
             ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk'],
             function () use ($tenants, $statementLedger): \Generator {
                 foreach ($tenants as $tenant) {
-                    $activeLease = $tenant->leases->first();
-                    $activeUnit = $activeLease?->units->first();
+                    $displayLease = $tenant->leases->firstWhere('status', PmLease::STATUS_ACTIVE)
+                        ?? $tenant->leases->first();
+                    $activeUnit = $displayLease?->units->first();
                     $unitLabel = $activeUnit
                         ? trim((string) (($activeUnit->property->name ?? '').' / '.$activeUnit->label), ' /')
                         : '';
@@ -104,9 +106,7 @@ class PmTenantDirectoryController extends Controller
                     $balanceText = abs($balance) <= 0.009
                         ? '0.00'
                         : ($balance < 0 ? 'CR '.number_format(abs($balance), 2) : number_format($balance, 2));
-                    $leaseEnd = $tenant->leases_max_end_date
-                        ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
-                        : '';
+                    $leaseEnd = $displayLease?->end_date?->format('Y-m-d') ?? '';
                     $status = TenantProfileStatus::forTenant($tenant);
 
                     yield [
@@ -116,9 +116,9 @@ class PmTenantDirectoryController extends Controller
                         (string) ($tenant->email ?? ''),
                         $unitLabel,
                         $balanceText,
-                        $activeLease?->monthly_rent !== null ? number_format((float) $activeLease->monthly_rent, 2) : '',
-                        LeaseStandingCharges::exportText($activeLease),
-                        $activeLease?->start_date?->format('Y-m-d') ?? '',
+                        $displayLease?->monthly_rent !== null ? number_format((float) $displayLease->monthly_rent, 2) : '',
+                        LeaseStandingCharges::exportText($displayLease),
+                        $displayLease?->start_date?->format('Y-m-d') ?? '',
                         $leaseEnd,
                         (string) ($tenant->leases_count ?? 0),
                         (string) ($status['label'] ?? ''),
@@ -401,9 +401,10 @@ class PmTenantDirectoryController extends Controller
                     ->where('balance_due', '>', 0.009);
             }])
             ->with(['leases' => function ($query): void {
-                $query->where('status', PmLease::STATUS_ACTIVE)
-                    ->with(['units.property'])
-                    ->orderByDesc('start_date');
+                $query->with(['units.property'])
+                    ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [PmLease::STATUS_ACTIVE])
+                    ->orderByDesc('start_date')
+                    ->orderByDesc('id');
             }])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -413,11 +414,9 @@ class PmTenantDirectoryController extends Controller
         $statementLedger = app(TenantStatementLedgerService::class);
         $rowFilters = [];
         $rows = $tenants->getCollection()->map(function (PmTenant $t) use ($statementLedger, &$rowFilters) {
-            $leaseEnd = $t->leases_max_end_date
-                ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
-                : '—';
-            $activeLease = $t->leases->first();
-            $activeUnit = $activeLease?->units->first();
+            $displayLease = $t->leases->firstWhere('status', PmLease::STATUS_ACTIVE)
+                ?? $t->leases->first();
+            $activeUnit = $displayLease?->units->first();
             $unitLabel = $activeUnit
                 ? trim(($activeUnit->property->name ?? '').' / '.$activeUnit->label, ' /')
                 : '—';
@@ -473,12 +472,12 @@ class PmTenantDirectoryController extends Controller
                 $t->email ?? '—',
                 $unitLabel,
                 WorkspaceRowAlert::accountBalance($accountBalance),
-                $activeLease?->monthly_rent !== null
-                    ? number_format((float) $activeLease->monthly_rent, 2)
+                $displayLease?->monthly_rent !== null
+                    ? number_format((float) $displayLease->monthly_rent, 2)
                     : '—',
-                LeaseStandingCharges::directoryCell($activeLease),
-                $activeLease?->start_date?->format('Y-m-d') ?? '—',
-                $leaseEnd,
+                LeaseStandingCharges::directoryCell($displayLease),
+                $displayLease?->start_date?->format('Y-m-d') ?? '—',
+                $displayLease?->end_date?->format('Y-m-d') ?? '—',
                 (string) $t->leases_count,
                 TenantProfileStatus::badge($t),
                 ucfirst($t->risk_level),
@@ -937,8 +936,7 @@ class PmTenantDirectoryController extends Controller
     private function buildTenantDirectoryQuery(Request $request): Builder
     {
         $query = PmTenant::query()
-            ->withCount(['leases', 'invoices'])
-            ->withMax('leases', 'end_date');
+            ->withCount(['leases', 'invoices']);
         TenantProfileStatus::addCounts($query);
 
         $this->applyTenantDirectoryFilters($query, $request);

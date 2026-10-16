@@ -6,7 +6,7 @@
         subtitle="Credits that could not be auto-linked to a tenant — bank statement, M-Pesa SMS, paybill API, or manual ingest. Assign a tenant here."
     >
         <div
-            x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}' }"
+            x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}', assignOpen: false, assignAction: '', assignItem: {} }"
             class="space-y-4"
         >
         <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
@@ -116,12 +116,20 @@
                                         Auto re-match
                                     </button>
                                 </form>
-                                <a
-                                    href="{{ route('property.equity.unmatched.show', $item) }}"
+                                <button
+                                    type="button"
+                                    data-assign-url="{{ route('property.equity.unmatched.assign', array_merge(['unassignedPayment' => $item], request()->query())) }}"
+                                    data-transaction="{{ $item->transaction_id }}"
+                                    data-amount="{{ number_format((float) $item->amount, 2) }}"
+                                    data-date="{{ optional($item->created_at)->format('Y-m-d H:i') }}"
+                                    data-account="{{ $item->account_number ?: '—' }}"
+                                    data-phone="{{ $item->phone ?: '—' }}"
+                                    data-reason="{{ $item->reason }}"
+                                    @click="assignAction = $event.currentTarget.dataset.assignUrl; assignItem = $event.currentTarget.dataset; assignOpen = true"
                                     class="ml-2 inline-flex items-center rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                                 >
                                     Assign
-                                </a>
+                                </button>
                             </td>
                         </tr>
                     @empty
@@ -135,6 +143,58 @@
                 Showing {{ $items->firstItem() ?? 0 }}-{{ $items->lastItem() ?? 0 }} of {{ $items->total() }}
             </p>
             {{ $items->links() }}
+        </div>
+
+        <div
+            x-show="assignOpen"
+            x-cloak
+            x-transition.opacity
+            @keydown.escape.window="assignOpen = false"
+            @click.self="assignOpen = false"
+            class="fixed inset-0 z-[8000] flex items-center justify-center bg-slate-950/55 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unmatched-assign-title"
+        >
+            <section class="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <header class="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                    <div>
+                        <h2 id="unmatched-assign-title" class="text-lg font-bold text-slate-900">Assign unposted payment</h2>
+                        <p class="mt-1 text-sm text-slate-500">Select the tenant and post this transaction to their account.</p>
+                    </div>
+                    <button type="button" @click="assignOpen = false" class="rounded-lg px-3 py-1 text-xl text-slate-500 hover:bg-slate-100" aria-label="Close">×</button>
+                </header>
+                <form method="POST" :action="assignAction" data-turbo-frame="property-main" class="space-y-4 p-5">
+                    @csrf
+                    <div class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3">
+                        <div><div class="text-xs text-slate-500">Transaction</div><div class="mt-1 break-all font-semibold text-slate-900" x-text="assignItem.transaction"></div></div>
+                        <div><div class="text-xs text-slate-500">Amount</div><div class="mt-1 font-semibold text-slate-900" x-text="assignItem.amount"></div></div>
+                        <div><div class="text-xs text-slate-500">Date</div><div class="mt-1 font-semibold text-slate-900" x-text="assignItem.date"></div></div>
+                        <div><div class="text-xs text-slate-500">Account</div><div class="mt-1 font-semibold text-slate-900" x-text="assignItem.account"></div></div>
+                        <div><div class="text-xs text-slate-500">Phone</div><div class="mt-1 font-semibold text-slate-900" x-text="assignItem.phone"></div></div>
+                        <div class="col-span-2 sm:col-span-1"><div class="text-xs text-slate-500">Reason</div><div class="mt-1 font-semibold text-slate-900" x-text="assignItem.reason"></div></div>
+                    </div>
+                    <div>
+                        <label for="unmatched-assign-tenant" class="text-xs font-bold uppercase tracking-widest text-slate-600">Assign to tenant</label>
+                        <select id="unmatched-assign-tenant" name="tenant_id" required class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm">
+                            <option value="">Select tenant…</option>
+                            @foreach ($tenants as $tenantOption)
+                                <option value="{{ $tenantOption->id }}">{{ $tenantOption->name }}{{ $tenantOption->account_number ? ' • '.$tenantOption->account_number : '' }}{{ $tenantOption->phone ? ' • '.$tenantOption->phone : '' }}</option>
+                            @endforeach
+                        </select>
+                        @error('tenant_id')<p class="mt-1 text-sm text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="unmatched-assign-note" class="text-xs font-bold uppercase tracking-widest text-slate-600">Internal note (optional)</label>
+                        <input id="unmatched-assign-note" type="text" name="note" value="{{ old('note') }}" maxlength="255" class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm" placeholder="e.g. Verified with tenant via call">
+                        @error('note')<p class="mt-1 text-sm text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <footer class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                        <button type="button" @click="assignOpen = false" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                        <button type="submit" class="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">Assign &amp; Post Payment</button>
+                    </footer>
+                </form>
+            </section>
         </div>
 
         <div
