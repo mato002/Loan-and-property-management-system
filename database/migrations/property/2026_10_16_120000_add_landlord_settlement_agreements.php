@@ -20,7 +20,7 @@ return new class extends Migration
                 $table->string('commission_basis', 24)->default('all_collected')->after('settlement_basis');
             }
             if (! Schema::hasColumn('property_landlord', 'provider_cost_payer')) {
-                $table->string('provider_cost_payer', 24)->default('landlord')->after('commission_basis');
+                $table->string('provider_cost_payer', 24)->default('agency')->after('commission_basis');
             }
             if (! Schema::hasColumn('property_landlord', 'advances_allowed')) {
                 $table->boolean('advances_allowed')->default(true)->after('provider_cost_payer');

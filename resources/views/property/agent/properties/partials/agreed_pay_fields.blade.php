@@ -3,12 +3,15 @@
     'agreedPayNotes' => null,
     'settlementBasis' => 'collected',
     'commissionBasis' => 'all_collected',
-    'providerCostPayer' => 'landlord',
+    'providerCostPayer' => 'agency',
     'advancesAllowed' => true,
     'compact' => false,
 ])
 
 <div @class(['space-y-3', 'sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0' => ! $compact])>
+    @if ($compact)
+        <input type="hidden" name="agreed_pay_notes" value="{{ old('agreed_pay_notes', $agreedPayNotes) }}" />
+    @endif
     <div>
         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord payment basis</label>
         <select name="settlement_basis" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
@@ -26,8 +29,8 @@
     <div>
         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Service provider costs</label>
         <select name="provider_cost_payer" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-            <option value="landlord" @selected(old('provider_cost_payer', $providerCostPayer) === 'landlord')>Landlord pays providers</option>
             <option value="agency" @selected(old('provider_cost_payer', $providerCostPayer) === 'agency')>Agency pays and deducts costs</option>
+            <option value="landlord" @selected(old('provider_cost_payer', $providerCostPayer) === 'landlord')>Landlord pays providers</option>
         </select>
     </div>
     <div>

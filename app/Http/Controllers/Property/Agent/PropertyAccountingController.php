@@ -3592,7 +3592,7 @@ class PropertyAccountingController extends Controller
                             yield ['Period', $periodStart->format('M Y').' – '.$periodEnd->format('M Y')];
                             yield ['Rent received', number_format((float) ($settlement['rent_received'] ?? 0), 2, '.', '')];
                             yield ['Utility received', number_format((float) ($settlement['utility_received'] ?? 0), 2, '.', '')];
-                            yield ['Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
+                            yield ['Agreement management fee estimate', number_format((float) ($settlement['agreement']['management_fee'] ?? $settlement['management_fee'] ?? 0), 2, '.', '')];
                             yield ['Additions', number_format((float) ($settlement['additions_total'] ?? 0), 2, '.', '')];
                             yield ['Deductions', number_format((float) ($settlement['deductions_total'] ?? 0), 2, '.', '')];
                             yield ['Balance B/F', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
@@ -3861,7 +3861,7 @@ class PropertyAccountingController extends Controller
 
                 yield ['Summary', '', 'Rent received', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['rent_received'] ?? 0))];
                 yield ['Summary', '', 'Total utility', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['utility_received'] ?? 0))];
-                yield ['Summary', '', 'Less management fee', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['management_fee'] ?? 0))];
+                yield ['Summary', '', 'Less management fee estimate', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['agreement']['management_fee'] ?? $settlement['management_fee'] ?? 0))];
                 yield ['Summary', '', 'Less other expenses', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['other_expenses'] ?? 0))];
                 yield ['Summary', '', 'Add total additions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['additions_total'] ?? 0))];
                 yield ['Summary', '', 'Less total deductions', '', '', '', '', '', '', '', '', '', '', $n((float) ($settlement['deductions_total'] ?? 0))];

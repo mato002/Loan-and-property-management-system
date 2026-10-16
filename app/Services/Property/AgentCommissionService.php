@@ -61,6 +61,10 @@ class AgentCommissionService
                 'pl.ownership_percent',
                 'pl.agreed_pay_day',
                 'pl.agreed_pay_notes',
+                'pl.settlement_basis',
+                'pl.commission_basis',
+                'pl.provider_cost_payer',
+                'pl.advances_allowed',
                 'u.name as owner_name',
                 'p.name as property_name',
             ])

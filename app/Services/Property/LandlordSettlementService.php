@@ -85,8 +85,8 @@ final class LandlordSettlementService
             ? (string) ($link->settlement_basis ?? 'collected') : 'collected';
         $commissionBasis = in_array((string) ($link->commission_basis ?? 'all_collected'), ['rent_only', 'all_collected'], true)
             ? (string) ($link->commission_basis ?? 'all_collected') : 'all_collected';
-        $providerCostPayer = in_array((string) ($link->provider_cost_payer ?? 'landlord'), ['landlord', 'agency'], true)
-            ? (string) ($link->provider_cost_payer ?? 'landlord') : 'landlord';
+        $providerCostPayer = in_array((string) ($link->provider_cost_payer ?? 'agency'), ['landlord', 'agency'], true)
+            ? (string) ($link->provider_cost_payer ?? 'agency') : 'agency';
         $advancesAllowed = (bool) ($link->advances_allowed ?? true);
         $contractRent = $settlementBasis === 'guaranteed_rent'
             ? round($this->contractedRentForPeriod($propertyId, $periodStart, $periodEnd) * $ownershipFactor, 2)

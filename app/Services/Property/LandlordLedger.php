@@ -77,7 +77,8 @@ final class LandlordLedger
         }
 
         $landlords = $property->landlords()->get()->filter(
-            fn (User $landlord) => (float) ($landlord->pivot->ownership_percent ?? 0) > 0,
+            fn (User $landlord) => (float) ($landlord->pivot->ownership_percent ?? 0) > 0
+                && in_array((string) ($landlord->pivot->provider_cost_payer ?? 'agency'), ['agency', ''], true),
         )->values();
         if ($landlords->isEmpty()) {
             return 0;

@@ -442,6 +442,10 @@
                                             @include('property.agent.properties.partials.agreed_pay_fields', [
                                                 'agreedPayDay' => $link->agreed_pay_day ?? null,
                                                 'agreedPayNotes' => $link->agreed_pay_notes ?? null,
+                                                'settlementBasis' => $link->settlement_basis ?? 'collected',
+                                                'commissionBasis' => $link->commission_basis ?? 'all_collected',
+                                                'providerCostPayer' => $link->provider_cost_payer ?? 'agency',
+                                                'advancesAllowed' => $link->advances_allowed ?? true,
                                                 'compact' => true,
                                             ])
                                         </form>

@@ -1,9 +1,9 @@
 @php
     $s = $settlement ?? null;
     $stats = $s ? [
-        ['label' => 'Net amount due', 'value' => \App\Services\Property\PropertyMoney::kes((float) $s['net_amount_due']), 'hint' => 'After fees & deductions'],
+        ['label' => 'Posted ledger due', 'value' => \App\Services\Property\PropertyMoney::kes((float) $s['net_amount_due']), 'hint' => 'Authoritative payable balance'],
         ['label' => 'Rent received', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['rent_received'] ?? 0)), 'hint' => 'Period collections'],
-        ['label' => 'Management fee', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['management_fee'] ?? 0)), 'hint' => ($s['commission_percent'] ?? 0).'% commission'],
+        ['label' => 'Agreement fee estimate', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['agreement']['management_fee'] ?? $s['management_fee'] ?? 0)), 'hint' => ($s['commission_percent'] ?? 0).'% commission'],
         ['label' => 'Balance B/F', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($s['balance_brought_forward'] ?? 0)), 'hint' => 'Landlord ledger'],
     ] : [
         ['label' => 'Settlements', 'value' => '—', 'hint' => 'Select property, landlord & month'],
@@ -145,16 +145,16 @@
                     <table class="min-w-full text-xs">
                         <tbody class="divide-y divide-indigo-100">
                             @if ($s['agreement']['settlement_basis'] === 'guaranteed_rent')
-                                <tr><th class="py-2 text-left font-medium">Agreed rent share (vacant units included)</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['contracted_rent_share']) }}</td></tr>
+                                <tr><th class="py-2 text-left font-medium">Agreed rent share (vacant units included)</th><td class="py-2 text-right">KES {{ number_format((float) $s['agreement']['contracted_rent_share'], 2) }}</td></tr>
                             @else
-                                <tr><th class="py-2 text-left font-medium">Collected landlord entitlement</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['gross_entitlement']) }}</td></tr>
+                                <tr><th class="py-2 text-left font-medium">Collected landlord entitlement</th><td class="py-2 text-right">KES {{ number_format((float) $s['agreement']['gross_entitlement'], 2) }}</td></tr>
                             @endif
-                            <tr><th class="py-2 text-left font-medium">Commission</th><td class="py-2 text-right">− {{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['management_fee']) }}</td></tr>
+                            <tr><th class="py-2 text-left font-medium">Commission</th><td class="py-2 text-right">− KES {{ number_format((float) $s['agreement']['management_fee'], 2) }}</td></tr>
                             @if ($s['agreement']['provider_cost_payer'] === 'agency')
-                                <tr><th class="py-2 text-left font-medium">Recorded provider cost deductions</th><td class="py-2 text-right">− {{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['provider_cost_deductions']) }}</td></tr>
+                                <tr><th class="py-2 text-left font-medium">Recorded other ledger deductions</th><td class="py-2 text-right">− KES {{ number_format((float) $s['agreement']['provider_cost_deductions'], 2) }}</td></tr>
                             @endif
-                            <tr class="font-semibold"><th class="py-2 text-left">Estimated net under agreement</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) $s['agreement']['net_estimate']) }}</td></tr>
-                            <tr class="font-semibold text-slate-700"><th class="py-2 text-left">Posted ledger amount due</th><td class="py-2 text-right">{{ AppServicesPropertyPropertyMoney::kes((float) ($s['net_amount_due'] ?? 0)) }}</td></tr>
+                            <tr class="font-semibold"><th class="py-2 text-left">Estimated net under agreement</th><td class="py-2 text-right">KES {{ number_format((float) $s['agreement']['net_estimate'], 2) }}</td></tr>
+                            <tr class="font-semibold text-slate-700"><th class="py-2 text-left">Posted ledger amount due</th><td class="py-2 text-right">KES {{ number_format((float) ($s['net_amount_due'] ?? 0), 2) }}</td></tr>
                         </tbody>
                     </table>
                 </div>

@@ -341,6 +341,10 @@ class PropertyPortfolioController extends Controller
                 'property_landlord.ownership_percent',
                 'property_landlord.agreed_pay_day',
                 'property_landlord.agreed_pay_notes',
+                'property_landlord.settlement_basis',
+                'property_landlord.commission_basis',
+                'property_landlord.provider_cost_payer',
+                'property_landlord.advances_allowed',
             ]);
         if ($actor && $this->isAgentActor($actor)) {
             $landlordLinks->where('properties.agent_user_id', (int) $actor->id);
@@ -1929,6 +1933,10 @@ class PropertyPortfolioController extends Controller
                 'pl.ownership_percent',
                 'pl.agreed_pay_day',
                 'pl.agreed_pay_notes',
+                'pl.settlement_basis',
+                'pl.commission_basis',
+                'pl.provider_cost_payer',
+                'pl.advances_allowed',
                 'p.name as property_name',
             ])
             ->orderBy('p.name');
@@ -2028,6 +2036,10 @@ class PropertyPortfolioController extends Controller
                 'ownership_percent' => (float) $link->ownership_percent,
                 'agreed_pay_day' => $link->agreed_pay_day !== null ? (int) $link->agreed_pay_day : null,
                 'agreed_pay_notes' => (string) ($link->agreed_pay_notes ?? ''),
+                'settlement_basis' => (string) ($link->settlement_basis ?? 'collected'),
+                'commission_basis' => (string) ($link->commission_basis ?? 'all_collected'),
+                'provider_cost_payer' => (string) ($link->provider_cost_payer ?? 'agency'),
+                'advances_allowed' => (bool) ($link->advances_allowed ?? true),
                 'owner_share' => $ownerShare,
                 'pending_share' => $pendingShare,
                 'agent_earning' => $agentEarning,
@@ -5747,7 +5759,7 @@ class PropertyPortfolioController extends Controller
                 : null,
             'settlement_basis' => $data['settlement_basis'] ?? 'collected',
             'commission_basis' => $data['commission_basis'] ?? 'all_collected',
-            'provider_cost_payer' => $data['provider_cost_payer'] ?? 'landlord',
+            'provider_cost_payer' => $data['provider_cost_payer'] ?? 'agency',
             'advances_allowed' => filter_var($data['advances_allowed'] ?? true, FILTER_VALIDATE_BOOLEAN),
         ];
     }

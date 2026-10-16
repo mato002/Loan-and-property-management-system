@@ -81,7 +81,7 @@
                                         'agreedPayNotes' => $u->pivot->agreed_pay_notes ?? null,
                                         'settlementBasis' => $u->pivot->settlement_basis ?? 'collected',
                                         'commissionBasis' => $u->pivot->commission_basis ?? 'all_collected',
-                                        'providerCostPayer' => $u->pivot->provider_cost_payer ?? 'landlord',
+                                        'providerCostPayer' => $u->pivot->provider_cost_payer ?? 'agency',
                                         'advancesAllowed' => $u->pivot->advances_allowed ?? true,
                                     ])
                                 </form>
