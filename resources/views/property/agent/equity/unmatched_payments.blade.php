@@ -9,22 +9,22 @@
             x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}', assignOpen: false, assignAction: '', assignItem: {} }"
             class="space-y-4"
         >
-        <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
-            <div>
+        <form method="get" data-auto-apply-filters="true" class="mb-4 flex flex-wrap items-end gap-2 lg:flex-nowrap">
+            <div class="min-w-[14rem] flex-1">
                 <label class="text-xs text-slate-500">Search</label>
-                <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Txn, phone, reason..." class="block rounded-xl border-slate-300 shadow-sm">
+                <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Txn, phone, reason..." x-on:input.debounce.450ms="$el.form.requestSubmit()" class="block w-full rounded-xl border-slate-300 shadow-sm">
             </div>
-            <div>
+            <div class="w-36 shrink-0">
                 <label class="text-xs text-slate-500">From</label>
-                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="block rounded-xl border-slate-300 shadow-sm">
+                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="block w-full rounded-xl border-slate-300 shadow-sm">
             </div>
-            <div>
+            <div class="w-36 shrink-0">
                 <label class="text-xs text-slate-500">To</label>
-                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="block rounded-xl border-slate-300 shadow-sm">
+                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="block w-full rounded-xl border-slate-300 shadow-sm">
             </div>
-            <div>
+            <div class="w-40 shrink-0">
                 <label class="text-xs text-slate-500">Source</label>
-                <select name="source" class="block rounded-xl border-slate-300 shadow-sm">
+                <select name="source" class="block w-full rounded-xl border-slate-300 shadow-sm">
                     <option value="">All sources</option>
                     @forelse (($sourceOptions ?? []) as $value => $label)
                         <option value="{{ $value }}" @selected(($filters['source'] ?? '') === (string) $value)>{{ $label }}</option>
@@ -35,16 +35,15 @@
                     @endforelse
                 </select>
             </div>
-            <div>
+            <div class="w-28 shrink-0">
                 <label class="text-xs text-slate-500">Per page</label>
-                <select name="per_page" class="block rounded-xl border-slate-300 shadow-sm">
+                <select name="per_page" class="block w-full rounded-xl border-slate-300 shadow-sm">
                     @foreach ([10, 30, 50, 100, 200] as $size)
                         <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 100) === $size)>{{ $size }}</option>
                     @endforeach
                 </select>
             </div>
-            <button class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
-            <a href="{{ route('property.equity.unmatched') }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
+            <a href="{{ route('property.equity.unmatched') }}" class="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
         </form>
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
