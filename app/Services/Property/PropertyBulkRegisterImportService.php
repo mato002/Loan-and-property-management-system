@@ -25,6 +25,8 @@ final class PropertyBulkRegisterImportService
 
     public const TYPE_LATE_PENALTY_INVOICES = 'late_penalty_invoices';
 
+    public const TYPE_TENANT_STATEMENT = 'tenant_statement';
+
     public const TYPE_DEPOSITS = 'deposits';
 
     public const TYPE_BILLING_SCHEDULE = 'billing_schedule';
@@ -72,6 +74,11 @@ final class PropertyBulkRegisterImportService
                 'label' => 'Late penalty invoices',
                 'description' => 'Import late-payment penalty invoices from CSV or the EZEN Excel XML (.xls) register. The report Paid column is retained for review and never posted as a payment.',
                 'accept' => '.csv,.xls',
+            ],
+            self::TYPE_TENANT_STATEMENT => [
+                'label' => 'EZEN tenant statement (.xls)',
+                'description' => 'Import supported charge and deposit lines from an EZEN Tenant/Resident Statement of Account. Dry run first to confirm the matched tenant, unit, and lines. Legacy receipt rows are not posted as payments; import verified bank/M-Pesa activity separately.',
+                'accept' => '.xls',
             ],
             self::TYPE_DEPOSITS => [
                 'label' => 'Rent & utility deposits',
@@ -227,6 +234,14 @@ final class PropertyBulkRegisterImportService
                 (bool) ($options['post_gl'] ?? false),
                 $property,
                 $limit,
+            ),
+            self::TYPE_TENANT_STATEMENT => app(EzenTenantStatementImportService::class)->importFromPath(
+                $path,
+                $agentUserId,
+                $actor,
+                $dryRun,
+                (bool) ($options['post_gl'] ?? false),
+                false,
             ),
             self::TYPE_DEPOSITS => app(EzenRentDepositImportService::class)->importFromPath(
                 $path,

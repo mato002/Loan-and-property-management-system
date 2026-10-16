@@ -49,10 +49,19 @@ class PropertyBulkRegisterImportController extends Controller
                     $supportsSpreadsheetMl = in_array($type, [
                         PropertyBulkRegisterImportService::TYPE_RENT_RECEIPTS,
                         PropertyBulkRegisterImportService::TYPE_LATE_PENALTY_INVOICES,
+                        PropertyBulkRegisterImportService::TYPE_TENANT_STATEMENT,
                     ], true);
                     if ($extension === 'xls' && $supportsSpreadsheetMl) {
                         try {
-                            app(\App\Services\Property\EzenSpreadsheetMlReader::class)->readRows($value->getRealPath());
+                            if ($type === PropertyBulkRegisterImportService::TYPE_TENANT_STATEMENT) {
+                                $statement = app(\App\Services\Property\EzenTenantStatementImportService::class)
+                                    ->parseSpreadsheet($value->getRealPath());
+                                if (empty($statement['account']) || empty($statement['tenant'])) {
+                                    $fail('This XLS does not look like an EZEN tenant statement (tenant account/name were not found).');
+                                }
+                            } else {
+                                app(\App\Services\Property\EzenSpreadsheetMlReader::class)->readRows($value->getRealPath());
+                            }
                             return;
                         } catch (\Throwable) {
                             // Fall through to the standard validation message.
