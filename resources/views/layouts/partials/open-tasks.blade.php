@@ -109,6 +109,8 @@
             window.__phOpenTasks = true;
 
             var MAX = 12;
+            // Keep rendered task views in memory for instant in-session switching.
+            var frameSnapshots = new Map();
             var VIEW_PARAMS = { tab: 1, channel: 1, section: 1, view: 1, mode: 1, focus: 1, report: 1 };
             var SKIP_PATH = /\/(login|logout|register|password|sanctum)(\/|$)|(?:^|\/)(export|download|print)(?:\/|$)/i;
 
@@ -143,6 +145,9 @@
 
             function focusTask(bar, task) {
                 persistScroll(bar);
+                if (restoreCachedTask(bar, task)) {
+                    return;
+                }
                 var currentIndex = currentHistoryIndex();
                 var targetIndex = Number(task.historyIndex);
                 if ((bar.getAttribute('data-open-tasks-scope') || '') === 'property'
@@ -204,6 +209,30 @@
             function frameOf(bar) {
                 var id = bar.getAttribute('data-open-tasks-frame') || '';
                 return id ? document.getElementById(id) : null;
+            }
+
+            function cacheCurrentTask(bar) {
+                var meta = currentMeta(bar);
+                var frame = frameOf(bar);
+                if (meta && frame && frame.childNodes.length) {
+                    frameSnapshots.set(meta.key, frame.innerHTML);
+                }
+            }
+
+            function restoreCachedTask(bar, task) {
+                var frame = frameOf(bar);
+                var html = frameSnapshots.get(task.key);
+                var history = window.Turbo && window.Turbo.navigator && window.Turbo.navigator.history;
+                if (!frame || typeof html !== 'string' || !history || typeof history.push !== 'function') {
+                    return false;
+                }
+
+                cacheCurrentTask(bar);
+                history.push(new URL(task.url, window.location.origin));
+                frame.innerHTML = html;
+                sessionStorage.setItem('ph.openTasks.restore', task.key);
+                frame.dispatchEvent(new Event('turbo:frame-load', { bubbles: true }));
+                return true;
             }
 
             function scrollParent(bar) {
@@ -411,6 +440,13 @@
             }
 
             function visit(bar, url) {
+                var destination = parseUrl(url);
+                if (destination) {
+                    var cached = load(bar).find(function (task) { return task.key === taskKey(destination); });
+                    if (cached && restoreCachedTask(bar, cached)) {
+                        return;
+                    }
+                }
                 var frame = bar.getAttribute('data-open-tasks-frame') || '';
                 if (frame && window.Turbo && typeof window.Turbo.visit === 'function') {
                     window.Turbo.visit(url, { frame: frame, action: 'advance' });
@@ -452,6 +488,7 @@
 
             function sync() {
                 bars().forEach(function (bar) {
+                    cacheCurrentTask(bar);
                     remember(bar, currentMeta(bar));
                 });
             }
@@ -511,6 +548,7 @@
                 }
                 var bar = document.querySelector('[data-open-tasks-frame="' + frame.id + '"]');
                 if (bar) {
+                    cacheCurrentTask(bar);
                     remember(bar, currentMeta(bar));
                 }
             });
