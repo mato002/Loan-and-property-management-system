@@ -327,7 +327,35 @@ class PropertyPortfolioController extends Controller
 
         $actor = $request->user();
 
-        $landlordLinks = DB::table('property_landlord')
+        $linkableProperties = Property::query()
+            ->doesntHave('landlords')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view('property.agent.properties.list', [
+            'stats' => $stats,
+            'columns' => ['Name / Code', 'Address / City', 'Units', 'Utility charges', 'Landlord(s)', 'Management', 'Occupancy', 'Actions'],
+            'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
+            'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
+            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
+            'properties' => $portfolio,
+            'linkableProperties' => $linkableProperties,
+            'filters' => array_merge($filters, ['per_page' => (string) $perPage, 'include_archived' => $includeArchived ? '1' : '0']),
+            'perPage' => $perPage,
+            'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
+            'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $request->user()->id),
+            'expectedColumns' => app(PropertyRegisterImportService::class)->templateColumns(),
+            'lastImportStats' => session('property_register_import_stats'),
+            'lastImportErrors' => session('property_register_import_errors', []),
+            'lastImportWarnings' => session('property_register_import_warnings', []),
+        ]);
+    }
+
+    public function landlordLinksIndex(Request $request): View
+    {
+        $actor = $request->user();
+        $linksQuery = DB::table('property_landlord')
             ->join('properties', 'properties.id', '=', 'property_landlord.property_id')
             ->join('users', 'users.id', '=', 'property_landlord.user_id')
             ->select([
@@ -346,36 +374,21 @@ class PropertyPortfolioController extends Controller
                 'property_landlord.advances_allowed',
             ]);
         if ($actor && $this->isAgentActor($actor)) {
-            $landlordLinks->where('properties.agent_user_id', (int) $actor->id);
+            $linksQuery->where('properties.agent_user_id', (int) $actor->id);
         }
-        $landlordLinks = $landlordLinks
+
+        $landlordLinks = $linksQuery
             ->orderBy('properties.name')
             ->orderBy('users.name')
             ->get();
 
-        $linkableProperties = Property::query()
-            ->doesntHave('landlords')
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return view('property.agent.properties.list', [
-            'stats' => $stats,
-            'columns' => ['Name / Code', 'Address / City', 'Units', 'Utility charges', 'Landlord(s)', 'Management', 'Occupancy', 'Actions'],
-            'tableRows' => $rows,
-            'tableRowTones' => $tableRowTones,
-            'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
-            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
-            'properties' => $portfolio,
-            'linkableProperties' => $linkableProperties,
+        return view('property.agent.properties.landlord_links', [
             'landlordLinks' => $landlordLinks,
-            'filters' => array_merge($filters, ['per_page' => (string) $perPage, 'include_archived' => $includeArchived ? '1' : '0']),
-            'perPage' => $perPage,
-            'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
-            'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $request->user()->id),
-            'expectedColumns' => app(PropertyRegisterImportService::class)->templateColumns(),
-            'lastImportStats' => session('property_register_import_stats'),
-            'lastImportErrors' => session('property_register_import_errors', []),
-            'lastImportWarnings' => session('property_register_import_warnings', []),
+            'stats' => [
+                ['label' => 'Landlord links', 'value' => (string) $landlordLinks->count(), 'hint' => 'Property ownership records'],
+                ['label' => 'Properties', 'value' => (string) $landlordLinks->pluck('property_id')->unique()->count(), 'hint' => 'With linked landlords'],
+                ['label' => 'Landlords', 'value' => (string) $landlordLinks->pluck('user_id')->unique()->count(), 'hint' => 'Linked to properties'],
+            ],
         ]);
     }
 
@@ -1241,8 +1254,7 @@ class PropertyPortfolioController extends Controller
                 ->logLandlordDetached($property, (int) $data['user_id']);
         }
 
-        return redirect()
-            ->route('property.properties.edit', $property->id)
+        return $this->landlordLinkActionRedirect($request, $property)
             ->with('success', __('Landlord unlinked from property.'));
     }
 
@@ -1261,8 +1273,7 @@ class PropertyPortfolioController extends Controller
 
         $property = Property::query()->findOrFail($data['property_id']);
         if (! $property->landlords()->whereKey($data['user_id'])->exists()) {
-            return redirect()
-                ->route('property.properties.edit', $property->id)
+            return $this->landlordLinkActionRedirect($request, $property)
                 ->withErrors(['user_id' => __('That landlord is not linked to this property.')])
                 ->withInput();
         }
@@ -1273,8 +1284,7 @@ class PropertyPortfolioController extends Controller
             ->sum('property_landlord.ownership_percent');
 
         if ($others + $newPct > 100.0001) {
-            return redirect()
-                ->route('property.properties.edit', $property->id)
+            return $this->landlordLinkActionRedirect($request, $property)
                 ->withErrors(['ownership_percent' => __('Total ownership for this property cannot exceed 100%.')])
                 ->withInput();
         }
@@ -1284,9 +1294,17 @@ class PropertyPortfolioController extends Controller
             $this->agreedPayPivotFromRequest($data),
         ));
 
-        return redirect()
-            ->route('property.properties.edit', $property->id)
+        return $this->landlordLinkActionRedirect($request, $property)
             ->with('success', __('Ownership % updated.'));
+    }
+
+    private function landlordLinkActionRedirect(Request $request, Property $property): RedirectResponse
+    {
+        if ($request->input('return_to') === 'landlord_links') {
+            return redirect()->route('property.landlord_links.index');
+        }
+
+        return redirect()->route('property.properties.edit', $property->id);
     }
 
     public function propertyPerformance(Request $request)
