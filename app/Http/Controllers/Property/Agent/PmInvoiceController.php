@@ -594,7 +594,14 @@ class PmInvoiceController extends Controller
         $perPage = \App\Support\ListPageSize::resolve($request->query('per_page'), 30);
 
         $baseQuery = $this->applyInvoiceListFilters(
-            PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id', 'items', 'events']),
+            PmInvoice::query()->with([
+                'tenant:id,name,phone,email,account_number',
+                'unit:id,label,property_id',
+                'unit.property:id,name,code',
+                'lease:id,monthly_rent,start_date,status',
+                'lease.units:id,label,property_id',
+                'items',
+            ]),
             $filters
         );
         $sortMap = [
@@ -1223,7 +1230,11 @@ class PmInvoiceController extends Controller
     private function resolveInvoiceBillingRange(Request $request): array
     {
         $allowed = [0, 1, 2, 3, 6, 12];
-        $rangeMonths = (int) $request->query('range_months', 0);
+        $hasExplicitDateFilter = collect(['from', 'to', 'due_from', 'due_to', 'period'])
+            ->contains(fn (string $key): bool => trim((string) $request->query($key, '')) !== '');
+        // An omitted range means the current billing month. `range_months=0`
+        // remains the explicit way to browse all historical invoices.
+        $rangeMonths = (int) $request->query('range_months', $hasExplicitDateFilter ? 0 : 1);
         if (! in_array($rangeMonths, $allowed, true)) {
             $rangeMonths = 0;
         }
@@ -1303,15 +1314,20 @@ class PmInvoiceController extends Controller
         $scopedToEntity = $tenantId > 0 || $unitId > 0 || $propertyId > 0 || $searchQ !== '';
 
         // Carry-forward invoices are issued on historical dates — hide them only during month browsing.
-        if ($from !== '' && $to !== '' && ! $scopedToEntity) {
-            $query->whereDate('issue_date', '>=', $from);
-            $query->whereDate('issue_date', '<=', $to);
+        if (($from !== '' || $to !== '') && ! $scopedToEntity) {
+            // issue_date is a DATE column; direct comparisons preserve index use.
+            if ($from !== '') {
+                $query->where('issue_date', '>=', $from);
+            }
+            if ($to !== '') {
+                $query->where('issue_date', '<=', $to);
+            }
         }
         if (($filters['due_from'] ?? '') !== '') {
-            $query->whereDate('due_date', '>=', (string) $filters['due_from']);
+            $query->where('due_date', '>=', (string) $filters['due_from']);
         }
         if (($filters['due_to'] ?? '') !== '') {
-            $query->whereDate('due_date', '<=', (string) $filters['due_to']);
+            $query->where('due_date', '<=', (string) $filters['due_to']);
         }
 
         return $query;

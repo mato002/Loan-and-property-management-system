@@ -1067,7 +1067,11 @@ class PmPaymentController extends Controller
     private function resolvePaymentReceivedRange(Request $request): array
     {
         $allowed = [0, 1, 2, 3, 6, 12];
-        $rangeMonths = (int) $request->query('range_months', 0);
+        $hasExplicitDates = trim((string) $request->query('from', '')) !== ''
+            || trim((string) $request->query('to', '')) !== '';
+        // First visit defaults to this month. An explicit range_months=0 still
+        // means all history, and manually entered dates keep their own scope.
+        $rangeMonths = (int) $request->query('range_months', $hasExplicitDates ? 0 : 1);
         if (! in_array($rangeMonths, $allowed, true)) {
             $rangeMonths = 0;
         }
@@ -1126,18 +1130,20 @@ class PmPaymentController extends Controller
         $from = (string) ($filters['from'] ?? '');
         $to = (string) ($filters['to'] ?? '');
         if ($from !== '') {
-            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($from) {
-                $inner->whereDate('paid_at', '>=', $from)
-                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($from) {
-                        $pending->whereNull('paid_at')->whereDate('created_at', '>=', $from);
+            $fromStart = $from.' 00:00:00';
+            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($fromStart) {
+                $inner->where('paid_at', '>=', $fromStart)
+                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($fromStart) {
+                        $pending->whereNull('paid_at')->where('created_at', '>=', $fromStart);
                     });
             });
         }
         if ($to !== '') {
-            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($to) {
-                $inner->whereDate('paid_at', '<=', $to)
-                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($to) {
-                        $pending->whereNull('paid_at')->whereDate('created_at', '<=', $to);
+            $toEnd = $to.' 23:59:59.999999';
+            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($toEnd) {
+                $inner->where('paid_at', '<=', $toEnd)
+                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($toEnd) {
+                        $pending->whereNull('paid_at')->where('created_at', '<=', $toEnd);
                     });
             });
         }

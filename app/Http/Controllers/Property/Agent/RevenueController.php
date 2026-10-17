@@ -1176,32 +1176,33 @@ class RevenueController extends Controller
 
         $aging = strtolower((string) ($filters['aging'] ?? ''));
         if ($aging === 'overdue') {
-            $query->whereDate('due_date', '<', $today);
+            $query->where('due_date', '<', $today);
         } elseif ($aging === 'not_due') {
-            $query->whereDate('due_date', '>=', $today);
+            $query->where('due_date', '>=', $today);
         }
 
         if (! empty($filters['from'])) {
-            $query->whereDate('due_date', '>=', $filters['from']);
+            $query->where('due_date', '>=', $filters['from']);
         }
         if (! empty($filters['to'])) {
-            $query->whereDate('due_date', '<=', $filters['to']);
+            $query->where('due_date', '<=', $filters['to']);
         }
 
         $workflow = strtolower((string) ($filters['workflow'] ?? ''));
         if (in_array($workflow, ['reminder', 'follow-up', 'escalated'], true)) {
+            $todayDate = Carbon::parse($today);
             if ($workflow === 'escalated') {
-                $query->whereRaw('DATEDIFF(?, due_date) >= 30', [$today]);
+                $query->where('due_date', '<=', $todayDate->copy()->subDays(30)->toDateString());
             } elseif ($workflow === 'follow-up') {
-                $query->whereRaw('DATEDIFF(?, due_date) >= 14', [$today])
-                    ->whereRaw('DATEDIFF(?, due_date) < 30', [$today]);
+                $query->where('due_date', '<=', $todayDate->copy()->subDays(14)->toDateString())
+                    ->where('due_date', '>', $todayDate->copy()->subDays(30)->toDateString());
             } else {
                 // Reminder: upcoming unpaid OR overdue under 14 days.
                 $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($today) {
-                    $inner->whereDate('due_date', '>=', $today)
+                    $inner->where('due_date', '>=', $today)
                         ->orWhere(function (\Illuminate\Database\Eloquent\Builder $overdue) use ($today) {
-                            $overdue->whereRaw('DATEDIFF(?, due_date) >= 0', [$today])
-                                ->whereRaw('DATEDIFF(?, due_date) < 14', [$today]);
+                            $overdue->where('due_date', '<', $today)
+                                ->where('due_date', '>', Carbon::parse($today)->subDays(14)->toDateString());
                         });
                 });
             }
