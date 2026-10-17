@@ -1301,7 +1301,7 @@ class PropertyPortfolioController extends Controller
     private function landlordLinkActionRedirect(Request $request, Property $property): RedirectResponse
     {
         if ($request->input('return_to') === 'landlord_links') {
-            return redirect()->route('property.landlord_links.index');
+            return redirect()->route('property.landlords.index', ['manage_links' => '1']);
         }
 
         return redirect()->route('property.properties.edit', $property->id);
@@ -1509,6 +1509,10 @@ class PropertyPortfolioController extends Controller
 
     public function landlordsIndex(Request $request): View|StreamedResponse
     {
+        if ($request->query('manage_links') === '1') {
+            return $this->landlordLinksIndex($request);
+        }
+
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
         if ($fy < 2000 || $fy > 2100) {

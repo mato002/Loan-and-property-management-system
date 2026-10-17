@@ -204,14 +204,13 @@ final class PropertyNavigation
                 'active' => [
                     'property.properties.*',
                     'property.landlords.*',
-                    'property.landlord_links.*',
                     'property.units.*',
                 ],
                 'flyout' => [
                     ['label' => 'All properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.show', 'property.properties.edit']],
                     ['label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                     ['label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
-                    ['label' => 'Landlord links', 'route' => 'property.landlord_links.index', 'active' => ['property.landlord_links.*']],
+                    ['label' => 'Landlord links', 'route' => 'property.landlords.index', 'query' => ['manage_links' => '1'], 'active' => ['property.landlords.*']],
                     ['label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy']],
                 ],
             ],

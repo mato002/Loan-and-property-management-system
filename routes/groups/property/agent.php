@@ -303,7 +303,6 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
         ->name('reports.export.csv');
 
     Route::get('/properties/list', [PropertyPortfolioController::class, 'propertyList'])->name('properties.list');
-    Route::get('/landlord-links', [PropertyPortfolioController::class, 'landlordLinksIndex'])->name('landlord_links.index');
     Route::get('/properties/list/export', [PropertyPortfolioController::class, 'propertyListExport'])->name('properties.list.export');
     Route::get('/properties/import/register', [PropertyPortfolioController::class, 'propertyRegisterImportForm'])
         ->middleware('property.permission:properties.manage')
