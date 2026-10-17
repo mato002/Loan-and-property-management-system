@@ -2754,20 +2754,22 @@ class PropertyAccountingController extends Controller
         if (in_array($export, TabularExport::TABLE_FORMATS, true)) {
             @set_time_limit(180);
             $exportTenants = (clone $tenantQuery)->limit(3000)->get();
+            $statementTotals = $formulas->tenantStatementTotalsMap($exportTenants->modelKeys());
 
             return TabularExport::stream(
                 'tenant-statements-'.now()->format('Ymd_His'),
                 ['Tenant', 'Ac/No', 'Phone', 'Opening balance', 'Invoices', 'Payments', 'Closing balance'],
-                function () use ($exportTenants, $formulas) {
+                function () use ($exportTenants, $statementTotals) {
                     foreach ($exportTenants as $tenant) {
+                        $totals = $statementTotals[(int) $tenant->id] ?? ['collections' => 0.0, 'closing_balance' => 0.0];
                         yield [
                             (string) $tenant->name,
                             (string) ($tenant->account_number ?? ''),
                             (string) ($tenant->phone ?? ''),
                             '0.00',
                             (string) (int) ($tenant->invoices_count ?? 0),
-                            number_format($formulas->tenantCollectionsTotal((int) $tenant->id), 2, '.', ''),
-                            number_format($formulas->tenantStatementClosingBalance((int) $tenant->id), 2, '.', ''),
+                            number_format($totals['collections'], 2, '.', ''),
+                            number_format($totals['closing_balance'], 2, '.', ''),
                         ];
                     }
                 },
@@ -2783,13 +2785,15 @@ class PropertyAccountingController extends Controller
             ->paginate(\App\Support\ListPageSize::resolve(request()->input('per_page'), 100))
             ->withQueryString();
 
-        $statementRows = $tenants->getCollection()->map(function (PmTenant $tenant) use ($formulas) {
+        $statementTotals = $formulas->tenantStatementTotalsMap($tenants->getCollection()->modelKeys());
+        $statementRows = $tenants->getCollection()->map(function (PmTenant $tenant) use ($statementTotals) {
+            $totals = $statementTotals[(int) $tenant->id] ?? ['collections' => 0.0, 'closing_balance' => 0.0];
             return [
                 'name' => (string) $tenant->name,
                 'opening_balance' => 0.0,
                 'invoice_count' => (int) ($tenant->invoices_count ?? 0),
-                'collections' => $formulas->tenantCollectionsTotal((int) $tenant->id),
-                'closing_balance' => $formulas->tenantStatementClosingBalance((int) $tenant->id),
+                'collections' => $totals['collections'],
+                'closing_balance' => $totals['closing_balance'],
                 'tenant_id' => (int) $tenant->id,
             ];
         })->all();

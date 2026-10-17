@@ -428,6 +428,51 @@ final class FinancialReportingFormulaService
     }
 
     /**
+     * Batch the two totals shown on tenant statement lists.
+     *
+     * @param  list<int>|array<int, int>  $tenantIds
+     * @return array<int, array{collections: float, closing_balance: float}>
+     */
+    public function tenantStatementTotalsMap(array $tenantIds): array
+    {
+        $tenantIds = array_values(array_unique(array_filter(array_map('intval', $tenantIds), static fn (int $id): bool => $id > 0)));
+        if ($tenantIds === []) {
+            return [];
+        }
+
+        $totals = array_fill_keys($tenantIds, ['collections' => 0.0, 'closing_balance' => 0.0]);
+
+        DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->whereIn('pay.pm_tenant_id', $tenantIds)
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->selectRaw('pay.pm_tenant_id, COALESCE(SUM(a.amount), 0) as collections')
+            ->groupBy('pay.pm_tenant_id')
+            ->get()
+            ->each(static function ($row) use (&$totals): void {
+                $tenantId = (int) $row->pm_tenant_id;
+                if (isset($totals[$tenantId])) {
+                    $totals[$tenantId]['collections'] = round((float) $row->collections, 2);
+                }
+            });
+
+        $this->balances->billableArQuery()
+            ->withoutGlobalScope('agent_workspace')
+            ->whereIn('pm_tenant_id', $tenantIds)
+            ->selectRaw('pm_tenant_id, '.FinanceBalanceSnapshotService::OUTSTANDING_SUM_SQL.' as closing_balance')
+            ->groupBy('pm_tenant_id')
+            ->get()
+            ->each(static function ($row) use (&$totals): void {
+                $tenantId = (int) $row->pm_tenant_id;
+                if (isset($totals[$tenantId])) {
+                    $totals[$tenantId]['closing_balance'] = round((float) $row->closing_balance, 2);
+                }
+            });
+
+        return $totals;
+    }
+
+    /**
      * @return array{
      *     invoice_totals: array{count:int,total:float,paid:float,due:float,open_count:int},
      *     lease_carry_forward: array{total:float,lines:array<int,array<string,mixed>>,invoiced:bool,uninvoiced_due:float},
