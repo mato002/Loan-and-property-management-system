@@ -2055,15 +2055,20 @@ class PropertyPortfolioController extends Controller
         })->values();
 
         $recentCollections = collect();
+        $collectionsTotal = 0.0;
         if ($propertyIds !== []) {
-            $recentCollections = DB::table('pm_payment_allocations as a')
+            $recentCollectionsQuery = DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
                 ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
                 ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->join('properties as p', 'p.id', '=', 'pu.property_id')
                 ->join('pm_tenants as t', 't.id', '=', 'pay.pm_tenant_id')
                 ->whereIn('pu.property_id', $propertyIds)
                 ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd]);
+
+            $collectionsTotal = (float) (clone $recentCollectionsQuery)->sum('a.amount');
+            $recentCollections = $recentCollectionsQuery
                 ->orderByDesc('pay.paid_at')
                 ->limit(20)
                 ->select([
@@ -2072,6 +2077,8 @@ class PropertyPortfolioController extends Controller
                     'pay.channel',
                     'a.amount',
                     'pu.property_id',
+                    'p.name as property_name',
+                    'pu.label as unit_label',
                     't.name as tenant_name',
                 ])
                 ->get();
@@ -2134,6 +2141,7 @@ class PropertyPortfolioController extends Controller
             'propertyBreakdown' => $propertyBreakdown,
             'monthlyBreakdown' => $monthlyBreakdown,
             'recentCollections' => $recentCollections,
+            'collectionsTotal' => $collectionsTotal,
             'portalAccess' => $portalAccess,
         ];
     }

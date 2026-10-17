@@ -111,13 +111,14 @@ final class ResponsiveTableColumns
     public static function landlordCollections(): array
     {
         return self::build(
-            ['Date', 'Tenant', 'Channel', 'Reference', 'Amount'],
+            ['Date', 'Property / unit', 'Tenant', 'Channel', 'Reference', 'Amount'],
             [
-                0 => ['priority' => 4, 'mobile_label' => 'Date'],
+                0 => ['priority' => 5, 'mobile_label' => 'Date'],
                 1 => ['is_primary' => true, 'priority' => 1],
                 2 => ['is_subtitle' => true, 'priority' => 2],
-                3 => ['priority' => 5, 'hide_on_mobile' => true],
-                4 => ['is_amount' => true, 'priority' => 3],
+                3 => ['priority' => 4, 'mobile_label' => 'Channel'],
+                4 => ['priority' => 6, 'hide_on_mobile' => true],
+                5 => ['is_amount' => true, 'priority' => 3],
             ]
         );
     }

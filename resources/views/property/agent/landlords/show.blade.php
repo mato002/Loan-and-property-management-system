@@ -48,11 +48,15 @@
         ];
     }
 
-    $collectionColumns = ['Date', 'Tenant', 'Channel', 'Reference', 'Amount'];
+    $collectionColumns = ['Date', 'Property / unit', 'Tenant', 'Channel', 'Reference', 'Amount'];
     $collectionRows = [];
     foreach ($recentCollections as $c) {
         $collectionRows[] = [
             $c->paid_at ? \Illuminate\Support\Carbon::parse((string) $c->paid_at)->format('Y-m-d H:i') : '—',
+            new HtmlString(
+                '<div class="font-medium">'.e((string) ($c->property_name ?? '—')).'</div>'.
+                '<div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Unit: '.e((string) ($c->unit_label ?? '—')).'</div>'
+            ),
             (string) ($c->tenant_name ?? '—'),
             ucfirst((string) ($c->channel ?? '—')),
             new HtmlString('<span class="font-mono text-xs break-all">'.e((string) ($c->external_ref ?? '—')).'</span>'),
