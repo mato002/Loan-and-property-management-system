@@ -237,8 +237,11 @@
                 animation: property-frame-progress 0.9s ease-in-out infinite;
             }
             #property-workspace-loading {
-                position: absolute;
-                inset: 0;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
                 z-index: 45;
                 display: none;
                 align-items: center;
@@ -248,6 +251,9 @@
                 -webkit-backdrop-filter: blur(6px);
                 backdrop-filter: blur(6px);
                 pointer-events: auto;
+            }
+            #property-workspace-main[data-workspace-loading-active] {
+                overflow: hidden !important;
             }
             #property-workspace-loading[data-active] {
                 display: flex;
@@ -410,9 +416,6 @@
                     :class="{ 'overflow-hidden': sidebarOpen && window.innerWidth < 1024 }"
                 >
                     <div id="property-global-nav-progress" aria-hidden="true"><span></span></div>
-                    <div id="property-workspace-loading">
-                        <x-property.workspace-loading />
-                    </div>
                     <div id="property-workspace-error" class="absolute inset-0 z-50 pointer-events-none p-4 sm:p-6" aria-live="polite"></div>
                     <div class="p-3 sm:p-4 lg:p-8 w-full max-w-full min-w-0 property-mobile-safe-bottom">
                         <turbo-frame id="property-main" data-turbo-action="advance" data-turbo-cache="false">
@@ -439,6 +442,10 @@
                 </div>
 
             </div>
+        </div>
+
+        <div id="property-workspace-loading" aria-hidden="true">
+            <x-property.workspace-loading />
         </div>
 
         @if (($propertyPortal ?? 'agent') === 'agent')

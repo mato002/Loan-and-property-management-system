@@ -29,6 +29,8 @@ const FRAME_LOADING_DELAY_MS = 600;
 const WORKSPACE_LOADING_FAILSAFE_MS = 120_000;
 let frameLoadingTimer = null;
 let workspaceLoadingFailsafeTimer = null;
+let workspaceLoadingResizeObserver = null;
+let workspaceLoadingResizeHandler = null;
 
 function isBypassTurboUrl(url) {
     const path = url.pathname.toLowerCase();
@@ -150,7 +152,31 @@ function schedulePropertyFrameLoading(frame) {
 
 function showWorkspaceLoading() {
     const loadingEl = getWorkspaceLoadingEl();
+    const main = document.getElementById('property-workspace-main');
+    if (loadingEl && main) {
+        if (workspaceLoadingResizeHandler) {
+            window.removeEventListener('resize', workspaceLoadingResizeHandler);
+            workspaceLoadingResizeHandler = null;
+        }
+        workspaceLoadingResizeObserver?.disconnect();
+        const syncOverlayBounds = () => {
+            const rect = main.getBoundingClientRect();
+            loadingEl.style.top = `${Math.max(0, rect.top)}px`;
+            loadingEl.style.left = `${Math.max(0, rect.left)}px`;
+            loadingEl.style.width = `${Math.max(0, Math.min(rect.width, window.innerWidth - Math.max(0, rect.left)))}px`;
+            loadingEl.style.height = `${Math.max(0, Math.min(rect.height, window.innerHeight - Math.max(0, rect.top)))}px`;
+        };
+        syncOverlayBounds();
+        main.setAttribute('data-workspace-loading-active', '');
+        if ('ResizeObserver' in window) {
+            workspaceLoadingResizeObserver = new ResizeObserver(syncOverlayBounds);
+            workspaceLoadingResizeObserver.observe(main);
+        }
+        workspaceLoadingResizeHandler = syncOverlayBounds;
+        window.addEventListener('resize', syncOverlayBounds, { passive: true });
+    }
     loadingEl?.setAttribute('data-active', '');
+    loadingEl?.setAttribute('aria-hidden', 'false');
     getGlobalProgressEl()?.setAttribute('data-active', '');
     window.clearTimeout(workspaceLoadingFailsafeTimer);
     workspaceLoadingFailsafeTimer = window.setTimeout(() => {
@@ -162,7 +188,17 @@ function showWorkspaceLoading() {
 function hideWorkspaceLoading() {
     window.clearTimeout(workspaceLoadingFailsafeTimer);
     workspaceLoadingFailsafeTimer = null;
-    getWorkspaceLoadingEl()?.removeAttribute('data-active');
+    const loadingEl = getWorkspaceLoadingEl();
+    const main = document.getElementById('property-workspace-main');
+    if (workspaceLoadingResizeHandler) {
+        window.removeEventListener('resize', workspaceLoadingResizeHandler);
+        workspaceLoadingResizeHandler = null;
+    }
+    workspaceLoadingResizeObserver?.disconnect();
+    workspaceLoadingResizeObserver = null;
+    main?.removeAttribute('data-workspace-loading-active');
+    loadingEl?.removeAttribute('data-active');
+    loadingEl?.setAttribute('aria-hidden', 'true');
     getGlobalProgressEl()?.removeAttribute('data-active');
 }
 
