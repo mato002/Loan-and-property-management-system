@@ -30,6 +30,7 @@ use App\Observers\LoanBookLoanClientLeadObserver;
 use App\Observers\PropertyDashboardCacheObserver;
 use App\View\Compilers\AppBladeCompiler;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
@@ -75,6 +76,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (config('app.env') === 'production') {
+            URL::forceScheme('https');
+            URL::forceRootUrl(config('app.url'));
+        }
+
         $this->loadGroupedMigrationPaths();
         $this->guardAgainstDestructiveLocalCommands();
 

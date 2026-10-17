@@ -381,7 +381,10 @@ class PmPaymentController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
-            'receiptOptionsUrl' => route('property.revenue.payments.receipt_options', absolute: false),
+            // Keep rendering the payment workspace resilient during deploys where
+            // Laravel's route cache has not yet been rebuilt for the new AJAX route.
+            // The endpoint remains covered by the named route in agent.php.
+            'receiptOptionsUrl' => url('/property/revenue/payments/receipt-options'),
             'cashAccounts' => $this->cashAccountsForReceipt(),
             'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
