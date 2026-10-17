@@ -108,7 +108,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7H4m16 0l-2 12H6L4 7m5 0V5a3 3 0 016 0v2" /></svg>
                         Agent workspaces
                     </a>
-                    <a href="{{ route('superadmin.mobile_navigation') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.mobile_navigation*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.mobile_navigation') }}" data-turbo-preload @click="saSidebarOpen = false" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.mobile_navigation*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2zm3 14h4" /></svg>
                         Mobile navigation
                     </a>
@@ -228,7 +228,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7H4m16 0l-2 12H6L4 7m5 0V5a3 3 0 016 0v2" /></svg>
                         <span class="sa-collapse-text">Agent workspaces</span>
                     </a>
-                    <a href="{{ route('superadmin.mobile_navigation') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.mobile_navigation*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
+                    <a href="{{ route('superadmin.mobile_navigation') }}" data-turbo-preload class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.mobile_navigation*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2zm3 14h4" /></svg>
                         <span class="sa-collapse-text">Mobile navigation</span>
                     </a>
