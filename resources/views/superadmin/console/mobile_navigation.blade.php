@@ -1,5 +1,4 @@
-@php($title = 'Mobile Navigation — Super Admin')
-@extends('layouts.superadmin', ['title' => $title])
+@extends('layouts.superadmin', ['title' => 'Mobile Navigation — Super Admin'])
 
 @section('content')
     <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
