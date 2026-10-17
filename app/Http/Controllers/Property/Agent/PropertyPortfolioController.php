@@ -12,7 +12,6 @@ use App\Models\PmLandlordPortalProfile;
 use App\Models\PmLandlordDocument;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
-use App\Models\PmUnitUtilityCharge;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmPayment;
@@ -4394,38 +4393,32 @@ class PropertyPortfolioController extends Controller
             }
         }
 
-        $units = PropertyUnit::query()
-            ->whereIn('property_id', $propertyIds)
-            ->get(['id', 'property_id']);
-        $unitToProperty = $units->mapWithKeys(fn ($unit) => [(int) $unit->id => (int) $unit->property_id])->all();
-        $unitIds = array_keys($unitToProperty);
-
-        if ($unitIds !== [] && Schema::hasTable('pm_unit_utility_charges')) {
-            $chargeRows = PmUnitUtilityCharge::query()
-                ->whereIn('property_unit_id', $unitIds)
-                ->select('property_unit_id', 'charge_type')
+        if (Schema::hasTable('pm_unit_utility_charges')) {
+            $chargeRows = DB::table('pm_unit_utility_charges as utility_charges')
+                ->join('property_units as charge_units', 'charge_units.id', '=', 'utility_charges.property_unit_id')
+                ->whereIn('charge_units.property_id', $propertyIds)
+                ->select('charge_units.property_id', 'utility_charges.charge_type')
                 ->distinct()
                 ->get();
             foreach ($chargeRows as $row) {
-                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
-                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->charge_type);
+                $this->rememberPropertyChargeType($types, (int) $row->property_id, (string) $row->charge_type);
             }
         }
 
-        if ($unitIds !== [] && Schema::hasTable('pm_invoices') && Schema::hasColumn('pm_invoices', 'invoice_type')) {
+        if (Schema::hasTable('pm_invoices') && Schema::hasColumn('pm_invoices', 'invoice_type')) {
             $invoiceQuery = PmInvoice::query()
-                ->whereIn('property_unit_id', $unitIds)
-                ->whereNotIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT, PmInvoice::TYPE_MIXED, PmInvoice::TYPE_OTHER]);
+                ->join('property_units as invoice_units', 'invoice_units.id', '=', 'pm_invoices.property_unit_id')
+                ->whereIn('invoice_units.property_id', $propertyIds)
+                ->whereNotIn('pm_invoices.invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_LATE_PAYMENT, PmInvoice::TYPE_MIXED, PmInvoice::TYPE_OTHER]);
             if (Schema::hasColumn('pm_invoices', 'status')) {
-                $invoiceQuery->where('status', '!=', PmInvoice::STATUS_CANCELLED);
+                $invoiceQuery->where('pm_invoices.status', '!=', PmInvoice::STATUS_CANCELLED);
             }
             $invoiceRows = $invoiceQuery
-                ->select('property_unit_id', 'invoice_type')
+                ->select('invoice_units.property_id', 'pm_invoices.invoice_type')
                 ->distinct()
                 ->get();
             foreach ($invoiceRows as $row) {
-                $propertyId = $unitToProperty[(int) $row->property_unit_id] ?? 0;
-                $this->rememberPropertyChargeType($types, $propertyId, (string) $row->invoice_type);
+                $this->rememberPropertyChargeType($types, (int) $row->property_id, (string) $row->invoice_type);
             }
         }
 

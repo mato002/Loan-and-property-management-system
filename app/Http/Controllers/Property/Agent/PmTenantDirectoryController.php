@@ -500,7 +500,6 @@ class PmTenantDirectoryController extends Controller
             'tenantFields' => $this->tenantFieldConfig(),
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
             'stats' => $stats,
-            'duplicateGroups' => $this->tenantDuplicateGroups(),
             'filters' => [
                 'q' => (string) request()->string('q'),
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '0',
@@ -936,7 +935,7 @@ class PmTenantDirectoryController extends Controller
     private function buildTenantDirectoryQuery(Request $request): Builder
     {
         $query = PmTenant::query()
-            ->withCount(['leases', 'invoices']);
+            ->withCount('leases');
         TenantProfileStatus::addCounts($query);
 
         $this->applyTenantDirectoryFilters($query, $request);

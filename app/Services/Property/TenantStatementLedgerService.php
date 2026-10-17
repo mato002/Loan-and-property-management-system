@@ -24,15 +24,17 @@ final class TenantStatementLedgerService
      *     entries: Collection<int, array<string, mixed>>,
      *     openingBalance: float,
      *     openingArrears: float,
+     *     includedOpeningArrears: float,
      *     unpostedReceiptTotal: float
      * }
+     * @param bool $includeEntries Build formatted statement rows; balance-only callers can skip presentation work.
      */
-    public function build(PmTenant $tenant, ?Carbon $fromDate, ?Carbon $toDate): array
+    public function build(PmTenant $tenant, ?Carbon $fromDate, ?Carbon $toDate, bool $includeEntries = true): array
     {
-        $tenant->loadMissing(['leases.units.property']);
+        $tenant->loadMissing($includeEntries ? ['leases.units.property'] : ['leases.units']);
         $leases = $tenant->leases ?? collect();
 
-        $invoices = $this->invoicesForStatement($tenant, $leases, $fromDate, $toDate);
+        $invoices = $this->invoicesForStatement($tenant, $leases, $fromDate, $toDate, $includeEntries);
         $openingArrears = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
         $openingArrearsAsOf = $tenant->opening_arrears_as_of
             ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
@@ -79,7 +81,7 @@ final class TenantStatementLedgerService
         // money received. They must never affect the live tenant ledger.
         $suppressRegisterCredits = true;
 
-        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate);
+        $payments = $this->paymentsForStatement($tenant, $invoices, $fromDate, $toDate, $includeEntries);
         $payments = $payments
             ->reject(fn (PmPayment $payment): bool => $this->isUnverifiedEzenPayment($payment))
             ->values();
@@ -156,7 +158,15 @@ final class TenantStatementLedgerService
 
         $entries = collect();
 
+        $includedOpeningArrears = $openingArrears > 0 && ! $hasStatementImport && ! $replayReplacesOpeningArrears
+            ? $openingArrears
+            : 0.0;
+
         foreach ($invoices as $invoice) {
+            if (! $includeEntries) {
+                continue;
+            }
+
             $label = $invoice->invoice_no ?: 'INV-'.$invoice->id;
             $unitLabel = trim(($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—'));
             $typeLabel = $invoice->invoice_type
@@ -204,7 +214,7 @@ final class TenantStatementLedgerService
             ]);
         }
 
-        if ($openingArrears > 0 && ! $hasStatementImport && ! $replayReplacesOpeningArrears) {
+        if ($includeEntries && $includedOpeningArrears > 0) {
             $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
             $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
             $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
@@ -236,7 +246,7 @@ final class TenantStatementLedgerService
                     'charge_label' => 'Opening arrears',
                     'is_rent' => false,
                     'description' => trim((string) (($tenant->opening_arrears_notes ?: 'Brought-forward debt captured at tenant onboarding.').$partsText)),
-                    'debit' => $openingArrears,
+                    'debit' => $includedOpeningArrears,
                     'credit' => 0.0,
                     'payment_id' => null,
                     'status' => '—',
@@ -245,6 +255,10 @@ final class TenantStatementLedgerService
         }
 
         foreach ($payments as $payment) {
+            if (! $includeEntries) {
+                continue;
+            }
+
             $label = $payment->external_ref ?: 'PAY-'.$payment->id;
             $allocTo = $payment->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
             $desc = strtoupper((string) $payment->channel);
@@ -271,6 +285,10 @@ final class TenantStatementLedgerService
 
         $unpostedReceiptTotal = 0.0;
         foreach ($registerReceipts as $receipt) {
+            if (! $includeEntries) {
+                continue;
+            }
+
             $amount = (float) $receipt->amount;
             $unpostedReceiptTotal += $amount;
             $txnDate = $receipt->txn_date ?? $receipt->banking_date;
@@ -314,6 +332,7 @@ final class TenantStatementLedgerService
                 ->values(),
             'openingBalance' => $openingBalance,
             'openingArrears' => $openingArrears,
+            'includedOpeningArrears' => $includedOpeningArrears,
             'unpostedReceiptTotal' => round($unpostedReceiptTotal, 2),
         ];
     }
@@ -426,11 +445,13 @@ final class TenantStatementLedgerService
      */
     public function closingBalance(PmTenant $tenant): float
     {
-        $ledger = $this->build($tenant, null, null);
-        $balance = (float) ($ledger['openingBalance'] ?? 0);
-        foreach ($ledger['entries'] as $entry) {
-            $balance += (float) ($entry['debit'] ?? 0) - (float) ($entry['credit'] ?? 0);
-        }
+        $ledger = $this->build($tenant, null, null, includeEntries: false);
+        $balance = (float) ($ledger['openingBalance'] ?? 0)
+            + (float) ($ledger['includedOpeningArrears'] ?? 0)
+            + (float) $ledger['invoices']->sum(fn (PmInvoice $invoice): float => (float) $invoice->amount)
+            - (float) $ledger['payments']
+                ->filter(fn (PmPayment $payment): bool => $payment->status === PmPayment::STATUS_COMPLETED)
+                ->sum(fn (PmPayment $payment): float => (float) $payment->amount);
 
         return round($balance, 2);
     }
@@ -473,10 +494,10 @@ final class TenantStatementLedgerService
      * @param  Collection<int, \App\Models\PmLease>  $leases
      * @return Collection<int, PmInvoice>
      */
-    private function invoicesForStatement(PmTenant $tenant, Collection $leases, ?Carbon $fromDate, ?Carbon $toDate): Collection
+    private function invoicesForStatement(PmTenant $tenant, Collection $leases, ?Carbon $fromDate, ?Carbon $toDate, bool $withPresentationRelations = true): Collection
     {
         return $this->invoiceBaseQuery($tenant, $leases)
-            ->with(['unit.property'])
+            ->when($withPresentationRelations, fn ($query) => $query->with(['unit.property']))
             ->when($fromDate, fn ($q) => $q->whereDate('issue_date', '>=', $fromDate->toDateString()))
             ->when($toDate, fn ($q) => $q->whereDate('issue_date', '<=', $toDate->toDateString()))
             ->orderBy('issue_date')
@@ -490,13 +511,16 @@ final class TenantStatementLedgerService
      * @param  Collection<int, PmInvoice>  $invoices
      * @return \Illuminate\Database\Eloquent\Builder<PmPayment>
      */
-    private function paymentBaseQuery(PmTenant $tenant, Collection $invoices)
+    private function paymentBaseQuery(PmTenant $tenant, Collection $invoices, bool $withAllocations = true)
     {
         $invoiceIds = $invoices->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
 
-        return PmPayment::query()
-            ->with(['allocations.invoice'])
-            ->where(function ($query) use ($tenant, $invoiceIds): void {
+        $query = PmPayment::query();
+        if ($withAllocations) {
+            $query->with(['allocations.invoice']);
+        }
+
+        return $query->where(function ($query) use ($tenant, $invoiceIds): void {
                 $query->where('pm_tenant_id', $tenant->id);
                 if ($invoiceIds !== []) {
                     $query->orWhereHas('allocations', fn ($alloc) => $alloc->whereIn('pm_invoice_id', $invoiceIds));
@@ -522,9 +546,9 @@ final class TenantStatementLedgerService
      * @param  Collection<int, PmInvoice>  $invoices
      * @return Collection<int, PmPayment>
      */
-    private function paymentsForStatement(PmTenant $tenant, Collection $invoices, ?Carbon $fromDate, ?Carbon $toDate): Collection
+    private function paymentsForStatement(PmTenant $tenant, Collection $invoices, ?Carbon $fromDate, ?Carbon $toDate, bool $withAllocations = true): Collection
     {
-        return $this->paymentBaseQuery($tenant, $invoices)
+        return $this->paymentBaseQuery($tenant, $invoices, $withAllocations)
             ->when($fromDate, fn ($q) => $q->whereDate('paid_at', '>=', $fromDate->toDateString()))
             ->when($toDate, fn ($q) => $q->whereDate('paid_at', '<=', $toDate->toDateString()))
             ->orderBy('paid_at')

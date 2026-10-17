@@ -153,7 +153,9 @@ final class PropertyFilterCascadeCatalog
      */
     public function properties(): Collection
     {
-        return Property::query()->orderBy('name')->get(['id', 'name']);
+        return Cache::remember($this->catalogCacheKey('properties'), 300, fn () =>
+            Property::query()->orderBy('name')->get(['id', 'name'])
+        );
     }
 
     /**
@@ -240,17 +242,21 @@ final class PropertyFilterCascadeCatalog
      */
     public function leaseTenantsForFilter(int $ensureTenantId = 0, int $propertyId = 0, int $unitId = 0): Collection
     {
-        $query = PmLease::query()->whereNotNull('pm_tenant_id');
+        $cacheKey = $this->catalogCacheKey('lease_tenants.'.$propertyId.'.'.$unitId.'.'.$ensureTenantId);
 
-        if ($unitId > 0) {
-            $query->whereHas('units', fn (Builder $unitQuery) => $unitQuery->where('property_units.id', $unitId));
-        } elseif ($propertyId > 0) {
-            $query->whereHas('units', fn (Builder $unitQuery) => $unitQuery->where('property_id', $propertyId));
-        }
+        return Cache::remember($cacheKey, 300, function () use ($ensureTenantId, $propertyId, $unitId): Collection {
+            $query = PmLease::query()->whereNotNull('pm_tenant_id');
 
-        $tenantIds = $query->distinct()->pluck('pm_tenant_id');
+            if ($unitId > 0) {
+                $query->whereHas('units', fn (Builder $unitQuery) => $unitQuery->where('property_units.id', $unitId));
+            } elseif ($propertyId > 0) {
+                $query->whereHas('units', fn (Builder $unitQuery) => $unitQuery->where('property_id', $propertyId));
+            }
 
-        return $this->resolveTenants($tenantIds, $ensureTenantId);
+            $tenantIds = $query->distinct()->pluck('pm_tenant_id');
+
+            return $this->resolveTenants($tenantIds, $ensureTenantId);
+        });
     }
 
     /**
@@ -282,16 +288,18 @@ final class PropertyFilterCascadeCatalog
      */
     public function unitsForProperty(int $propertyId = 0): Collection
     {
-        $query = PropertyUnit::query()
-            ->select(['id', 'label', 'property_id'])
-            ->with('property:id,name')
-            ->orderBy('property_id')
-            ->orderBy('label');
-        if ($propertyId > 0) {
-            $query->where('property_id', $propertyId);
-        }
+        return Cache::remember($this->catalogCacheKey('units.'.$propertyId), 300, function () use ($propertyId): Collection {
+            $query = PropertyUnit::query()
+                ->select(['id', 'label', 'property_id'])
+                ->with('property:id,name')
+                ->orderBy('property_id')
+                ->orderBy('label');
+            if ($propertyId > 0) {
+                $query->where('property_id', $propertyId);
+            }
 
-        return $query->get();
+            return $query->get();
+        });
     }
 
     /**
