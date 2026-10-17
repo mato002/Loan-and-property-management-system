@@ -492,11 +492,14 @@ document.addEventListener('turbo:frame-missing', (event) => {
         window.location.assign(responseUrl);
         return;
     }
-    if (responseUrl) {
-        visitLoanMainFrame(responseUrl);
-        return;
+    // A full page or server error response has no #loan-main frame. Load it as
+    // a Turbo document visit instead of retrying the same frame request.
+    routingViaMainFrame = true;
+    try {
+        Turbo.visit(responseUrl || window.location.href, { action: 'replace' });
+    } finally {
+        routingViaMainFrame = false;
     }
-    showWorkspaceError('The server response did not include workspace content.', window.location.href);
 });
 
 document.addEventListener('turbo:frame-load', (event) => {

@@ -1068,10 +1068,16 @@ document.addEventListener('turbo:frame-missing', (event) => {
 
         return;
     }
-    // Retrying the same response as another frame visit can loop forever when
-    // the server returned a full page or an error page without #property-main.
-    // Keep the shell visible and let the user retry explicitly instead.
-    showWorkspaceError('The server response did not include workspace content.', responseUrl || window.location.href);
+    // Some endpoints (notably redirects and server error responses) can return
+    // a full document instead of a #property-main fragment. Retry it as a normal
+    // Turbo document visit so the user sees the actual response without a hard
+    // browser reload. Do not issue another frame visit: that can loop.
+    routingViaMainFrame = true;
+    try {
+        Turbo.visit(responseUrl || window.location.href, { action: 'replace' });
+    } finally {
+        routingViaMainFrame = false;
+    }
 });
 
 document.addEventListener('turbo:frame-load', (event) => {
