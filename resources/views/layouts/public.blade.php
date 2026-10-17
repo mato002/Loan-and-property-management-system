@@ -89,23 +89,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="{{ $companyName }}" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <script>
-        (function () {
-            try {
-                var until = Number(localStorage.getItem('gaitho-pwa-install-dismissed-until-public') || '0');
-                var standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-                if (standalone || until > Date.now()) {
-                    document.documentElement.classList.add('pwa-install-suppressed');
-                }
-            } catch (e) {}
-        })();
-    </script>
     <script type="application/ld+json">{!! json_encode($schemaGraph, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
     @stack('head')
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800,900&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/public-site.js'])
-    <script src="{{ asset('js/pwa-install.js') }}?v=3" defer></script>
+    <script src="{{ asset('js/pwa-install.js') }}?v=4" defer></script>
     <style>
         [x-cloak] { display: none !important; }
         .footer-portal-login .footer-login-btn {
@@ -117,43 +106,6 @@
         .footer-portal-login .footer-login-tenant { background: var(--brand-cta); color: #fff !important; border: 1px solid color-mix(in srgb, var(--brand-cta) 70%, white); }
         .footer-portal-login .footer-login-landlord { background: #f59e0b; color: #111827 !important; border: 1px solid #fcd34d; }
         .footer-portal-login .footer-login-staff { background: #374151; color: #fff !important; border: 1px solid #4b5563; }
-        html.pwa-install-suppressed #pwa-install-banner,
-        html.pwa-install-suppressed [data-pwa-install-trigger] { display: none !important; }
-        html:not(.pwa-install-suppressed) main.public-mobile-safe-bottom { padding-top: 7.25rem; }
-        #pwa-install-banner {
-            position: fixed;
-            top: 3.5rem;
-            left: 0;
-            right: 0;
-            z-index: 40;
-            background: var(--brand-cta, #C0392B);
-            color: #fff;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-        }
-        #pwa-install-banner .pwa-install-banner-inner {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding-top: 0.5rem;
-            padding-bottom: 0.5rem;
-        }
-        #pwa-install-banner img {
-            width: 2.25rem;
-            height: 2.25rem;
-            padding: 2px;
-            border-radius: 0.5rem;
-            background: #fff;
-            box-sizing: border-box;
-            object-fit: cover;
-        }
-        #pwa-install-banner-btn {
-            background: #fff;
-            color: var(--brand-cta, #C0392B);
-        }
-        @media (min-width: 640px) {
-            html:not(.pwa-install-suppressed) main.public-mobile-safe-bottom { padding-top: 7.75rem; }
-            #pwa-install-banner { top: 4rem; }
-        }
     </style>
 </head>
 <body class="font-sans antialiased text-gray-900 bg-white" x-data="{ mobileMenuOpen: false, scrolled: false }" @scroll.window="scrolled = (window.pageYOffset > 20)">

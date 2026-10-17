@@ -34,7 +34,7 @@
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="{{ \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Portal') }}" />
-        <script src="{{ asset('js/pwa-install.js') }}?v=3" defer></script>
+        <script src="{{ asset('js/pwa-install.js') }}?v=4" defer></script>
         
         <style>
             /* Portal shell — flush layout without body position:fixed (that + scroll-lock top offset clips the header) */

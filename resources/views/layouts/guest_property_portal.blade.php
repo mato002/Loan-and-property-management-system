@@ -43,7 +43,7 @@
         <link rel="apple-touch-icon" href="{{ asset('pwa/apple-touch-icon.png') }}" />
         <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
         <meta name="theme-color" content="{{ \App\Support\Property\PropertyBrandPalette::color(\App\Support\Property\PropertyBrandPalette::resolve('guest'), 'primary') }}" />
-        <script src="{{ asset('js/pwa-install.js') }}?v=3" defer></script>
+        <script src="{{ asset('js/pwa-install.js') }}?v=4" defer></script>
     </head>
     <body class="h-dvh overflow-hidden font-sans antialiased text-slate-900 bg-[#eef5f3]">
         <x-swal-flash />

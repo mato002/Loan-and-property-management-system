@@ -813,6 +813,10 @@
     min-width: 0;
   }
 
+  .dashboard-overview > .kpi-card-grid {
+    grid-column: 1 / -1;
+  }
+
   @media (min-width: 1024px) {
     .dashboard-overview {
       grid-template-columns: minmax(0, 1fr) 17.5rem;

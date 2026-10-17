@@ -3,6 +3,7 @@
  */
 const CONTEXT = document.documentElement.dataset.pwaContext || 'public';
 const DISMISS_KEY = `gaitho-pwa-install-dismissed-until-${CONTEXT}`;
+const INSTALLED_KEY = `gaitho-pwa-installed-${CONTEXT}`;
 const DISMISS_DAYS = 7;
 
 function isStandalone() {
@@ -11,6 +12,26 @@ function isStandalone() {
         || window.matchMedia('(display-mode: window-controls-overlay)').matches
         || window.navigator.standalone === true
     );
+}
+
+function isInstalled() {
+    if (isStandalone()) {
+        return true;
+    }
+
+    try {
+        return localStorage.getItem(INSTALLED_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function rememberInstalled() {
+    try {
+        localStorage.setItem(INSTALLED_KEY, '1');
+    } catch {
+        // The standalone check still hides the prompt when storage is unavailable.
+    }
 }
 
 function isIos() {
@@ -61,17 +82,13 @@ function hideUi() {
 }
 
 function showInstallUi() {
-    if (isStandalone() || isDismissed()) {
+    if (isInstalled() || isDismissed()) {
         hideUi();
         return;
     }
 
     revealInstallOffer();
     updateInstallLabels();
-
-    if (CONTEXT === 'public') {
-        return;
-    }
 
     document.getElementById('pwa-install-fab')?.classList.remove('hidden');
 }
@@ -125,6 +142,7 @@ async function runInstall() {
         const choice = await deferredInstallPrompt.userChoice;
         deferredInstallPrompt = null;
         if (choice.outcome === 'accepted') {
+            rememberInstalled();
             hideUi();
         }
         return;
@@ -139,7 +157,6 @@ function wireInstallFab() {
     const desktopClose = document.getElementById('pwa-install-desktop-close');
 
     dismiss?.addEventListener('click', dismissPrompt);
-    document.getElementById('pwa-install-banner-dismiss')?.addEventListener('click', dismissPrompt);
     iosClose?.addEventListener('click', () => {
         document.getElementById('pwa-install-ios-panel')?.classList.add('hidden');
     });
@@ -148,7 +165,6 @@ function wireInstallFab() {
     });
 
     document.getElementById('pwa-install-btn')?.addEventListener('click', runInstall);
-    document.getElementById('pwa-install-banner-btn')?.addEventListener('click', runInstall);
     document.querySelectorAll('[data-pwa-install-trigger]').forEach((trigger) => {
         trigger.addEventListener('click', runInstall);
     });
@@ -161,6 +177,7 @@ function wireInstallFab() {
 
     window.addEventListener('appinstalled', () => {
         deferredInstallPrompt = null;
+        rememberInstalled();
         hideUi();
     });
 

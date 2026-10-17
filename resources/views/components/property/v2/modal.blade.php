@@ -9,6 +9,8 @@
     'maxWidth' => 'lg',
     /** Bottom sheet on mobile (< md) */
     'mobileSheet' => true,
+    /** Keep nested modals in their Alpine owner scope when requested. */
+    'teleport' => true,
     /** z-index for overlay root (default: modal tier 7010) */
     'zIndex' => 7010,
     'closeOnBackdrop' => false,
@@ -69,9 +71,12 @@
     $sheetEnd = $mobileSheet
         ? 'max-md:translate-y-0 md:scale-100 md:opacity-100'
         : 'scale-100 opacity-100';
+    $shouldTeleport = (bool) $teleport;
 @endphp
 
+@if ($shouldTeleport)
 <template x-teleport="body">
+@endif
     <div
         x-show="{{ $show }}"
         x-cloak
@@ -171,4 +176,6 @@
             @endisset
         </div>
     </div>
+@if ($shouldTeleport)
 </template>
+@endif
