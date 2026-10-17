@@ -394,19 +394,6 @@ function isPortalPresentationHealthy() {
         return false;
     }
 
-    // A recovery visit adds a one-use cache buster so the server returns a fresh
-    // document and the current Vite manifest can supply its current CSS hash.
-    // Remove it from the visible URL as soon as the shell is healthy.
-    try {
-        const currentUrl = new URL(window.location.href);
-        if (currentUrl.searchParams.has('_portal_recover')) {
-            currentUrl.searchParams.delete('_portal_recover');
-            window.history.replaceState(window.history.state, '', currentUrl);
-        }
-    } catch {
-        // URL cleanup is cosmetic; keep the healthy page if history is unavailable.
-    }
-
     return true;
 }
 
@@ -415,17 +402,7 @@ function recoverPropertyPortalDocument(url = window.location.href) {
         return;
     }
     propertyPortalShellRecoveryInFlight = true;
-
-    // Re-request the full Laravel page instead of reusing a cached response that
-    // may point at a CSS bundle removed during deployment. The same route and
-    // existing filters are preserved; the temporary marker is removed on success.
-    try {
-        const recoveryUrl = new URL(url, window.location.href);
-        recoveryUrl.searchParams.set('_portal_recover', String(Date.now()));
-        window.location.replace(recoveryUrl.toString());
-    } catch {
-        window.location.replace(url);
-    }
+    window.location.assign(url);
 }
 
 function ensurePropertyPortalShell(url = window.location.href) {
@@ -1068,16 +1045,7 @@ document.addEventListener('turbo:frame-missing', (event) => {
 
         return;
     }
-    // Some endpoints (notably redirects and server error responses) can return
-    // a full document instead of a #property-main fragment. Retry it as a normal
-    // Turbo document visit so the user sees the actual response without a hard
-    // browser reload. Do not issue another frame visit: that can loop.
-    routingViaMainFrame = true;
-    try {
-        Turbo.visit(responseUrl || window.location.href, { action: 'replace' });
-    } finally {
-        routingViaMainFrame = false;
-    }
+    showWorkspaceError('The server response did not include workspace content.', responseUrl || window.location.href);
 });
 
 document.addEventListener('turbo:frame-load', (event) => {

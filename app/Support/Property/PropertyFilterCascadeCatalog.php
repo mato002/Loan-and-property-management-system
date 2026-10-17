@@ -155,9 +155,19 @@ final class PropertyFilterCascadeCatalog
      */
     public function properties(): Collection
     {
-        return Cache::remember($this->catalogCacheKey('properties'), 300, fn () =>
-            Property::query()->orderBy('name')->get(['id', 'name'])
+        $rows = Cache::remember($this->catalogCacheKey('properties'), 300, fn () =>
+            Property::query()
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(static fn (Property $property): array => [
+                    'id' => (int) $property->id,
+                    'name' => (string) $property->name,
+                ])
+                ->values()
+                ->all()
         );
+
+        return Property::hydrate($rows);
     }
 
     /**
@@ -246,7 +256,7 @@ final class PropertyFilterCascadeCatalog
     {
         $cacheKey = $this->catalogCacheKey('lease_tenants.'.$propertyId.'.'.$unitId.'.'.$ensureTenantId);
 
-        return Cache::remember($cacheKey, 300, function () use ($ensureTenantId, $propertyId, $unitId): Collection {
+        $rows = Cache::remember($cacheKey, 300, function () use ($ensureTenantId, $propertyId, $unitId): array {
             $query = PmLease::query()->whereNotNull('pm_tenant_id');
 
             if ($unitId > 0) {
@@ -257,8 +267,16 @@ final class PropertyFilterCascadeCatalog
 
             $tenantIds = $query->distinct()->pluck('pm_tenant_id');
 
-            return $this->resolveTenants($tenantIds, $ensureTenantId);
+            return $this->resolveTenants($tenantIds, $ensureTenantId)
+                ->map(static fn (PmTenant $tenant): array => [
+                    'id' => (int) $tenant->id,
+                    'name' => (string) $tenant->name,
+                ])
+                ->values()
+                ->all();
         });
+
+        return PmTenant::hydrate($rows);
     }
 
     /**
@@ -290,7 +308,7 @@ final class PropertyFilterCascadeCatalog
      */
     public function unitsForProperty(int $propertyId = 0): Collection
     {
-        return Cache::remember($this->catalogCacheKey('units.'.$propertyId), 300, function () use ($propertyId): Collection {
+        $rows = Cache::remember($this->catalogCacheKey('units.'.$propertyId), 300, function () use ($propertyId): array {
             $query = PropertyUnit::query()
                 ->select(['id', 'label', 'property_id'])
                 ->with('property:id,name')
@@ -300,8 +318,35 @@ final class PropertyFilterCascadeCatalog
                 $query->where('property_id', $propertyId);
             }
 
-            return $query->get();
+            return $query->get()->map(static fn (PropertyUnit $unit): array => [
+                'id' => (int) $unit->id,
+                'label' => (string) $unit->label,
+                'property_id' => (int) $unit->property_id,
+                'property' => $unit->property ? [
+                    'id' => (int) $unit->property->id,
+                    'name' => (string) $unit->property->name,
+                ] : null,
+            ])->values()->all();
         });
+
+        $units = PropertyUnit::hydrate(array_map(static function (array $row): array {
+            unset($row['property']);
+
+            return $row;
+        }, $rows));
+        $properties = Property::hydrate(collect($rows)
+            ->pluck('property')
+            ->filter()
+            ->unique('id')
+            ->values()
+            ->all())
+            ->keyBy('id');
+
+        $units->each(static function (PropertyUnit $unit) use ($properties): void {
+            $unit->setRelation('property', $properties->get((int) $unit->property_id));
+        });
+
+        return $units;
     }
 
     /**
@@ -348,7 +393,9 @@ final class PropertyFilterCascadeCatalog
     {
         $userId = (int) (auth()->id() ?? 0);
 
-        return 'property.filter_cascade.'.$suffix.'.user.'.$userId;
+        // v2 bypasses object-valued entries written by earlier versions. The
+        // cache now stores primitive arrays, safe to deserialize in Octane workers.
+        return 'property.filter_cascade.v2.'.$suffix.'.user.'.$userId;
     }
 
     /**
