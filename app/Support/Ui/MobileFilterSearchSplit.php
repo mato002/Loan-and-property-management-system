@@ -157,7 +157,7 @@ final class MobileFilterSearchSplit
     private static function unwrapMobileDetails(DOMElement $root): void
     {
         $xpath = new DOMXPath($root->ownerDocument);
-        $detailsList = $xpath->query('.//details[contains(@class, "property-filter-mobile-toggle")]', $root);
+        $detailsList = $xpath->query('.//*[@data-filter-disclosure] | .//details[contains(@class, "property-filter-mobile-toggle")]', $root);
         if ($detailsList === false) {
             return;
         }
@@ -172,6 +172,21 @@ final class MobileFilterSearchSplit
         foreach ($details as $detail) {
             $parent = $detail->parentNode;
             if (! $parent instanceof DOMNode) {
+                continue;
+            }
+
+            $panelNodes = $xpath->query('.//*[@data-filter-disclosure-panel]', $detail);
+            $panel = $panelNodes !== false ? $panelNodes->item(0) : null;
+            if ($panel instanceof DOMElement) {
+                $panel->removeAttribute('hidden');
+                $children = [];
+                foreach ($panel->childNodes as $child) {
+                    $children[] = $child;
+                }
+                foreach ($children as $child) {
+                    $parent->insertBefore($child, $detail);
+                }
+                $parent->removeChild($detail);
                 continue;
             }
 

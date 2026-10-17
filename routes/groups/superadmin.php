@@ -4,6 +4,7 @@ use App\Http\Controllers\SuperAdmin\SuperAdminAgentWorkspaceController;
 use App\Http\Controllers\SuperAdmin\SuperAdminConsoleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminOpsConsoleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminUserController;
+use App\Http\Controllers\SuperAdmin\SuperAdminMobileNavigationController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->group(function () {
@@ -12,6 +13,8 @@ Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->grou
     Route::patch('/access-approvals/{access}', [SuperAdminConsoleController::class, 'updateAccessApproval'])->name('access_approvals.update');
     Route::post('/access-approvals/bulk', [SuperAdminConsoleController::class, 'bulkAccessApprovals'])->name('access_approvals.bulk');
     Route::get('/roles-permissions', [SuperAdminConsoleController::class, 'rolesPermissions'])->name('roles_permissions');
+    Route::get('/mobile-navigation', [SuperAdminMobileNavigationController::class, 'index'])->name('mobile_navigation');
+    Route::post('/mobile-navigation', [SuperAdminMobileNavigationController::class, 'update'])->name('mobile_navigation.update');
     Route::get('/agent-workspaces', [SuperAdminAgentWorkspaceController::class, 'index'])->name('agent_workspaces');
     Route::post('/agent-workspaces/bulk', [SuperAdminAgentWorkspaceController::class, 'bulk'])->name('agent_workspaces.bulk');
     Route::get('/agent-branding', [SuperAdminAgentWorkspaceController::class, 'brandingIndex'])->name('agent_branding');

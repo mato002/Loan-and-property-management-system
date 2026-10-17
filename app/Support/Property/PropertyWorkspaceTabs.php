@@ -242,6 +242,16 @@ final class PropertyWorkspaceTabs
      */
     public static function tabsFor(string $workspaceKey, ?User $user = null): array
     {
+        return self::filterTabsForUser(self::configurationTabsFor($workspaceKey), $user);
+    }
+
+    /**
+     * Tab definitions available to Super Admin's mobile navigation editor.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function configurationTabsFor(string $workspaceKey): array
+    {
         $tabs = match ($workspaceKey) {
             'portfolio' => [
                 ['key' => 'properties', 'label' => 'Properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.store', 'property.properties.store_json', 'property.properties.update', 'property.properties.destroy', 'property.properties.offboarding', 'property.properties.offboarding.*']],
@@ -353,7 +363,7 @@ final class PropertyWorkspaceTabs
             default => [],
         };
 
-        return self::filterTabsForUser($tabs, $user);
+        return $tabs;
     }
 
     /**

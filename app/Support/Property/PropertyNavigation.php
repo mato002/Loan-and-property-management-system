@@ -140,6 +140,17 @@ final class PropertyNavigation
     }
 
     /**
+     * Full workspace definitions for administrative configuration screens.
+     * These are presentation options only; access is still decided by permissions.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function agentWorkspaceDefinitions(): array
+    {
+        return array_values(self::agentWorkspaceCatalog());
+    }
+
+    /**
      * Primary sidebar order — daily property operations flow.
      *
      * @return list<string>
@@ -586,6 +597,9 @@ final class PropertyNavigation
                 if (($workspace['key'] ?? '') !== $key) {
                     continue;
                 }
+                if (! PropertyMobileNavigationSettings::workspaceVisibleOnMobile($key)) {
+                    break;
+                }
                 $nav[] = [
                     'label' => $labels[$key]['label'],
                     'longLabel' => $labels[$key]['longLabel'],
@@ -613,6 +627,9 @@ final class PropertyNavigation
             if ($key === '' || in_array($key, $primaryKeys, true)) {
                 continue;
             }
+            if (! PropertyMobileNavigationSettings::workspaceVisibleOnMobile($key)) {
+                continue;
+            }
             $nav[] = [
                 'key' => $key,
                 'label' => (string) ($workspace['label'] ?? $key),
@@ -624,6 +641,9 @@ final class PropertyNavigation
         }
 
         foreach (['vendors', 'communications', 'financials', 'analytics'] as $hiddenKey) {
+            if (! PropertyMobileNavigationSettings::workspaceVisibleOnMobile($hiddenKey)) {
+                continue;
+            }
             foreach (self::allAgentWorkspaces($user) as $workspace) {
                 if (($workspace['key'] ?? '') !== $hiddenKey) {
                     continue;

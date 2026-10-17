@@ -12,7 +12,7 @@
         <form method="get" data-auto-apply-filters="true" class="mb-4 flex flex-wrap items-end gap-2 lg:flex-nowrap">
             <div class="min-w-[14rem] flex-1">
                 <label class="text-xs text-slate-500">Search</label>
-                <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Txn, phone, reason..." x-on:input.debounce.450ms="$el.form.requestSubmit()" class="block w-full rounded-xl border-slate-300 shadow-sm">
+                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Txn, phone, reason..." autocomplete="off" data-live-row-filter="1" class="block w-full rounded-xl border-slate-300 shadow-sm">
             </div>
             <div class="w-36 shrink-0">
                 <label class="text-xs text-slate-500">From</label>

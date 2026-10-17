@@ -23,6 +23,10 @@
             @csrf
             <button type="submit" class="inline-flex rounded-xl bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800">Recover missing → Unmatched</button>
         </form>
+        <form method="POST" action="{{ route('property.revenue.statements.reconcile_splits', $statement) }}" data-turbo="false" data-swal-title="Reconcile saved split allocations?" data-swal-confirm="This checks unmatched statement lines for tenant payments already posted as split shares and updates those lines." data-swal-confirm-text="Reconcile splits" class="inline">
+            @csrf
+            <button type="submit" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Repair saved splits</button>
+        </form>
         <a href="{{ route('property.equity.unmatched') }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open Unmatched</a>
     </x-slot>
 

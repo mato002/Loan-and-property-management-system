@@ -115,6 +115,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::get('/revenue/statements/search/tenants', [PropertyStatementImportController::class, 'searchTenants'])->name('revenue.statements.search.tenants');
     Route::get('/revenue/statements/search/landlords', [PropertyStatementImportController::class, 'searchLandlords'])->name('revenue.statements.search.landlords');
     Route::get('/revenue/statements/{statement}', [PropertyStatementImportController::class, 'show'])->whereNumber('statement')->name('revenue.statements.show');
+    Route::post('/revenue/statements/{statement}/reconcile-splits', [PropertyStatementImportController::class, 'reconcileSplits'])->whereNumber('statement')->middleware('property.permission:payments.record')->name('revenue.statements.reconcile_splits');
     Route::post('/revenue/statements/{statement}/recover', [PropertyStatementImportController::class, 'recover'])->middleware('property.permission:payments.record')->name('revenue.statements.recover');
     Route::post('/revenue/statements/{statement}/lines/{line}/recover', [PropertyStatementImportController::class, 'recoverLine'])->middleware('property.permission:payments.record')->name('revenue.statements.lines.recover');
     Route::post('/revenue/statements/{statement}/lines/{line}/assign', [PropertyStatementImportController::class, 'assignLine'])->middleware('property.permission:payments.settle')->name('revenue.statements.lines.assign');

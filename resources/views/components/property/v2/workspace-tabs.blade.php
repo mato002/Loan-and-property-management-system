@@ -15,7 +15,10 @@
                         data-property-nav="{{ implode('|', $tab['active'] ?? []) }}"
                         data-property-workspace-tab="{{ $tab['key'] ?? '' }}"
                         @if ($active) aria-current="page" @endif
-                        class="property-workspace-tab shrink-0 inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition-colors min-h-[32px] border border-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 aria-[current=page]:bg-emerald-600 aria-[current=page]:border-emerald-600 aria-[current=page]:text-white"
+                        @class([
+                            'property-workspace-tab shrink-0 inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition-colors min-h-[32px] border border-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 aria-[current=page]:bg-emerald-600 aria-[current=page]:border-emerald-600 aria-[current=page]:text-white',
+                            'hidden lg:inline-flex' => ! \App\Support\Property\PropertyMobileNavigationSettings::tabVisibleOnMobile($workspaceKey, (string) ($tab['key'] ?? '')),
+                        ])
                     >
                         {{ $tab['label'] }}
                     </a>

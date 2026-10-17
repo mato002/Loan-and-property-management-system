@@ -152,7 +152,6 @@ class PropertyStatementImportController extends Controller
     public function show(Request $request, PmBankStatement $statement): View|StreamedResponse
     {
         $this->authorizeStatement($request, $statement);
-        $this->reconcilePreviouslySavedSplitShares($statement);
 
         $status = trim((string) $request->query('status', ''));
         $q = trim((string) $request->query('q', ''));
@@ -221,13 +220,14 @@ class PropertyStatementImportController extends Controller
             );
         }
 
-        $lineTotal = (clone $linesQuery)->count();
         $requestedPageSize = $request->query('per_page');
-        $perPage = ListPageSize::resolve($requestedPageSize, 100);
-        $perPageValue = is_scalar($requestedPageSize) && strtolower(trim((string) $requestedPageSize)) === ListPageSize::ALL
-            ? ListPageSize::ALL
-            : (string) $perPage;
-        $lines = $linesQuery->paginate($perPage)->withQueryString();
+        // Keep interactive filter requests bounded. Legacy links may still use
+        // per_page=all, so treat that value as the largest supported page size.
+        $perPage = min(ListPageSize::resolve($requestedPageSize, 100), 1000);
+        $perPageValue = (string) $perPage;
+        // The toolbar now uses fixed page-size choices, so avoid a full COUNT(*)
+        // just to build length-aware pagination on every filter request.
+        $lines = $linesQuery->simplePaginate($perPage)->withQueryString();
 
         $countBase = PmBankStatementLine::query()->where('pm_bank_statement_id', $statement->id);
         $counts = [
@@ -271,8 +271,19 @@ class PropertyStatementImportController extends Controller
                 ->values()
                 ->all(),
             'filters' => ['q' => $q, 'status' => $status, 'per_page' => $perPageValue],
-            'perPageOptions' => ListPageSize::options($lineTotal, $perPage),
+            'perPageOptions' => collect([100, 200, 500, 1000])->map(fn (int $size) => [
+                'value' => (string) $size,
+                'label' => number_format($size).' / page',
+            ])->all(),
         ]);
+    }
+
+    public function reconcileSplits(Request $request, PmBankStatement $statement): RedirectResponse
+    {
+        $this->authorizeStatement($request, $statement);
+        $this->reconcilePreviouslySavedSplitShares($statement);
+
+        return back()->with('status', 'Saved split allocations have been reconciled against this statement.');
     }
 
     public function searchTenants(Request $request): JsonResponse
