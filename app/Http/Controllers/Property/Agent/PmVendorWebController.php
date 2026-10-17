@@ -135,6 +135,7 @@ class PmVendorWebController extends Controller
             ->get();
         $settlements = app(\App\Services\Property\LandlordSettlementService::class);
         $agreementComparisons = [];
+        $settlementLinesByPropertyMonth = [];
         foreach ($agreements as $agreement) {
             foreach ($agreement->bills as $bill) {
                 if (! $bill->bill_date) {
@@ -142,7 +143,9 @@ class PmVendorWebController extends Controller
                 }
                 $periodStart = Carbon::parse($bill->bill_date)->startOfMonth();
                 $periodEnd = $periodStart->copy()->endOfMonth();
-                $unitLines = $settlements->unitSettlementLines((int) $agreement->property_id, $periodStart, $periodEnd);
+                $cacheKey = (int) $agreement->property_id.'|'.$periodStart->format('Y-m');
+                $unitLines = $settlementLinesByPropertyMonth[$cacheKey]
+                    ??= $settlements->unitSettlementLines((int) $agreement->property_id, $periodStart, $periodEnd);
                 $garbageBilled = round((float) collect($unitLines)->sum('garbage_billed'), 2);
                 $garbageCollected = round((float) collect($unitLines)->sum('garbage_received'), 2);
                 $agreementComparisons[$bill->id] = [

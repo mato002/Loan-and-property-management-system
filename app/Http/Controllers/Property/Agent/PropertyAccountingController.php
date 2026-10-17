@@ -2244,13 +2244,17 @@ class PropertyAccountingController extends Controller
             ->get()
             ->keyBy('aid');
 
-        $pmStats = PmAccountingEntry::query()
-            ->selectRaw('account_name, COUNT(*) as tx_count')
-            ->selectRaw("COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END),0) as debit_total")
-            ->selectRaw("COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END),0) as credit_total")
-            ->groupBy('account_name')
-            ->get()
-            ->keyBy('account_name');
+        $accountNames = $accounts->pluck('name')->filter()->unique()->values()->all();
+        $pmStats = $accountNames === []
+            ? collect()
+            : PmAccountingEntry::query()
+                ->whereIn('account_name', $accountNames)
+                ->selectRaw('account_name, COUNT(*) as tx_count')
+                ->selectRaw("COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END),0) as debit_total")
+                ->selectRaw("COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END),0) as credit_total")
+                ->groupBy('account_name')
+                ->get()
+                ->keyBy('account_name');
 
         $accountMap = PropertyAccountingPostingService::accountMap();
         $protectedCodes = ['1100', '1200', '1250', '2100', '2200', '2260', '2300', '2350', '4100', '4200', '5101'];

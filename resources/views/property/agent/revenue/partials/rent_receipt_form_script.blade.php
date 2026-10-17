@@ -2,7 +2,8 @@
     window.rentReceiptForm = function (config) {
         return {
             tenants: [],
-            invoices: config.invoices || [],
+            invoices: [],
+            optionsUrl: config.optionsUrl || '',
             propertyId: config.old?.property_id || '',
             tenantId: config.old?.tenant_id || '',
             tenantQuery: '',
@@ -10,32 +11,13 @@
             tenantMenuStyle: 'position:fixed;z-index:12000;',
             phone: '',
             rows: [],
+            loadingInvoices: false,
             amount: config.old?.amount || '',
             amountTouched: Boolean(config.old?.amount),
             oldAllocations: config.old?.allocations || {},
             creditConfirmed: false,
             init() {
-                const byTenant = {};
-                this.invoices.forEach((invoice) => {
-                    if (!invoice.property_id) {
-                        return;
-                    }
-                    byTenant[invoice.tenant_id] = byTenant[invoice.tenant_id] || [];
-                    if (!byTenant[invoice.tenant_id].includes(invoice.property_id)) {
-                        byTenant[invoice.tenant_id].push(invoice.property_id);
-                    }
-                });
-                this.tenants = (config.tenants || []).map((tenant) => ({
-                    ...tenant,
-                    label: [tenant.name, tenant.account, tenant.phone].filter(Boolean).join(' · '),
-                    propertyIds: byTenant[tenant.id] || [],
-                }));
-                if (this.tenantId) {
-                    const selected = this.tenants.find((tenant) => String(tenant.id) === String(this.tenantId));
-                    if (selected) {
-                        this.selectTenant(selected, false);
-                    }
-                }
+                if (this.tenantId) this.loadRows();
                 this._placeTenantMenu = () => {
                     if (this.pickerOpen) {
                         this.placeTenantMenu();
@@ -50,7 +32,25 @@
             },
             openTenantPicker() {
                 this.pickerOpen = true;
+                this.searchTenants();
                 this.$nextTick(() => this.placeTenantMenu());
+            },
+            async searchTenants() {
+                if (!this.optionsUrl) return;
+                this._tenantController?.abort();
+                this._tenantController = new AbortController();
+                const params = new URLSearchParams({ q: this.tenantQuery, property_id: this.propertyId || '' });
+                try {
+                    const response = await fetch(`${this.optionsUrl}?${params}`, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        signal: this._tenantController.signal,
+                    });
+                    if (!response.ok) throw new Error('Could not search tenants');
+                    this.tenants = (await response.json()).tenants || [];
+                } catch (error) {
+                    if (error.name !== 'AbortError') this.tenants = [];
+                }
             },
             placeTenantMenu() {
                 const input = this.$refs.tenantInput;
@@ -68,18 +68,7 @@
                 this.tenantMenuStyle = `position:fixed;z-index:${z};top:${Math.round(rect.bottom + 4)}px;left:${Math.round(left)}px;width:${Math.round(width)}px;`;
             },
             get filteredTenants() {
-                const query = this.tenantQuery.trim().toLowerCase();
-                const propertyId = String(this.propertyId || '');
-                const matches = this.tenants.filter((tenant) => {
-                    if (propertyId && !(tenant.propertyIds || []).map(String).includes(propertyId)) {
-                        return false;
-                    }
-                    if (!query) {
-                        return true;
-                    }
-                    return (tenant.label || '').toLowerCase().includes(query);
-                });
-                return matches.slice(0, query ? 40 : 25);
+                return this.tenants.slice(0, 40);
             },
             get outstanding() {
                 return this.rows.reduce((sum, row) => sum + Number(row.due || 0), 0);
@@ -118,15 +107,38 @@
                 }
                 this.loadRows();
             },
-            loadRows() {
-                const propertyId = String(this.propertyId || '');
-                this.rows = this.invoices
-                    .filter((invoice) => String(invoice.tenant_id) === String(this.tenantId))
-                    .filter((invoice) => !propertyId || String(invoice.property_id) === propertyId)
-                    .map((invoice) => ({
+            async loadRows() {
+                if (!this.optionsUrl || !this.tenantId) {
+                    this.rows = [];
+                    return;
+                }
+                const tenantId = String(this.tenantId);
+                const params = new URLSearchParams({ tenant_id: tenantId, property_id: this.propertyId || '' });
+                const requestId = this._invoiceRequest = (this._invoiceRequest || 0) + 1;
+                this.loadingInvoices = true;
+                try {
+                    const response = await fetch(`${this.optionsUrl}?${params}`, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    });
+                    if (!response.ok) throw new Error('Could not load tenant invoices');
+                    const data = await response.json();
+                    if (requestId !== this._invoiceRequest || tenantId !== String(this.tenantId)) return;
+                    const tenant = data.tenant;
+                    if (tenant) {
+                        this.phone = tenant.phone || '';
+                        if (!this.tenantQuery) this.tenantQuery = tenant.label;
+                    }
+                    this.invoices = data.invoices || [];
+                    this.rows = this.invoices.map((invoice) => ({
                         ...invoice,
                         payment: this.oldAllocations[invoice.id] ?? this.oldAllocations[String(invoice.id)] ?? '',
                     }));
+                } catch (error) {
+                    if (requestId === this._invoiceRequest) this.rows = [];
+                } finally {
+                    if (requestId === this._invoiceRequest) this.loadingInvoices = false;
+                }
             },
             fillDue(row) {
                 row.payment = Number(row.due || 0).toFixed(2);

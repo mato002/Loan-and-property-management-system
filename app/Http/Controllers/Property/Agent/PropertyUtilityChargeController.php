@@ -173,6 +173,7 @@ class PropertyUtilityChargeController extends Controller
         );
         $waterReadingUnitIdsByMonth = PmWaterReading::query()
             ->select(['billing_month', 'property_unit_id'])
+            ->distinct()
             ->get()
             ->groupBy('billing_month')
             ->map(fn ($rows) => $rows->pluck('property_unit_id')->map(fn ($id) => (int) $id)->unique()->values()->all())
@@ -200,7 +201,12 @@ class PropertyUtilityChargeController extends Controller
         $waterTemplateByUnit = [];
         $utilityTemplateByUnit = [];
         $waterTemplatePropertyIds = [];
-        foreach (PropertyUnit::query()->select(['id', 'property_id'])->get() as $unit) {
+        $units = PropertyUnit::query()
+            ->with('property')
+            ->orderBy('property_id')
+            ->orderBy('label')
+            ->get();
+        foreach ($units as $unit) {
             $templates = (array) ($propertyChargeTemplates[(string) $unit->property_id] ?? []);
             $effectiveByType = [];
             foreach ($templates as $row) {
@@ -417,7 +423,6 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Rate corrections', 'value' => (string) count($waterRateAdjustments), 'hint' => 'Bill water supplement', 'tone' => count($waterRateAdjustments) > 0 ? 'warning' : 'success'],
         ];
 
-        $units = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get();
         $cascade = app(PropertyFilterCascadeCatalog::class);
         $propertyId = (int) $filters['property_id'];
         $viewFilters = [

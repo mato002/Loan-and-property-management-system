@@ -139,13 +139,15 @@ final class PropertyFilterCascadeCatalog
      */
     public function fromUtilityCharges(): array
     {
-        $units = PropertyUnit::query()
-            ->with('property:id,name')
-            ->orderBy('property_id')
-            ->orderBy('label')
-            ->get(['id', 'label', 'property_id']);
+        return Cache::remember($this->catalogCacheKey('utility_charges'), 300, function () {
+            $units = PropertyUnit::query()
+                ->with('property:id,name')
+                ->orderBy('property_id')
+                ->orderBy('label')
+                ->get(['id', 'label', 'property_id']);
 
-        return $this->buildCatalog($units, []);
+            return $this->buildCatalog($units, []);
+        });
     }
 
     /**

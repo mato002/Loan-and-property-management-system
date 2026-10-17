@@ -2201,7 +2201,10 @@ class RevenueController extends Controller
 
         $ledger = app(TenantStatementLedgerService::class);
         $balances = [];
-        foreach (PmTenant::query()->whereIn('id', $tenantIds)->get() as $tenant) {
+        // The statement builder needs every tenant's lease/unit history. Load
+        // that graph for the whole arrears set once instead of lazy-loading it
+        // while calculating each tenant's closing balance.
+        foreach (PmTenant::query()->with(['leases.units'])->whereIn('id', $tenantIds)->get() as $tenant) {
             $balances[(int) $tenant->id] = $ledger->closingBalance($tenant);
         }
 

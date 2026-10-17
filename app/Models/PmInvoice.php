@@ -752,6 +752,43 @@ class PmInvoice extends Model
         return $sum;
     }
 
+    /**
+     * Prime allocation totals for a list of invoices so list reconciliation does not
+     * issue one allocation sum query per invoice.
+     *
+     * @param  iterable<int, self>  $invoices
+     */
+    public static function prefetchAllocatedAmounts(iterable $invoices): void
+    {
+        $invoiceIds = collect($invoices)
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($invoiceIds->isEmpty()) {
+            return;
+        }
+
+        foreach ($invoiceIds as $invoiceId) {
+            self::$allocatedAmountMemo[$invoiceId] = 0.0;
+        }
+
+        PmPaymentAllocation::query()
+            ->whereIn('pm_invoice_id', $invoiceIds)
+            ->where(function (Builder $query): void {
+                $query->where('is_reversed', false)->orWhereNull('is_reversed');
+            })
+            ->whereHas('payment', fn (Builder $query) => $query->where('status', PmPayment::STATUS_COMPLETED))
+            ->selectRaw('pm_invoice_id, COALESCE(SUM(amount), 0) as allocated_amount')
+            ->groupBy('pm_invoice_id')
+            ->get()
+            ->each(static function ($row): void {
+                self::$allocatedAmountMemo[(int) $row->pm_invoice_id] = round((float) $row->allocated_amount, 2);
+            });
+    }
+
     public static function flushAllocatedAmountMemo(?int $invoiceId = null): void
     {
         if ($invoiceId === null) {
@@ -770,9 +807,11 @@ class PmInvoice extends Model
      * Always writes amount_paid — including clearing it to 0 when there are no
      * live allocations — so unpaid invoices cannot stay stuck as Paid.
      */
-    public function syncAmountPaidFromAllocations(): self
+    public function syncAmountPaidFromAllocations(bool $flushAllocationMemo = true): self
     {
-        self::flushAllocatedAmountMemo((int) ($this->id ?? 0));
+        if ($flushAllocationMemo) {
+            self::flushAllocatedAmountMemo((int) ($this->id ?? 0));
+        }
 
         static::$allowDirectAmountPaidWrite = true;
         FinanceFirebreakService::$skipAmountPaidAudit = true;

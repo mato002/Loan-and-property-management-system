@@ -613,8 +613,9 @@ class PmInvoiceController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = (clone $baseQuery)->limit(5000)->get();
+            PmInvoice::prefetchAllocatedAmounts($items);
             foreach ($items as $invoice) {
-                $invoice->syncAmountPaidFromAllocations();
+                $invoice->syncAmountPaidFromAllocations(false);
             }
             $this->applyStoredCreditToListedInvoices($items);
 
@@ -651,8 +652,9 @@ class PmInvoiceController extends Controller
         }
 
         $invoices = (clone $baseQuery)->paginate($perPage)->withQueryString();
+        PmInvoice::prefetchAllocatedAmounts($invoices->getCollection());
         foreach ($invoices->getCollection() as $invoice) {
-            $invoice->syncAmountPaidFromAllocations();
+            $invoice->syncAmountPaidFromAllocations(false);
         }
         $this->applyStoredCreditToListedInvoices($invoices->getCollection());
 
@@ -787,10 +789,17 @@ class PmInvoiceController extends Controller
                 'dir' => $dir,
                 'per_page' => (string) $perPage,
             ],
-            'leases' => PmLease::query()->with(['pmTenant', 'units'])->orderByDesc('start_date')->get(),
+            'leases' => PmLease::query()
+                ->with([
+                    'pmTenant:id,name,phone,email',
+                    'units:id,label,property_id',
+                    'units.property:id,name',
+                ])
+                ->orderByDesc('start_date')
+                ->get(['id', 'pm_tenant_id', 'monthly_rent', 'start_date']),
             'units' => $cascade->unitsForProperty($propertyId),
             'properties' => $cascade->properties(),
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
+            'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name', 'phone', 'email', 'account_number']),
             'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
         ]);
     }

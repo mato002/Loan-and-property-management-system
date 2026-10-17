@@ -1,8 +1,7 @@
 @php
     $field = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2';
     $receiptConfig = [
-        'tenants' => $receiptTenants ?? [],
-        'invoices' => $receiptInvoices ?? [],
+        'optionsUrl' => $receiptOptionsUrl ?? '',
         'old' => [
             'property_id' => (string) old('property_id', ''),
             'tenant_id' => (string) old('pm_tenant_id', ''),
@@ -210,8 +209,8 @@
 
     <div class="flex flex-wrap items-center justify-end gap-2">
         <button type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" @click="resetForm($el.form)">Reset</button>
-        <button type="submit" name="save_and_print" value="0" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800">Save</button>
-        <button type="submit" name="save_and_print" value="1" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Save &amp; print</button>
+        <button type="submit" name="save_and_print" value="0" :disabled="loadingInvoices" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">Save</button>
+        <button type="submit" name="save_and_print" value="1" :disabled="loadingInvoices" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Save &amp; print</button>
     </div>
 </form>
 {{-- Script is included from the payments page so it is not trapped inside the modal template. --}}

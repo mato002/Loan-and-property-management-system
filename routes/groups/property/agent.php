@@ -107,6 +107,7 @@ Route::middleware(['property.portal:agent', 'property.module'])->prefix('propert
     Route::post('/revenue/penalties', [RevenueController::class, 'storePenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.store');
     Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
     Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
+    Route::get('/revenue/payments/receipt-options', [PmPaymentController::class, 'receiptOptions'])->name('revenue.payments.receipt_options');
     Route::get('/revenue/mpesa-inbox', [PmPaymentController::class, 'mpesaInbox'])->name('revenue.mpesa_inbox');
     Route::post('/revenue/mpesa-inbox/verify-receipt', [PmPaymentController::class, 'verifyMpesaReceipt'])->middleware('property.permission:payments.record')->name('revenue.mpesa_inbox.verify_receipt');
     Route::post('/revenue/mpesa-inbox/{payment}/verify-stk', [PmPaymentController::class, 'verifyPendingStk'])->middleware('property.permission:payments.settle')->name('revenue.mpesa_inbox.verify_stk');

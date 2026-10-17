@@ -24,6 +24,7 @@ use App\Services\Integrations\MpesaReceiptVerificationService;
 use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -183,9 +184,11 @@ class PmPaymentController extends Controller
 
         $baseQuery = $this->applyPaymentListFilters(
             PmPayment::query()->with([
-                'tenant.user',
-                'allocations.invoice.tenant.user',
-                'allocations.invoice.unit.property',
+                'tenant:id,user_id,name,phone',
+                'tenant.user:id,phone',
+                'allocations.invoice:id,invoice_no,property_unit_id',
+                'allocations.invoice.unit:id,label,property_id',
+                'allocations.invoice.unit.property:id,name,code',
             ]),
             $filters
         );
@@ -378,50 +381,113 @@ class PmPaymentController extends Controller
             'properties' => $cascade->properties(),
             'units' => $cascade->unitsForProperty($propertyId),
             'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
-            'openInvoices' => $openInvoices = PmInvoice::query()
-                ->with(['tenant:id,name,phone,account_number', 'unit:id,label,property_id', 'unit.property:id,name'])
-                ->billableAr()
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->orderBy('due_date')
-                ->get(),
-            'receiptInvoices' => $openInvoices->map(function (PmInvoice $invoice) {
-                $due = max(0, round((float) $invoice->amount - (float) $invoice->amount_paid, 2));
-                $particulars = trim((string) ($invoice->description ?: str_replace('_', ' ', (string) $invoice->invoice_type)));
-
-                return [
-                    'id' => (int) $invoice->id,
-                    'tenant_id' => (int) $invoice->pm_tenant_id,
-                    'property_id' => (int) ($invoice->unit?->property_id ?? 0),
-                    'invoice_no' => (string) $invoice->invoice_no,
-                    'issue_date' => $invoice->issue_date?->format('d/m/Y') ?? '',
-                    'due_date' => $invoice->due_date?->format('d/m/Y') ?? '',
-                    'particulars' => $particulars !== '' ? $particulars : 'Charge',
-                    'amount' => round((float) $invoice->amount, 2),
-                    'paid' => round((float) $invoice->amount_paid, 2),
-                    'due' => $due,
-                ];
-            })->values()->all(),
-            'receiptTenants' => PmTenant::query()
-                ->orderBy('name')
-                ->get(['id', 'name', 'phone', 'account_number'])
-                ->map(fn (PmTenant $tenant) => [
-                    'id' => (int) $tenant->id,
-                    'name' => (string) $tenant->name,
-                    'phone' => (string) ($tenant->phone ?? ''),
-                    'account' => (string) ($tenant->account_number ?? ''),
-                ])
-                ->all(),
+            'receiptOptionsUrl' => route('property.revenue.payments.receipt_options', absolute: false),
             'cashAccounts' => $this->cashAccountsForReceipt(),
-            // Only show tenants that actually have an open invoice (this screen posts against invoices).
-            'tenants' => PmTenant::query()
-                ->whereHas('invoices', function ($q) {
-                    $q->whereColumn('amount_paid', '<', 'amount');
-                })
-                ->orderBy('name')
-                ->get(),
             'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
         ]);
+    }
+
+    public function receiptOptions(Request $request): JsonResponse
+    {
+        $tenantId = max(0, (int) $request->query('tenant_id', 0));
+        $propertyId = max(0, (int) $request->query('property_id', 0));
+
+        if ($tenantId > 0) {
+            $tenant = PmTenant::query()->findOrFail($tenantId);
+            $invoices = PmInvoice::query()
+                ->with(['unit:id,label,property_id', 'unit.property:id,name'])
+                ->billableAr()
+                ->where('pm_tenant_id', $tenantId)
+                ->whereColumn('amount_paid', '<', 'amount')
+                ->when($propertyId > 0, fn (Builder $query) => $query->whereHas('unit', fn (Builder $unit) => $unit->where('property_id', $propertyId)))
+                ->orderBy('due_date')
+                ->get();
+
+            return response()->json([
+                'tenant' => $this->receiptTenantOption($tenant),
+                'invoices' => $invoices->map(fn (PmInvoice $invoice) => $this->receiptInvoiceOption($invoice))->values(),
+            ]);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        $tenantsQuery = PmTenant::query()
+            ->when($q !== '', function (Builder $query) use ($q): void {
+                $query->where(function (Builder $search) use ($q): void {
+                    $search->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('account_number', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%');
+                });
+            })
+            ->when($propertyId > 0, function (Builder $query) use ($propertyId): void {
+                $query->whereHas('invoices', fn (Builder $invoice) => $invoice
+                    ->billableAr()
+                    ->whereColumn('amount_paid', '<', 'amount')
+                    ->whereHas('unit', fn (Builder $unit) => $unit->where('property_id', $propertyId)));
+            })
+            ->orderBy('name')
+            ->limit(40)
+            ->get(['id', 'name', 'phone', 'account_number']);
+
+        $tenantIds = $tenantsQuery->modelKeys();
+        $propertyMap = [];
+        if ($tenantIds !== []) {
+            PmInvoice::query()
+                ->billableAr()
+                ->whereColumn('amount_paid', '<', 'amount')
+                ->whereIn('pm_tenant_id', $tenantIds)
+                ->join('property_units as receipt_units', 'receipt_units.id', '=', 'pm_invoices.property_unit_id')
+                ->selectRaw('DISTINCT pm_invoices.pm_tenant_id, receipt_units.property_id')
+                ->get()
+                ->each(function ($row) use (&$propertyMap): void {
+                    $propertyMap[(int) $row->pm_tenant_id][] = (int) $row->property_id;
+                });
+        }
+
+        return response()->json([
+            'tenants' => $tenantsQuery->map(function (PmTenant $tenant) use ($propertyMap): array {
+                $option = $this->receiptTenantOption($tenant);
+                $option['propertyIds'] = array_values(array_unique($propertyMap[(int) $tenant->id] ?? []));
+
+                return $option;
+            })->values(),
+        ]);
+    }
+
+    /** @return array{id: int, name: string, phone: string, account: string, label: string} */
+    private function receiptTenantOption(PmTenant $tenant): array
+    {
+        $name = (string) $tenant->name;
+        $phone = (string) ($tenant->phone ?? '');
+        $account = (string) ($tenant->account_number ?? '');
+
+        return [
+            'id' => (int) $tenant->id,
+            'name' => $name,
+            'phone' => $phone,
+            'account' => $account,
+            'label' => implode(' · ', array_values(array_filter([$name, $account, $phone]))),
+        ];
+    }
+
+    /** @return array<string, int|float|string> */
+    private function receiptInvoiceOption(PmInvoice $invoice): array
+    {
+        $due = max(0, round((float) $invoice->amount - (float) $invoice->amount_paid, 2));
+        $particulars = trim((string) ($invoice->description ?: str_replace('_', ' ', (string) $invoice->invoice_type)));
+
+        return [
+            'id' => (int) $invoice->id,
+            'tenant_id' => (int) $invoice->pm_tenant_id,
+            'property_id' => (int) ($invoice->unit?->property_id ?? 0),
+            'invoice_no' => (string) $invoice->invoice_no,
+            'issue_date' => $invoice->issue_date?->format('d/m/Y') ?? '',
+            'due_date' => $invoice->due_date?->format('d/m/Y') ?? '',
+            'particulars' => $particulars !== '' ? $particulars : 'Charge',
+            'amount' => round((float) $invoice->amount, 2),
+            'paid' => round((float) $invoice->amount_paid, 2),
+            'due' => $due,
+        ];
     }
 
     /**
